@@ -3,13 +3,15 @@
 export type TidePoint = { unix?: number; cm: number; time?: string }
 
 /**
- * 1日分の潮位 series を取得（既存）
+ * 1日分の潮位 series を取得
+ * 本番は Cloudflare Pages Functions 側で /tide736/get_tide.php をプロキシする前提
  */
 export async function fetchTide736Day(pc: string, hc: string, date: Date) {
   const yr = date.getFullYear()
   const mn = date.getMonth() + 1
   const dy = date.getDate()
 
+  // ✅ same-origin の /tide736/get_tide.php を叩く（本番では Functions が受ける）
   const url = new URL('/tide736/get_tide.php', window.location.origin)
   url.searchParams.set('pc', pc)
   url.searchParams.set('hc', hc)
@@ -19,17 +21,26 @@ export async function fetchTide736Day(pc: string, hc: string, date: Date) {
   url.searchParams.set('rg', 'day')
 
   const res = await fetch(url.toString())
+  const ct = res.headers.get('content-type') || ''
   const text = await res.text()
+
+  // 先にHTTPエラーを拾う（HTMLが返ってくる系もここで見える）
+  if (!res.ok) {
+    throw new Error(`tide736 HTTP ${res.status} (${ct}): ${text.slice(0, 120)}`)
+  }
 
   let json: any
   try {
     json = JSON.parse(text)
   } catch {
-    throw new Error(`tide736 JSON parse failed: ${text.slice(0, 120)}`)
+    throw new Error(`tide736 JSON parse failed (${ct}): ${text.slice(0, 120)}`)
   }
 
-  if (!res.ok) throw new Error(`tide736 HTTP ${res.status}`)
-  if (!json?.status) throw new Error(`tide736 status=false`)
+  if (!json?.status) {
+    // Functions 側が status:false を返したケースもここで分かる
+    const err = typeof json?.error === 'string' ? `: ${json.error}` : ''
+    throw new Error(`tide736 status=false${err}`)
+  }
 
   // tide 配列の場所が2パターンある
   const direct = json?.tide?.tide
@@ -47,12 +58,9 @@ export async function fetchTide736Day(pc: string, hc: string, date: Date) {
 }
 
 /**
- * 撮影時刻に一番近い潮位と上げ/下げを返す（既存）
+ * 撮影時刻に一番近い潮位と上げ/下げを返す
  */
-export function getTideAtTime(
-  tideSeries: TidePoint[],
-  whenMs: number
-) {
+export function getTideAtTime(tideSeries: TidePoint[], whenMs: number) {
   if (tideSeries.length === 0) return null
 
   const target = new Date(whenMs)
@@ -96,10 +104,7 @@ export function getTideAtTime(
 }
 
 /**
- * ✅ 追加：潮名（大潮 / 中潮 / 小潮 / 長潮 / 若潮）を取得
- *
- * tide736 の CHART 配下：
- *   tide.chart["YYYY-MM-DD"].moon.title
+ * 潮名（大潮 / 中潮 / 小潮 / 長潮 / 若潮）を取得
  */
 export async function fetchTide736TideName(
   pc: string,
@@ -119,30 +124,34 @@ export async function fetchTide736TideName(
   url.searchParams.set('rg', 'day')
 
   const res = await fetch(url.toString())
+  const ct = res.headers.get('content-type') || ''
   const text = await res.text()
+
+  if (!res.ok) return null
 
   let json: any
   try {
     json = JSON.parse(text)
   } catch {
+    // JSONじゃない時は諦める
     return null
   }
 
-  if (!res.ok || !json?.status) return null
+  if (!json?.status) return null
 
   const key = `${yr}-${String(mn).padStart(2, '0')}-${String(dy).padStart(2, '0')}`
 
-  // 本命：chart[day].moon.title
   const title = json?.tide?.chart?.[key]?.moon?.title
   if (typeof title === 'string' && title.length > 0) {
     return title
   }
 
-  // 念のため直下パターンも見る（保険）
   const fallback = json?.tide?.moon?.title
   if (typeof fallback === 'string' && fallback.length > 0) {
     return fallback
   }
 
+  // content-type 変でも JSON返ってくる場合があるので、ここではログ出さずnull
+  void ct
   return null
 }
