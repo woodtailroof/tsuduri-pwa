@@ -1,5 +1,5 @@
 // src/screens/CharacterSettings.tsx
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 type Props = {
   back: () => void
@@ -24,6 +24,9 @@ export const ALLHANDS_BANTER_RATE_KEY = 'tsuduri_allhands_banter_rate_v1'
 
 export const CHARACTERS_STORAGE_KEY = 'tsuduri_characters_v2'
 export const SELECTED_CHARACTER_ID_KEY = 'tsuduri_selected_character_id_v2'
+
+// ✅ 追加：バックアップ（直近1世代）
+const CHARACTERS_BACKUP_KEY = 'tsuduri_characters_backup_v1'
 
 function uid() {
   return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
@@ -88,6 +91,18 @@ function normalizeCharacterForSave(x: any): CharacterProfile {
   }
 }
 
+function dedupeById(list: CharacterProfile[]) {
+  const seen = new Set<string>()
+  const uniq: CharacterProfile[] = []
+  for (const c of list) {
+    if (!c?.id) continue
+    if (seen.has(c.id)) continue
+    seen.add(c.id)
+    uniq.push(c)
+  }
+  return uniq
+}
+
 function safeLoadCharacters(): CharacterProfile[] {
   try {
     const raw = localStorage.getItem(CHARACTERS_STORAGE_KEY)
@@ -96,15 +111,7 @@ function safeLoadCharacters(): CharacterProfile[] {
     if (!Array.isArray(j)) return [DEFAULT_CHARACTER]
 
     const list = j.map((c: any) => normalizeCharacterForSave(c))
-
-    // id 重複を軽く除去
-    const seen = new Set<string>()
-    const uniq: CharacterProfile[] = []
-    for (const c of list) {
-      if (seen.has(c.id)) continue
-      seen.add(c.id)
-      uniq.push(c)
-    }
+    const uniq = dedupeById(list)
     return uniq.length ? uniq : [DEFAULT_CHARACTER]
   } catch {
     return [DEFAULT_CHARACTER]
@@ -141,6 +148,102 @@ function isSame(a: CharacterProfile, b: CharacterProfile) {
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
+/** ========= Export / Import / Backup ========= */
+
+type ExportPayloadV1 = {
+  schema: 'tsuduri.characters.v1'
+  exportedAt: string
+  app?: string
+  characters: CharacterProfile[]
+}
+
+function buildExportPayload(chars: CharacterProfile[]): ExportPayloadV1 {
+  return {
+    schema: 'tsuduri.characters.v1',
+    exportedAt: new Date().toISOString(),
+    app: 'tsuduri-pwa',
+    characters: chars,
+  }
+}
+
+function prettyJson(x: any) {
+  return JSON.stringify(x, null, 2)
+}
+
+function downloadTextFile(filename: string, content: string) {
+  try {
+    const blob = new Blob([content], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  } catch {
+    // ignore
+  }
+}
+
+function safeReadBackup(): ExportPayloadV1 | null {
+  try {
+    const raw = localStorage.getItem(CHARACTERS_BACKUP_KEY)
+    if (!raw) return null
+    const j = JSON.parse(raw)
+    if (!j || j.schema !== 'tsuduri.characters.v1' || !Array.isArray(j.characters)) return null
+    return j as ExportPayloadV1
+  } catch {
+    return null
+  }
+}
+
+function safeWriteBackup(prevChars: CharacterProfile[]) {
+  try {
+    const payload = buildExportPayload(prevChars)
+    localStorage.setItem(CHARACTERS_BACKUP_KEY, JSON.stringify(payload))
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Import source parser:
+ * - Array<CharacterProfile> でもOK
+ * - ExportPayloadV1 { schema, characters } でもOK
+ */
+function parseImportText(raw: string): CharacterProfile[] {
+  const trimmed = (raw ?? '').trim()
+  if (!trimmed) throw new Error('空です（JSONを貼り付けてね）')
+
+  const j = JSON.parse(trimmed)
+
+  // 1) 形式：配列
+  if (Array.isArray(j)) {
+    return j.map((x) => normalizeCharacterForSave(x))
+  }
+
+  // 2) 形式：payload
+  if (j && typeof j === 'object' && Array.isArray((j as any).characters)) {
+    return (j as any).characters.map((x: any) => normalizeCharacterForSave(x))
+  }
+
+  throw new Error('形式が違うみたい（配列 か { characters: [...] } のJSONが必要）')
+}
+
+function makeUniqueId(baseId: string, used: Set<string>) {
+  let id = baseId
+  if (!id.trim()) id = uid()
+  if (!used.has(id)) return id
+
+  // id-2, id-3...
+  let n = 2
+  while (used.has(`${id}-${n}`)) n++
+  return `${id}-${n}`
+}
+
+type ImportMode = 'overwrite' | 'merge'
+
 export default function CharacterSettings({ back }: Props) {
   const [characters, setCharacters] = useState<CharacterProfile[]>(() => safeLoadCharacters())
   const [selectedId, setSelectedId] = useState<string>(() => {
@@ -153,6 +256,14 @@ export default function CharacterSettings({ back }: Props) {
   const [saved, setSaved] = useState<CharacterProfile>(() => selected ?? DEFAULT_CHARACTER)
   const [draft, setDraft] = useState<CharacterProfile>(() => normalizeCharacterForDraft(selected ?? DEFAULT_CHARACTER))
 
+  // ✅ 自動バックアップ用：一個前を保持
+  const prevCharactersRef = useRef<CharacterProfile[] | null>(null)
+  useEffect(() => {
+    prevCharactersRef.current = characters
+    // 初期化だけ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // 選択が変わったら編集対象も切り替える
   useEffect(() => {
     const cur = characters.find((c) => c.id === selectedId) ?? characters[0]
@@ -163,8 +274,15 @@ export default function CharacterSettings({ back }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId])
 
-  // characters が変わったら保存
+  // characters が変わったら保存（＋直前をバックアップ）
   useEffect(() => {
+    // backup: 変更前（prev）を保存
+    const prev = prevCharactersRef.current
+    if (prev && JSON.stringify(prev) !== JSON.stringify(characters)) {
+      safeWriteBackup(prev)
+    }
+    prevCharactersRef.current = characters
+
     safeSaveCharacters(characters)
   }, [characters])
 
@@ -238,6 +356,103 @@ export default function CharacterSettings({ back }: Props) {
     setSelectedId(next[0].id)
   }
 
+  /** ===== Export / Import UI state ===== */
+  const [ioOpen, setIoOpen] = useState(false)
+  const [ioText, setIoText] = useState('')
+  const [ioMode, setIoMode] = useState<ImportMode>('merge')
+  const [ioMsg, setIoMsg] = useState<string>('')
+
+  function openIO() {
+    const payload = buildExportPayload(characters)
+    setIoText(prettyJson(payload))
+    setIoMsg('')
+    setIoOpen(true)
+  }
+
+  async function copyExportToClipboard() {
+    try {
+      const payload = buildExportPayload(characters)
+      await navigator.clipboard.writeText(prettyJson(payload))
+      setIoMsg('✅ クリップボードにコピーしたよ')
+    } catch {
+      setIoMsg('⚠️ コピーできなかったみたい。下のテキストを手動でコピーしてね。')
+    }
+  }
+
+  function downloadExport() {
+    const payload = buildExportPayload(characters)
+    const stamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, '-')
+      .replace('T', '_')
+      .replace('Z', '')
+    downloadTextFile(`tsuduri-characters_${stamp}.json`, prettyJson(payload))
+    setIoMsg('✅ JSONファイルをダウンロードしたよ（できない場合は手動コピーでもOK）')
+  }
+
+  function importFromText() {
+    try {
+      const imported = parseImportText(ioText)
+
+      if (!imported.length) {
+        setIoMsg('⚠️ 読み込めたけど、キャラが0件だったよ')
+        return
+      }
+
+      const next = (() => {
+        if (ioMode === 'overwrite') {
+          // ✅ 上書き：インポートしたものをそのまま採用（最低1人は保証）
+          const uniq = dedupeById(imported)
+          return uniq.length ? uniq : [DEFAULT_CHARACTER]
+        }
+
+        // ✅ merge：既存に追加（idが被ったら自動リネーム）
+        const used = new Set<string>(characters.map((c) => c.id))
+        const toAdd: CharacterProfile[] = []
+        for (const c of imported) {
+          const id = makeUniqueId(c.id, used)
+          used.add(id)
+          toAdd.push({ ...c, id })
+        }
+        const merged = dedupeById([...toAdd, ...characters])
+        return merged.length ? merged : [DEFAULT_CHARACTER]
+      })()
+
+      setCharacters(next)
+
+      // selectedIdが消えてたら先頭へ
+      const stillExists = next.some((c) => c.id === selectedId)
+      if (!stillExists) setSelectedId(next[0].id)
+
+      setIoMsg(ioMode === 'overwrite' ? '✅ インポート（上書き）したよ' : '✅ インポート（追加）したよ')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setIoMsg(`❌ インポート失敗：${msg}`)
+    }
+  }
+
+  function restoreFromBackup() {
+    const backup = safeReadBackup()
+    if (!backup?.characters?.length) {
+      setIoMsg('⚠️ バックアップが見つからなかったよ')
+      return
+    }
+
+    const ok = confirm('直近バックアップから復元する？（いまのキャラは上書きされるよ）')
+    if (!ok) return
+
+    const restored = dedupeById(backup.characters.map((x) => normalizeCharacterForSave(x)))
+    const next = restored.length ? restored : [DEFAULT_CHARACTER]
+
+    setCharacters(next)
+    const stillExists = next.some((c) => c.id === selectedId)
+    if (!stillExists) setSelectedId(next[0].id)
+
+    setIoMsg(`✅ バックアップから復元したよ（${backup.exportedAt}）`)
+  }
+
+  const backupInfo = useMemo(() => safeReadBackup(), [characters])
+
   return (
     <div style={{ padding: 24, display: 'grid', gap: 14 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
@@ -254,7 +469,7 @@ export default function CharacterSettings({ back }: Props) {
       </div>
 
       <div style={{ fontSize: 12, color: '#777' }}>
-        ※ キャラはローカルに保存されます。会話画面でキャラ切替すると、履歴もキャラごとに切り替わります。
+        ※ キャラはローカル（端末ごと）に保存されます。スマホとPCで自動同期はされません。必要なら下の「エクスポート / インポート」で移せます。
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 14, alignItems: 'start' }}>
@@ -281,6 +496,20 @@ export default function CharacterSettings({ back }: Props) {
 
           <button type="button" onClick={deleteCurrent} style={{ opacity: 0.9 }}>
             🗑 選択中を削除
+          </button>
+
+          <button type="button" onClick={openIO} style={{ opacity: 0.95 }}>
+            📦 エクスポート / インポート
+          </button>
+
+          <button
+            type="button"
+            onClick={restoreFromBackup}
+            style={{ opacity: backupInfo?.characters?.length ? 0.95 : 0.4 }}
+            disabled={!backupInfo?.characters?.length}
+            title={backupInfo?.exportedAt ? `最終バックアップ: ${backupInfo.exportedAt}` : 'バックアップなし'}
+          >
+            🛟 直近バックアップから復元
           </button>
 
           <hr style={{ opacity: 0.25, margin: '6px 0' }} />
@@ -351,30 +580,18 @@ export default function CharacterSettings({ back }: Props) {
 
             <label style={{ fontSize: 12, color: '#bbb' }}>
               自称（一人称）：
-              <input
-                value={draft.selfName}
-                onChange={(e) => updateDraft({ selfName: e.target.value })}
-                style={{ marginLeft: 8, width: 140 }}
-              />
+              <input value={draft.selfName} onChange={(e) => updateDraft({ selfName: e.target.value })} style={{ marginLeft: 8, width: 140 }} />
             </label>
 
             <label style={{ fontSize: 12, color: '#bbb' }}>
               ユーザー呼称：
-              <input
-                value={draft.callUser}
-                onChange={(e) => updateDraft({ callUser: e.target.value })}
-                style={{ marginLeft: 8, width: 140 }}
-              />
+              <input value={draft.callUser} onChange={(e) => updateDraft({ callUser: e.target.value })} style={{ marginLeft: 8, width: 140 }} />
             </label>
           </div>
 
           <label style={{ fontSize: 12, color: '#bbb' }}>
             返答の長さ：
-            <select
-              value={draft.replyLength}
-              onChange={(e) => updateDraft({ replyLength: e.target.value as ReplyLength })}
-              style={{ marginLeft: 8 }}
-            >
+            <select value={draft.replyLength} onChange={(e) => updateDraft({ replyLength: e.target.value as ReplyLength })} style={{ marginLeft: 8 }}>
               <option value="short">短め</option>
               <option value="medium">標準</option>
               <option value="long">長め</option>
@@ -409,10 +626,89 @@ export default function CharacterSettings({ back }: Props) {
           </label>
 
           <div style={{ fontSize: 12, color: '#777' }}>
-            保存先：localStorage key = <code>{CHARACTERS_STORAGE_KEY}</code> / 選択中 =<code style={{ marginLeft: 6 }}>{SELECTED_CHARACTER_ID_KEY}</code>
+            保存先：localStorage key = <code>{CHARACTERS_STORAGE_KEY}</code> / 選択中 = <code style={{ marginLeft: 6 }}>{SELECTED_CHARACTER_ID_KEY}</code>
           </div>
         </div>
       </div>
+
+      {/* Export / Import panel */}
+      {ioOpen && (
+        <div
+          style={{
+            border: '1px solid #333',
+            borderRadius: 12,
+            padding: 12,
+            background: '#0f0f0f',
+            color: '#ddd',
+            display: 'grid',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ fontWeight: 900 }}>📦 エクスポート / インポート</div>
+
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" onClick={copyExportToClipboard}>
+                📋 コピー
+              </button>
+              <button type="button" onClick={downloadExport}>
+                ⬇️ JSON保存
+              </button>
+              <button type="button" onClick={() => setIoOpen(false)}>
+                ✖ 閉じる
+              </button>
+            </div>
+          </div>
+
+          <div style={{ fontSize: 12, color: '#888' }}>
+            使い方：PCでエクスポート → スマホでこの欄に貼り付け → インポート。  
+            「追加（merge）」なら既存キャラを残したまま増やせるよ（idが被ったら自動で末尾に -2 とか付ける）。
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label style={{ fontSize: 12, color: '#bbb' }}>
+              インポート方式：
+              <select value={ioMode} onChange={(e) => setIoMode(e.target.value as ImportMode)} style={{ marginLeft: 8 }}>
+                <option value="merge">追加（merge）</option>
+                <option value="overwrite">上書き（overwrite）</option>
+              </select>
+            </label>
+
+            <button type="button" onClick={importFromText} style={{ fontWeight: 800 }}>
+              ⬆️ このJSONをインポート
+            </button>
+
+            {backupInfo?.exportedAt && (
+              <span style={{ fontSize: 12, color: '#777' }} title="直近バックアップ">
+                🛟 backup: {backupInfo.exportedAt}
+              </span>
+            )}
+          </div>
+
+          <textarea
+            value={ioText}
+            onChange={(e) => setIoText(e.target.value)}
+            rows={12}
+            style={{
+              width: '100%',
+              borderRadius: 10,
+              border: '1px solid #333',
+              background: '#111',
+              color: '#eee',
+              padding: 10,
+              lineHeight: 1.45,
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+              fontSize: 12,
+            }}
+          />
+
+          {ioMsg && (
+            <div style={{ fontSize: 12, color: ioMsg.startsWith('❌') ? '#ff9aa2' : ioMsg.startsWith('⚠️') ? '#ffd08a' : '#bfffbf' }}>
+              {ioMsg}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
