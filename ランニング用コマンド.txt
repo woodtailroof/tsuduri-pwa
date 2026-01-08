@@ -1,0 +1,5 @@
+cd Documents\tsuduri\tsuduri-pwa
+
+npm run dev
+
+vercel dev
