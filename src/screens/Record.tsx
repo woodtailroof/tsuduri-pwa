@@ -11,6 +11,7 @@ import { getTide736DayCached, type TideCacheSource } from '../lib/tide736Cache'
 import { getTidePhaseFromSeries } from '../lib/tidePhase736'
 import TideGraph from '../components/TideGraph'
 import PageShell from '../components/PageShell'
+import { exportCatches, importCatches } from '../lib/catchTransfer'
 
 type Props = {
   back: () => void
@@ -842,6 +843,41 @@ export default function Record({ back }: Props) {
               {allLoading ? '読み込み中…' : '↻ 全履歴更新'}
             </button>
           )}
+{(viewMode === 'archive' || viewMode === 'analysis') && (
+  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+    <button onClick={exportCatches}>
+      📤 釣果をエクスポート
+    </button>
+
+    <label style={{ cursor: 'pointer' }}>
+      📥 釣果をインポート
+      <input
+        type="file"
+        accept=".zip"
+        hidden
+        onChange={async (e) => {
+          const file = e.target.files?.[0]
+          if (!file) return
+
+          const ok = confirm(
+            '既存の釣果はすべて削除され、ZIPの内容で置き換えられるよ。続ける？'
+          )
+          if (!ok) return
+
+          try {
+            await importCatches(file)
+            alert('インポート完了！')
+            location.reload()
+          } catch (err) {
+            console.error(err)
+            alert('インポート失敗…')
+          }
+        }}
+      />
+    </label>
+  </div>
+)}
+
         </div>
 
         {/* ✅ recent のときだけ登録フォームを表示 */}
