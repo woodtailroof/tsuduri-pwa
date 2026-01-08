@@ -1,8 +1,9 @@
 // src/pages/Record.tsx
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import exifr from 'exifr'
 import { db, type CatchRecord, type CatchResult } from '../db'
+import { exportCatches, importCatches } from '../lib/catchTransfer'
 import { getTimeBand } from '../lib/timeband'
 import { countByTide, countByTimeBand, countByTideAndTimeBand } from '../lib/stats'
 import { FIXED_PORT } from '../points'
@@ -11,7 +12,6 @@ import { getTide736DayCached, type TideCacheSource } from '../lib/tide736Cache'
 import { getTidePhaseFromSeries } from '../lib/tidePhase736'
 import TideGraph from '../components/TideGraph'
 import PageShell from '../components/PageShell'
-import { exportCatches, importCatches } from '../lib/catchTransfer'
 
 type Props = {
   back: () => void
@@ -51,9 +51,7 @@ type AnalysisGroup =
 
 function dayKeyFromISO(iso: string) {
   const d = new Date(iso)
-  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-    d.getDate()
-  ).padStart(2, '0')}`
+  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   return { d, key }
 }
 
@@ -62,9 +60,7 @@ function pad2(n: number) {
 }
 
 function toDateTimeLocalValue(d: Date) {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(
-    d.getHours()
-  )}:${pad2(d.getMinutes())}`
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`
 }
 
 function parseDateTimeLocalValue(v: string): Date | null {
@@ -130,8 +126,7 @@ function formatDeltaPercent(x: number) {
 function formatResultLine(r: CatchRecord) {
   if (r.result === 'caught') {
     const sp = r.species?.trim() ? r.species!.trim() : '不明'
-    const sz =
-      typeof r.sizeCm === 'number' && Number.isFinite(r.sizeCm) ? `${r.sizeCm}cm` : 'サイズ不明'
+    const sz = typeof r.sizeCm === 'number' && Number.isFinite(r.sizeCm) ? `${r.sizeCm}cm` : 'サイズ不明'
     return `🎣 釣れた：${sp} / ${sz}`
   }
   if (r.result === 'skunk') return '😇 釣れなかった（ボウズ）'
@@ -139,7 +134,10 @@ function formatResultLine(r: CatchRecord) {
 }
 
 export default function Record({ back }: Props) {
-    const pillBtnStyle: React.CSSProperties = {
+  // =========================
+  // ✅ 共通：ピルボタン見た目
+  // =========================
+  const pillBtnStyle: CSSProperties = {
     borderRadius: 999,
     padding: '8px 12px',
     border: '1px solid #333',
@@ -148,13 +146,25 @@ export default function Record({ back }: Props) {
     cursor: 'pointer',
     userSelect: 'none',
     lineHeight: 1,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    whiteSpace: 'nowrap',
   }
 
-  const pillBtnStyleDisabled: React.CSSProperties = {
+  const pillBtnStyleDisabled: CSSProperties = {
     ...pillBtnStyle,
     opacity: 0.6,
     cursor: 'not-allowed',
   }
+
+  const pillBtnStyleActive: CSSProperties = {
+    ...pillBtnStyle,
+    border: '2px solid #ff4d6d',
+    background: '#1a1115',
+    color: '#eee',
+  }
+
   const [viewMode, setViewMode] = useState<ViewMode>('recent')
 
   const [photo, setPhoto] = useState<File | null>(null)
@@ -207,10 +217,7 @@ export default function Record({ back }: Props) {
 
   const [analysisTideMap, setAnalysisTideMap] = useState<Record<number, AnalysisTideInfo>>({})
   const [analysisTideLoading, setAnalysisTideLoading] = useState(false)
-  const [analysisTideProgress, setAnalysisTideProgress] = useState<{ done: number; total: number }>({
-    done: 0,
-    total: 0,
-  })
+  const [analysisTideProgress, setAnalysisTideProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 })
   const [analysisTideError, setAnalysisTideError] = useState<string>('')
 
   useEffect(() => {
@@ -249,7 +256,8 @@ export default function Record({ back }: Props) {
     if ((viewMode === 'archive' || viewMode === 'analysis') && !allLoadedOnce && !allLoading) {
       loadAll()
     }
-  }, [viewMode]) // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode])
 
   useEffect(() => {
     if (recent.length === 0) {
@@ -258,7 +266,8 @@ export default function Record({ back }: Props) {
     }
     const exists = selectedId != null && recent.some((r) => r.id === selectedId)
     if (!exists) setSelectedId(recent[0].id ?? null)
-  }, [recent]) // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recent])
 
   useEffect(() => {
     return () => {
@@ -369,12 +378,7 @@ export default function Record({ back }: Props) {
         for (const [key, records] of byDay.entries()) {
           const anyDate = new Date(records[0].capturedAt!)
 
-          const { series, source, isStale, tideName } = await getTide736DayCached(
-            FIXED_PORT.pc,
-            FIXED_PORT.hc,
-            anyDate,
-            { ttlDays: 30 }
-          )
+          const { series, source, isStale, tideName } = await getTide736DayCached(FIXED_PORT.pc, FIXED_PORT.hc, anyDate, { ttlDays: 30 })
 
           nextSeriesMap[key] = series
           nextSourceMap[key] = source
@@ -433,8 +437,8 @@ export default function Record({ back }: Props) {
     selectedShot && selectedSeries.length > 0
       ? getTidePhaseFromSeries(selectedSeries, selectedShot, selectedShot)
       : selectedShot
-      ? '不明'
-      : ''
+        ? '不明'
+        : ''
   const selectedPhase = displayPhaseForHeader(selectedPhaseRaw)
 
   // 最近5件の統計（従来どおり）
@@ -510,7 +514,8 @@ export default function Record({ back }: Props) {
       return
     }
     if (!months.includes(m)) setArchiveMonth('')
-  }, [archiveYear, yearMonthsMap]) // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [archiveYear, yearMonthsMap])
 
   // ✅ アーカイブ：年/月フィルタ
   const filteredArchive = useMemo(() => {
@@ -587,12 +592,7 @@ export default function Record({ back }: Props) {
           const [key, records] = entries[i]
           const anyDate = new Date(records[0].capturedAt)
 
-          const { series, source, isStale, tideName } = await getTide736DayCached(
-            FIXED_PORT.pc,
-            FIXED_PORT.hc,
-            anyDate,
-            { ttlDays: 30 }
-          )
+          const { series, source, isStale, tideName } = await getTide736DayCached(FIXED_PORT.pc, FIXED_PORT.hc, anyDate, { ttlDays: 30 })
 
           for (const r of records) {
             const shot = new Date(r.capturedAt)
@@ -697,15 +697,11 @@ export default function Record({ back }: Props) {
   }, [analysisRecords, analysisIncludeUnknown])
 
   const analysisTable = useMemo(() => {
-    const map = new Map<
-      string,
-      { label: string; total: number; caught: number; skunk: number; unknown: number; sizeList: number[] }
-    >()
+    const map = new Map<string, { label: string; total: number; caught: number; skunk: number; unknown: number; sizeList: number[] }>()
 
     for (const r of analysisRecords) {
       const lab = labelForRecord(r)
-      const cur =
-        map.get(lab) ?? { label: lab, total: 0, caught: 0, skunk: 0, unknown: 0, sizeList: [] as number[] }
+      const cur = map.get(lab) ?? { label: lab, total: 0, caught: 0, skunk: 0, unknown: 0, sizeList: [] as number[] }
 
       cur.total += 1
       if (r.result === 'caught') {
@@ -760,16 +756,7 @@ export default function Record({ back }: Props) {
     })
 
     return sorted
-  }, [
-    analysisRecords,
-    analysisMetric,
-    analysisGroup,
-    analysisMinN,
-    analysisIncludeUnknown,
-    baseline.catchRate,
-    baseline.avgSize,
-    analysisTideMap,
-  ])
+  }, [analysisRecords, analysisMetric, analysisGroup, analysisMinN, analysisIncludeUnknown, baseline.catchRate, baseline.avgSize, analysisTideMap])
 
   const analysisTop = useMemo(() => analysisTable.slice(0, 10), [analysisTable])
   const analysisBottom = useMemo(() => {
@@ -779,10 +766,7 @@ export default function Record({ back }: Props) {
   }, [analysisTable, analysisMetric])
 
   return (
-    <PageShell
-      title={<h1 style={{ margin: 0 }}>📸 釣果を記録</h1>}
-      maxWidth={1100}
-    >
+    <PageShell title={<h1 style={{ margin: 0 }}>📸 釣果を記録</h1>} maxWidth={1100}>
       {/* 全体を縦flexにして「モードで高さが暴れない」土台にする */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
         <div style={{ fontSize: 12, color: '#666' }}>
@@ -790,145 +774,70 @@ export default function Record({ back }: Props) {
           {!online && <span style={{ marginLeft: 10, color: '#f6c' }}>📴 オフライン</span>}
         </div>
 
-        {tideState.status === 'loading' && (
-          <div style={{ fontSize: 12, color: '#0a6' }}>🌊 tide736：取得中…</div>
-        )}
-        {tideState.status === 'error' && (
-          <div style={{ fontSize: 12, color: '#b00' }}>🌊 tide736：取得失敗 → {tideState.message}</div>
-        )}
+        {tideState.status === 'loading' && <div style={{ fontSize: 12, color: '#0a6' }}>🌊 tide736：取得中…</div>}
+        {tideState.status === 'error' && <div style={{ fontSize: 12, color: '#b00' }}>🌊 tide736：取得失敗 → {tideState.message}</div>}
 
         {/* モード切替 */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button
-            type="button"
-            onClick={() => setViewMode('recent')}
-            style={{
-              borderRadius: 999,
-              padding: '8px 12px',
-              border: viewMode === 'recent' ? '2px solid #ff4d6d' : '1px solid #333',
-              background: viewMode === 'recent' ? '#1a1115' : '#111',
-              color: '#eee',
-            }}
-          >
+          <button type="button" onClick={() => setViewMode('recent')} style={viewMode === 'recent' ? pillBtnStyleActive : pillBtnStyle}>
             🗂 最近5件
           </button>
 
-          <button
-            type="button"
-            onClick={() => setViewMode('archive')}
-            style={{
-              borderRadius: 999,
-              padding: '8px 12px',
-              border: viewMode === 'archive' ? '2px solid #ff4d6d' : '1px solid #333',
-              background: viewMode === 'archive' ? '#1a1115' : '#111',
-              color: '#eee',
-            }}
-          >
+          <button type="button" onClick={() => setViewMode('archive')} style={viewMode === 'archive' ? pillBtnStyleActive : pillBtnStyle}>
             📚 全履歴
           </button>
 
-          <button
-            type="button"
-            onClick={() => setViewMode('analysis')}
-            style={{
-              borderRadius: 999,
-              padding: '8px 12px',
-              border: viewMode === 'analysis' ? '2px solid #ff4d6d' : '1px solid #333',
-              background: viewMode === 'analysis' ? '#1a1115' : '#111',
-              color: '#eee',
-            }}
-          >
+          <button type="button" onClick={() => setViewMode('analysis')} style={viewMode === 'analysis' ? pillBtnStyleActive : pillBtnStyle}>
             📈 偏差分析
           </button>
 
-         {(viewMode === 'archive' || viewMode === 'analysis') && (
-  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginLeft: 'auto' }}>
-    <button
-      type="button"
-      onClick={() => loadAll()}
-      disabled={allLoading}
-      style={allLoading ? pillBtnStyleDisabled : pillBtnStyle}
-      title="全履歴を再読み込み"
-    >
-      {allLoading ? '読み込み中…' : '↻ 全履歴更新'}
-    </button>
+          {(viewMode === 'archive' || viewMode === 'analysis') && (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginLeft: 'auto' }}>
+              <button
+                type="button"
+                onClick={() => loadAll()}
+                disabled={allLoading}
+                style={allLoading ? pillBtnStyleDisabled : pillBtnStyle}
+                title="全履歴を再読み込み"
+              >
+                {allLoading ? '読み込み中…' : '↻ 全履歴更新'}
+              </button>
 
-    <button
-      type="button"
-      onClick={() => exportCatches()}
-      style={pillBtnStyle}
-      title="釣果（写真含む）をZIPで保存"
-    >
-      📤 釣果をエクスポート
-    </button>
+              <button type="button" onClick={exportCatches} style={pillBtnStyle} title="釣果（写真含む）をZIPで保存">
+                📤 釣果をエクスポート
+              </button>
 
-    <label
-      style={pillBtnStyle}
-      title="ZIPから釣果（写真含む）を復元（端末内データは置き換え）"
-    >
-      📥 釣果をインポート
-      <input
-        type="file"
-        accept=".zip"
-        hidden
-        onChange={async (e) => {
-          const file = e.target.files?.[0]
-          if (!file) return
+              <label style={pillBtnStyle} title="ZIPから釣果（写真含む）を復元（端末内データは置き換え）">
+                📥 釣果をインポート
+                <input
+                  type="file"
+                  accept=".zip"
+                  hidden
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
 
-          const ok = confirm('既存の釣果はすべて削除され、ZIPの内容で置き換えられるよ。続ける？')
-          if (!ok) return
+                    const ok = confirm('既存の釣果はすべて削除され、ZIPの内容で置き換えられるよ。続ける？')
+                    if (!ok) {
+                      e.currentTarget.value = ''
+                      return
+                    }
 
-          try {
-            await importCatches(file)
-            alert('インポート完了！')
-            location.reload()
-          } catch (err) {
-            console.error(err)
-            alert('インポート失敗…（ZIPが壊れてる or 形式違いかも）')
-          } finally {
-            e.currentTarget.value = ''
-          }
-        }}
-      />
-    </label>
-  </div>
-)}
-
-{(viewMode === 'archive' || viewMode === 'analysis') && (
-  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-    <button onClick={exportCatches}>
-      📤 釣果をエクスポート
-    </button>
-
-    <label style={{ cursor: 'pointer' }}>
-      📥 釣果をインポート
-      <input
-        type="file"
-        accept=".zip"
-        hidden
-        onChange={async (e) => {
-          const file = e.target.files?.[0]
-          if (!file) return
-
-          const ok = confirm(
-            '既存の釣果はすべて削除され、ZIPの内容で置き換えられるよ。続ける？'
-          )
-          if (!ok) return
-
-          try {
-            await importCatches(file)
-            alert('インポート完了！')
-            location.reload()
-          } catch (err) {
-            console.error(err)
-            alert('インポート失敗…')
-          }
-        }}
-      />
-    </label>
-  </div>
-)}
-
+                    try {
+                      await importCatches(file)
+                      alert('インポート完了！')
+                      location.reload()
+                    } catch (err) {
+                      console.error(err)
+                      alert('インポート失敗…（ZIPが壊れてる or 形式違いかも）')
+                    } finally {
+                      e.currentTarget.value = ''
+                    }
+                  }}
+                />
+              </label>
+            </div>
+          )}
         </div>
 
         {/* ✅ recent のときだけ登録フォームを表示 */}
@@ -1021,11 +930,7 @@ export default function Record({ back }: Props) {
                     <span style={{ fontSize: 12, color: '#bbb' }}>撮影日時を手動で補正する</span>
                   </label>
 
-                  {!manualMode && !capturedAt && (
-                    <div style={{ fontSize: 12, color: '#f6c' }}>
-                      ※EXIFが無いので、ONにして入力するとタイドに紐づくよ
-                    </div>
-                  )}
+                  {!manualMode && !capturedAt && <div style={{ fontSize: 12, color: '#f6c' }}>※EXIFが無いので、ONにして入力するとタイドに紐づくよ</div>}
                 </div>
 
                 {manualMode && (
@@ -1068,11 +973,7 @@ export default function Record({ back }: Props) {
                       </label>
                     )}
 
-                    {!manualValue && !allowUnknown && (
-                      <div style={{ fontSize: 12, color: '#f6c' }}>
-                        ※日時を入れるか、「不明のまま保存」をONにしてね
-                      </div>
-                    )}
+                    {!manualValue && !allowUnknown && <div style={{ fontSize: 12, color: '#f6c' }}>※日時を入れるか、「不明のまま保存」をONにしてね</div>}
                   </>
                 )}
               </div>
@@ -1080,15 +981,7 @@ export default function Record({ back }: Props) {
 
             {/* プレビュー */}
             {previewUrl && (
-              <div
-                style={{
-                  border: '1px solid #333',
-                  borderRadius: 12,
-                  padding: 10,
-                  background: '#0f0f0f',
-                  maxWidth: 680,
-                }}
-              >
+              <div style={{ border: '1px solid #333', borderRadius: 12, padding: 10, background: '#0f0f0f', maxWidth: 680 }}>
                 <div style={{ fontSize: 12, color: '#aaa', marginBottom: 8 }}>プレビュー</div>
                 <div
                   style={{
@@ -1102,11 +995,7 @@ export default function Record({ back }: Props) {
                     justifyContent: 'center',
                   }}
                 >
-                  <img
-                    src={previewUrl}
-                    alt="preview"
-                    style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
-                  />
+                  <img src={previewUrl} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
                 </div>
                 <div style={{ marginTop: 8, fontSize: 11, color: '#777' }}>※保存される写真はオリジナルのまま（表示だけ縮小）</div>
               </div>
@@ -1145,12 +1034,7 @@ export default function Record({ back }: Props) {
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                       <label style={{ fontSize: 12, color: '#bbb' }}>
                         魚種：
-                        <input
-                          value={species}
-                          onChange={(e) => setSpecies(e.target.value)}
-                          placeholder="例：シーバス"
-                          style={{ marginLeft: 8, width: 220 }}
-                        />
+                        <input value={species} onChange={(e) => setSpecies(e.target.value)} placeholder="例：シーバス" style={{ marginLeft: 8, width: 220 }} />
                       </label>
 
                       <label style={{ fontSize: 12, color: '#bbb' }}>
@@ -1165,9 +1049,7 @@ export default function Record({ back }: Props) {
                       </label>
                     </div>
 
-                    {sizeCm.trim() !== '' && sizeCmNumber == null && (
-                      <div style={{ fontSize: 12, color: '#f6c' }}>※サイズは数字で入れてね（例：52 / 12.5）</div>
-                    )}
+                    {sizeCm.trim() !== '' && sizeCmNumber == null && <div style={{ fontSize: 12, color: '#f6c' }}>※サイズは数字で入れてね（例：52 / 12.5）</div>}
 
                     <div style={{ fontSize: 12, color: '#888' }}>※魚種が空なら「不明」として保存するよ（後で分析に使えるからね）</div>
                   </div>
@@ -1179,13 +1061,7 @@ export default function Record({ back }: Props) {
             <div>
               <label>
                 ひとことメモ<br />
-                <textarea
-                  value={memo}
-                  onChange={(e) => setMemo(e.target.value)}
-                  rows={3}
-                  style={{ width: '100%', overflowWrap: 'anywhere' }}
-                  placeholder="渋かった…でも一匹！とか"
-                />
+                <textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} style={{ width: '100%', overflowWrap: 'anywhere' }} placeholder="渋かった…でも一匹！とか" />
               </label>
             </div>
 
@@ -1233,8 +1109,7 @@ export default function Record({ back }: Props) {
                     const series = dk ? daySeriesMap[dk] ?? [] : []
                     const tideName = dk ? dayTideNameMap[dk] ?? null : null
 
-                    const phaseRaw =
-                      shotDate && series.length > 0 ? getTidePhaseFromSeries(series, shotDate, shotDate) : ''
+                    const phaseRaw = shotDate && series.length > 0 ? getTidePhaseFromSeries(series, shotDate, shotDate) : ''
                     const phase = displayPhaseForHeader(phaseRaw)
 
                     return (
@@ -1306,10 +1181,10 @@ export default function Record({ back }: Props) {
                             {tideState.status === 'loading'
                               ? '取得中…'
                               : tideState.status === 'error'
-                              ? '失敗'
-                              : tide
-                              ? `${tide.cm}cm / ${tide.trend}`
-                              : '（なし）'}
+                                ? '失敗'
+                                : tide
+                                  ? `${tide.cm}cm / ${tide.trend}`
+                                  : '（なし）'}
                           </div>
 
                           <div style={{ color: '#eee', overflowWrap: 'anywhere' }}>{r.memo || '（メモなし）'}</div>
@@ -1354,15 +1229,7 @@ export default function Record({ back }: Props) {
               <p>この釣果は撮影日時が無いから、タイドを紐づけられないよ</p>
             ) : (
               <>
-                <div
-                  style={{
-                    border: '1px solid #333',
-                    borderRadius: 12,
-                    padding: 12,
-                    background: '#0f0f0f',
-                    color: '#ddd',
-                  }}
-                >
+                <div style={{ border: '1px solid #333', borderRadius: 12, padding: 12, background: '#0f0f0f', color: '#ddd' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                     <div style={{ fontSize: 12, color: '#aaa' }}>📸 {selectedShot.toLocaleString()}</div>
 
@@ -1373,7 +1240,7 @@ export default function Record({ back }: Props) {
                         </div>
                       )}
 
-                      {tideState.status === 'ok' && selectedSource && (
+                      {tideState.status === 'ok' && selectedSource &&
                         (() => {
                           const lab = sourceLabel(selectedSource, selectedIsStale)
                           if (!lab) return null
@@ -1382,8 +1249,7 @@ export default function Record({ back }: Props) {
                               🌊 {lab.text}
                             </div>
                           )
-                        })()
-                      )}
+                        })()}
                     </div>
                   </div>
 
@@ -1400,10 +1266,10 @@ export default function Record({ back }: Props) {
                     {tideState.status === 'loading'
                       ? '取得中…'
                       : tideState.status === 'error'
-                      ? '取得失敗（上に理由）'
-                      : selectedTide
-                      ? `${selectedTide.cm}cm / ${selectedTide.trend}`
-                      : '（データなし）'}
+                        ? '取得失敗（上に理由）'
+                        : selectedTide
+                          ? `${selectedTide.cm}cm / ${selectedTide.trend}`
+                          : '（データなし）'}
                   </div>
 
                   <div style={{ marginTop: 8, overflowWrap: 'anywhere' }}>{selected.memo || '（メモなし）'}</div>
@@ -1445,7 +1311,9 @@ export default function Record({ back }: Props) {
                   <div style={{ fontWeight: 700, marginBottom: 6 }}>🌊 潮別</div>
                   <ul style={{ paddingLeft: 16, margin: 0 }}>
                     {tideStats.slice(0, 3).map((s) => (
-                      <li key={s.phase}>🌊 {s.phase}：{s.count} 回</li>
+                      <li key={s.phase}>
+                        🌊 {s.phase}：{s.count} 回
+                      </li>
                     ))}
                   </ul>
                   {bestTide && (
@@ -1459,7 +1327,9 @@ export default function Record({ back }: Props) {
                   <div style={{ fontWeight: 700, marginBottom: 6 }}>🕒 時間帯</div>
                   <ul style={{ paddingLeft: 16, margin: 0 }}>
                     {timeStats.slice(0, 3).map((s) => (
-                      <li key={s.band}>🕒 {s.band}：{s.count} 回</li>
+                      <li key={s.band}>
+                        🕒 {s.band}：{s.count} 回
+                      </li>
                     ))}
                   </ul>
                   {bestTime && (
@@ -1473,7 +1343,9 @@ export default function Record({ back }: Props) {
                   <div style={{ fontWeight: 700, marginBottom: 6 }}>🔥 最強コンボ</div>
                   <ul style={{ paddingLeft: 16, margin: 0 }}>
                     {comboStats.slice(0, 3).map((s) => (
-                      <li key={`${s.phase}_${s.band}`}>🔥 {s.phase} × {s.band}：{s.count} 回</li>
+                      <li key={`${s.phase}_${s.band}`}>
+                        🔥 {s.phase} × {s.band}：{s.count} 回
+                      </li>
                     ))}
                   </ul>
                   {bestCombo && (
@@ -1498,17 +1370,7 @@ export default function Record({ back }: Props) {
               <p>まだ記録がないよ</p>
             ) : (
               <>
-                <div
-                  style={{
-                    border: '1px solid #333',
-                    borderRadius: 12,
-                    padding: 12,
-                    background: '#0f0f0f',
-                    color: '#ddd',
-                    display: 'grid',
-                    gap: 10,
-                  }}
-                >
+                <div style={{ border: '1px solid #333', borderRadius: 12, padding: 12, background: '#0f0f0f', color: '#ddd', display: 'grid', gap: 10 }}>
                   <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                     <div style={{ fontSize: 12, color: '#aaa' }}>🔎 絞り込み</div>
 
@@ -1517,7 +1379,9 @@ export default function Record({ back }: Props) {
                       <select value={archiveYear} onChange={(e) => setArchiveYear(e.target.value)} style={{ marginLeft: 8 }}>
                         <option value="">すべて</option>
                         {years.map((y) => (
-                          <option key={y} value={String(y)}>{y}年</option>
+                          <option key={y} value={String(y)}>
+                            {y}年
+                          </option>
                         ))}
                       </select>
                     </label>
@@ -1535,11 +1399,17 @@ export default function Record({ back }: Props) {
 
                         {archiveYear && monthsForSelectedYear
                           ? monthsForSelectedYear.map((m) => (
-                              <option key={m} value={String(m)}>{m}月</option>
+                              <option key={m} value={String(m)}>
+                                {m}月
+                              </option>
                             ))
                           : Array.from({ length: 12 }).map((_, i) => {
                               const m = i + 1
-                              return <option key={m} value={String(m)}>{m}月</option>
+                              return (
+                                <option key={m} value={String(m)}>
+                                  {m}月
+                                </option>
+                              )
                             })}
                       </select>
                     </label>
@@ -1662,11 +1532,7 @@ export default function Record({ back }: Props) {
                   })}
                 </div>
 
-                {filteredArchive.length > archivePageSize && (
-                  <div style={{ fontSize: 12, color: '#777' }}>
-                    ※「表示件数」を増やすと、もっと下まで見れるよ（スクロール長くなるから段階にしてる）
-                  </div>
-                )}
+                {filteredArchive.length > archivePageSize && <div style={{ fontSize: 12, color: '#777' }}>※「表示件数」を増やすと、もっと下まで見れるよ（スクロール長くなるから段階にしてる）</div>}
               </>
             )}
           </>
@@ -1683,17 +1549,7 @@ export default function Record({ back }: Props) {
               <p>まだ記録がないよ</p>
             ) : (
               <>
-                <div
-                  style={{
-                    border: '1px solid #333',
-                    borderRadius: 12,
-                    padding: 12,
-                    background: '#0f0f0f',
-                    color: '#ddd',
-                    display: 'grid',
-                    gap: 10,
-                  }}
-                >
+                <div style={{ border: '1px solid #333', borderRadius: 12, padding: 12, background: '#0f0f0f', color: '#ddd', display: 'grid', gap: 10 }}>
                   <div style={{ fontSize: 12, color: '#aaa' }}>
                     対象：絞り込み {filteredArchive.length} 件（分析対象（撮影日時あり）：{analysisTargets.length} 件）
                   </div>
@@ -1724,11 +1580,7 @@ export default function Record({ back }: Props) {
 
                     <label style={{ fontSize: 12, color: '#bbb' }}>
                       最低件数：
-                      <select
-                        value={analysisMinN}
-                        onChange={(e) => setAnalysisMinN(Number(e.target.value) as 1 | 3 | 5 | 10)}
-                        style={{ marginLeft: 8 }}
-                      >
+                      <select value={analysisMinN} onChange={(e) => setAnalysisMinN(Number(e.target.value) as 1 | 3 | 5 | 10)} style={{ marginLeft: 8 }}>
                         <option value={1}>1</option>
                         <option value={3}>3</option>
                         <option value={5}>5</option>
@@ -1790,7 +1642,10 @@ export default function Record({ back }: Props) {
                                 n={r.total}
                                 {analysisMetric === 'catchRate' && <> / 釣れた率 {formatPercent(r.catchRate)}（Δ{formatDeltaPercent(r.catchRateDelta)}）</>}
                                 {analysisMetric === 'avgSize' && (
-                                  <> / 平均 {r.sizeList.length ? `${Math.round(r.avgSize * 10) / 10}cm` : '—'}（Δ{Math.round(r.avgSizeDelta * 10) / 10}cm）</>
+                                  <>
+                                    {' '}
+                                    / 平均 {r.sizeList.length ? `${Math.round(r.avgSize * 10) / 10}cm` : '—'}（Δ{Math.round(r.avgSizeDelta * 10) / 10}cm）
+                                  </>
                                 )}
                                 {analysisMetric === 'effortBias' && <> / Z={r.z.toFixed(2)}</>}
                               </span>
@@ -1816,7 +1671,10 @@ export default function Record({ back }: Props) {
                                 n={r.total}
                                 {analysisMetric === 'catchRate' && <> / 釣れた率 {formatPercent(r.catchRate)}（Δ{formatDeltaPercent(r.catchRateDelta)}）</>}
                                 {analysisMetric === 'avgSize' && (
-                                  <> / 平均 {r.sizeList.length ? `${Math.round(r.avgSize * 10) / 10}cm` : '—'}（Δ{Math.round(r.avgSizeDelta * 10) / 10}cm）</>
+                                  <>
+                                    {' '}
+                                    / 平均 {r.sizeList.length ? `${Math.round(r.avgSize * 10) / 10}cm` : '—'}（Δ{Math.round(r.avgSizeDelta * 10) / 10}cm）
+                                  </>
                                 )}
                                 {analysisMetric === 'effortBias' && <> / Z={r.z.toFixed(2)}</>}
                               </span>
