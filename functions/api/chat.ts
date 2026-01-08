@@ -93,7 +93,9 @@ function safeCharacter(raw: unknown): CharacterV2 {
       DEFAULT_CHARACTER.self;
 
     const callUser =
-      typeof r.callUser === "string" && r.callUser.trim() ? r.callUser.trim() : DEFAULT_CHARACTER.callUser;
+      typeof r.callUser === "string" && r.callUser.trim()
+        ? r.callUser.trim()
+        : DEFAULT_CHARACTER.callUser;
 
     const prompt =
       (typeof r.prompt === "string" ? r.prompt : "") ||
@@ -147,11 +149,33 @@ function dayKey(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+async function readTextSafe(res: Response) {
+  try {
+    return await res.text();
+  } catch {
+    return "";
+  }
+}
+
 /**
  * ===== Open-Meteo（天気）=====
- * judge の時は「失敗理由を見える形で返す」ため、HTTP本文の先頭も採取する
+ * ✅ 10分キャッシュ（連打で429踏むのを防ぐ）
+ * ✅ targetDay だけ取る（呼び出し回数削減）
  */
-async function buildWeatherMemo(lat: number, lon: number) {
+const openMeteoCache = new Map<string, { ts: number; text: string }>();
+const OPENMETEO_TTL_MS = 10 * 60 * 1000;
+
+type WeatherSummary = {
+  tempMin: number;
+  tempMax: number;
+  windAvg: number;
+  windMax: number;
+  gustMax: number;
+  rainMaxProb: number;
+  rainMaxMm: number;
+};
+
+async function fetchOpenMeteoHourly(lat: number, lon: number) {
   const tz = "Asia/Tokyo";
   const url =
     `https://api.open-meteo.com/v1/forecast` +
@@ -163,9 +187,11 @@ async function buildWeatherMemo(lat: number, lon: number) {
     `&wind_speed_unit=ms`;
 
   const res = await fetch(url);
-  const text = await res.text().catch(() => "");
+  const text = await readTextSafe(res);
+
   if (!res.ok) {
     const head = (text || "").replace(/\s+/g, " ").trim().slice(0, 160);
+    if (res.status === 429) throw new Error(`openmeteo_rate_limited_429${head ? `:${head}` : ""}`);
     throw new Error(`openmeteo_http_${res.status}${head ? `:${head}` : ""}`);
   }
 
@@ -175,67 +201,84 @@ async function buildWeatherMemo(lat: number, lon: number) {
   } catch {
     throw new Error(`openmeteo_json_parse_failed:${text.slice(0, 160)}`);
   }
+  return json;
+}
 
+function summarizeOneDay(json: any, day: string): WeatherSummary {
   const h = json?.hourly;
   const times: string[] = h?.time ?? [];
 
-  const pickDay = (day: string) => {
-    const idxs: number[] = [];
-    for (let i = 0; i < times.length; i++) {
-      const t = times[i];
-      if (typeof t === "string" && t.startsWith(day)) idxs.push(i);
-    }
+  const idxs: number[] = [];
+  for (let i = 0; i < times.length; i++) {
+    const t = times[i];
+    if (typeof t === "string" && t.startsWith(day)) idxs.push(i);
+  }
 
-    const safe = () => ({
-      tempMin: 0,
-      tempMax: 0,
-      windAvg: 0,
-      windMax: 0,
-      gustMax: 0,
-      rainMaxProb: 0,
-      rainMaxMm: 0,
-    });
-
-    if (!idxs.length) return safe();
-
-    const pick = (arr: any[]) => idxs.map((i) => Number(arr?.[i])).filter(Number.isFinite);
-    const temp = pick(h?.temperature_2m ?? []);
-    const prcp = pick(h?.precipitation ?? []);
-    const pop = pick(h?.precipitation_probability ?? []);
-    const wind = pick(h?.wind_speed_10m ?? []);
-    const gust = pick(h?.wind_gusts_10m ?? []);
-
-    const avg = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
-    const max = (xs: number[]) => (xs.length ? xs.reduce((m, x) => (x > m ? x : m), xs[0]) : 0);
-    const round1 = (n: number) => Math.round(n * 10) / 10;
-
-    return {
-      tempMin: temp.length ? round1(Math.min(...temp)) : 0,
-      tempMax: temp.length ? round1(Math.max(...temp)) : 0,
-      windAvg: round1(avg(wind)),
-      windMax: round1(max(wind)),
-      gustMax: round1(max(gust)),
-      rainMaxProb: Math.round(max(pop)),
-      rainMaxMm: round1(max(prcp)),
-    };
+  const safe: WeatherSummary = {
+    tempMin: 0,
+    tempMax: 0,
+    windAvg: 0,
+    windMax: 0,
+    gustMax: 0,
+    rainMaxProb: 0,
+    rainMaxMm: 0,
   };
+  if (!idxs.length) return safe;
 
+  const pick = (arr: any[]) => idxs.map((i) => Number(arr?.[i])).filter(Number.isFinite);
+
+  const temp = pick(h?.temperature_2m ?? []);
+  const prcp = pick(h?.precipitation ?? []);
+  const pop = pick(h?.precipitation_probability ?? []);
+  const wind = pick(h?.wind_speed_10m ?? []);
+  const gust = pick(h?.wind_gusts_10m ?? []);
+
+  const avg = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
+  const max = (xs: number[]) => (xs.length ? xs.reduce((m, x) => (x > m ? x : m), xs[0]) : 0);
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+
+  return {
+    tempMin: temp.length ? round1(Math.min(...temp)) : 0,
+    tempMax: temp.length ? round1(Math.max(...temp)) : 0,
+    windAvg: round1(avg(wind)),
+    windMax: round1(max(wind)),
+    gustMax: round1(max(gust)),
+    rainMaxProb: Math.round(max(pop)),
+    rainMaxMm: round1(max(prcp)),
+  };
+}
+
+async function buildWeatherMemo(lat: number, lon: number, targetDay: "today" | "tomorrow") {
   const today = new Date();
   const tomorrow = new Date();
   tomorrow.setDate(today.getDate() + 1);
 
-  const t = pickDay(dayKey(today));
-  const tm = pickDay(dayKey(tomorrow));
+  const day = targetDay === "tomorrow" ? dayKey(tomorrow) : dayKey(today);
+  const cacheKey = `openmeteo:${lat},${lon}:${day}`;
 
-  return `
-【Weather：今日/明日（焼津周辺の目安 / 単位：風m/s・雨mm/h）】
-- 今日：気温${t.tempMin}〜${t.tempMax}℃ / 風 平均${t.windAvg} 最大${t.windMax}（突風${t.gustMax}）m/s / 雨 最大${t.rainMaxProb}%（${t.rainMaxMm}mm/h）
-- 明日：気温${tm.tempMin}〜${tm.tempMax}℃ / 風 平均${tm.windAvg} 最大${tm.windMax}（突風${tm.gustMax}）m/s / 雨 最大${tm.rainMaxProb}%（${tm.rainMaxMm}mm/h）
+  const now = Date.now();
+  const cached = openMeteoCache.get(cacheKey);
+  if (cached && now - cached.ts <= OPENMETEO_TTL_MS) {
+    return cached.text;
+  }
+
+  const json = await fetchOpenMeteoHourly(lat, lon);
+  const s = summarizeOneDay(json, day);
+
+  const label = targetDay === "tomorrow" ? "明日" : "今日";
+  const memo = `
+【Weather：${label}（焼津周辺の目安 / 単位：風m/s・雨mm/h）】
+- 気温${s.tempMin}〜${s.tempMax}℃
+- 風 平均${s.windAvg} 最大${s.windMax}（突風${s.gustMax}）m/s
+- 雨 最大${s.rainMaxProb}%（${s.rainMaxMm}mm/h）
 `.trim();
+
+  openMeteoCache.set(cacheKey, { ts: now, text: memo });
+  return memo;
 }
 
 /**
- * ===== tide736（潮） =====
+ * ===== tide736（潮）=====
  */
 type TidePoint = { unix?: number; cm: number; time?: string };
 type TideDayInfo = {
@@ -607,7 +650,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
       : null;
 
-    // judge用データ
     let weatherAndTideMemo: Msg | null = null;
     if (isJudge) {
       const YAIZU = { lat: 34.868, lon: 138.3236 };
@@ -620,7 +662,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       let tErr: string | null = null;
 
       try {
-        wText = await buildWeatherMemo(YAIZU.lat, YAIZU.lon);
+        wText = await buildWeatherMemo(YAIZU.lat, YAIZU.lon, targetDay);
       } catch (e) {
         wErr = e instanceof Error ? e.message : String(e);
       }
@@ -632,7 +674,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       }
 
       const parts: string[] = [];
-      parts.push(`【釣行判断用データ（今日/明日 / 焼津周辺）】`);
+      parts.push(`【釣行判断用データ（焼津周辺）】`);
       parts.push(`【対象】${targetDay === "tomorrow" ? "明日について判断する" : "今日について判断する"}`);
       parts.push("");
       parts.push(wText ? wText : `【Weather】取得失敗（${wErr ?? "unknown"}）`);
@@ -642,11 +684,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     const characterSystem = buildCharacterSystem(character, isJudge);
-
-    // systemHints（掛け合いの共有メモなど）
     const hintMsgs: Msg[] = systemHints.map((s) => ({ role: "system", content: s }));
 
-    // ✅ 重要：キャラSYSTEM → 釣行データ → ヒント の順にして、データを近づける
     const input: Msg[] = [
       ...(profileMemo ? [profileMemo] : []),
       ...(judgeHint ? [judgeHint] : []),
