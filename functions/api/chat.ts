@@ -149,21 +149,25 @@ function dayKey(d: Date) {
 }
 
 /**
- * ===== Open-Meteo（天気） =====
+ * ===== Open-Meteo（天気）=====
+ * ※ Open-Meteo のパラメータ名は wind_speed_10m / wind_gusts_10m / wind_speed_unit が正しい
  */
 async function buildWeatherMemo(lat: number, lon: number) {
   const tz = "Asia/Tokyo";
   const url =
     `https://api.open-meteo.com/v1/forecast` +
-    `?latitude=${encodeURIComponent(lat)}` +
-    `&longitude=${encodeURIComponent(lon)}` +
-    `&hourly=temperature_2m,precipitation,precipitation_probability,windspeed_10m,windgusts_10m` +
+    `?latitude=${encodeURIComponent(String(lat))}` +
+    `&longitude=${encodeURIComponent(String(lon))}` +
+    `&hourly=temperature_2m,precipitation,precipitation_probability,wind_speed_10m,wind_gusts_10m` +
     `&forecast_days=2` +
     `&timezone=${encodeURIComponent(tz)}` +
-    `&windspeed_unit=ms`;
+    `&wind_speed_unit=ms`;
 
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`openmeteo_http_${res.status}`);
+  if (!res.ok) {
+    const head = await res.text().catch(() => "");
+    throw new Error(`openmeteo_http_${res.status}${head ? `:${head.slice(0, 120)}` : ""}`);
+  }
   const json: any = await res.json();
 
   const h = json?.hourly;
@@ -192,8 +196,8 @@ async function buildWeatherMemo(lat: number, lon: number) {
     const temp = pick(h?.temperature_2m ?? []);
     const prcp = pick(h?.precipitation ?? []);
     const pop = pick(h?.precipitation_probability ?? []);
-    const wind = pick(h?.windspeed_10m ?? []);
-    const gust = pick(h?.windgusts_10m ?? []);
+    const wind = pick(h?.wind_speed_10m ?? []);
+    const gust = pick(h?.wind_gusts_10m ?? []);
 
     const avg = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
     const max = (xs: number[]) => (xs.length ? xs.reduce((m, x) => (x > m ? x : m), xs[0]) : 0);
@@ -226,8 +230,6 @@ async function buildWeatherMemo(lat: number, lon: number) {
 
 /**
  * ===== tide736（潮） =====
- * Cloudflareでは「/tide736/get_tide.php」みたいなPHP配置ができない前提が多いので
- * 公式のJSON API https://api.tide736.net/get_tide.php を直接叩く。 :contentReference[oaicite:1]{index=1}
  */
 type TidePoint = { unix?: number; cm: number; time?: string };
 type TideDayInfo = {
@@ -326,7 +328,7 @@ async function fetchTide736JSON(pc: string, hc: string, date: Date) {
   const mn = date.getMonth() + 1;
   const dy = date.getDate();
 
-  const url = new URL("https://api.tide736.net/get_tide.php"); // 公式JSON API :contentReference[oaicite:2]{index=2}
+  const url = new URL("https://api.tide736.net/get_tide.php");
   url.searchParams.set("pc", pc);
   url.searchParams.set("hc", hc);
   url.searchParams.set("yr", String(yr));
