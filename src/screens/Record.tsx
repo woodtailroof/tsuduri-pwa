@@ -139,6 +139,22 @@ function formatResultLine(r: CatchRecord) {
 }
 
 export default function Record({ back }: Props) {
+    const pillBtnStyle: React.CSSProperties = {
+    borderRadius: 999,
+    padding: '8px 12px',
+    border: '1px solid #333',
+    background: '#111',
+    color: '#bbb',
+    cursor: 'pointer',
+    userSelect: 'none',
+    lineHeight: 1,
+  }
+
+  const pillBtnStyleDisabled: React.CSSProperties = {
+    ...pillBtnStyle,
+    opacity: 0.6,
+    cursor: 'not-allowed',
+  }
   const [viewMode, setViewMode] = useState<ViewMode>('recent')
 
   const [photo, setPhoto] = useState<File | null>(null)
@@ -825,24 +841,59 @@ export default function Record({ back }: Props) {
             📈 偏差分析
           </button>
 
-          {(viewMode === 'archive' || viewMode === 'analysis') && (
-            <button
-              type="button"
-              onClick={() => loadAll()}
-              disabled={allLoading}
-              style={{
-                borderRadius: 999,
-                padding: '8px 12px',
-                border: '1px solid #333',
-                background: '#111',
-                color: '#bbb',
-                marginLeft: 'auto',
-              }}
-              title="全履歴を再読み込み"
-            >
-              {allLoading ? '読み込み中…' : '↻ 全履歴更新'}
-            </button>
-          )}
+         {(viewMode === 'archive' || viewMode === 'analysis') && (
+  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginLeft: 'auto' }}>
+    <button
+      type="button"
+      onClick={() => loadAll()}
+      disabled={allLoading}
+      style={allLoading ? pillBtnStyleDisabled : pillBtnStyle}
+      title="全履歴を再読み込み"
+    >
+      {allLoading ? '読み込み中…' : '↻ 全履歴更新'}
+    </button>
+
+    <button
+      type="button"
+      onClick={() => exportCatches()}
+      style={pillBtnStyle}
+      title="釣果（写真含む）をZIPで保存"
+    >
+      📤 釣果をエクスポート
+    </button>
+
+    <label
+      style={pillBtnStyle}
+      title="ZIPから釣果（写真含む）を復元（端末内データは置き換え）"
+    >
+      📥 釣果をインポート
+      <input
+        type="file"
+        accept=".zip"
+        hidden
+        onChange={async (e) => {
+          const file = e.target.files?.[0]
+          if (!file) return
+
+          const ok = confirm('既存の釣果はすべて削除され、ZIPの内容で置き換えられるよ。続ける？')
+          if (!ok) return
+
+          try {
+            await importCatches(file)
+            alert('インポート完了！')
+            location.reload()
+          } catch (err) {
+            console.error(err)
+            alert('インポート失敗…（ZIPが壊れてる or 形式違いかも）')
+          } finally {
+            e.currentTarget.value = ''
+          }
+        }}
+      />
+    </label>
+  </div>
+)}
+
 {(viewMode === 'archive' || viewMode === 'analysis') && (
   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
     <button onClick={exportCatches}>
