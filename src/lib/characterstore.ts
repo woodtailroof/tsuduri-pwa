@@ -135,7 +135,7 @@ export function loadCharacterState(): CharacterState {
     if (!normalized.length) return defaultState()
 
     const activeId = typeof (j as any).activeId === 'string' ? (j as any).activeId : normalized[0].id
-    const exists = normalized.some((c) => c.id === activeId)
+    const exists = normalized.some((c: { id: string }) => c.id === activeId)
     return {
       version: 1,
       activeId: exists ? activeId : normalized[0].id,

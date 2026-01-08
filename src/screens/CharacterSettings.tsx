@@ -25,10 +25,6 @@ export const ALLHANDS_BANTER_RATE_KEY = 'tsuduri_allhands_banter_rate_v1'
 export const CHARACTERS_STORAGE_KEY = 'tsuduri_characters_v2'
 export const SELECTED_CHARACTER_ID_KEY = 'tsuduri_selected_character_id_v2'
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n))
-}
-
 function uid() {
   return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
 }
