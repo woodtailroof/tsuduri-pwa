@@ -49,7 +49,6 @@ const DEFAULT_CHARACTER: CharacterV2 = {
 
 type Env = {
   OPENAI_API_KEY?: string;
-  // ひろっちだけ運用用（任意）：適当な長めの文字列を入れてね
   CHAT_PASSCODE?: string;
 };
 
@@ -113,7 +112,7 @@ function safeCharacter(raw: unknown): CharacterV2 {
   }
 }
 
-// 簡易レート制限（インスタンス単位。Workersは永続保証なしなので“軽い抑止”と割り切り）
+// 簡易レート制限（軽い抑止）
 const bucket = new Map<string, { ts: number; count: number }>();
 function rateLimit(ip: string) {
   const now = Date.now();
@@ -150,7 +149,7 @@ function dayKey(d: Date) {
 
 /**
  * ===== Open-Meteo（天気）=====
- * ※ Open-Meteo のパラメータ名は wind_speed_10m / wind_gusts_10m / wind_speed_unit が正しい
+ * judge の時は「失敗理由を見える形で返す」ため、HTTP本文の先頭も採取する
  */
 async function buildWeatherMemo(lat: number, lon: number) {
   const tz = "Asia/Tokyo";
@@ -164,11 +163,18 @@ async function buildWeatherMemo(lat: number, lon: number) {
     `&wind_speed_unit=ms`;
 
   const res = await fetch(url);
+  const text = await res.text().catch(() => "");
   if (!res.ok) {
-    const head = await res.text().catch(() => "");
-    throw new Error(`openmeteo_http_${res.status}${head ? `:${head.slice(0, 120)}` : ""}`);
+    const head = (text || "").replace(/\s+/g, " ").trim().slice(0, 160);
+    throw new Error(`openmeteo_http_${res.status}${head ? `:${head}` : ""}`);
   }
-  const json: any = await res.json();
+
+  let json: any;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(`openmeteo_json_parse_failed:${text.slice(0, 160)}`);
+  }
 
   const h = json?.hourly;
   const times: string[] = h?.time ?? [];
@@ -500,7 +506,6 @@ function jsonResponse(status: number, obj: unknown) {
 }
 
 function getClientIp(req: Request) {
-  // Cloudflare優先
   const cf = req.headers.get("CF-Connecting-IP");
   if (cf) return cf;
   const xff = req.headers.get("x-forwarded-for") || "";
@@ -510,7 +515,7 @@ function getClientIp(req: Request) {
 
 function checkPasscode(env: Env, body: any, req: Request) {
   const need = env.CHAT_PASSCODE;
-  if (!need) return true; // 未設定ならチェックしない
+  if (!need) return true;
   const inHeader = req.headers.get("x-chat-passcode") || "";
   const inBody = typeof body?.passcode === "string" ? body.passcode : "";
   return (inHeader && inHeader === need) || (inBody && inBody === need);
@@ -530,7 +535,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       return jsonResponse(400, { ok: false, error: "invalid_json" });
     }
 
-    // 任意：ひろっち専用パスコード（APIの濫用防止）
     if (!checkPasscode(env, body, context.request)) {
       return jsonResponse(403, { ok: false, error: "forbidden" });
     }
@@ -540,7 +544,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       return jsonResponse(429, { ok: false, error: "rate_limited" });
     }
 
-    // ✅ systemHints を受ける
     const messages = body?.messages as Msg[] | undefined;
     const character = safeCharacter(body?.character ?? body?.characterProfile);
 
@@ -591,7 +594,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
 【出力フォーマット（順番厳守）】
 1) 結論：行く / 様子見 / やめる（最初に1行）
-2) Weather：数値を最低2つ引用
+2) Weather：数値を最低2つ引用。取得失敗なら「Weather：取得失敗（理由: ...）」と明記（ごまかし禁止）
 3) Tide：潮名＋満潮/干潮（時間orcm）を最低2つ引用
 4) 根拠まとめ：3〜6点
 5) 作戦：2〜5点（“夜22時以降”or“ド日中成立”を反映）
@@ -599,11 +602,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 7) 一言（説教しない）
 
 【重要】
-欠落/失敗は明言。盛らない。
+欠落/失敗は明言。盛らない。情報が無いのに推測で埋めない。
 `.trim(),
         }
       : null;
 
+    // judge用データ
     let weatherAndTideMemo: Msg | null = null;
     if (isJudge) {
       const YAIZU = { lat: 34.868, lon: 138.3236 };
@@ -639,14 +643,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const characterSystem = buildCharacterSystem(character, isJudge);
 
-    // ✅ systemHints を “キャラSYSTEMの直後” に差し込む（優先度を上げる）
+    // systemHints（掛け合いの共有メモなど）
     const hintMsgs: Msg[] = systemHints.map((s) => ({ role: "system", content: s }));
 
+    // ✅ 重要：キャラSYSTEM → 釣行データ → ヒント の順にして、データを近づける
     const input: Msg[] = [
       ...(profileMemo ? [profileMemo] : []),
       ...(judgeHint ? [judgeHint] : []),
-      ...(weatherAndTideMemo ? [weatherAndTideMemo] : []),
       characterSystem,
+      ...(weatherAndTideMemo ? [weatherAndTideMemo] : []),
       ...hintMsgs,
       ...trimmed,
     ];
@@ -658,7 +663,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const r = await openai.responses.create({
       model: "gpt-4o",
       input,
-      temperature: 0.9,
+      temperature: isJudge ? 0.35 : 0.9,
       max_output_tokens: maxOut,
     });
 
