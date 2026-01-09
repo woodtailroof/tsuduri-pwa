@@ -1,5 +1,5 @@
 /* =========================
-   index.css（統一・洗練版）
+   index.css（統一・洗練版 v2）
    ========================= */
 
 /* iOS Safari: 自動ズーム防止 */
@@ -65,6 +65,11 @@ video {
   height: auto;
 }
 
+pre,
+code {
+  overflow-x: auto;
+}
+
 /* =========================
    タイポグラフィ
    ========================= */
@@ -97,10 +102,11 @@ label {
   line-height: 1.6;
 }
 
-/* テキストはみ出し防止 */
+/* ✅ 改行ルール（日本語を1文字ずつ折らない） */
 p, li, div, span, label, h1, h2, h3 {
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  overflow-wrap: break-word; /* 長い英数字だけ折る */
+  word-break: normal;        /* 日本語は自然に */
+  line-break: loose;
 }
 
 /* =========================
@@ -120,16 +126,19 @@ section {
    ========================= */
 
 .black-card {
-  background: linear-gradient(
-    180deg,
-    #1a1a1a,
-    #111
-  );
+  background: linear-gradient(180deg, #1a1a1a, #111);
   color: #fff;
   border-radius: 18px;
   padding: 16px;
-  box-shadow:
-    0 6px 18px rgba(0,0,0,0.18);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+  max-width: 100%;
+  overflow: hidden; /* 右はみ出しの保険 */
+}
+
+/* 黒カード内は “文字の縦積み” をさらに抑制 */
+.black-card * {
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 /* =========================
@@ -145,10 +154,9 @@ button {
   padding: 10px 18px;
   line-height: 1;
   cursor: pointer;
-  transition:
-    background 0.2s ease,
-    transform 0.15s ease,
-    box-shadow 0.15s ease;
+  transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  max-width: 100%;
+  min-width: 0;
 }
 
 button:hover {
@@ -174,6 +182,8 @@ input,
 textarea,
 select {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   border-radius: 14px;
   border: 1px solid #ddd;
   padding: 10px 12px;
@@ -202,6 +212,25 @@ textarea {
 .horizontal-scroll > * {
   flex: 0 0 min(84vw, 360px);
   scroll-snap-align: start;
+  min-width: 0;
+}
+
+/* =========================
+   ✅ 戻るボタン統一（左上固定）
+   - 各画面の戻るボタンに class="back-button" を付ける
+   ========================= */
+
+.back-button {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  left: 10px;
+  z-index: 1000;
+  padding: 10px 14px;
+}
+
+/* 戻るボタンが被ると困る画面用に、上の余白を確保したいとき */
+.with-back-button {
+  padding-top: 56px;
 }
 
 /* =========================
