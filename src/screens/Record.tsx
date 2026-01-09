@@ -165,6 +165,91 @@ export default function Record({ back }: Props) {
     color: '#eee',
   }
 
+// =========================
+// ✅ セグメント（ラジオ）用スタイル
+// =========================
+const segWrapStyle: CSSProperties = {
+  display: 'flex',
+  gap: 12,
+  flexWrap: 'wrap',
+  alignItems: 'center',
+}
+
+const segLabelStyle: CSSProperties = {
+  position: 'relative',
+  display: 'inline-flex',
+  cursor: 'pointer',
+}
+
+const segInputHidden: CSSProperties = {
+  position: 'absolute',
+  opacity: 0,
+  pointerEvents: 'none',
+}
+
+const segPillBase: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 10,
+  padding: '10px 14px',
+  borderRadius: 16,
+  whiteSpace: 'nowrap',
+  border: '1px solid rgba(255,255,255,0.25)',
+  background: 'rgba(255,255,255,0.06)',
+  color: '#ddd',
+}
+
+function segPill(active: boolean): CSSProperties {
+  return {
+    ...segPillBase,
+    border: active ? '2px solid #ff4d6d' : segPillBase.border,
+    background: active ? 'rgba(255,77,109,0.18)' : segPillBase.background,
+    color: active ? '#fff' : segPillBase.color,
+  }
+}
+
+function segDot(active: boolean): CSSProperties {
+  return {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    background: active ? '#ff4d6d' : 'transparent',
+    border: '1px solid rgba(255,255,255,0.4)',
+  }
+}
+
+
+<div style={segWrapStyle}>
+  <label style={segLabelStyle}>
+    <input
+      type="radio"
+      name="result"
+      checked={result === 'caught'}
+      onChange={() => setResult('caught')}
+      style={segInputHidden}
+    />
+    <span style={segPill(result === 'caught')}>
+      <span style={segDot(result === 'caught')} />
+      釣れた
+    </span>
+  </label>
+
+  <label style={segLabelStyle}>
+    <input
+      type="radio"
+      name="result"
+      checked={result === 'skunk'}
+      onChange={() => setResult('skunk')}
+      style={segInputHidden}
+    />
+    <span style={segPill(result === 'skunk')}>
+      <span style={segDot(result === 'skunk')} />
+      釣れなかった（ボウズ）
+    </span>
+  </label>
+</div>
+
+
   const [viewMode, setViewMode] = useState<ViewMode>('recent')
 
   const [photo, setPhoto] = useState<File | null>(null)

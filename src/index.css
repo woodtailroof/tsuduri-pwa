@@ -1,5 +1,5 @@
 /* =========================
-   index.css（統一・洗練版 v2）
+   index.css（統一・洗練 + ラジオ綺麗版）
    ========================= */
 
 /* iOS Safari: 自動ズーム防止 */
@@ -131,8 +131,13 @@ section {
   border-radius: 18px;
   padding: 16px;
   box-shadow: 0 6px 18px rgba(0,0,0,0.18);
-  max-width: 100%;
-  overflow: hidden; /* 右はみ出しの保険 */
+
+  /* 文字が収まりやすいよう少しだけ小さめ */
+  font-size: 14px;
+
+  /* 横に長い内容（セグメント等）があれば横スクロールで逃がす */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* 黒カード内は “文字の縦積み” をさらに抑制 */
@@ -216,8 +221,7 @@ textarea {
 }
 
 /* =========================
-   ✅ 戻るボタン統一（左上固定）
-   - 各画面の戻るボタンに class="back-button" を付ける
+   戻るボタン統一（PageShell用）
    ========================= */
 
 .back-button {
@@ -228,9 +232,84 @@ textarea {
   padding: 10px 14px;
 }
 
-/* 戻るボタンが被ると困る画面用に、上の余白を確保したいとき */
 .with-back-button {
   padding-top: 56px;
+}
+
+/* =========================
+   ✅ ラジオ選択（セグメント風に美化）
+   ========================= */
+
+/* 黒カード内のラジオは “1行固定” で崩れないように */
+.black-card label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  line-break: strict;
+}
+
+/* ラジオ自体の見た目を上品に（ネイティブを活かしつつ） */
+.black-card input[type="radio"] {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  accent-color: #ff4d7d; /* ピンク寄りアクセント */
+}
+
+/*
+  セグメントっぽい“選択エリア”を自動で作る：
+  - よくある構造：黒カード内に複数label（各labelにradio）
+  - label群が並ぶ親要素が div でも section でも効くようにゆるく指定
+*/
+
+/* ラジオが2つ以上並ぶ行を想定して、親が横並びになりやすいよう補助 */
+.black-card .radio-row,
+.black-card .radio-group,
+.black-card .result-choice {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap; /* スマホは2行に逃がす */
+}
+
+/* labelを “押せるチップ” にする（中身が短いほど綺麗） */
+.black-card label:has(input[type="radio"]) {
+  padding: 10px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.06);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
+  transition: transform 0.12s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+/* hover（PC） */
+.black-card label:has(input[type="radio"]):hover {
+  background: rgba(255,255,255,0.10);
+}
+
+/* 押した時の気持ちよさ */
+.black-card label:has(input[type="radio"]):active {
+  transform: translateY(1px);
+}
+
+/* 選択中のチップは浮かせて主役に */
+.black-card label:has(input[type="radio"]:checked) {
+  background: rgba(255,77,125,0.18);
+  border-color: rgba(255,77,125,0.55);
+  box-shadow:
+    0 6px 18px rgba(0,0,0,0.22),
+    inset 0 0 0 1px rgba(255,77,125,0.25);
+}
+
+/* Safariなど :has が効かない環境の保険（最低限崩れない） */
+@supports not selector(:has(*)) {
+  .black-card label {
+    padding: 8px 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.05);
+  }
 }
 
 /* =========================
@@ -243,33 +322,4 @@ textarea {
 .read-the-docs,
 .card {
   all: unset;
-}
-
-/* =========================
-   ラジオ選択肢の“縦書き化”防止
-   ========================= */
-
-/* ラジオ付きlabelを横並び・1行固定にする */
-.black-card label {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  white-space: nowrap;     /* 1文字改行を禁止 */
-  line-break: strict;
-}
-
-/* ラジオ自体は縮まない */
-.black-card input[type="radio"] {
-  flex: 0 0 auto;
-}
-
-/* もし長文で溢れたら、カード内だけ横スクロール許可（切れないように） */
-.black-card {
-  overflow-x: auto;   /* 以前の hidden より実用的 */
-  -webkit-overflow-scrolling: touch;
-}
-
-/* 黒カード内だけ文字を少し小さくして収まりを良くする（好みで調整OK） */
-.black-card {
-  font-size: 14px;
 }
