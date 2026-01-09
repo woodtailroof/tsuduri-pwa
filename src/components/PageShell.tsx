@@ -1,8 +1,7 @@
 // src/components/PageShell.tsx
 
 import type { ReactNode } from 'react'
-import { useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback } from 'react'
 
 type Props = {
   title?: ReactNode
@@ -28,14 +27,13 @@ export default function PageShell({
   onBack,
   backLabel = '← 戻る',
 }: Props) {
-  const navigate = useNavigate()
+  const handleBack = useCallback(() => {
+    if (onBack) return onBack()
 
-  const handleBack = useMemo(() => {
-    return () => {
-      if (onBack) return onBack()
-      navigate(-1)
-    }
-  }, [navigate, onBack])
+    // ルーター不使用でも動く「戻る」
+    // 履歴が無い場合は何も起きない（安全）
+    window.history.back()
+  }, [onBack])
 
   return (
     <div
