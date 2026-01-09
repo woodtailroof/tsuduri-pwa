@@ -16,6 +16,8 @@ type Props = {
   onBack?: () => void
   /** 戻るボタンのラベル */
   backLabel?: ReactNode
+  /** 戻れない/戻ると危険な場合に遷移する先（デフォルト: "/"） */
+  fallbackHref?: string
 }
 
 export default function PageShell({
@@ -26,14 +28,28 @@ export default function PageShell({
   showBack = true,
   onBack,
   backLabel = '← 戻る',
+  fallbackHref = '/',
 }: Props) {
   const handleBack = useCallback(() => {
     if (onBack) return onBack()
 
-    // ルーター不使用でも動く「戻る」
-    // 履歴が無い場合は何も起きない（安全）
-    window.history.back()
-  }, [onBack])
+    // ✅ 外部サイトに戻る事故を防ぐ「安全な戻る」
+    // - referrer が同一オリジンなら back
+    // - それ以外（直アクセス/外部から来た等）はホームへ
+    try {
+      const ref = document.referrer
+      const sameOrigin = ref ? new URL(ref).origin === window.location.origin : false
+
+      if (sameOrigin && window.history.length > 1) {
+        window.history.back()
+        return
+      }
+    } catch {
+      // referrer が変な値でも落とさない
+    }
+
+    window.location.assign(fallbackHref)
+  }, [onBack, fallbackHref])
 
   return (
     <div
@@ -44,14 +60,8 @@ export default function PageShell({
         overflowX: 'hidden',
       }}
     >
-      {/* ✅ 左上固定の戻るボタン（全画面統一） */}
       {showBack && (
-        <button
-          type="button"
-          className="back-button"
-          onClick={handleBack}
-          aria-label="戻る"
-        >
+        <button type="button" className="back-button" onClick={handleBack} aria-label="戻る">
           {backLabel}
         </button>
       )}
