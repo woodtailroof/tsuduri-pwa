@@ -1,3 +1,5 @@
+/* App.css */
+
 /* iOS Safari: 入力欄が原因の自動ズームを防ぐ */
 input,
 textarea,
@@ -5,7 +7,7 @@ select {
   font-size: 16px;
 }
 
-/* ついでに、iOSの謎の文字拡大を抑制（任意） */
+/* iOSの謎の文字拡大を抑制（任意） */
 html {
   -webkit-text-size-adjust: 100%;
 }
@@ -23,16 +25,14 @@ body,
   height: 100%;
 }
 
-html {
-  -webkit-text-size-adjust: 100%;
-}
-
+/* ✅ 微妙なはみ出しの根絶（bodyだけだとhtml側で横スクロールが残ることがある） */
+html,
 body {
   margin: 0;
   overflow-x: hidden;
 }
 
-/* 重要：Viteテンプレ由来のroot縛りを解除 */
+/* 重要：Viteテンプレ由来のroot縛りを解除（PageShellに任せる） */
 #root {
   width: 100%;
   max-width: none;
@@ -55,7 +55,7 @@ code {
   overflow-x: auto;
 }
 
-/* 見出し：さらに小さめに（スマホ最優先） */
+/* 見出し：スマホ最優先 */
 h1 {
   font-size: clamp(22px, 7vw, 40px);
   line-height: 1.1;
@@ -81,7 +81,7 @@ li {
   line-height: 1.6;
 }
 
-/* iOSの勝手ズーム対策：入力は16px以上 */
+/* iOSの勝手ズーム対策：入力は16px以上（buttonも揃える） */
 input,
 textarea,
 select,
@@ -89,7 +89,7 @@ button {
   font-size: 16px;
 }
 
-/* ✅ 入力のはみ出し特効薬セット（超重要） */
+/* ✅ 入力のはみ出し特効薬セット */
 input,
 textarea,
 select {
@@ -98,7 +98,7 @@ select {
   min-width: 0;
 }
 
-/* ついでにボタンもはみ出し抑制 */
+/* ボタンもはみ出し抑制 */
 button {
   max-width: 100%;
   min-width: 0;
@@ -123,7 +123,7 @@ button {
 }
 
 .horizontal-scroll > * {
-  flex: 0 0 min(84vw, 360px); /* ここで「件数増えるほど横幅増殖」を止める */
+  flex: 0 0 min(84vw, 360px);
   scroll-snap-align: start;
   min-width: 0;
 }
