@@ -17,18 +17,42 @@ export default function App() {
   // Homeから遷移できる画面はここだけ
   const goFromHome = (s: 'record' | 'weather' | 'chat' | 'settings') => setScreen(s)
 
-  if (screen === 'record') return <Record back={backHome} />
-  if (screen === 'weather') return <Weather back={backHome} />
-  if (screen === 'settings') return <Settings back={backHome} />
-
-  if (screen === 'chat') {
-    return <Chat back={backHome} goCharacterSettings={() => setScreen('characterSettings')} />
-  }
-
-  if (screen === 'characterSettings') {
+  // 画面の中身を先に決める
+  let content: JSX.Element
+  if (screen === 'record') content = <Record back={backHome} />
+  else if (screen === 'weather') content = <Weather back={backHome} />
+  else if (screen === 'settings') content = <Settings back={backHome} />
+  else if (screen === 'chat') {
+    content = <Chat back={backHome} goCharacterSettings={() => setScreen('characterSettings')} />
+  } else if (screen === 'characterSettings') {
     // キャラ設定から戻ったらチャットへ
-    return <CharacterSettings back={() => setScreen('chat')} />
+    content = <CharacterSettings back={() => setScreen('chat')} />
+  } else {
+    content = <Home go={goFromHome} />
   }
 
-  return <Home go={goFromHome} />
+  // 共通の“器”：中央寄せ + スマホ対応 + 横はみ出し対策
+  return (
+    <div
+      style={{
+        minHeight: '100dvh',
+        width: '100%',
+        overflowX: 'hidden',
+        display: 'flex',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 960, // PCで左寄りを解消。好みで 720〜1100 くらいに調整OK
+          padding: '16px 16px 24px',
+          boxSizing: 'border-box',
+          minWidth: 0, // flex内の子が横に溢れるのを抑える定番
+        }}
+      >
+        {content}
+      </div>
+    </div>
+  )
 }

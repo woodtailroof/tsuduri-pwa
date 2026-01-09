@@ -1,10 +1,32 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+/* rootのテンプレ縛りを外して、App側のレイアウト（中央寄せコンテナ）に任せる */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden; /* 横はみ出し対策の保険 */
+}
+
+/* ここが重要：Viteテンプレ由来のmax-width/padding/centerを無効化 */
+#root {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  text-align: initial; /* center固定をやめる */
+}
+
+/* 以下は元のまま（使ってないなら消してもOK） */
 .logo {
   height: 6em;
   padding: 1.5em;
