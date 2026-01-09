@@ -91,6 +91,10 @@ export default function PageShell({
     window.location.assign(prev ?? fallbackHref)
   }, [onBack, fallbackHref])
 
+  // ✅ 右上固定ボタンがタイトルに被らないための上余白
+  // 端末のセーフエリア（ノッチ）も考慮して、少し余裕を持たせる
+  const contentPaddingTop = showBack ? 'clamp(64px, 8vw, 84px)' : undefined
+
   return (
     <div
       style={{
@@ -98,10 +102,35 @@ export default function PageShell({
         minHeight: '100vh',
         boxSizing: 'border-box',
         overflowX: 'hidden',
+        position: 'relative',
       }}
     >
       {showBack && (
-        <button type="button" className="back-button" onClick={handleBack} aria-label="戻る">
+        <button
+          type="button"
+          className="back-button"
+          onClick={handleBack}
+          aria-label="戻る"
+          style={{
+            position: 'fixed',
+            top: 'max(12px, env(safe-area-inset-top))',
+            right: 'max(12px, env(safe-area-inset-right))',
+            zIndex: 1000,
+
+            borderRadius: 999,
+            padding: '8px 12px',
+            fontSize: 14,
+            lineHeight: 1.1,
+
+            background: 'rgba(18,18,18,0.75)',
+            color: '#eee',
+            border: '1px solid rgba(255,255,255,0.22)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            WebkitTapHighlightColor: 'transparent',
+            cursor: 'pointer',
+          }}
+        >
           {backLabel}
         </button>
       )}
@@ -112,6 +141,7 @@ export default function PageShell({
           maxWidth,
           margin: '0 auto',
           padding: 'clamp(16px, 3vw, 24px)',
+          paddingTop: contentPaddingTop,
           boxSizing: 'border-box',
         }}
       >
