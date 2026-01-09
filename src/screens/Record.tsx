@@ -30,7 +30,7 @@ type ViewMode = 'recent' | 'archive' | 'analysis'
 
 type AnalysisTideInfo = {
   tideName?: string | null
-  phase?: string // 上げ/下げ/大潮などではなく、潮汐フェーズ（getTidePhaseFromSeries）
+  phase?: string
   cm?: number
   trend?: string
   dayKey?: string
@@ -78,7 +78,6 @@ function parseDateTimeLocalValue(v: string): Date | null {
 }
 
 function displayPhaseForHeader(phase: string) {
-  // 「上げ/下げ」は潮位のところにだけ出す（重複防止）
   const hide = new Set(['上げ', '下げ', '上げ始め', '下げ始め', '止まり'])
   return hide.has(phase) ? '' : phase
 }
@@ -100,8 +99,6 @@ function zScore(x: number, m: number, sd: number) {
   return (x - m) / sd
 }
 
-// ✅ 小サンプル過大評価を抑える（caught率ランキング用）
-// Wilson score interval lower bound
 function wilsonLowerBound(success: number, total: number, z = 1.96) {
   if (total <= 0) return 0
   const phat = success / total
@@ -134,9 +131,31 @@ function formatResultLine(r: CatchRecord) {
 }
 
 export default function Record({ back }: Props) {
-  // =========================
-  // ✅ 共通：ピルボタン見た目
-  // =========================
+  // ✅ ここが今回の“止血”ポイント：Record表示中だけ横スクロールを完全に封じる
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+
+    const html = document.documentElement
+    const body = document.body
+
+    const prevHtmlOverflowX = html.style.overflowX
+    const prevBodyOverflowX = body.style.overflowX
+    const prevHtmlMaxWidth = html.style.maxWidth
+    const prevBodyMaxWidth = body.style.maxWidth
+
+    html.style.overflowX = 'hidden'
+    body.style.overflowX = 'hidden'
+    html.style.maxWidth = '100vw'
+    body.style.maxWidth = '100vw'
+
+    return () => {
+      html.style.overflowX = prevHtmlOverflowX
+      body.style.overflowX = prevBodyOverflowX
+      html.style.maxWidth = prevHtmlMaxWidth
+      body.style.maxWidth = prevBodyMaxWidth
+    }
+  }, [])
+
   const pillBtnStyle: CSSProperties = {
     borderRadius: 999,
     padding: '8px 12px',
@@ -177,7 +196,6 @@ export default function Record({ back }: Props) {
   const [manualValue, setManualValue] = useState('')
   const [allowUnknown, setAllowUnknown] = useState(false)
 
-  // ✅ 釣果入力
   const [result, setResult] = useState<CatchResult>('skunk')
   const [species, setSpecies] = useState('')
   const [sizeCm, setSizeCm] = useState('')
@@ -185,18 +203,15 @@ export default function Record({ back }: Props) {
   const [memo, setMemo] = useState('')
   const [saving, setSaving] = useState(false)
 
-  // 最近5件（従来どおり）
   const [recent, setRecent] = useState<CatchRecord[]>([])
 
-  // 全件（アーカイブ＆分析用）
   const [all, setAll] = useState<CatchRecord[]>([])
   const [allLoading, setAllLoading] = useState(false)
   const [allLoadedOnce, setAllLoadedOnce] = useState(false)
 
-  // ✅ アーカイブ表示制御
   const [archivePageSize, setArchivePageSize] = useState<10 | 30 | 50>(30)
-  const [archiveYear, setArchiveYear] = useState<string>('') // '' = 全年
-  const [archiveMonth, setArchiveMonth] = useState<string>('') // '' = 全月（1〜12）
+  const [archiveYear, setArchiveYear] = useState<string>('')
+  const [archiveMonth, setArchiveMonth] = useState<string>('')
 
   const [tideState, setTideState] = useState<TideState>({ status: 'idle' })
   const [daySeriesMap, setDaySeriesMap] = useState<Record<string, TidePoint[]>>({})
@@ -209,7 +224,6 @@ export default function Record({ back }: Props) {
 
   const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true)
 
-  // ===== 偏差分析用の状態 =====
   const [analysisMetric, setAnalysisMetric] = useState<AnalysisMetric>('catchRate')
   const [analysisGroup, setAnalysisGroup] = useState<AnalysisGroup>('tideName_timeBand')
   const [analysisMinN, setAnalysisMinN] = useState<1 | 3 | 5 | 10>(3)
@@ -753,7 +767,6 @@ export default function Record({ back }: Props) {
     return [...analysisTable].slice(-10).reverse()
   }, [analysisTable, analysisMetric])
 
-  // ✅ 長い数字列が横幅を押し広げやすいので、カード内の主要行は省略表示に寄せる
   const ellipsis1: CSSProperties = {
     whiteSpace: 'nowrap',
     overflow: 'hidden',
@@ -776,8 +789,8 @@ export default function Record({ back }: Props) {
       }
       maxWidth={1100}
     >
-      {/* ✅ ページ全体の横はみ出し封じ（sliderは中でスクロール可能） */}
-      <div style={{ overflowX: 'hidden' }}>
+      {/* ✅ 画面内はみ出しがあっても “ページ幅” を広げない */}
+      <div style={{ overflowX: 'hidden', maxWidth: '100vw' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0, maxWidth: '100%' }}>
           <div style={{ fontSize: 12, color: '#666' }}>
             🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
@@ -787,6 +800,7 @@ export default function Record({ back }: Props) {
           {tideState.status === 'loading' && <div style={{ fontSize: 12, color: '#0a6' }}>🌊 tide736：取得中…</div>}
           {tideState.status === 'error' && <div style={{ fontSize: 12, color: '#b00' }}>🌊 tide736：取得失敗 → {tideState.message}</div>}
 
+          {/* モード切替 */}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', minWidth: 0 }}>
             <button type="button" onClick={() => setViewMode('recent')} style={viewMode === 'recent' ? pillBtnStyleActive : pillBtnStyle}>
               🗂 最近5件
@@ -843,10 +857,12 @@ export default function Record({ back }: Props) {
             )}
           </div>
 
+          {/* ✅ recent のときだけ登録フォーム */}
           {showRegisterForm && (
             <>
               <hr style={{ margin: '6px 0', opacity: 0.3 }} />
 
+              {/* 写真選択 */}
               <div>
                 <label>
                   写真を選ぶ<br />
@@ -898,6 +914,7 @@ export default function Record({ back }: Props) {
                 {exifNote && <div style={{ marginTop: 4, color: '#b00' }}>{exifNote}</div>}
               </div>
 
+              {/* 手動日時入力 */}
               {photo && (
                 <div
                   style={{
@@ -981,6 +998,7 @@ export default function Record({ back }: Props) {
                 </div>
               )}
 
+              {/* プレビュー */}
               {previewUrl && (
                 <div style={{ border: '1px solid #333', borderRadius: 12, padding: 10, background: '#0f0f0f', maxWidth: 680, width: '100%', minWidth: 0 }}>
                   <div style={{ fontSize: 12, color: '#aaa', marginBottom: 8 }}>プレビュー</div>
@@ -1002,6 +1020,7 @@ export default function Record({ back }: Props) {
                 </div>
               )}
 
+              {/* 釣果 */}
               <div>
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>🎣 釣果</div>
 
@@ -1036,16 +1055,7 @@ export default function Record({ back }: Props) {
                       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', minWidth: 0 }}>
                         <label style={{ fontSize: 12, color: '#bbb', display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 220 }}>
                           魚種：
-                          <input
-                            value={species}
-                            onChange={(e) => setSpecies(e.target.value)}
-                            placeholder="例：シーバス"
-                            style={{
-                              flex: 1,
-                              minWidth: 120,
-                              maxWidth: '100%',
-                            }}
-                          />
+                          <input value={species} onChange={(e) => setSpecies(e.target.value)} placeholder="例：シーバス" style={{ flex: 1, minWidth: 120, maxWidth: '100%' }} />
                         </label>
 
                         <label style={{ fontSize: 12, color: '#bbb', display: 'flex', alignItems: 'center', gap: 8, minWidth: 170 }}>
@@ -1055,10 +1065,7 @@ export default function Record({ back }: Props) {
                             onChange={(e) => setSizeCm(e.target.value)}
                             placeholder="例：52"
                             inputMode="decimal"
-                            style={{
-                              width: 100,
-                              maxWidth: '100%',
-                            }}
+                            style={{ width: 100, maxWidth: '100%' }}
                           />
                         </label>
                       </div>
@@ -1071,19 +1078,15 @@ export default function Record({ back }: Props) {
                 </div>
               </div>
 
+              {/* メモ */}
               <div style={{ minWidth: 0 }}>
                 <label style={{ display: 'block' }}>
                   ひとことメモ<br />
-                  <textarea
-                    value={memo}
-                    onChange={(e) => setMemo(e.target.value)}
-                    rows={3}
-                    style={{ width: '100%', maxWidth: '100%', minWidth: 0, overflowWrap: 'anywhere' }}
-                    placeholder="渋かった…でも一匹！とか"
-                  />
+                  <textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} style={{ width: '100%', maxWidth: '100%', minWidth: 0, overflowWrap: 'anywhere' }} placeholder="渋かった…でも一匹！とか" />
                 </label>
               </div>
 
+              {/* 保存 */}
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 <button onClick={onSave} disabled={!canSave}>
                   {saving ? '保存中...' : '💾 記録する'}
@@ -1173,19 +1176,13 @@ export default function Record({ back }: Props) {
                             }}
                           >
                             {thumbUrl ? (
-                              <img
-                                src={thumbUrl}
-                                alt="thumb"
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                onLoad={() => URL.revokeObjectURL(thumbUrl)}
-                              />
+                              <img src={thumbUrl} alt="thumb" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onLoad={() => URL.revokeObjectURL(thumbUrl)} />
                             ) : (
                               <span style={{ fontSize: 12, color: '#999' }}>No Photo</span>
                             )}
                           </div>
 
                           <div style={{ display: 'grid', gap: 6, minWidth: 0 }}>
-                            {/* ✅ 数字列が押し広げるので省略 */}
                             <div style={{ fontSize: 12, color: '#bbb', ...ellipsis1 }}>記録：{new Date(r.createdAt).toLocaleString()}</div>
 
                             {shotDate && <div style={{ fontSize: 12, color: '#aaa', ...ellipsis1 }}>📸 {shotDate.toLocaleString()}</div>}
@@ -1313,11 +1310,7 @@ export default function Record({ back }: Props) {
                   </div>
 
                   {selectedSeries.length === 0 ? (
-                    <p>
-                      {!online
-                        ? '📴 オフラインで、この日のキャッシュが無いよ（オンライン復帰後に取得できる）'
-                        : 'タイドデータを準備中だよ（取得中 or データなし）'}
-                    </p>
+                    <p>{!online ? '📴 オフラインで、この日のキャッシュが無いよ（オンライン復帰後に取得できる）' : 'タイドデータを準備中だよ（取得中 or データなし）'}</p>
                   ) : (
                     <TideGraph series={selectedSeries} baseDate={selectedShot} highlightAt={selectedShot} yDomain={{ min: -50, max: 200 }} />
                   )}
@@ -1511,12 +1504,7 @@ export default function Record({ back }: Props) {
                             }}
                           >
                             {thumbUrl ? (
-                              <img
-                                src={thumbUrl}
-                                alt="thumb"
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                onLoad={() => URL.revokeObjectURL(thumbUrl)}
-                              />
+                              <img src={thumbUrl} alt="thumb" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onLoad={() => URL.revokeObjectURL(thumbUrl)} />
                             ) : (
                               <span style={{ fontSize: 12, color: '#999' }}>No Photo</span>
                             )}
@@ -1558,9 +1546,7 @@ export default function Record({ back }: Props) {
                     })}
                   </div>
 
-                  {filteredArchive.length > archivePageSize && (
-                    <div style={{ fontSize: 12, color: '#777' }}>※「表示件数」を増やすと、もっと下まで見れるよ（スクロール長くなるから段階にしてる）</div>
-                  )}
+                  {filteredArchive.length > archivePageSize && <div style={{ fontSize: 12, color: '#777' }}>※「表示件数」を増やすと、もっと下まで見れるよ（スクロール長くなるから段階にしてる）</div>}
                 </>
               )}
             </>
