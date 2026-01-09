@@ -3,3 +3,5 @@ cd Documents\tsuduri\tsuduri-pwa
 npm run dev
 
 vercel dev
+
+git add .; git commit -m "fix"; git push

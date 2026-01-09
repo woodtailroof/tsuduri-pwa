@@ -766,7 +766,20 @@ export default function Record({ back }: Props) {
   }, [analysisTable, analysisMetric])
 
   return (
-    <PageShell title={<h1 style={{ margin: 0 }}>📸 釣果を記録</h1>} maxWidth={1100}>
+    <PageShell
+      title={
+        <h1
+          style={{
+            margin: 0,
+            fontSize: 'clamp(20px, 6vw, 32px)',
+            lineHeight: 1.15,
+          }}
+        >
+          📸 釣果を記録
+        </h1>
+      }
+      maxWidth={1100}
+    >
       {/* 全体を縦flexにして「モードで高さが暴れない」土台にする */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
         <div style={{ fontSize: 12, color: '#666' }}>
@@ -778,7 +791,7 @@ export default function Record({ back }: Props) {
         {tideState.status === 'error' && <div style={{ fontSize: 12, color: '#b00' }}>🌊 tide736：取得失敗 → {tideState.message}</div>}
 
         {/* モード切替 */}
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', minWidth: 0 }}>
           <button type="button" onClick={() => setViewMode('recent')} style={viewMode === 'recent' ? pillBtnStyleActive : pillBtnStyle}>
             🗂 最近5件
           </button>
@@ -792,7 +805,7 @@ export default function Record({ back }: Props) {
           </button>
 
           {(viewMode === 'archive' || viewMode === 'analysis') && (
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginLeft: 'auto' }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginLeft: 'auto', minWidth: 0 }}>
               <button
                 type="button"
                 onClick={() => loadAll()}
@@ -909,9 +922,11 @@ export default function Record({ back }: Props) {
                   display: 'grid',
                   gap: 10,
                   maxWidth: 520,
+                  width: '100%',
+                  minWidth: 0,
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                     <input
                       type="checkbox"
@@ -935,8 +950,8 @@ export default function Record({ back }: Props) {
 
                 {manualMode && (
                   <>
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <label style={{ fontSize: 12, color: '#bbb' }}>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
+                      <label style={{ fontSize: 12, color: '#bbb', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
                         手動撮影日時（ローカル）：
                         <input
                           type="datetime-local"
@@ -948,7 +963,7 @@ export default function Record({ back }: Props) {
                             setCapturedAt(d)
                             if (d) setAllowUnknown(false)
                           }}
-                          style={{ marginLeft: 8 }}
+                          style={{ minWidth: 220, maxWidth: '100%' }}
                         />
                       </label>
 
@@ -981,7 +996,7 @@ export default function Record({ back }: Props) {
 
             {/* プレビュー */}
             {previewUrl && (
-              <div style={{ border: '1px solid #333', borderRadius: 12, padding: 10, background: '#0f0f0f', maxWidth: 680 }}>
+              <div style={{ border: '1px solid #333', borderRadius: 12, padding: 10, background: '#0f0f0f', maxWidth: 680, width: '100%', minWidth: 0 }}>
                 <div style={{ fontSize: 12, color: '#aaa', marginBottom: 8 }}>プレビュー</div>
                 <div
                   style={{
@@ -1013,11 +1028,13 @@ export default function Record({ back }: Props) {
                   background: '#0f0f0f',
                   color: '#ddd',
                   maxWidth: 620,
+                  width: '100%',
                   display: 'grid',
                   gap: 10,
+                  minWidth: 0,
                 }}
               >
-                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', minWidth: 0 }}>
                   <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
                     <input type="radio" name="result" checked={result === 'caught'} onChange={() => setResult('caught')} />
                     <span>釣れた</span>
@@ -1030,21 +1047,33 @@ export default function Record({ back }: Props) {
                 </div>
 
                 {result === 'caught' && (
-                  <div style={{ display: 'grid', gap: 10 }}>
-                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <label style={{ fontSize: 12, color: '#bbb' }}>
+                  <div style={{ display: 'grid', gap: 10, minWidth: 0 }}>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', minWidth: 0 }}>
+                      <label style={{ fontSize: 12, color: '#bbb', display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 220 }}>
                         魚種：
-                        <input value={species} onChange={(e) => setSpecies(e.target.value)} placeholder="例：シーバス" style={{ marginLeft: 8, width: 220 }} />
+                        <input
+                          value={species}
+                          onChange={(e) => setSpecies(e.target.value)}
+                          placeholder="例：シーバス"
+                          style={{
+                            flex: 1,
+                            minWidth: 120,
+                            maxWidth: '100%',
+                          }}
+                        />
                       </label>
 
-                      <label style={{ fontSize: 12, color: '#bbb' }}>
+                      <label style={{ fontSize: 12, color: '#bbb', display: 'flex', alignItems: 'center', gap: 8, minWidth: 170 }}>
                         大きさ（cm）：
                         <input
                           value={sizeCm}
                           onChange={(e) => setSizeCm(e.target.value)}
                           placeholder="例：52"
                           inputMode="decimal"
-                          style={{ marginLeft: 8, width: 120 }}
+                          style={{
+                            width: 100,
+                            maxWidth: '100%',
+                          }}
                         />
                       </label>
                     </div>
@@ -1058,10 +1087,16 @@ export default function Record({ back }: Props) {
             </div>
 
             {/* メモ */}
-            <div>
-              <label>
+            <div style={{ minWidth: 0 }}>
+              <label style={{ display: 'block' }}>
                 ひとことメモ<br />
-                <textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} style={{ width: '100%', overflowWrap: 'anywhere' }} placeholder="渋かった…でも一匹！とか" />
+                <textarea
+                  value={memo}
+                  onChange={(e) => setMemo(e.target.value)}
+                  rows={3}
+                  style={{ width: '100%', maxWidth: '100%', minWidth: 0, overflowWrap: 'anywhere' }}
+                  placeholder="渋かった…でも一匹！とか"
+                />
               </label>
             </div>
 
@@ -1097,6 +1132,8 @@ export default function Record({ back }: Props) {
                     scrollSnapType: 'x mandatory',
                     WebkitOverflowScrolling: 'touch',
                     minWidth: 0,
+                    width: '100%',
+                    maxWidth: '100%',
                   }}
                 >
                   {recent.map((r) => {
@@ -1118,8 +1155,8 @@ export default function Record({ back }: Props) {
                         onClick={() => setSelectedId(r.id ?? null)}
                         style={{
                           scrollSnapAlign: 'start',
-                          minWidth: 280,
-                          maxWidth: 340,
+                          width: 'min(84vw, 320px)',
+                          maxWidth: '84vw',
                           textAlign: 'left',
                           borderRadius: 14,
                           border: isSel ? '2px solid #ff4d6d' : '1px solid #333',

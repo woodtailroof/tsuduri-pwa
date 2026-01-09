@@ -43,22 +43,23 @@ code {
   overflow-x: auto;
 }
 
-/* 文字の暴走を抑えて、見出しをスマホ向けにスケール */
+/* 見出し：さらに小さめに（スマホ最優先） */
 h1 {
-  font-size: clamp(28px, 6.5vw, 56px);
-  line-height: 1.15;
-  margin: 0 0 12px;
+  font-size: clamp(22px, 7vw, 40px);
+  line-height: 1.1;
+  margin: 0 0 10px;
+  letter-spacing: -0.02em;
 }
 
 h2 {
-  font-size: clamp(22px, 5.2vw, 40px);
-  line-height: 1.2;
+  font-size: clamp(18px, 5.8vw, 28px);
+  line-height: 1.15;
   margin: 0 0 10px;
 }
 
 h3 {
-  font-size: clamp(18px, 4.6vw, 28px);
-  line-height: 1.25;
+  font-size: clamp(16px, 4.8vw, 22px);
+  line-height: 1.2;
   margin: 0 0 8px;
 }
 
@@ -76,16 +77,19 @@ button {
   font-size: 16px;
 }
 
-/* ついでに入力のタップ感を安定させる */
+/* ✅ 入力のはみ出し特効薬セット（超重要） */
 input,
 textarea,
 select {
+  width: 100%;
   max-width: 100%;
+  min-width: 0;
 }
 
-/* ボタンが画面幅で窒息しないように */
+/* ついでにボタンもはみ出し抑制 */
 button {
   max-width: 100%;
+  min-width: 0;
 }
 
 /* 長いテキストが横に突き抜けるのを防ぐ */
@@ -93,7 +97,26 @@ button {
   overflow-wrap: anywhere;
 }
 
-/* safe-area対応（iPhoneの下のホームバーに被るのを避ける） */
+/* ✅ 横スワイプ用の汎用クラス（Recordの一覧に当てる） */
+.horizontal-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  width: 100%;
+  max-width: 100%;
+  padding: 6px 2px 10px;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+}
+
+.horizontal-scroll > * {
+  flex: 0 0 min(84vw, 360px); /* ここで「件数増えるほど横幅増殖」を止める */
+  scroll-snap-align: start;
+  min-width: 0;
+}
+
+/* safe-area対応（iPhone下のホームバー回避） */
 .safe-area-bottom {
   padding-bottom: max(16px, env(safe-area-inset-bottom));
 }
