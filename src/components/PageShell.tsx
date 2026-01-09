@@ -1,7 +1,7 @@
 // src/components/PageShell.tsx
 
 import type { ReactNode } from 'react'
-import { useCallback } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 
 type Props = {
   title?: ReactNode
@@ -16,8 +16,34 @@ type Props = {
   onBack?: () => void
   /** 戻るボタンのラベル */
   backLabel?: ReactNode
-  /** 戻れない/戻ると危険な場合に遷移する先（デフォルト: "/"） */
+  /** 戻れない場合の遷移先（デフォルト: "/"） */
   fallbackHref?: string
+  /** この画面を履歴に積まない（ホームなど） */
+  disableStackPush?: boolean
+}
+
+const STACK_KEY = 'tsuduri_nav_stack_v1'
+
+function getPath() {
+  return window.location.pathname + window.location.search + window.location.hash
+}
+
+function readStack(): string[] {
+  try {
+    const raw = sessionStorage.getItem(STACK_KEY)
+    const arr = raw ? (JSON.parse(raw) as unknown) : []
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function writeStack(stack: string[]) {
+  try {
+    sessionStorage.setItem(STACK_KEY, JSON.stringify(stack.slice(-50))) // 念のため上限
+  } catch {
+    // ignore
+  }
 }
 
 export default function PageShell({
@@ -29,26 +55,40 @@ export default function PageShell({
   onBack,
   backLabel = '← 戻る',
   fallbackHref = '/',
+  disableStackPush = false,
 }: Props) {
+  const current = useMemo(() => getPath(), [])
+
+  // ✅ この画面を「アプリ内スタック」に積む
+  useEffect(() => {
+    if (disableStackPush) return
+
+    const stack = readStack()
+    const last = stack[stack.length - 1]
+
+    // 連続で同じURLを積まない
+    if (last !== current) {
+      stack.push(current)
+      writeStack(stack)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [disableStackPush])
+
   const handleBack = useCallback(() => {
     if (onBack) return onBack()
 
-    // ✅ 外部サイトに戻る事故を防ぐ「安全な戻る」
-    // - referrer が同一オリジンなら back
-    // - それ以外（直アクセス/外部から来た等）はホームへ
-    try {
-      const ref = document.referrer
-      const sameOrigin = ref ? new URL(ref).origin === window.location.origin : false
+    const stack = readStack()
 
-      if (sameOrigin && window.history.length > 1) {
-        window.history.back()
-        return
-      }
-    } catch {
-      // referrer が変な値でも落とさない
+    // 末尾が自分なら1つ捨てる（「戻る」で今の自分を消す）
+    if (stack.length && stack[stack.length - 1] === getPath()) {
+      stack.pop()
     }
 
-    window.location.assign(fallbackHref)
+    const prev = stack.pop() // さらに1つ戻る
+    writeStack(stack)
+
+    // ✅ 戻り先があればそこへ。無ければホームへ。
+    window.location.assign(prev ?? fallbackHref)
   }, [onBack, fallbackHref])
 
   return (
