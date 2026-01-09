@@ -1,5 +1,5 @@
 // src/App.tsx
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import Home from './screens/Home'
 import Record from './screens/Record'
 import Weather from './screens/Weather'
@@ -17,8 +17,8 @@ export default function App() {
   // Homeから遷移できる画面はここだけ
   const goFromHome = (s: 'record' | 'weather' | 'chat' | 'settings') => setScreen(s)
 
-  // 画面の中身を先に決める
-  let content: JSX.Element
+  // 画面の中身を先に決める（JSX.Element を使わず ReactNode にする）
+  let content: ReactNode
   if (screen === 'record') content = <Record back={backHome} />
   else if (screen === 'weather') content = <Weather back={backHome} />
   else if (screen === 'settings') content = <Settings back={backHome} />
@@ -45,10 +45,10 @@ export default function App() {
       <div
         style={{
           width: '100%',
-          maxWidth: 960, // PCで左寄りを解消。好みで 720〜1100 くらいに調整OK
+          maxWidth: 960,
           padding: '16px 16px 24px',
           boxSizing: 'border-box',
-          minWidth: 0, // flex内の子が横に溢れるのを抑える定番
+          minWidth: 0,
         }}
       >
         {content}
