@@ -244,3 +244,32 @@ textarea {
 .card {
   all: unset;
 }
+
+/* =========================
+   ラジオ選択肢の“縦書き化”防止
+   ========================= */
+
+/* ラジオ付きlabelを横並び・1行固定にする */
+.black-card label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;     /* 1文字改行を禁止 */
+  line-break: strict;
+}
+
+/* ラジオ自体は縮まない */
+.black-card input[type="radio"] {
+  flex: 0 0 auto;
+}
+
+/* もし長文で溢れたら、カード内だけ横スクロール許可（切れないように） */
+.black-card {
+  overflow-x: auto;   /* 以前の hidden より実用的 */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 黒カード内だけ文字を少し小さくして収まりを良くする（好みで調整OK） */
+.black-card {
+  font-size: 14px;
+}
