@@ -165,90 +165,76 @@ export default function Record({ back }: Props) {
     color: '#eee',
   }
 
-// =========================
-// ✅ セグメント（ラジオ）用スタイル
-// =========================
-const segWrapStyle: CSSProperties = {
-  display: 'flex',
-  gap: 12,
-  flexWrap: 'wrap',
-  alignItems: 'center',
-}
-
-const segLabelStyle: CSSProperties = {
-  position: 'relative',
-  display: 'inline-flex',
-  cursor: 'pointer',
-}
-
-const segInputHidden: CSSProperties = {
-  position: 'absolute',
-  opacity: 0,
-  pointerEvents: 'none',
-}
-
-const segPillBase: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 10,
-  padding: '10px 14px',
-  borderRadius: 16,
-  whiteSpace: 'nowrap',
-  border: '1px solid rgba(255,255,255,0.25)',
-  background: 'rgba(255,255,255,0.06)',
-  color: '#ddd',
-}
-
-function segPill(active: boolean): CSSProperties {
-  return {
-    ...segPillBase,
-    border: active ? '2px solid #ff4d6d' : segPillBase.border,
-    background: active ? 'rgba(255,77,109,0.18)' : segPillBase.background,
-    color: active ? '#fff' : segPillBase.color,
+  // =========================
+  // ✅ セグメント（ラジオ）を綺麗にする共通スタイル
+  //   - iOS/狭幅でも「文字が縦積み」になりにくい
+  //   - :has などのCSS新機能に頼らず、このファイルだけで完結
+  // =========================
+  const segWrapStyle: CSSProperties = {
+    display: 'flex',
+    gap: 12,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    minWidth: 0,
   }
-}
 
-function segDot(active: boolean): CSSProperties {
-  return {
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-    background: active ? '#ff4d6d' : 'transparent',
-    border: '1px solid rgba(255,255,255,0.4)',
+  const segLabelStyle: CSSProperties = {
+    position: 'relative',
+    display: 'inline-flex',
+    alignItems: 'center',
+    cursor: 'pointer',
+    userSelect: 'none',
+    minWidth: 0,
   }
-}
 
+  const segInputHidden: CSSProperties = {
+    position: 'absolute',
+    opacity: 0,
+    pointerEvents: 'none',
+    width: 1,
+    height: 1,
+  }
 
-<div style={segWrapStyle}>
-  <label style={segLabelStyle}>
-    <input
-      type="radio"
-      name="result"
-      checked={result === 'caught'}
-      onChange={() => setResult('caught')}
-      style={segInputHidden}
-    />
-    <span style={segPill(result === 'caught')}>
-      <span style={segDot(result === 'caught')} />
-      釣れた
-    </span>
-  </label>
+  const segPillBase: CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '10px 14px',
+    borderRadius: 16,
+    lineHeight: 1.2,
+    whiteSpace: 'nowrap',
+    minWidth: 0,
+    maxWidth: '100%',
+    border: '1px solid rgba(255,255,255,0.22)',
+    background: 'rgba(255,255,255,0.06)',
+    color: '#ddd',
+    boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.12)',
+    WebkitTapHighlightColor: 'transparent',
+  }
 
-  <label style={segLabelStyle}>
-    <input
-      type="radio"
-      name="result"
-      checked={result === 'skunk'}
-      onChange={() => setResult('skunk')}
-      style={segInputHidden}
-    />
-    <span style={segPill(result === 'skunk')}>
-      <span style={segDot(result === 'skunk')} />
-      釣れなかった（ボウズ）
-    </span>
-  </label>
-</div>
+  function segPill(checked: boolean): CSSProperties {
+    return {
+      ...segPillBase,
+      border: checked ? '2px solid #ff4d6d' : segPillBase.border,
+      background: checked ? 'rgba(255,77,109,0.18)' : segPillBase.background,
+      color: checked ? '#fff' : segPillBase.color,
+      boxShadow: checked
+        ? '0 6px 18px rgba(0,0,0,0.22), inset 0 0 0 1px rgba(255,77,109,0.25)'
+        : segPillBase.boxShadow,
+    }
+  }
 
+  function segDot(checked: boolean): CSSProperties {
+    return {
+      width: 10,
+      height: 10,
+      borderRadius: 999,
+      flex: '0 0 auto',
+      border: checked ? '1px solid rgba(255,77,109,0.9)' : '1px solid rgba(255,255,255,0.35)',
+      background: checked ? '#ff4d6d' : 'transparent',
+      boxShadow: checked ? '0 0 0 4px rgba(255,77,109,0.16)' : 'none',
+    }
+  }
 
   const [viewMode, setViewMode] = useState<ViewMode>('recent')
 
@@ -1110,15 +1096,34 @@ function segDot(active: boolean): CSSProperties {
                     gap: 10,
                   }}
                 >
-                  <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-                      <input type="radio" name="result" checked={result === 'caught'} onChange={() => setResult('caught')} />
-                      <span>釣れた</span>
+                  {/* ✅ セグメント化（ラジオを綺麗に） */}
+                  <div style={segWrapStyle} aria-label="釣果の結果">
+                    <label style={segLabelStyle}>
+                      <input
+                        type="radio"
+                        name="result"
+                        checked={result === 'caught'}
+                        onChange={() => setResult('caught')}
+                        style={segInputHidden}
+                      />
+                      <span style={segPill(result === 'caught')}>
+                        <span style={segDot(result === 'caught')} aria-hidden="true" />
+                        釣れた
+                      </span>
                     </label>
 
-                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-                      <input type="radio" name="result" checked={result === 'skunk'} onChange={() => setResult('skunk')} />
-                      <span>釣れなかった（ボウズ）</span>
+                    <label style={segLabelStyle}>
+                      <input
+                        type="radio"
+                        name="result"
+                        checked={result === 'skunk'}
+                        onChange={() => setResult('skunk')}
+                        style={segInputHidden}
+                      />
+                      <span style={segPill(result === 'skunk')}>
+                        <span style={segDot(result === 'skunk')} aria-hidden="true" />
+                        釣れなかった（ボウズ）
+                      </span>
                     </label>
                   </div>
 
@@ -1526,20 +1531,50 @@ function segDot(active: boolean): CSSProperties {
                     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                       <div style={{ fontSize: 12, color: '#aaa' }}>📦 表示件数</div>
 
-                      <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
-                        <input type="radio" name="archivePageSize" checked={archivePageSize === 10} onChange={() => setArchivePageSize(10)} />
-                        <span style={{ fontSize: 12, color: '#bbb' }}>10件</span>
-                      </label>
+                      {/* ✅ ここもセグメント化 */}
+                      <div style={segWrapStyle} aria-label="表示件数">
+                        <label style={segLabelStyle}>
+                          <input
+                            type="radio"
+                            name="archivePageSize"
+                            checked={archivePageSize === 10}
+                            onChange={() => setArchivePageSize(10)}
+                            style={segInputHidden}
+                          />
+                          <span style={segPill(archivePageSize === 10)}>
+                            <span style={segDot(archivePageSize === 10)} aria-hidden="true" />
+                            10件
+                          </span>
+                        </label>
 
-                      <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
-                        <input type="radio" name="archivePageSize" checked={archivePageSize === 30} onChange={() => setArchivePageSize(30)} />
-                        <span style={{ fontSize: 12, color: '#bbb' }}>30件</span>
-                      </label>
+                        <label style={segLabelStyle}>
+                          <input
+                            type="radio"
+                            name="archivePageSize"
+                            checked={archivePageSize === 30}
+                            onChange={() => setArchivePageSize(30)}
+                            style={segInputHidden}
+                          />
+                          <span style={segPill(archivePageSize === 30)}>
+                            <span style={segDot(archivePageSize === 30)} aria-hidden="true" />
+                            30件
+                          </span>
+                        </label>
 
-                      <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
-                        <input type="radio" name="archivePageSize" checked={archivePageSize === 50} onChange={() => setArchivePageSize(50)} />
-                        <span style={{ fontSize: 12, color: '#bbb' }}>50件</span>
-                      </label>
+                        <label style={segLabelStyle}>
+                          <input
+                            type="radio"
+                            name="archivePageSize"
+                            checked={archivePageSize === 50}
+                            onChange={() => setArchivePageSize(50)}
+                            style={segInputHidden}
+                          />
+                          <span style={segPill(archivePageSize === 50)}>
+                            <span style={segDot(archivePageSize === 50)} aria-hidden="true" />
+                            50件
+                          </span>
+                        </label>
+                      </div>
                     </div>
 
                     <div style={{ fontSize: 12, color: '#777' }}>
