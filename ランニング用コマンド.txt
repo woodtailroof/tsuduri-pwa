@@ -4,4 +4,6 @@ npm run dev
 
 vercel dev
 
+git clone https://github.com/woodtailroof/tsuduri-pwa.git
+
 git add .; git commit -m "fix"; git push

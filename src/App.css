@@ -1,3 +1,15 @@
+/* iOS Safari: 入力欄が原因の自動ズームを防ぐ */
+input,
+textarea,
+select {
+  font-size: 16px;
+}
+
+/* ついでに、iOSの謎の文字拡大を抑制（任意） */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 /* 基本リセット＆横はみ出し対策 */
 *,
 *::before,
