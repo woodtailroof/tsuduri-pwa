@@ -38,6 +38,10 @@ type Props = {
   testCharacterOffset?: { right?: number; bottom?: number }
   /** ✅ キャラの不透明度（0〜1） */
   testCharacterOpacity?: number
+
+  /** ✅ UIを読みやすくする固定スクリーン（上/下） */
+  uiScrimTop?: boolean
+  uiScrimBottom?: boolean
 }
 
 const STACK_KEY = 'tsuduri_nav_stack_v1'
@@ -84,6 +88,10 @@ export default function PageShell({
   testCharacterHeight = 'clamp(140px, 18vw, 220px)',
   testCharacterOffset = { right: 16, bottom: 16 },
   testCharacterOpacity = 1,
+
+  // ✅ UIスクリーン
+  uiScrimTop = true,
+  uiScrimBottom = true,
 }: Props) {
   const current = useMemo(() => getPath(), [])
 
@@ -119,14 +127,21 @@ export default function PageShell({
     window.location.assign(prev ?? fallbackHref)
   }, [onBack, fallbackHref])
 
+  // iPhoneなどのセーフエリア
+  const safeRight = 'env(safe-area-inset-right, 0px)'
+  const safeTop = 'env(safe-area-inset-top, 0px)'
+  const safeBottom = 'env(safe-area-inset-bottom, 0px)'
+
   return (
     <div
       className="page-shell"
       style={{
         width: '100%',
-        minHeight: '100vh',
+        // ✅ 画面全体は固定してスクロールを内部に閉じ込める
+        height: '100dvh',
         boxSizing: 'border-box',
-        overflowX: 'hidden',
+        overflow: 'hidden',
+        position: 'relative',
 
         // ✅ CSS変数で背景を制御（ページ単位で差し替え可能）
         ['--bg-image' as any]: bgImage ? `url(${bgImage})` : 'none',
@@ -134,39 +149,48 @@ export default function PageShell({
         ['--bg-blur' as any]: `${bgBlur}px`,
       }}
     >
-      {showBack && (
-        <button type="button" className="back-button" onClick={handleBack} aria-label="戻る">
-          {backLabel}
-        </button>
-      )}
-
+      {/* =========================
+          背景レイヤー（固定）
+         ========================= */}
       <div
-        className={showBack ? 'with-back-button page-shell-inner' : 'page-shell-inner'}
+        aria-hidden="true"
         style={{
-          maxWidth,
-          margin: '0 auto',
-          padding: 'clamp(16px, 3vw, 24px)',
-          boxSizing: 'border-box',
+          position: 'fixed',
+          inset: 0,
+          zIndex: 0,
+          pointerEvents: 'none',
+          userSelect: 'none',
+          backgroundImage: bgImage ? `url(${bgImage})` : undefined,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          filter: bgBlur ? `blur(${bgBlur}px)` : undefined,
+          transform: bgBlur ? 'scale(1.03)' : undefined, // ぼかし縁のはみ出し対策
         }}
-      >
-        {(title || subtitle) && (
-          <div style={{ marginBottom: 16 }}>
-            {title}
-            {subtitle}
-          </div>
-        )}
-        {children}
-      </div>
+      />
+      {/* 背景の暗幕（固定） */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 1,
+          pointerEvents: 'none',
+          background: `rgba(0,0,0,${Math.max(0, Math.min(1, bgDim))})`,
+        }}
+      />
 
-      {/* ✅ テスト用キャラ（全モード画面に表示） */}
+      {/* =========================
+          キャラレイヤー（固定・UIより下）
+         ========================= */}
       {showTestCharacter && !!testCharacterSrc && (
         <div
           aria-hidden="true"
           style={{
             position: 'fixed',
-            right: testCharacterOffset.right ?? 16,
-            bottom: testCharacterOffset.bottom ?? 16,
-            zIndex: 10,
+            right: `calc(${testCharacterOffset.right ?? 16}px + ${safeRight})`,
+            bottom: `calc(${testCharacterOffset.bottom ?? 16}px + ${safeBottom})`,
+            zIndex: 20, // ✅ UIより下
             pointerEvents: 'none',
             userSelect: 'none',
             opacity: testCharacterOpacity,
@@ -185,6 +209,90 @@ export default function PageShell({
           />
         </div>
       )}
+
+      {/* =========================
+          UIレイヤー（スクロールするのはここだけ）
+         ========================= */}
+      <div
+        className="page-shell-ui"
+        style={{
+          position: 'relative',
+          zIndex: 30, // ✅ 最前面（情報・ボタン）
+          height: '100dvh',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
+        {/* UIスクリーン（上）: タイトル/戻る周りが読みやすい */}
+        {uiScrimTop && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 40,
+              height: 90,
+              pointerEvents: 'none',
+              background: 'linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))',
+            }}
+          />
+        )}
+
+        {/* 戻るボタン（UI最前面・固定） */}
+        {showBack && (
+          <button
+            type="button"
+            className="back-button"
+            onClick={handleBack}
+            aria-label="戻る"
+            style={{
+              position: 'fixed',
+              top: `calc(12px + ${safeTop})`,
+              right: `calc(12px + ${safeRight})`,
+              zIndex: 50,
+            }}
+          >
+            {backLabel}
+          </button>
+        )}
+
+        {/* コンテンツ */}
+        <div
+          className={showBack ? 'with-back-button page-shell-inner' : 'page-shell-inner'}
+          style={{
+            maxWidth,
+            margin: '0 auto',
+            padding: 'clamp(16px, 3vw, 24px)',
+            paddingTop: `calc(clamp(16px, 3vw, 24px) + ${safeTop})`,
+            paddingBottom: `calc(clamp(16px, 3vw, 24px) + ${safeBottom})`,
+            boxSizing: 'border-box',
+          }}
+        >
+          {(title || subtitle) && (
+            <div style={{ marginBottom: 16 }}>
+              {title}
+              {subtitle}
+            </div>
+          )}
+          {children}
+        </div>
+
+        {/* UIスクリーン（下）: 入力欄や下部ボタンが読みやすい */}
+        {uiScrimBottom && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'sticky',
+              bottom: 0,
+              zIndex: 40,
+              height: 110,
+              pointerEvents: 'none',
+              background: 'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0))',
+            }}
+          />
+        )}
+      </div>
     </div>
   )
 }
