@@ -17,10 +17,6 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
 }
 
-function pad2(n: number) {
-  return String(n).padStart(2, '0')
-}
-
 /**
  * time(HH:mm) 優先、unixはfallback
  */
