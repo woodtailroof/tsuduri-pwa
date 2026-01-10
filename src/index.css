@@ -48,6 +48,12 @@ body {
   --bg-base-0: #07080b;
   --bg-base-1: #0b0d13;
   --bg-accent: rgba(255, 77, 109, 0.18);
+
+  /* ✅ PageShell用（未定義だと背景が丸ごと無効化され得るので、ここで定義）
+     B案：public/assets/bg/ui-check.png を使う */
+  --bg-image: url("/assets/bg/ui-check.png");
+  --bg-blur: 0px;
+  --bg-dim: 0.25;
 }
 
 body {
@@ -176,17 +182,18 @@ p, li, div, span, label, h1, h2, h3 {
   inset: 0;
   z-index: -2;
 
+  /* ✅ var() が未定義でも background 宣言自体が無効化されないように fallback を入れる */
   background:
     radial-gradient(1000px 700px at 20% -10%, var(--bg-accent), transparent 55%),
     radial-gradient(900px 600px at 110% 10%, rgba(110, 207, 255, 0.10), transparent 60%),
     linear-gradient(180deg, var(--bg-base-0), var(--bg-base-1)),
-    var(--bg-image);
+    var(--bg-image, none);
 
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
 
-  filter: blur(var(--bg-blur));
+  filter: blur(var(--bg-blur, 0px));
   transform: translateZ(0);
 }
 
@@ -197,7 +204,11 @@ p, li, div, span, label, h1, h2, h3 {
   z-index: -1;
 
   background:
-    linear-gradient(180deg, rgba(0,0,0, calc(var(--bg-dim) + 0.10)), rgba(0,0,0, var(--bg-dim))),
+    linear-gradient(
+      180deg,
+      rgba(0,0,0, calc(var(--bg-dim, 0.35) + 0.10)),
+      rgba(0,0,0, var(--bg-dim, 0.35))
+    ),
     radial-gradient(800px 500px at 50% 30%, rgba(255,255,255,0.06), transparent 65%);
   pointer-events: none;
 }

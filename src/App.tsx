@@ -14,8 +14,6 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('home')
 
   const backHome = () => setScreen('home')
-
-  // Homeから遷移できる画面はここだけ
   const goFromHome = (s: 'record' | 'weather' | 'chat' | 'settings') => setScreen(s)
 
   let content: ReactNode
@@ -32,23 +30,47 @@ export default function App() {
 
   return (
     <div
+      id="app-root"
       style={{
-        minHeight: '100dvh',
-        width: '100%',
-        overflowX: 'hidden',
+        width: '100vw',
+        height: '100svh', // ✅ iPhone Safariで安定
+        overflow: 'hidden', // ✅ bodyスクロールに逃がさない
+        position: 'relative',
       }}
     >
+      {/* ✅ ここに FixedBackground / CharacterLayer を “センター箱の外” に置くと最強 */}
+      {/* 例:
+        <FixedBackground />
+        <CharacterLayer />
+      */}
+
+      {/* ✅ 情報(=画面コンテンツ)だけをスクロールさせる器 */}
       <div
+        id="app-scroll"
         style={{
-          width: '100%',
-          maxWidth: 960,
-          margin: '0 auto', // ← これが最強のセンター固定
-          padding: '16px 16px 24px',
-          boxSizing: 'border-box',
-          minWidth: 0,
+          width: '100vw',
+          height: '100svh',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
+          position: 'relative',
+          zIndex: 10,
         }}
       >
-        {content}
+        {/* ✅ “センター固定” はスクロール内の中身にだけ適用 */}
+        <div
+          style={{
+            width: '100%',
+            maxWidth: 960,
+            margin: '0 auto',
+            padding: '16px 16px 24px',
+            boxSizing: 'border-box',
+            minWidth: 0,
+          }}
+        >
+          {content}
+        </div>
       </div>
     </div>
   )

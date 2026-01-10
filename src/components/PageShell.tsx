@@ -1,6 +1,6 @@
 // src/components/PageShell.tsx
 
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo } from 'react'
 
 type Props = {
@@ -119,47 +119,26 @@ export default function PageShell({
     window.location.assign(prev ?? fallbackHref)
   }, [onBack, fallbackHref])
 
+  // ✅ bgImage が未指定のときに --bg-image を "none" で潰さない（ここが超重要）
+  const shellStyle: CSSProperties & Record<string, string> = {
+    width: '100%',
+    height: '100svh', // ✅ iPhone Safariでも安定
+    boxSizing: 'border-box',
+    overflow: 'hidden', // ✅ この要素自体はスクロールさせない
+    position: 'relative',
+
+    // ✅ CSS変数で背景を制御（ページ単位で差し替え可能）
+    // bgImage がある時だけ上書きする。無い時は :root の値が生きる。
+    ['--bg-dim' as any]: String(bgDim),
+    ['--bg-blur' as any]: `${bgBlur}px`,
+  }
+
+  if (bgImage) {
+    shellStyle['--bg-image' as any] = `url(${bgImage})`
+  }
+
   return (
-    <div
-      className="page-shell"
-      style={{
-        width: '100%',
-        minHeight: '100vh',
-        boxSizing: 'border-box',
-        overflowX: 'hidden',
-        position: 'relative',
-
-        // ✅ CSS変数で背景を制御（ページ単位で差し替え可能）
-        ['--bg-image' as any]: bgImage ? `url(${bgImage})` : 'none',
-        ['--bg-dim' as any]: String(bgDim),
-        ['--bg-blur' as any]: `${bgBlur}px`,
-      }}
-    >
-      {/* ✅ 背景レイヤー（固定） */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 0,
-          backgroundImage: bgImage ? `url(${bgImage})` : 'none',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          transform: 'translateZ(0)',
-          filter: bgBlur ? `blur(${bgBlur}px)` : 'none',
-        }}
-      />
-      {/* ✅ 背景の暗幕（固定） */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 1,
-          background: `rgba(0,0,0,${bgDim})`,
-        }}
-      />
-
+    <div className="page-shell" style={shellStyle}>
       {/* ✅ キャラレイヤー（固定・情報より下） */}
       {showTestCharacter && !!testCharacterSrc && (
         <div
@@ -201,25 +180,35 @@ export default function PageShell({
         </button>
       )}
 
-      {/* ✅ 情報レイヤー（スクロールする本体。キャラより上） */}
+      {/* ✅ 情報レイヤー（ここだけスクロール） */}
       <div
         className={showBack ? 'with-back-button page-shell-inner' : 'page-shell-inner'}
         style={{
           position: 'relative',
           zIndex: 10, // ✅ キャラ(5)より上
-          maxWidth,
-          margin: '0 auto',
-          padding: 'clamp(16px, 3vw, 24px)',
-          boxSizing: 'border-box',
+          height: '100svh',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
         }}
       >
-        {(title || subtitle) && (
-          <div style={{ marginBottom: 16 }}>
-            {title}
-            {subtitle}
-          </div>
-        )}
-        {children}
+        <div
+          style={{
+            maxWidth,
+            margin: '0 auto',
+            padding: 'clamp(16px, 3vw, 24px)',
+            boxSizing: 'border-box',
+          }}
+        >
+          {(title || subtitle) && (
+            <div style={{ marginBottom: 16 }}>
+              {title}
+              {subtitle}
+            </div>
+          )}
+          {children}
+        </div>
       </div>
     </div>
   )
