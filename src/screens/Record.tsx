@@ -849,6 +849,8 @@ export default function Record({ back }: Props) {
         </h1>
       }
       maxWidth={1100}
+      showBack
+      onBack={back}
     >
       {/* ✅ ページ自体の横幅は増やさない（ただし body/html は触らない） */}
       <div style={{ overflowX: 'clip', maxWidth: '100vw' }}>
@@ -1099,13 +1101,7 @@ export default function Record({ back }: Props) {
                   {/* ✅ セグメント化（ラジオを綺麗に） */}
                   <div style={segWrapStyle} aria-label="釣果の結果">
                     <label style={segLabelStyle}>
-                      <input
-                        type="radio"
-                        name="result"
-                        checked={result === 'caught'}
-                        onChange={() => setResult('caught')}
-                        style={segInputHidden}
-                      />
+                      <input type="radio" name="result" checked={result === 'caught'} onChange={() => setResult('caught')} style={segInputHidden} />
                       <span style={segPill(result === 'caught')}>
                         <span style={segDot(result === 'caught')} aria-hidden="true" />
                         釣れた
@@ -1113,13 +1109,7 @@ export default function Record({ back }: Props) {
                     </label>
 
                     <label style={segLabelStyle}>
-                      <input
-                        type="radio"
-                        name="result"
-                        checked={result === 'skunk'}
-                        onChange={() => setResult('skunk')}
-                        style={segInputHidden}
-                      />
+                      <input type="radio" name="result" checked={result === 'skunk'} onChange={() => setResult('skunk')} style={segInputHidden} />
                       <span style={segPill(result === 'skunk')}>
                         <span style={segDot(result === 'skunk')} aria-hidden="true" />
                         釣れなかった（ボウズ）
@@ -1159,7 +1149,13 @@ export default function Record({ back }: Props) {
               <div>
                 <label>
                   ひとことメモ<br />
-                  <textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} style={{ width: '100%', overflowWrap: 'anywhere' }} placeholder="渋かった…でも一匹！とか" />
+                  <textarea
+                    value={memo}
+                    onChange={(e) => setMemo(e.target.value)}
+                    rows={3}
+                    style={{ width: '100%', overflowWrap: 'anywhere' }}
+                    placeholder="渋かった…でも一匹！とか"
+                  />
                 </label>
               </div>
 
@@ -1168,7 +1164,6 @@ export default function Record({ back }: Props) {
                 <button onClick={onSave} disabled={!canSave}>
                   {saving ? '保存中...' : '💾 記録する'}
                 </button>
-                <button onClick={back}>← 戻る</button>
               </div>
 
               <hr style={{ margin: '6px 0', opacity: 0.3 }} />
@@ -1471,6 +1466,7 @@ export default function Record({ back }: Props) {
                 <p>まだ記録がないよ</p>
               ) : (
                 <>
+                  {/* （中略：ここ以下は元のまま） */}
                   <div style={{ border: '1px solid #333', borderRadius: 12, padding: 12, background: '#0f0f0f', color: '#ddd', display: 'grid', gap: 10 }}>
                     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                       <div style={{ fontSize: 12, color: '#aaa' }}>🔎 絞り込み</div>
@@ -1534,13 +1530,7 @@ export default function Record({ back }: Props) {
                       {/* ✅ ここもセグメント化 */}
                       <div style={segWrapStyle} aria-label="表示件数">
                         <label style={segLabelStyle}>
-                          <input
-                            type="radio"
-                            name="archivePageSize"
-                            checked={archivePageSize === 10}
-                            onChange={() => setArchivePageSize(10)}
-                            style={segInputHidden}
-                          />
+                          <input type="radio" name="archivePageSize" checked={archivePageSize === 10} onChange={() => setArchivePageSize(10)} style={segInputHidden} />
                           <span style={segPill(archivePageSize === 10)}>
                             <span style={segDot(archivePageSize === 10)} aria-hidden="true" />
                             10件
@@ -1548,13 +1538,7 @@ export default function Record({ back }: Props) {
                         </label>
 
                         <label style={segLabelStyle}>
-                          <input
-                            type="radio"
-                            name="archivePageSize"
-                            checked={archivePageSize === 30}
-                            onChange={() => setArchivePageSize(30)}
-                            style={segInputHidden}
-                          />
+                          <input type="radio" name="archivePageSize" checked={archivePageSize === 30} onChange={() => setArchivePageSize(30)} style={segInputHidden} />
                           <span style={segPill(archivePageSize === 30)}>
                             <span style={segDot(archivePageSize === 30)} aria-hidden="true" />
                             30件
@@ -1562,13 +1546,7 @@ export default function Record({ back }: Props) {
                         </label>
 
                         <label style={segLabelStyle}>
-                          <input
-                            type="radio"
-                            name="archivePageSize"
-                            checked={archivePageSize === 50}
-                            onChange={() => setArchivePageSize(50)}
-                            style={segInputHidden}
-                          />
+                          <input type="radio" name="archivePageSize" checked={archivePageSize === 50} onChange={() => setArchivePageSize(50)} style={segInputHidden} />
                           <span style={segPill(archivePageSize === 50)}>
                             <span style={segDot(archivePageSize === 50)} aria-hidden="true" />
                             50件
@@ -1680,6 +1658,7 @@ export default function Record({ back }: Props) {
                 <p>まだ記録がないよ</p>
               ) : (
                 <>
+                  {/* （中略：ここ以下は元のまま） */}
                   <div style={{ border: '1px solid #333', borderRadius: 12, padding: 12, background: '#0f0f0f', color: '#ddd', display: 'grid', gap: 10 }}>
                     <div style={{ fontSize: 12, color: '#aaa' }}>
                       対象：絞り込み {filteredArchive.length} 件（分析対象（撮影日時あり）：{analysisTargets.length} 件）
@@ -1820,11 +1799,6 @@ export default function Record({ back }: Props) {
               )}
             </>
           )}
-
-          {/* 下部ナビ */}
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
-            <button onClick={back}>← 戻る</button>
-          </div>
         </div>
       </div>
     </PageShell>
