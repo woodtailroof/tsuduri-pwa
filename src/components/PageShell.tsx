@@ -38,6 +38,9 @@ type Props = {
   testCharacterOffset?: { right?: number; bottom?: number }
   /** ✅ キャラの不透明度（0〜1） */
   testCharacterOpacity?: number
+
+  /** ✅ スクロールバーを非表示にしたい場合（デフォルト: true） */
+  hideScrollbar?: boolean
 }
 
 const STACK_KEY = 'tsuduri_nav_stack_v1'
@@ -58,7 +61,7 @@ function readStack(): string[] {
 
 function writeStack(stack: string[]) {
   try {
-    sessionStorage.setItem(STACK_KEY, JSON.stringify(stack.slice(-50))) // 念のため上限
+    sessionStorage.setItem(STACK_KEY, JSON.stringify(stack.slice(-50)))
   } catch {
     // ignore
   }
@@ -78,23 +81,21 @@ export default function PageShell({
   bgDim = 0.55,
   bgBlur = 0,
 
-  // ✅ テストキャラ（全画面共通）
   showTestCharacter = true,
   testCharacterSrc = '/assets/character-test.png',
   testCharacterHeight = 'clamp(140px, 18vw, 220px)',
   testCharacterOffset = { right: 16, bottom: 16 },
   testCharacterOpacity = 1,
+
+  hideScrollbar = true,
 }: Props) {
   const current = useMemo(() => getPath(), [])
 
-  // ✅ この画面を「アプリ内スタック」に積む
   useEffect(() => {
     if (disableStackPush) return
 
     const stack = readStack()
     const last = stack[stack.length - 1]
-
-    // 連続で同じURLを積まない
     if (last !== current) {
       stack.push(current)
       writeStack(stack)
@@ -107,39 +108,31 @@ export default function PageShell({
 
     const stack = readStack()
 
-    // 末尾が自分なら1つ捨てる（「戻る」で今の自分を消す）
     if (stack.length && stack[stack.length - 1] === getPath()) {
       stack.pop()
     }
 
-    const prev = stack.pop() // さらに1つ戻る
+    const prev = stack.pop()
     writeStack(stack)
 
-    // ✅ 戻り先があればそこへ。無ければホームへ。
     window.location.assign(prev ?? fallbackHref)
   }, [onBack, fallbackHref])
 
-  // ✅ bgImage が未指定のときに --bg-image を "none" で潰さない（ここが超重要）
+  // ✅ bgImage 未指定時に :root の --bg-image を潰さない
   const shellStyle: CSSProperties & Record<string, string> = {
-    width: '100%',
-    height: '100svh', // ✅ iPhone Safariでも安定
-    boxSizing: 'border-box',
-    overflow: 'hidden', // ✅ この要素自体はスクロールさせない
+    width: '100vw',
+    height: '100svh',
+    overflow: 'hidden',
     position: 'relative',
 
-    // ✅ CSS変数で背景を制御（ページ単位で差し替え可能）
-    // bgImage がある時だけ上書きする。無い時は :root の値が生きる。
     ['--bg-dim' as any]: String(bgDim),
     ['--bg-blur' as any]: `${bgBlur}px`,
   }
-
-  if (bgImage) {
-    shellStyle['--bg-image' as any] = `url(${bgImage})`
-  }
+  if (bgImage) shellStyle['--bg-image' as any] = `url(${bgImage})`
 
   return (
     <div className="page-shell" style={shellStyle}>
-      {/* ✅ キャラレイヤー（固定・情報より下） */}
+      {/* ✅ キャラレイヤ（固定） */}
       {showTestCharacter && !!testCharacterSrc && (
         <div
           aria-hidden="true"
@@ -147,7 +140,7 @@ export default function PageShell({
             position: 'fixed',
             right: testCharacterOffset.right ?? 16,
             bottom: testCharacterOffset.bottom ?? 16,
-            zIndex: 5, // ✅ 情報(10+)より下
+            zIndex: 5,
             pointerEvents: 'none',
             userSelect: 'none',
             opacity: testCharacterOpacity,
@@ -157,11 +150,7 @@ export default function PageShell({
           <img
             src={testCharacterSrc}
             alt=""
-            style={{
-              height: testCharacterHeight,
-              width: 'auto',
-              display: 'block',
-            }}
+            style={{ height: testCharacterHeight, width: 'auto', display: 'block' }}
             draggable={false}
           />
         </div>
@@ -180,12 +169,19 @@ export default function PageShell({
         </button>
       )}
 
-      {/* ✅ 情報レイヤー（ここだけスクロール） */}
+      {/* ✅ 情報レイヤ：全幅スクロール（スクロールバーは画面右端に出る） */}
       <div
-        className={showBack ? 'with-back-button page-shell-inner' : 'page-shell-inner'}
+        className={[
+          'page-shell-scroll',
+          hideScrollbar ? 'scrollbar-hidden' : '',
+          showBack ? 'with-back-button' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
         style={{
           position: 'relative',
-          zIndex: 10, // ✅ キャラ(5)より上
+          zIndex: 10,
+          width: '100vw',
           height: '100svh',
           overflowY: 'auto',
           overflowX: 'hidden',
@@ -194,6 +190,7 @@ export default function PageShell({
         }}
       >
         <div
+          className="page-shell-inner"
           style={{
             maxWidth,
             margin: '0 auto',
