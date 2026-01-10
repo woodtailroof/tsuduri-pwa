@@ -39,7 +39,14 @@ type Props = {
   /** ✅ キャラの不透明度（0〜1） */
   testCharacterOpacity?: number
 
-  /** ✅ UIを読みやすくする固定スクリーン（上/下） */
+  /** ✅ UI面（カード/箱）の透過度（0〜1）デフォルト: 0.60 */
+  uiSurfaceAlpha?: number
+  /** ✅ UI面の色（RGB文字列）デフォルト: "17,17,17"（#111相当） */
+  uiSurfaceRgb?: string
+  /** ✅ UI面の境界線（RGBA）デフォルトは薄い白 */
+  uiBorderColor?: string
+
+  /** ✅ 上下スクリーン（文字の読みやすさ） */
   uiScrimTop?: boolean
   uiScrimBottom?: boolean
 }
@@ -89,6 +96,11 @@ export default function PageShell({
   testCharacterOffset = { right: 16, bottom: 16 },
   testCharacterOpacity = 1,
 
+  // ✅ UI面（透明ガラス）
+  uiSurfaceAlpha = 0.6,
+  uiSurfaceRgb = '17,17,17',
+  uiBorderColor = 'rgba(255,255,255,0.18)',
+
   // ✅ UIスクリーン
   uiScrimTop = true,
   uiScrimBottom = true,
@@ -137,18 +149,42 @@ export default function PageShell({
       className="page-shell"
       style={{
         width: '100%',
-        // ✅ 画面全体は固定してスクロールを内部に閉じ込める
         height: '100dvh',
         boxSizing: 'border-box',
         overflow: 'hidden',
         position: 'relative',
 
-        // ✅ CSS変数で背景を制御（ページ単位で差し替え可能）
+        // ✅ CSS変数（背景）
         ['--bg-image' as any]: bgImage ? `url(${bgImage})` : 'none',
         ['--bg-dim' as any]: String(bgDim),
         ['--bg-blur' as any]: `${bgBlur}px`,
+
+        // ✅ CSS変数（UI面 = 透過ガラス）
+        ['--ui-surface-rgb' as any]: uiSurfaceRgb,
+        ['--ui-surface-a' as any]: String(uiSurfaceAlpha),
+        ['--ui-surface' as any]: `rgba(${uiSurfaceRgb}, ${uiSurfaceAlpha})`,
+        ['--ui-surface-2' as any]: `rgba(${uiSurfaceRgb}, ${Math.max(0, Math.min(1, uiSurfaceAlpha + 0.08))})`,
+        ['--ui-border' as any]: uiBorderColor,
+
+        // ✅ 文字色系
+        ['--ui-text' as any]: '#e9e9e9',
+        ['--ui-text-dim' as any]: 'rgba(255,255,255,0.72)',
+        ['--ui-text-mute' as any]: 'rgba(255,255,255,0.55)',
       }}
     >
+      {/* ✅ ここで「スマホだけ UI面をもっと透過」にする */}
+      <style>
+        {`
+          @media (max-width: 640px) {
+            .page-shell{
+              --ui-surface-a: ${Math.max(0.18, uiSurfaceAlpha - 0.18)};
+              --ui-surface: rgba(var(--ui-surface-rgb), var(--ui-surface-a));
+              --ui-surface-2: rgba(var(--ui-surface-rgb), calc(var(--ui-surface-a) + 0.08));
+            }
+          }
+        `}
+      </style>
+
       {/* =========================
           背景レイヤー（固定）
          ========================= */}
@@ -190,7 +226,7 @@ export default function PageShell({
             position: 'fixed',
             right: `calc(${testCharacterOffset.right ?? 16}px + ${safeRight})`,
             bottom: `calc(${testCharacterOffset.bottom ?? 16}px + ${safeBottom})`,
-            zIndex: 20, // ✅ UIより下
+            zIndex: 20,
             pointerEvents: 'none',
             userSelect: 'none',
             opacity: testCharacterOpacity,
@@ -211,20 +247,20 @@ export default function PageShell({
       )}
 
       {/* =========================
-          UIレイヤー（スクロールするのはここだけ）
+          UIレイヤー（最前面・スクロール）
          ========================= */}
       <div
         className="page-shell-ui"
         style={{
           position: 'relative',
-          zIndex: 30, // ✅ 最前面（情報・ボタン）
+          zIndex: 30,
           height: '100dvh',
           overflowY: 'auto',
           overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
         }}
       >
-        {/* UIスクリーン（上）: タイトル/戻る周りが読みやすい */}
+        {/* UIスクリーン（上） */}
         {uiScrimTop && (
           <div
             aria-hidden="true"
@@ -234,7 +270,7 @@ export default function PageShell({
               zIndex: 40,
               height: 90,
               pointerEvents: 'none',
-              background: 'linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))',
+              background: 'linear-gradient(to bottom, rgba(0,0,0,0.45), rgba(0,0,0,0))',
             }}
           />
         )}
@@ -267,6 +303,7 @@ export default function PageShell({
             paddingTop: `calc(clamp(16px, 3vw, 24px) + ${safeTop})`,
             paddingBottom: `calc(clamp(16px, 3vw, 24px) + ${safeBottom})`,
             boxSizing: 'border-box',
+            color: 'var(--ui-text)',
           }}
         >
           {(title || subtitle) && (
@@ -278,7 +315,7 @@ export default function PageShell({
           {children}
         </div>
 
-        {/* UIスクリーン（下）: 入力欄や下部ボタンが読みやすい */}
+        {/* UIスクリーン（下） */}
         {uiScrimBottom && (
           <div
             aria-hidden="true"
@@ -288,7 +325,7 @@ export default function PageShell({
               zIndex: 40,
               height: 110,
               pointerEvents: 'none',
-              background: 'linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0))',
+              background: 'linear-gradient(to top, rgba(0,0,0,0.50), rgba(0,0,0,0))',
             }}
           />
         )}

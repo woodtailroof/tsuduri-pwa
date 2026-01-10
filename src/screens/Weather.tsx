@@ -233,11 +233,20 @@ export default function Weather({ back }: Props) {
   const highs = extremes.filter((e) => e.kind === 'high')
   const lows = extremes.filter((e) => e.kind === 'low')
 
+  const tabBtnStyle = (active: boolean) => ({
+    borderRadius: 999,
+    padding: '8px 12px',
+    border: active ? '2px solid #ff4d6d' : '1px solid var(--ui-border)',
+    background: active ? 'rgba(255,77,109,0.18)' : 'var(--ui-surface)',
+    color: active ? '#fff' : 'var(--ui-text)',
+    cursor: 'pointer',
+  })
+
   return (
     <PageShell
-      title={<h1 style={{ margin: 0 }}>☀️ Weather（釣行判断）</h1>}
+      title={<h1 style={{ margin: 0 }}☀️ Weather（釣行判断）</h1>}
       subtitle={
-        <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
+        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--ui-text-mute)' }}>
           🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
           {!online && <span style={{ marginLeft: 10, color: '#f6c' }}>📴 オフライン</span>}
         </div>
@@ -248,57 +257,27 @@ export default function Weather({ back }: Props) {
     >
       {/* タブ */}
       <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
-        <button
-          onClick={() => setTab('today')}
-          style={{
-            borderRadius: 999,
-            padding: '8px 12px',
-            border: tab === 'today' ? '2px solid #ff4d6d' : '1px solid #333',
-            background: tab === 'today' ? '#1a1115' : '#111',
-            color: '#eee',
-            cursor: 'pointer',
-          }}
-        >
+        <button onClick={() => setTab('today')} style={tabBtnStyle(tab === 'today')}>
           今日
         </button>
-        <button
-          onClick={() => setTab('tomorrow')}
-          style={{
-            borderRadius: 999,
-            padding: '8px 12px',
-            border: tab === 'tomorrow' ? '2px solid #ff4d6d' : '1px solid #333',
-            background: tab === 'tomorrow' ? '#1a1115' : '#111',
-            color: '#eee',
-            cursor: 'pointer',
-          }}
-        >
+        <button onClick={() => setTab('tomorrow')} style={tabBtnStyle(tab === 'tomorrow')}>
           明日
         </button>
-        <button
-          onClick={() => setTab('pick')}
-          style={{
-            borderRadius: 999,
-            padding: '8px 12px',
-            border: tab === 'pick' ? '2px solid #ff4d6d' : '1px solid #333',
-            background: tab === 'pick' ? '#1a1115' : '#111',
-            color: '#eee',
-            cursor: 'pointer',
-          }}
-        >
+        <button onClick={() => setTab('pick')} style={tabBtnStyle(tab === 'pick')}>
           日付指定
         </button>
 
         {tab === 'pick' && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#bbb', minWidth: 0 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ui-text-dim)', minWidth: 0 }}>
             <span style={{ fontSize: 12 }}>📅</span>
             <input
               type="date"
               value={picked}
               onChange={(e) => setPicked(e.target.value)}
               style={{
-                background: '#111',
-                color: '#eee',
-                border: '1px solid #333',
+                background: 'var(--ui-surface)',
+                color: 'var(--ui-text)',
+                border: '1px solid var(--ui-border)',
                 borderRadius: 10,
                 padding: '6px 10px',
                 maxWidth: '100%',
@@ -318,16 +297,17 @@ export default function Weather({ back }: Props) {
       <div
         style={{
           marginTop: 16,
-          border: '1px solid #333',
+          border: '1px solid var(--ui-border)',
           borderRadius: 12,
           padding: 12,
-          background: '#0f0f0f',
-          color: '#ddd',
+          background: 'var(--ui-surface-2)',
+          color: 'var(--ui-text)',
           minWidth: 0,
+          backdropFilter: 'blur(8px)',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
-          <div style={{ fontSize: 12, color: '#aaa', minWidth: 0 }}>📅 {targetDate.toLocaleDateString()}</div>
+          <div style={{ fontSize: 12, color: 'var(--ui-text-mute)', minWidth: 0 }}>📅 {targetDate.toLocaleDateString()}</div>
 
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
             {state.status === 'ok' &&
@@ -354,7 +334,9 @@ export default function Weather({ back }: Props) {
         </div>
 
         {state.status === 'ok' && !state.tideName && (
-          <div style={{ marginTop: 8, fontSize: 12, color: '#888' }}>※潮名（大潮など）が未取得のキャッシュです（TTL切れで再取得されたタイミングで入ります）</div>
+          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--ui-text-mute)' }}>
+            ※潮名（大潮など）が未取得のキャッシュです（TTL切れで再取得されたタイミングで入ります）
+          </div>
         )}
 
         {state.status === 'ok' && !online && state.source === 'stale-cache' && (
@@ -366,20 +348,30 @@ export default function Weather({ back }: Props) {
 
       {/* 満潮/干潮 */}
       <div style={{ marginTop: 12, display: 'grid', gap: 10, minWidth: 0 }}>
-        <div style={{ border: '1px solid #333', borderRadius: 12, padding: 12, background: '#111', color: '#ddd', minWidth: 0 }}>
+        <div
+          style={{
+            border: '1px solid var(--ui-border)',
+            borderRadius: 12,
+            padding: 12,
+            background: 'var(--ui-surface)',
+            color: 'var(--ui-text)',
+            minWidth: 0,
+            backdropFilter: 'blur(8px)',
+          }}
+        >
           <div style={{ fontWeight: 700, marginBottom: 6 }}>🟡 満潮 / 🔵 干潮</div>
 
           {state.status !== 'ok' ? (
-            <div style={{ fontSize: 12, color: '#888' }}>データ準備中…</div>
+            <div style={{ fontSize: 12, color: 'var(--ui-text-mute)' }}>データ準備中…</div>
           ) : state.series.length === 0 ? (
-            <div style={{ fontSize: 12, color: '#888' }}>
+            <div style={{ fontSize: 12, color: 'var(--ui-text-mute)' }}>
               {!online ? '📴 オフラインで、この日のキャッシュが無いよ（オンライン復帰後に取得できる）' : '潮位データが無いよ'}
             </div>
           ) : extremes.length === 0 ? (
-            <div style={{ fontSize: 12, color: '#888' }}>極値がうまく取れなかったよ（データ不足かも）</div>
+            <div style={{ fontSize: 12, color: 'var(--ui-text-mute)' }}>極値がうまく取れなかったよ（データ不足かも）</div>
           ) : (
             <div style={{ display: 'grid', gap: 8, fontSize: 12 }}>
-              <div style={{ color: '#bbb' }}>
+              <div style={{ color: 'var(--ui-text-dim)' }}>
                 🟡 満潮：
                 {highs.length ? (
                   highs.map((e, i) => (
@@ -392,7 +384,7 @@ export default function Weather({ back }: Props) {
                   <span> -</span>
                 )}
               </div>
-              <div style={{ color: '#bbb' }}>
+              <div style={{ color: 'var(--ui-text-dim)' }}>
                 🔵 干潮：
                 {lows.length ? (
                   lows.map((e, i) => (
@@ -419,12 +411,11 @@ export default function Weather({ back }: Props) {
         </div>
       </div>
 
-      {/* ✅ ここにあった「← 戻る」は撤去（右上固定へ） */}
       {state.status === 'ok' && (
-        <div style={{ marginTop: 18, fontSize: 12, color: '#777', minWidth: 0, overflowWrap: 'anywhere' }}>
+        <div style={{ marginTop: 18, fontSize: 12, color: 'var(--ui-text-mute)', minWidth: 0, overflowWrap: 'anywhere' }}>
           key: {FIXED_PORT.pc}:{FIXED_PORT.hc}:{state.dayKey}
         </div>
       )}
-          </PageShell>
+    </PageShell>
   )
 }
