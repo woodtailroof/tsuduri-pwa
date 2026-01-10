@@ -1,21 +1,18 @@
-/* =========================
-   index.css（統一・洗練 + ラジオ綺麗版）
-   ========================= */
+/* index.css */
 
-/* iOS Safari: 自動ズーム防止 */
+/* iOS Safari: 入力欄が原因の自動ズームを防ぐ */
 input,
 textarea,
-select,
-button {
+select {
   font-size: 16px;
 }
 
-/* iOSの謎拡大抑制 */
+/* iOSの謎の文字拡大を抑制 */
 html {
   -webkit-text-size-adjust: 100%;
 }
 
-/* リセット */
+/* 基本リセット */
 *,
 *::before,
 *::after {
@@ -28,35 +25,51 @@ body,
   height: 100%;
 }
 
+/* ✅ 微妙な横はみ出しを根絶（iOS含む） */
 html,
 body {
   margin: 0;
   overflow-x: hidden;
-  background: #f6f7f8;
-  color: #111;
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    "Hiragino Sans",
-    "Noto Sans JP",
-    sans-serif;
 }
 
+/* iOSの1pxスクロール対策の保険 */
 body {
   position: relative;
 }
 
-/* Vite由来の制約解除 */
+/* ===== ベースの見た目（土台） ===== */
+:root {
+  color-scheme: dark;
+  --text: rgba(255, 255, 255, 0.92);
+  --muted: rgba(255, 255, 255, 0.68);
+  --line: rgba(255, 255, 255, 0.14);
+
+  /* 背景の“空気” */
+  --bg-base-0: #07080b;
+  --bg-base-1: #0b0d13;
+  --bg-accent: rgba(255, 77, 109, 0.18);
+}
+
+body {
+  color: var(--text);
+  background:
+    radial-gradient(1000px 700px at 20% -10%, var(--bg-accent), transparent 55%),
+    radial-gradient(900px 600px at 110% 10%, rgba(110, 207, 255, 0.10), transparent 60%),
+    linear-gradient(180deg, var(--bg-base-0), var(--bg-base-1));
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP",
+    "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+}
+
+/* Viteテンプレ由来のroot縛りを解除（PageShellに任せる） */
 #root {
   width: 100%;
   max-width: none;
   margin: 0;
   padding: 0;
+  text-align: initial;
 }
 
-/* メディア安全 */
+/* スマホで崩れやすい要素を守る */
 img,
 svg,
 canvas,
@@ -70,145 +83,69 @@ code {
   overflow-x: auto;
 }
 
-/* =========================
-   タイポグラフィ
-   ========================= */
-
+/* 見出し：スマホ最優先 */
 h1 {
-  font-size: 22px;
-  line-height: 1.3;
-  margin: 0 0 12px;
-  font-weight: 700;
+  font-size: clamp(22px, 7vw, 40px);
+  line-height: 1.1;
+  margin: 0 0 10px;
+  letter-spacing: -0.02em;
 }
 
 h2 {
-  font-size: 17px;
-  line-height: 1.4;
+  font-size: clamp(18px, 5.8vw, 28px);
+  line-height: 1.15;
   margin: 0 0 10px;
-  font-weight: 600;
 }
 
 h3 {
-  font-size: 15px;
-  line-height: 1.4;
+  font-size: clamp(16px, 4.8vw, 22px);
+  line-height: 1.2;
   margin: 0 0 8px;
-  font-weight: 600;
 }
 
 p,
-li,
-label {
-  font-size: 15px;
+li {
+  font-size: 16px;
   line-height: 1.6;
 }
 
-/* ✅ 改行ルール（日本語を1文字ずつ折らない） */
-p, li, div, span, label, h1, h2, h3 {
-  overflow-wrap: break-word; /* 長い英数字だけ折る */
-  word-break: normal;        /* 日本語は自然に */
-  line-break: loose;
-}
-
-/* =========================
-   共通レイアウト
-   ========================= */
-
-section {
-  margin-bottom: 24px;
-}
-
-.safe-area-bottom {
-  padding-bottom: max(16px, env(safe-area-inset-bottom));
-}
-
-/* =========================
-   カード（黒UI）
-   ========================= */
-
-.black-card {
-  background: linear-gradient(180deg, #1a1a1a, #111);
-  color: #fff;
-  border-radius: 18px;
-  padding: 16px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
-
-  /* 文字が収まりやすいよう少しだけ小さめ */
-  font-size: 14px;
-
-  /* 横に長い内容（セグメント等）があれば横スクロールで逃がす */
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* 黒カード内は “文字の縦積み” をさらに抑制 */
-.black-card * {
-  word-break: normal;
-  overflow-wrap: break-word;
-}
-
-/* =========================
-   ボタン（透過・統一）
-   ========================= */
-
+/* 入力は16px以上（buttonも揃える） */
+input,
+textarea,
+select,
 button {
-  appearance: none;
-  border: 1px solid rgba(255,255,255,0.35);
-  background: rgba(255,255,255,0.55);
-  color: #111;
-  border-radius: 999px;
-  padding: 10px 18px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.15s ease;
-  max-width: 100%;
-  min-width: 0;
+  font-size: 16px;
 }
 
-button:hover {
-  background: rgba(255,255,255,0.75);
-}
-
-button:active {
-  transform: translateY(1px);
-}
-
-/* 黒背景用ボタン */
-.black-card button {
-  background: rgba(255,255,255,0.08);
-  color: #fff;
-  border: 1px solid rgba(255,255,255,0.25);
-}
-
-/* =========================
-   入力欄
-   ========================= */
-
+/* ✅ 入力のはみ出し特効薬セット */
 input,
 textarea,
 select {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  border-radius: 14px;
-  border: 1px solid #ddd;
-  padding: 10px 12px;
-  background: #fff;
 }
 
-textarea {
-  resize: vertical;
+/* ボタンもはみ出し抑制 */
+button {
+  max-width: 100%;
+  min-width: 0;
 }
 
-/* =========================
-   横スクロール
-   ========================= */
+/* 長いテキストが横に突き抜けるのを防ぐ（全要素はやりすぎなので限定） */
+p, li, div, span, label, h1, h2, h3 {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 
+/* ✅ 横スワイプ用の汎用クラス（Recordの一覧に当てる） */
 .horizontal-scroll {
   display: flex;
   gap: 12px;
   overflow-x: auto;
   overflow-y: hidden;
   width: 100%;
+  max-width: 100%;
   padding: 6px 2px 10px;
   -webkit-overflow-scrolling: touch;
   scroll-snap-type: x mandatory;
@@ -220,106 +157,162 @@ textarea {
   min-width: 0;
 }
 
-/* =========================
-   戻るボタン統一（PageShell用）
-   ========================= */
+/* safe-area対応（iPhone下のホームバー回避） */
+.safe-area-bottom {
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
 
+/* =========================================================
+   ✅ PageShell背景レイヤー（全画面共通）
+   ========================================================= */
+.page-shell {
+  position: relative;
+  isolation: isolate; /* 背景をこの要素内で完結 */
+}
+
+.page-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+
+  background:
+    radial-gradient(1000px 700px at 20% -10%, var(--bg-accent), transparent 55%),
+    radial-gradient(900px 600px at 110% 10%, rgba(110, 207, 255, 0.10), transparent 60%),
+    linear-gradient(180deg, var(--bg-base-0), var(--bg-base-1)),
+    var(--bg-image);
+
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+
+  filter: blur(var(--bg-blur));
+  transform: translateZ(0);
+}
+
+.page-shell::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+
+  background:
+    linear-gradient(180deg, rgba(0,0,0, calc(var(--bg-dim) + 0.10)), rgba(0,0,0, var(--bg-dim))),
+    radial-gradient(800px 500px at 50% 30%, rgba(255,255,255,0.06), transparent 65%);
+  pointer-events: none;
+}
+
+.page-shell-inner {
+  position: relative;
+  z-index: 0;
+}
+
+/* =========================================================
+   ✅ 戻るボタン（右上固定に統一）
+   ========================================================= */
 .back-button {
   position: fixed;
+  z-index: 50;
+
+  /* iOSノッチ回避 */
   top: max(10px, env(safe-area-inset-top));
-  left: 10px;
-  z-index: 1000;
-  padding: 10px 14px;
-}
+  right: max(10px, env(safe-area-inset-right));
+  left: auto;
 
-.with-back-button {
-  padding-top: 56px;
-}
+  width: auto;
+  max-width: calc(100vw - 20px);
 
-/* =========================
-   ✅ ラジオ選択（セグメント風に美化）
-   ========================= */
+  border: 1px solid var(--line);
+  border-radius: 999px;
 
-/* 黒カード内のラジオは “1行固定” で崩れないように */
-.black-card label {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
+  padding: 8px 12px;
+  line-height: 1;
   white-space: nowrap;
-  line-break: strict;
+
+  color: rgba(255,255,255,0.92);
+  background: rgba(10, 10, 12, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+
+  cursor: pointer;
 }
 
-/* ラジオ自体の見た目を上品に（ネイティブを活かしつつ） */
-.black-card input[type="radio"] {
-  flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  accent-color: #ff4d7d; /* ピンク寄りアクセント */
-}
-
-/*
-  セグメントっぽい“選択エリア”を自動で作る：
-  - よくある構造：黒カード内に複数label（各labelにradio）
-  - label群が並ぶ親要素が div でも section でも効くようにゆるく指定
-*/
-
-/* ラジオが2つ以上並ぶ行を想定して、親が横並びになりやすいよう補助 */
-.black-card .radio-row,
-.black-card .radio-group,
-.black-card .result-choice {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap; /* スマホは2行に逃がす */
-}
-
-/* labelを “押せるチップ” にする（中身が短いほど綺麗） */
-.black-card label:has(input[type="radio"]) {
-  padding: 10px 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.22);
-  background: rgba(255,255,255,0.06);
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
-  transition: transform 0.12s ease, background 0.2s ease, border-color 0.2s ease;
-}
-
-/* hover（PC） */
-.black-card label:has(input[type="radio"]):hover {
-  background: rgba(255,255,255,0.10);
-}
-
-/* 押した時の気持ちよさ */
-.black-card label:has(input[type="radio"]):active {
+.back-button:active {
   transform: translateY(1px);
 }
 
-/* 選択中のチップは浮かせて主役に */
-.black-card label:has(input[type="radio"]:checked) {
-  background: rgba(255,77,125,0.18);
-  border-color: rgba(255,77,125,0.55);
-  box-shadow:
-    0 6px 18px rgba(0,0,0,0.22),
-    inset 0 0 0 1px rgba(255,77,125,0.25);
+/* 戻るボタン分だけ上に余白を足して、タイトルに被せない */
+.with-back-button {
+  padding-top: 44px;
 }
 
-/* Safariなど :has が効かない環境の保険（最低限崩れない） */
-@supports not selector(:has(*)) {
-  .black-card label {
-    padding: 8px 12px;
-    border-radius: 16px;
-    border: 1px solid rgba(255,255,255,0.18);
-    background: rgba(255,255,255,0.05);
+/* =========================================================
+   ✅ 透過UIの“質感”ベース
+   ========================================================= */
+button {
+  border: 1px solid var(--line);
+  color: rgba(255,255,255,0.9);
+  background: rgba(255,255,255,0.06);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+
+button:disabled {
+  opacity: 0.55;
+}
+
+input,
+textarea,
+select {
+  border: 1px solid var(--line);
+  color: rgba(255,255,255,0.92);
+  background: rgba(0,0,0,0.28);
+  border-radius: 12px;
+  padding: 10px 12px;
+  outline: none;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: rgba(255, 77, 109, 0.55);
+}
+
+/* 以下は元のまま（使ってないなら消してOK） */
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
-/* =========================
-   不要スタイル（Vite残骸）
-   ========================= */
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
 
-.logo,
-.logo:hover,
-.logo.react:hover,
-.read-the-docs,
 .card {
-  all: unset;
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
 }
