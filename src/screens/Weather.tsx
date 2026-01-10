@@ -133,7 +133,6 @@ function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
     .filter((e) => e.kind === 'high')
     .sort((a, b) => a.min - b.min)
     .slice(0, 2)
-
   const lows = merged
     .filter((e) => e.kind === 'low')
     .sort((a, b) => a.min - b.min)
@@ -152,14 +151,7 @@ function sourceLabel(source: TideCacheSource | null, isStale: boolean) {
 type LoadState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | {
-      status: 'ok'
-      series: TidePoint[]
-      tideName: string | null
-      source: TideCacheSource
-      isStale: boolean
-      dayKey: string
-    }
+  | { status: 'ok'; series: TidePoint[]; tideName: string | null; source: TideCacheSource; isStale: boolean; dayKey: string }
   | { status: 'error'; message: string }
 
 export default function Weather({ back }: Props) {
@@ -167,7 +159,6 @@ export default function Weather({ back }: Props) {
   const [picked, setPicked] = useState<string>(toDateInputValue(new Date()))
 
   const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true)
-
   const [state, setState] = useState<LoadState>({ status: 'idle' })
 
   useEffect(() => {
@@ -230,7 +221,6 @@ export default function Weather({ back }: Props) {
 
   const now = new Date()
   const highlightAt = useMemo(() => {
-    // 今日だけ「今」を赤マーカー。別日だと意味がズレるのでオフにする
     if (sameDay(targetDate, now)) return now
     return null
   }, [targetDate, now])
@@ -253,6 +243,8 @@ export default function Weather({ back }: Props) {
         </div>
       }
       maxWidth={980}
+      showBack
+      onBack={back}
     >
       {/* タブ */}
       <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
@@ -366,7 +358,9 @@ export default function Weather({ back }: Props) {
         )}
 
         {state.status === 'ok' && !online && state.source === 'stale-cache' && (
-          <div style={{ marginTop: 8, fontSize: 12, color: '#f6c' }}>⚠ オフラインのため、期限切れキャッシュで表示中（オンライン復帰後に再取得できます）</div>
+          <div style={{ marginTop: 8, fontSize: 12, color: '#f6c' }}>
+            ⚠ オフラインのため、期限切れキャッシュで表示中（オンライン復帰後に再取得できます）
+          </div>
         )}
       </div>
 
@@ -398,7 +392,6 @@ export default function Weather({ back }: Props) {
                   <span> -</span>
                 )}
               </div>
-
               <div style={{ color: '#bbb' }}>
                 🔵 干潮：
                 {lows.length ? (
@@ -419,30 +412,21 @@ export default function Weather({ back }: Props) {
         {/* グラフ */}
         <div style={{ minWidth: 0 }}>
           {state.status === 'ok' && state.series.length > 0 ? (
-            <TideGraph
-              series={state.series}
-              baseDate={targetDate}
-              highlightAt={highlightAt}
-              // ✅ 縦軸固定（-50〜200）
-              yDomain={{ min: -50, max: 200 }}
-            />
+            <TideGraph series={state.series} baseDate={targetDate} highlightAt={highlightAt} yDomain={{ min: -50, max: 200 }} />
           ) : (
             <TideGraph series={[]} baseDate={targetDate} highlightAt={null} yDomain={{ min: -50, max: 200 }} />
           )}
         </div>
       </div>
 
-      <div style={{ marginTop: 18, display: 'flex', gap: 12, flexWrap: 'wrap', minWidth: 0 }}>
-        <button onClick={back}>← 戻る</button>
+      {/* ✅ ここにあった「← 戻る」は撤去（右上固定へ） */}
+      {state.status === 'ok' && (
+        <div style={{ marginTop: 18, fontSize: 12, color: '#777', minWidth: 0, overflowWrap: 'anywhere' }}>
+          key: {FIXED_PORT.pc}:{FIXED_PORT.hc}:{state.dayKey}
+        </div>
+      )}
 
-        {state.status === 'ok' && (
-          <div style={{ fontSize: 12, color: '#777', alignSelf: 'center', minWidth: 0, overflowWrap: 'anywhere' }}>
-            key: {FIXED_PORT.pc}:{FIXED_PORT.hc}:{state.dayKey}
-          </div>
-        )}
-      </div>
-
-      {/* 将来拡張：天気（風/雨/気温など） */}
+      <div style={{ marginTop: 18, fontSize: 12, color: '#666' }}>💬 つづり：「これで“小潮が盛られる問題”は成敗っ…♡」</div>
     </PageShell>
   )
 }
