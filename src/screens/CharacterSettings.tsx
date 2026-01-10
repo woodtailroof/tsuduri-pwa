@@ -1,5 +1,6 @@
 // src/screens/CharacterSettings.tsx
 import { useEffect, useMemo, useRef, useState } from 'react'
+import PageShell from '../components/PageShell'
 
 type Props = {
   back: () => void
@@ -454,261 +455,278 @@ export default function CharacterSettings({ back }: Props) {
   const backupInfo = useMemo(() => safeReadBackup(), [characters])
 
   return (
-    <div style={{ padding: 24, display: 'grid', gap: 14 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-        <h1 style={{ margin: 0 }}>🎭 キャラ管理</h1>
+    <PageShell title={<h1 style={{ margin: 0 }}>🎭 キャラ管理</h1>} maxWidth={1100} showBack={false}>
+      <style>{`
+        .cs-grid {
+          display: grid;
+          grid-template-columns: 280px minmax(0, 1fr);
+          gap: 14px;
+          align-items: start;
+        }
+        @media (max-width: 860px) {
+          .cs-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
 
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {dirty && (
-            <span style={{ fontSize: 12, color: '#ffb' }} title="未保存の変更があります">
-              ● 未保存
-            </span>
-          )}
-          <button onClick={handleBack}>← 戻る</button>
-        </div>
-      </div>
-
-      <div style={{ fontSize: 12, color: '#777' }}>
-        ※ キャラはローカル（端末ごと）に保存されます。スマホとPCで自動同期はされません。必要なら下の「エクスポート / インポート」で移せます。
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 14, alignItems: 'start' }}>
-        {/* Left: list */}
-        <div
-          style={{
-            border: '1px solid #333',
-            borderRadius: 12,
-            padding: 12,
-            background: '#0f0f0f',
-            color: '#ddd',
-            display: 'grid',
-            gap: 10,
-          }}
-        >
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={createNew} style={{ flex: 1 }}>
-              ➕ 新規
-            </button>
-            <button type="button" onClick={duplicateCurrent} style={{ flex: 1 }}>
-              🧬 複製
-            </button>
-          </div>
-
-          <button type="button" onClick={deleteCurrent} style={{ opacity: 0.9 }}>
-            🗑 選択中を削除
-          </button>
-
-          <button type="button" onClick={openIO} style={{ opacity: 0.95 }}>
-            📦 エクスポート / インポート
-          </button>
-
-          <button
-            type="button"
-            onClick={restoreFromBackup}
-            style={{ opacity: backupInfo?.characters?.length ? 0.95 : 0.4 }}
-            disabled={!backupInfo?.characters?.length}
-            title={backupInfo?.exportedAt ? `最終バックアップ: ${backupInfo.exportedAt}` : 'バックアップなし'}
-          >
-            🛟 直近バックアップから復元
-          </button>
-
-          <hr style={{ opacity: 0.25, margin: '6px 0' }} />
-
-          <div style={{ fontSize: 12, color: '#aaa' }}>キャラ一覧（クリックで選択）</div>
-
-          <div style={{ display: 'grid', gap: 8, maxHeight: 420, overflowY: 'auto' }}>
-            {characters.map((c) => {
-              const active = c.id === selectedId
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setSelectedId(c.id)}
-                  style={{
-                    textAlign: 'left',
-                    padding: '10px 10px',
-                    borderRadius: 10,
-                    border: '1px solid #333',
-                    background: active ? '#1b1b1b' : '#111',
-                    color: active ? '#fff' : '#ddd',
-                    cursor: 'pointer',
-                  }}
-                  title={c.description?.slice(0, 80)}
-                >
-                  <div style={{ fontWeight: 800 }}>{c.name}</div>
-                  <div style={{ fontSize: 12, color: '#aaa', marginTop: 2 }}>
-                    一人称: {c.selfName} / 呼称: {c.callUser}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#777', marginTop: 2 }}>長さ: {c.replyLength}</div>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Right: editor */}
-        <div
-          style={{
-            border: '1px solid #333',
-            borderRadius: 12,
-            padding: 12,
-            background: '#0f0f0f',
-            color: '#ddd',
-            display: 'grid',
-            gap: 12,
-          }}
-        >
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ fontSize: 12, color: '#aaa' }}>選択中：</div>
-            <div style={{ fontWeight: 800 }}>{draft.name || '（未入力）'}</div>
-
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-              <button type="button" onClick={save} disabled={!dirty} title="保存">
-                💾 保存
-              </button>
-              <button type="button" onClick={saveAndBack} title="保存して戻る">
-                ✅ 保存して戻る
-              </button>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <label style={{ fontSize: 12, color: '#bbb' }}>
-              名前（表示名）：
-              <input value={draft.name} onChange={(e) => updateDraft({ name: e.target.value })} style={{ marginLeft: 8, width: 220 }} />
-            </label>
-
-            <label style={{ fontSize: 12, color: '#bbb' }}>
-              自称（一人称）：
-              <input value={draft.selfName} onChange={(e) => updateDraft({ selfName: e.target.value })} style={{ marginLeft: 8, width: 140 }} />
-            </label>
-
-            <label style={{ fontSize: 12, color: '#bbb' }}>
-              ユーザー呼称：
-              <input value={draft.callUser} onChange={(e) => updateDraft({ callUser: e.target.value })} style={{ marginLeft: 8, width: 140 }} />
-            </label>
-          </div>
-
-          <label style={{ fontSize: 12, color: '#bbb' }}>
-            返答の長さ：
-            <select value={draft.replyLength} onChange={(e) => updateDraft({ replyLength: e.target.value as ReplyLength })} style={{ marginLeft: 8 }}>
-              <option value="short">短め</option>
-              <option value="medium">標準</option>
-              <option value="long">長め</option>
-            </select>
-            <span style={{ marginLeft: 10, fontSize: 11, color: '#777' }}>※ここは max_output_tokens に直結（体感差が出る）</span>
-          </label>
-
-          {/* カラー */}
-          <label style={{ fontSize: 12, color: '#bbb' }}>
-            テーマカラー：
-            <input
-              type="color"
-              value={normalizeHexColor(draft.color, DEFAULT_CHARACTER.color ?? '#ff7aa2')}
-              onChange={(e) => updateDraft({ color: e.target.value })}
-              style={{ marginLeft: 8, verticalAlign: 'middle' }}
-            />
-            <span style={{ marginLeft: 8, fontSize: 11, color: '#777' }}>{normalizeHexColor(draft.color, DEFAULT_CHARACTER.color ?? '#ff7aa2')}</span>
-          </label>
-
-          <label style={{ fontSize: 12, color: '#bbb' }}>
-            キャラクター設定（自由記述）：
-            <textarea
-              value={draft.description}
-              onChange={(e) => updateDraft({ description: e.target.value })}
-              rows={10}
-              style={{ width: '100%', marginTop: 6, lineHeight: 1.5 }}
-              placeholder="性格・距離感・雰囲気・釣りとの関係…好きに書いてOK"
-            />
-            <div style={{ fontSize: 11, color: '#777', marginTop: 6 }}>
-              コツ：ルールを増やしすぎず、「どんな子か」の雰囲気だけ書くと生き物っぽくなるよ。
-            </div>
-          </label>
-
-          <div style={{ fontSize: 12, color: '#777' }}>
-            保存先：localStorage key = <code>{CHARACTERS_STORAGE_KEY}</code> / 選択中 = <code style={{ marginLeft: 6 }}>{SELECTED_CHARACTER_ID_KEY}</code>
-          </div>
-        </div>
-      </div>
-
-      {/* Export / Import panel */}
-      {ioOpen && (
-        <div
-          style={{
-            border: '1px solid #333',
-            borderRadius: 12,
-            padding: 12,
-            background: '#0f0f0f',
-            color: '#ddd',
-            display: 'grid',
-            gap: 10,
-          }}
-        >
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ fontWeight: 900 }}>📦 エクスポート / インポート</div>
-
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button type="button" onClick={copyExportToClipboard}>
-                📋 コピー
-              </button>
-              <button type="button" onClick={downloadExport}>
-                ⬇️ JSON保存
-              </button>
-              <button type="button" onClick={() => setIoOpen(false)}>
-                ✖ 閉じる
-              </button>
-            </div>
-          </div>
-
-          <div style={{ fontSize: 12, color: '#888' }}>
-            使い方：PCでエクスポート → スマホでこの欄に貼り付け → インポート。  
-            「追加（merge）」なら既存キャラを残したまま増やせるよ（idが被ったら自動で末尾に -2 とか付ける）。
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ fontSize: 12, color: '#bbb' }}>
-              インポート方式：
-              <select value={ioMode} onChange={(e) => setIoMode(e.target.value as ImportMode)} style={{ marginLeft: 8 }}>
-                <option value="merge">追加（merge）</option>
-                <option value="overwrite">上書き（overwrite）</option>
-              </select>
-            </label>
-
-            <button type="button" onClick={importFromText} style={{ fontWeight: 800 }}>
-              ⬆️ このJSONをインポート
-            </button>
-
-            {backupInfo?.exportedAt && (
-              <span style={{ fontSize: 12, color: '#777' }} title="直近バックアップ">
-                🛟 backup: {backupInfo.exportedAt}
+      <div style={{ display: 'grid', gap: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {dirty && (
+              <span style={{ fontSize: 12, color: '#ffb' }} title="未保存の変更があります">
+                ● 未保存
               </span>
             )}
           </div>
 
-          <textarea
-            value={ioText}
-            onChange={(e) => setIoText(e.target.value)}
-            rows={12}
-            style={{
-              width: '100%',
-              borderRadius: 10,
-              border: '1px solid #333',
-              background: '#111',
-              color: '#eee',
-              padding: 10,
-              lineHeight: 1.45,
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-              fontSize: 12,
-            }}
-          />
-
-          {ioMsg && (
-            <div style={{ fontSize: 12, color: ioMsg.startsWith('❌') ? '#ff9aa2' : ioMsg.startsWith('⚠️') ? '#ffd08a' : '#bfffbf' }}>
-              {ioMsg}
-            </div>
-          )}
+          <button onClick={handleBack}>← 戻る</button>
         </div>
-      )}
-    </div>
+
+        <div style={{ fontSize: 12, color: '#777' }}>
+          ※ キャラはローカル（端末ごと）に保存されます。スマホとPCで自動同期はされません。必要なら下の「エクスポート / インポート」で移せます。
+        </div>
+
+        <div className="cs-grid">
+          {/* Left: list */}
+          <div
+            style={{
+              border: '1px solid #333',
+              borderRadius: 12,
+              padding: 12,
+              background: '#0f0f0f',
+              color: '#ddd',
+              display: 'grid',
+              gap: 10,
+              minWidth: 0,
+            }}
+          >
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={createNew} style={{ flex: 1 }}>
+                ➕ 新規
+              </button>
+              <button type="button" onClick={duplicateCurrent} style={{ flex: 1 }}>
+                🧬 複製
+              </button>
+            </div>
+
+            <button type="button" onClick={deleteCurrent} style={{ opacity: 0.9 }}>
+              🗑 選択中を削除
+            </button>
+
+            <button type="button" onClick={openIO} style={{ opacity: 0.95 }}>
+              📦 エクスポート / インポート
+            </button>
+
+            <button
+              type="button"
+              onClick={restoreFromBackup}
+              style={{ opacity: backupInfo?.characters?.length ? 0.95 : 0.4 }}
+              disabled={!backupInfo?.characters?.length}
+              title={backupInfo?.exportedAt ? `最終バックアップ: ${backupInfo.exportedAt}` : 'バックアップなし'}
+            >
+              🛟 直近バックアップから復元
+            </button>
+
+            <hr style={{ opacity: 0.25, margin: '6px 0' }} />
+
+            <div style={{ fontSize: 12, color: '#aaa' }}>キャラ一覧（クリックで選択）</div>
+
+            <div style={{ display: 'grid', gap: 8, maxHeight: 420, overflowY: 'auto' }}>
+              {characters.map((c) => {
+                const active = c.id === selectedId
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setSelectedId(c.id)}
+                    style={{
+                      textAlign: 'left',
+                      padding: '10px 10px',
+                      borderRadius: 10,
+                      border: '1px solid #333',
+                      background: active ? '#1b1b1b' : '#111',
+                      color: active ? '#fff' : '#ddd',
+                      cursor: 'pointer',
+                    }}
+                    title={c.description?.slice(0, 80)}
+                  >
+                    <div style={{ fontWeight: 800 }}>{c.name}</div>
+                    <div style={{ fontSize: 12, color: '#aaa', marginTop: 2 }}>
+                      一人称: {c.selfName} / 呼称: {c.callUser}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#777', marginTop: 2 }}>長さ: {c.replyLength}</div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Right: editor */}
+          <div
+            style={{
+              border: '1px solid #333',
+              borderRadius: 12,
+              padding: 12,
+              background: '#0f0f0f',
+              color: '#ddd',
+              display: 'grid',
+              gap: 12,
+              minWidth: 0,
+            }}
+          >
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 12, color: '#aaa' }}>選択中：</div>
+              <div style={{ fontWeight: 800 }}>{draft.name || '（未入力）'}</div>
+
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" onClick={save} disabled={!dirty} title="保存">
+                  💾 保存
+                </button>
+                <button type="button" onClick={saveAndBack} title="保存して戻る">
+                  ✅ 保存して戻る
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 12, color: '#bbb' }}>
+                名前（表示名）：
+                <input value={draft.name} onChange={(e) => updateDraft({ name: e.target.value })} style={{ marginLeft: 8, width: 220, maxWidth: '100%' }} />
+              </label>
+
+              <label style={{ fontSize: 12, color: '#bbb' }}>
+                自称（一人称）：
+                <input value={draft.selfName} onChange={(e) => updateDraft({ selfName: e.target.value })} style={{ marginLeft: 8, width: 140, maxWidth: '100%' }} />
+              </label>
+
+              <label style={{ fontSize: 12, color: '#bbb' }}>
+                ユーザー呼称：
+                <input value={draft.callUser} onChange={(e) => updateDraft({ callUser: e.target.value })} style={{ marginLeft: 8, width: 140, maxWidth: '100%' }} />
+              </label>
+            </div>
+
+            <label style={{ fontSize: 12, color: '#bbb' }}>
+              返答の長さ：
+              <select value={draft.replyLength} onChange={(e) => updateDraft({ replyLength: e.target.value as ReplyLength })} style={{ marginLeft: 8 }}>
+                <option value="short">短め</option>
+                <option value="medium">標準</option>
+                <option value="long">長め</option>
+              </select>
+              <span style={{ marginLeft: 10, fontSize: 11, color: '#777' }}>※ここは max_output_tokens に直結（体感差が出る）</span>
+            </label>
+
+            {/* カラー */}
+            <label style={{ fontSize: 12, color: '#bbb' }}>
+              テーマカラー：
+              <input
+                type="color"
+                value={normalizeHexColor(draft.color, DEFAULT_CHARACTER.color ?? '#ff7aa2')}
+                onChange={(e) => updateDraft({ color: e.target.value })}
+                style={{ marginLeft: 8, verticalAlign: 'middle' }}
+              />
+              <span style={{ marginLeft: 8, fontSize: 11, color: '#777' }}>{normalizeHexColor(draft.color, DEFAULT_CHARACTER.color ?? '#ff7aa2')}</span>
+            </label>
+
+            <label style={{ fontSize: 12, color: '#bbb' }}>
+              キャラクター設定（自由記述）：
+              <textarea
+                value={draft.description}
+                onChange={(e) => updateDraft({ description: e.target.value })}
+                rows={10}
+                style={{ width: '100%', marginTop: 6, lineHeight: 1.5 }}
+                placeholder="性格・距離感・雰囲気・釣りとの関係…好きに書いてOK"
+              />
+              <div style={{ fontSize: 11, color: '#777', marginTop: 6 }}>
+                コツ：ルールを増やしすぎず、「どんな子か」の雰囲気だけ書くと生き物っぽくなるよ。
+              </div>
+            </label>
+
+            <div style={{ fontSize: 12, color: '#777' }}>
+              保存先：localStorage key = <code>{CHARACTERS_STORAGE_KEY}</code> / 選択中 = <code style={{ marginLeft: 6 }}>{SELECTED_CHARACTER_ID_KEY}</code>
+            </div>
+          </div>
+        </div>
+
+        {/* Export / Import panel */}
+        {ioOpen && (
+          <div
+            style={{
+              border: '1px solid #333',
+              borderRadius: 12,
+              padding: 12,
+              background: '#0f0f0f',
+              color: '#ddd',
+              display: 'grid',
+              gap: 10,
+            }}
+          >
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ fontWeight: 900 }}>📦 エクスポート / インポート</div>
+
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" onClick={copyExportToClipboard}>
+                  📋 コピー
+                </button>
+                <button type="button" onClick={downloadExport}>
+                  ⬇️ JSON保存
+                </button>
+                <button type="button" onClick={() => setIoOpen(false)}>
+                  ✖ 閉じる
+                </button>
+              </div>
+            </div>
+
+            <div style={{ fontSize: 12, color: '#888' }}>
+              使い方：PCでエクスポート → スマホでこの欄に貼り付け → インポート。  
+              「追加（merge）」なら既存キャラを残したまま増やせるよ（idが被ったら自動で末尾に -2 とか付ける）。
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 12, color: '#bbb' }}>
+                インポート方式：
+                <select value={ioMode} onChange={(e) => setIoMode(e.target.value as ImportMode)} style={{ marginLeft: 8 }}>
+                  <option value="merge">追加（merge）</option>
+                  <option value="overwrite">上書き（overwrite）</option>
+                </select>
+              </label>
+
+              <button type="button" onClick={importFromText} style={{ fontWeight: 800 }}>
+                ⬆️ このJSONをインポート
+              </button>
+
+              {backupInfo?.exportedAt && (
+                <span style={{ fontSize: 12, color: '#777' }} title="直近バックアップ">
+                  🛟 backup: {backupInfo.exportedAt}
+                </span>
+              )}
+            </div>
+
+            <textarea
+              value={ioText}
+              onChange={(e) => setIoText(e.target.value)}
+              rows={12}
+              style={{
+                width: '100%',
+                borderRadius: 10,
+                border: '1px solid #333',
+                background: '#111',
+                color: '#eee',
+                padding: 10,
+                lineHeight: 1.45,
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                fontSize: 12,
+              }}
+            />
+
+            {ioMsg && (
+              <div style={{ fontSize: 12, color: ioMsg.startsWith('❌') ? '#ff9aa2' : ioMsg.startsWith('⚠️') ? '#ffd08a' : '#bfffbf' }}>
+                {ioMsg}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </PageShell>
   )
 }

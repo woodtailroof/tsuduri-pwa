@@ -1,5 +1,5 @@
 // src/screens/Chat.tsx
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { CharacterProfile } from './CharacterSettings'
 import { ALLHANDS_BANTER_RATE_KEY, CHARACTERS_STORAGE_KEY, SELECTED_CHARACTER_ID_KEY } from './CharacterSettings'
 import PageShell from '../components/PageShell'
@@ -608,7 +608,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
   const toggleAllHands = () => setRoomMode((m) => (m === 'all' ? 'single' : 'all'))
 
-  const uiButtonStyle: React.CSSProperties = {
+  const uiButtonStyle: CSSProperties = {
     padding: '6px 10px',
     borderRadius: 10,
     border: '1px solid #333',
@@ -619,13 +619,13 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     lineHeight: '20px',
   }
 
-  const uiButtonStyleActive: React.CSSProperties = {
+  const uiButtonStyleActive: CSSProperties = {
     ...uiButtonStyle,
     background: '#1b1b1b',
     color: '#fff',
   }
 
-  const selectStyle: React.CSSProperties = {
+  const selectStyle: CSSProperties = {
     ...uiButtonStyle,
     appearance: 'none',
     WebkitAppearance: 'none',
@@ -634,7 +634,11 @@ export default function Chat({ back, goCharacterSettings }: Props) {
   }
 
   return (
-    <PageShell title={<h1 style={{ margin: 0 }}>💬 {titleName}と話す</h1>} maxWidth={1100}>
+    <PageShell
+      title={<h1 style={{ margin: 0 }}>💬 {titleName}と話す</h1>}
+      maxWidth={1100}
+      showBack={false}
+    >
       <style>{`
         @keyframes tsuduri-dot-bounce {
           0%, 80%, 100% { transform: translateY(0); opacity: 0.55; }

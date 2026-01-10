@@ -1,14 +1,7 @@
 // src/screens/Settings.tsx
 import { useEffect, useMemo, useState } from 'react'
 import { FIXED_PORT } from '../points'
-import {
-  deleteTideCacheAll,
-  deleteTideCacheByKey,
-  deleteTideCacheOlderThan,
-  forceRefreshTide736Day,
-  getTideCacheStats,
-  listTideCacheEntries,
-} from '../lib/tide736Cache'
+import { deleteTideCacheAll, deleteTideCacheByKey, deleteTideCacheOlderThan, forceRefreshTide736Day, getTideCacheStats, listTideCacheEntries } from '../lib/tide736Cache'
 import type { TideCacheEntry } from '../db'
 import PageShell from '../components/PageShell'
 
@@ -63,7 +56,7 @@ export default function Settings({ back }: Props) {
   }, [])
 
   return (
-    <PageShell title={<h1 style={{ margin: 0 }}>⚙ 設定</h1>} maxWidth={1100}>
+    <PageShell title={<h1 style={{ margin: 0 }}>⚙ 設定</h1>} maxWidth={1100} showBack={false}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
         {/* Top actions */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
@@ -107,14 +100,7 @@ export default function Settings({ back }: Props) {
           </div>
         )}
 
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 10,
-            alignItems: 'center',
-          }}
-        >
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
           <button
             onClick={async () => {
               const ok = confirm('キャッシュを全削除する？（戻せないよ）')
@@ -135,13 +121,7 @@ export default function Settings({ back }: Props) {
 
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, color: '#bbb' }}>古いキャッシュ削除：</span>
-            <input
-              type="number"
-              min={1}
-              value={olderThanDays}
-              onChange={(e) => setOlderThanDays(Number(e.target.value))}
-              style={{ width: 90 }}
-            />
+            <input type="number" min={1} value={olderThanDays} onChange={(e) => setOlderThanDays(Number(e.target.value))} style={{ width: 90 }} />
             <span style={{ fontSize: 12, color: '#bbb' }}>日より古い</span>
             <button
               onClick={async () => {
@@ -208,9 +188,7 @@ export default function Settings({ back }: Props) {
                     <div style={{ fontSize: 12, color: '#aaa' }}>{fmtIso(e.fetchedAt)}</div>
                   </div>
 
-                  <div style={{ fontSize: 12, color: '#bbb' }}>
-                    series：{Array.isArray(e.series) ? e.series.length : 0} 点
-                  </div>
+                  <div style={{ fontSize: 12, color: '#bbb' }}>series：{Array.isArray(e.series) ? e.series.length : 0} 点</div>
 
                   <div style={{ fontSize: 12, color: '#bbb' }}>潮名：{e.tideName ? e.tideName : '—'}</div>
 
@@ -254,15 +232,7 @@ export default function Settings({ back }: Props) {
                       {busy === refreshKey ? '再取得中…' : '🌊 再取得'}
                     </button>
 
-                    <div
-                      style={{
-                        marginLeft: 'auto',
-                        fontSize: 11,
-                        color: '#666',
-                        overflowWrap: 'anywhere',
-                        minWidth: 0,
-                      }}
-                    >
+                    <div style={{ marginLeft: 'auto', fontSize: 11, color: '#666', overflowWrap: 'anywhere', minWidth: 0 }}>
                       key: {e.key}
                     </div>
                   </div>

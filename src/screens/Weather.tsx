@@ -1,4 +1,4 @@
-// src/pages/Weather.tsx
+// src/screens/Weather.tsx
 
 import { useEffect, useMemo, useState } from 'react'
 import { FIXED_PORT } from '../points'
@@ -20,11 +20,7 @@ function startOfDay(d: Date) {
 }
 
 function sameDay(a: Date, b: Date) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  )
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 }
 
 function toDateInputValue(d: Date) {
@@ -126,8 +122,7 @@ function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
   for (const e of raw) {
     const last = merged[merged.length - 1]
     if (last && last.kind === e.kind && Math.abs(e.min - last.min) <= MERGE_MIN) {
-      const pick =
-        e.kind === 'high' ? (e.cm >= last.cm ? e : last) : (e.cm <= last.cm ? e : last)
+      const pick = e.kind === 'high' ? (e.cm >= last.cm ? e : last) : e.cm <= last.cm ? e : last
       merged[merged.length - 1] = pick
     } else {
       merged.push(e)
@@ -170,9 +165,7 @@ export default function Weather({ back }: Props) {
   const [tab, setTab] = useState<'today' | 'tomorrow' | 'pick'>('today')
   const [picked, setPicked] = useState<string>(toDateInputValue(new Date()))
 
-  const [online, setOnline] = useState<boolean>(
-    typeof navigator !== 'undefined' ? navigator.onLine : true
-  )
+  const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true)
 
   const [state, setState] = useState<LoadState>({ status: 'idle' })
 
@@ -234,12 +227,12 @@ export default function Weather({ back }: Props) {
     }
   }, [targetDate])
 
-  const now = new Date()
   const highlightAt = useMemo(() => {
+    const now = new Date()
     // 今日だけ「今」を赤マーカー。別日だと意味がズレるのでオフにする
     if (sameDay(targetDate, now)) return now
     return null
-  }, [targetDate, now])
+  }, [targetDate])
 
   const extremes = useMemo(() => {
     if (state.status !== 'ok') return []
@@ -251,7 +244,7 @@ export default function Weather({ back }: Props) {
 
   return (
     <PageShell
-      title={<h1 style={{ margin: 0 }}>☀️ Weather（釣行判断）</h1>}
+      title={<h1 style={{ margin: 0 }}☀️ Weather（釣行判断）</h1>}
       subtitle={
         <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
           🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
@@ -259,6 +252,7 @@ export default function Weather({ back }: Props) {
         </div>
       }
       maxWidth={980}
+      showBack={false}
     >
       {/* タブ */}
       <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
@@ -323,13 +317,9 @@ export default function Weather({ back }: Props) {
       </div>
 
       {/* 状態 */}
-      {state.status === 'loading' && (
-        <div style={{ marginTop: 10, fontSize: 12, color: '#0a6' }}>🌊 tide736：取得中…</div>
-      )}
+      {state.status === 'loading' && <div style={{ marginTop: 10, fontSize: 12, color: '#0a6' }}>🌊 tide736：取得中…</div>}
       {state.status === 'error' && (
-        <div style={{ marginTop: 10, fontSize: 12, color: '#b00' }}>
-          🌊 tide736：取得失敗 → {state.message}
-        </div>
+        <div style={{ marginTop: 10, fontSize: 12, color: '#b00' }}>🌊 tide736：取得失敗 → {state.message}</div>
       )}
 
       {/* サマリー */}
@@ -344,16 +334,7 @@ export default function Weather({ back }: Props) {
           minWidth: 0,
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            gap: 12,
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            minWidth: 0,
-          }}
-        >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
           <div style={{ fontSize: 12, color: '#aaa', minWidth: 0 }}>📅 {targetDate.toLocaleDateString()}</div>
 
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
@@ -377,11 +358,7 @@ export default function Weather({ back }: Props) {
 
         <div style={{ marginTop: 6, fontSize: 12, color: '#6cf' }}>
           🌙 潮名：
-          {state.status === 'ok'
-            ? state.tideName
-              ? ` ${state.tideName}`
-              : ' （未取得）'
-            : ' -'}
+          {state.status === 'ok' ? (state.tideName ? ` ${state.tideName}` : ' （未取得）') : ' -'}
         </div>
 
         {state.status === 'ok' && !state.tideName && (
@@ -391,34 +368,19 @@ export default function Weather({ back }: Props) {
         )}
 
         {state.status === 'ok' && !online && state.source === 'stale-cache' && (
-          <div style={{ marginTop: 8, fontSize: 12, color: '#f6c' }}>
-            ⚠ オフラインのため、期限切れキャッシュで表示中（オンライン復帰後に再取得できます）
-          </div>
+          <div style={{ marginTop: 8, fontSize: 12, color: '#f6c' }}>⚠ オフラインのため、期限切れキャッシュで表示中（オンライン復帰後に再取得できます）</div>
         )}
       </div>
 
       {/* 満潮/干潮 */}
       <div style={{ marginTop: 12, display: 'grid', gap: 10, minWidth: 0 }}>
-        <div
-          style={{
-            border: '1px solid #333',
-            borderRadius: 12,
-            padding: 12,
-            background: '#111',
-            color: '#ddd',
-            minWidth: 0,
-          }}
-        >
+        <div style={{ border: '1px solid #333', borderRadius: 12, padding: 12, background: '#111', color: '#ddd', minWidth: 0 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>🟡 満潮 / 🔵 干潮</div>
 
           {state.status !== 'ok' ? (
             <div style={{ fontSize: 12, color: '#888' }}>データ準備中…</div>
           ) : state.series.length === 0 ? (
-            <div style={{ fontSize: 12, color: '#888' }}>
-              {!online
-                ? '📴 オフラインで、この日のキャッシュが無いよ（オンライン復帰後に取得できる）'
-                : '潮位データが無いよ'}
-            </div>
+            <div style={{ fontSize: 12, color: '#888' }}>{!online ? '📴 オフラインで、この日のキャッシュが無いよ（オンライン復帰後に取得できる）' : '潮位データが無いよ'}</div>
           ) : extremes.length === 0 ? (
             <div style={{ fontSize: 12, color: '#888' }}>極値がうまく取れなかったよ（データ不足かも）</div>
           ) : (
@@ -456,13 +418,7 @@ export default function Weather({ back }: Props) {
         {/* グラフ */}
         <div style={{ minWidth: 0 }}>
           {state.status === 'ok' && state.series.length > 0 ? (
-            <TideGraph
-              series={state.series}
-              baseDate={targetDate}
-              highlightAt={highlightAt}
-              // ✅ 縦軸固定（-50〜200）
-              yDomain={{ min: -50, max: 200 }}
-            />
+            <TideGraph series={state.series} baseDate={targetDate} highlightAt={highlightAt} yDomain={{ min: -50, max: 200 }} />
           ) : (
             <TideGraph series={[]} baseDate={targetDate} highlightAt={null} yDomain={{ min: -50, max: 200 }} />
           )}
@@ -480,9 +436,7 @@ export default function Weather({ back }: Props) {
       </div>
 
       {/* 将来拡張：天気（風/雨/気温など） */}
-      <div style={{ marginTop: 18, fontSize: 12, color: '#666' }}>
-        💬 つづり：「これで“小潮が盛られる問題”は成敗っ…♡」
-      </div>
+      <div style={{ marginTop: 18, fontSize: 12, color: '#666' }}>💬 つづり：「これで“小潮が盛られる問題”は成敗っ…♡」</div>
     </PageShell>
   )
 }
