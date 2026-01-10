@@ -299,10 +299,11 @@ function sanitizeJudgeTriggers(s: string) {
 function buildSharedMemoForJudgeFollowers(leadName: string, leadReply: string) {
   const t = (leadReply ?? '').trim()
   if (!t) return `【共有メモ】${leadName}の結論：取得失敗`
-  const firstLine = t
-    .split('\n')
-    .map((x) => x.trim())
-    .find(Boolean) ?? ''
+  const firstLine =
+    t
+      .split('\n')
+      .map((x) => x.trim())
+      .find(Boolean) ?? ''
   const conclusion = /(行く|様子見|やめる)/.test(firstLine) ? firstLine : `（結論不明：先頭行=${firstLine.slice(0, 40)}）`
   const numbers = (t.match(/-?\d+(\.\d+)?/g) ?? []).slice(0, 8).join(', ')
   const numPart = numbers ? ` / 参考数値: ${numbers}` : ''
@@ -611,25 +612,39 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
   const toggleAllHands = () => setRoomMode((m) => (m === 'all' ? 'single' : 'all'))
 
-  const uiButtonStyle: React.CSSProperties = {
+  // =========
+  // ✅ “透過ガラスUI” 共通
+  // =========
+  const glassPanel: React.CSSProperties = {
+    border: '1px solid var(--line)',
+    borderRadius: 14,
+    background: 'rgba(10, 10, 12, 0.42)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+  }
+
+  const glassButton: React.CSSProperties = {
     padding: '6px 10px',
     borderRadius: 10,
-    border: '1px solid #333',
-    background: '#111',
-    color: '#bbb',
+    border: '1px solid var(--line)',
+    background: 'rgba(255,255,255,0.06)',
+    color: 'rgba(255,255,255,0.88)',
     cursor: 'pointer',
     height: 34,
     lineHeight: '20px',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
   }
 
-  const uiButtonStyleActive: React.CSSProperties = {
-    ...uiButtonStyle,
-    background: '#1b1b1b',
+  const glassButtonActive: React.CSSProperties = {
+    ...glassButton,
+    background: 'rgba(255, 77, 109, 0.14)',
+    border: '1px solid rgba(255, 77, 109, 0.55)',
     color: '#fff',
   }
 
   const selectStyle: React.CSSProperties = {
-    ...uiButtonStyle,
+    ...glassButton,
     appearance: 'none',
     WebkitAppearance: 'none',
     MozAppearance: 'none',
@@ -643,19 +658,32 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           0%, 80%, 100% { transform: translateY(0); opacity: 0.55; }
           40% { transform: translateY(-4px); opacity: 1; }
         }
+
+        /* ✅ チャット欄のスクロールバーを消す（スクロール自体は生きる） */
+        .chat-scroll {
+          scrollbar-width: none; /* Firefox */
+        }
+        .chat-scroll::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+        }
+
         .tsuduri-typing {
           display: inline-flex;
           align-items: center;
           gap: 6px;
           padding: 8px 12px;
           border-radius: 14px;
-          background: #222;
+          background: rgba(10,10,12,0.55);
+          border: 1px solid var(--line);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
           color: #fff;
           max-width: 80%;
         }
         .tsuduri-typing .label {
           font-size: 12px;
-          color: #bbb;
+          color: rgba(255,255,255,0.72);
           margin-right: 6px;
           user-select: none;
         }
@@ -676,7 +704,10 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           flexDirection: 'column',
           gap: 12,
           minWidth: 0,
-          height: 'calc(100dvh - 120px)',
+
+          // ✅ PageShellの中で“画面っぽく”使う
+          // 親がスクロール領域でも、Chat自体はここで完結させる
+          height: 'min(820px, calc(100svh - 170px))',
           overflow: 'hidden',
         }}
       >
@@ -689,7 +720,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               type="button"
               onClick={toggleAllHands}
               title="全員集合にすると1投げに全員が返す"
-              style={roomMode === 'all' ? uiButtonStyleActive : uiButtonStyle}
+              style={roomMode === 'all' ? glassButtonActive : glassButton}
             >
               {roomMode === 'all' ? '👥 全員集合：ON' : '👤 全員集合：OFF'}
             </button>
@@ -701,34 +732,28 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                   alignItems: 'center',
                   gap: 10,
                   padding: '6px 10px',
-                  borderRadius: 10,
-                  border: '1px solid #333',
-                  background: '#101010',
-                  color: '#bbb',
+                  borderRadius: 12,
+                  border: '1px solid var(--line)',
+                  background: 'rgba(10,10,12,0.35)',
+                  backdropFilter: 'blur(12px)',
+                  WebkitBackdropFilter: 'blur(12px)',
+                  color: 'rgba(255,255,255,0.78)',
                 }}
                 title="掛け合い（感想/合いの手）の出やすさ"
               >
                 <button
                   type="button"
                   onClick={() => setBanterEnabled((v) => !v)}
-                  style={banterEnabled ? uiButtonStyleActive : uiButtonStyle}
+                  style={banterEnabled ? glassButtonActive : glassButton}
                   title="掛け合い ON/OFF"
                 >
                   {banterEnabled ? '🗣 掛け合い：ON' : '🤐 掛け合い：OFF'}
                 </button>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 12, color: '#aaa' }}>頻度</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={banterRate}
-                    onChange={(e) => setBanterRate(Number(e.target.value))}
-                    style={{ width: 140 }}
-                    disabled={!banterEnabled}
-                  />
-                  <span style={{ width: 38, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: banterEnabled ? '#fff' : '#666' }}>
+                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>頻度</span>
+                  <input type="range" min={0} max={100} value={banterRate} onChange={(e) => setBanterRate(Number(e.target.value))} style={{ width: 140 }} disabled={!banterEnabled} />
+                  <span style={{ width: 38, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: banterEnabled ? '#fff' : 'rgba(255,255,255,0.45)' }}>
                     {banterRate}%
                   </span>
                 </div>
@@ -737,13 +762,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
             {roomMode === 'single' && (
               <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                <select
-                  ref={selectRef}
-                  value={selectedId}
-                  onChange={(e) => setSelectedId(e.target.value)}
-                  title="キャラ切替（履歴も切り替わる）"
-                  style={selectStyle}
-                >
+                <select ref={selectRef} value={selectedId} onChange={(e) => setSelectedId(e.target.value)} title="キャラ切替（履歴も切り替わる）" style={selectStyle}>
                   {characters.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -756,7 +775,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                     position: 'absolute',
                     right: 10,
                     pointerEvents: 'none',
-                    color: '#888',
+                    color: 'rgba(255,255,255,0.55)',
                     fontSize: 12,
                     transform: 'translateY(-1px)',
                   }}
@@ -766,35 +785,34 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               </div>
             )}
 
-            <button onClick={goCharacterSettings} title="キャラ管理" style={uiButtonStyle}>
+            <button onClick={goCharacterSettings} title="キャラ管理" style={glassButton}>
               🎭
             </button>
 
-            <button onClick={clearHistory} title="履歴を全消し" style={uiButtonStyle}>
+            <button onClick={clearHistory} title="履歴を全消し" style={glassButton}>
               🧹
             </button>
-
-            {/* ✅ ここにあった戻るボタンは撤去（右上固定の戻るに統一） */}
           </div>
         </div>
 
         {/* メッセージ */}
         <div
           ref={scrollBoxRef}
+          className="chat-scroll"
           style={{
             flex: 1,
             minHeight: 0,
             overflowY: 'auto',
             overflowX: 'hidden',
-            border: '1px solid #333',
-            borderRadius: 12,
             padding: 12,
-            background: '#111',
             minWidth: 0,
+
+            // ✅ ガラス化
+            ...glassPanel,
           }}
         >
           {messages.length === 0 ? (
-            <div style={{ color: '#777', fontSize: 13 }}>
+            <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13 }}>
               {roomMode === 'all' ? '釣嫁たち「ひろっち、今日はどうする？🎣」' : `${selectedCharacter.name}「ひろっち、今日はどうする？🎣」`}
             </div>
           ) : (
@@ -804,8 +822,10 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               const speakerName = speakerObj?.name ?? 'だれか'
               const speakerColor = getCharacterColor(speakerObj)
 
-              const bubbleBorder =
-                !isUser ? `1px solid ${roomMode === 'all' ? speakerColor : getCharacterColor(selectedCharacter)}` : '1px solid transparent'
+              const assistColor = roomMode === 'all' ? speakerColor : getCharacterColor(selectedCharacter)
+
+              const bubbleBorder = !isUser ? `1px solid rgba(255,255,255,0.12)` : '1px solid transparent'
+              const bubbleGlow = !isUser ? `0 0 0 1px ${assistColor}33 inset` : 'none'
 
               return (
                 <div key={index} style={{ marginBottom: 10, textAlign: isUser ? 'right' : 'left' }}>
@@ -822,7 +842,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                           fontWeight: 800,
                           color: '#111',
                           background: speakerColor,
-                          boxShadow: '0 0 0 1px rgba(255,255,255,0.08) inset',
+                          boxShadow: '0 0 0 1px rgba(255,255,255,0.12) inset',
                           userSelect: 'none',
                         }}
                         title={speakerName}
@@ -837,14 +857,20 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                       display: 'inline-block',
                       padding: '10px 12px',
                       borderRadius: 14,
-                      background: isUser ? '#ff4d6d' : '#151515',
-                      color: '#fff',
-                      maxWidth: '80%',
+                      maxWidth: 'min(80%, 900px)',
                       whiteSpace: 'pre-wrap',
                       lineHeight: 1.65,
                       overflowWrap: 'anywhere',
                       wordBreak: 'break-word',
+
                       border: bubbleBorder,
+                      boxShadow: bubbleGlow,
+
+                      // ✅ “ベタ黒”をやめてガラスへ
+                      background: isUser ? 'rgba(255, 77, 109, 0.82)' : 'rgba(10, 10, 12, 0.38)',
+                      backdropFilter: 'blur(10px)',
+                      WebkitBackdropFilter: 'blur(10px)',
+                      color: '#fff',
                     }}
                   >
                     {m.content}
@@ -874,8 +900,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               setInput('最近元気～？')
               focusInput()
             }}
-            disabled={false}
-            style={{ opacity: 0.9, ...uiButtonStyle }}
+            style={{ opacity: 0.95, ...glassButton }}
           >
             😌 元気？
           </button>
@@ -885,8 +910,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               setInput('今日の釣行判断よろしく！')
               focusInput()
             }}
-            disabled={false}
-            style={{ opacity: 0.9, ...uiButtonStyle }}
+            style={{ opacity: 0.95, ...glassButton }}
           >
             🎣 釣行判断：今日
           </button>
@@ -896,8 +920,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               setInput('明日の釣行判断よろしく！')
               focusInput()
             }}
-            disabled={false}
-            style={{ opacity: 0.9, ...uiButtonStyle }}
+            style={{ opacity: 0.95, ...glassButton }}
           >
             🌙 釣行判断：明日
           </button>
@@ -908,9 +931,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           style={{
             flex: '0 0 auto',
             padding: 10,
-            border: '1px solid #333',
-            borderRadius: 12,
-            background: '#0f0f0f',
+            ...glassPanel,
           }}
         >
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
@@ -930,9 +951,10 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                 padding: 10,
                 minWidth: 0,
                 borderRadius: 10,
-                border: '1px solid #333',
-                background: '#111',
+                border: '1px solid var(--line)',
+                background: 'rgba(0,0,0,0.25)',
                 color: '#fff',
+                outline: 'none',
               }}
               disabled={false}
             />
@@ -943,7 +965,11 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               }}
               onClick={send}
               disabled={!canSend}
-              style={uiButtonStyle}
+              style={{
+                ...glassButton,
+                opacity: canSend ? 1 : 0.6,
+                cursor: canSend ? 'pointer' : 'not-allowed',
+              }}
             >
               {loading ? '送信中…' : roomMode === 'all' ? '全員に送る' : '送信'}
             </button>
