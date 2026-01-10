@@ -425,8 +425,6 @@ export default function Weather({ back }: Props) {
           key: {FIXED_PORT.pc}:{FIXED_PORT.hc}:{state.dayKey}
         </div>
       )}
-
-      <div style={{ marginTop: 18, fontSize: 12, color: '#666' }}>💬 つづり：「これで“小潮が盛られる問題”は成敗っ…♡」</div>
-    </PageShell>
+          </PageShell>
   )
 }
