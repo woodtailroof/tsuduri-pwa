@@ -2,106 +2,86 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import PageShell from '../components/PageShell'
 
-type Props = {
-  back: () => void
-}
-
 export type ReplyLength = 'short' | 'medium' | 'long'
 
 export type CharacterProfile = {
   id: string
-  name: string // 表示名（キャラ名）
-  selfName: string // 一人称
-  callUser: string // ユーザー呼称
-  replyLength: ReplyLength // 返答の長さ
-  description: string // 自由記述（人格の核）
-  color?: string // '#RRGGBB'
+  name: string
+  selfName?: string
+  callUser?: string
+  replyLength?: ReplyLength
+  description?: string
+  color?: string
 }
 
-export const ALLHANDS_BANTER_RATE_KEY = 'tsuduri_allhands_banter_rate_v1'
+// ✅ 既存キー（プロジェクト内で参照されてる前提）
 export const CHARACTERS_STORAGE_KEY = 'tsuduri_characters_v2'
 export const SELECTED_CHARACTER_ID_KEY = 'tsuduri_selected_character_id_v2'
-const CHARACTERS_BACKUP_KEY = 'tsuduri_characters_backup_v1'
+
+// ✅ 既存（rate）はすでに使ってる前提
+export const ALLHANDS_BANTER_RATE_KEY = 'tsuduri_allhands_banter_rate_v1'
+
+// ✅ 新規：ON/OFF をキャラ管理へ移動
+export const ALLHANDS_BANTER_ENABLED_KEY = 'tsuduri_allhands_banter_enabled_v1'
+
+// ちょい保険
+const BACKUP_KEY = 'tsuduri_characters_backup_v1'
+
+function safeJsonParse<T>(raw: string | null, fallback: T): T {
+  try {
+    if (!raw) return fallback
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n))
+}
 
 function uid() {
-  return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
+  return `c_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`
 }
 
-const DEFAULT_CHARACTER: CharacterProfile = {
-  id: 'tsuduri',
-  name: '釣嫁つづり',
-  selfName: 'つづり',
-  callUser: 'ひろっち',
-  replyLength: 'medium',
-  color: '#ff7aa2',
-  description: '元気で可愛い、少し甘え＆少し世話焼き。釣りは現実的に頼れる相棒。説教しない。危ないことは心配として止める。返答は会話っぽく、たまに軽い冗談。',
+function normalizeColor(s: string) {
+  const t = (s ?? '').trim()
+  if (!t) return '#ff7aa2'
+  return t
 }
 
-function normalizeHexColor(s: any, fallback: string) {
-  const v = String(s ?? '').trim()
-  if (/^#[0-9a-fA-F]{6}$/.test(v)) return v
-  return fallback
-}
-
-function normalizeCharacterForDraft(x: any): CharacterProfile {
-  const base = DEFAULT_CHARACTER
-  const replyLength: ReplyLength = x?.replyLength === 'short' || x?.replyLength === 'medium' || x?.replyLength === 'long' ? x.replyLength : base.replyLength
-
+function defaultCharacter(): CharacterProfile {
   return {
-    id: typeof x?.id === 'string' && x.id.trim() ? x.id : uid(),
-    name: typeof x?.name === 'string' ? x.name : '',
-    selfName: typeof x?.selfName === 'string' ? x.selfName : '',
-    callUser: typeof x?.callUser === 'string' ? x.callUser : '',
-    description: typeof x?.description === 'string' ? x.description : '',
-    replyLength,
-    color: normalizeHexColor(x?.color, base.color ?? '#ff7aa2'),
+    id: uid(),
+    name: '新しい釣嫁',
+    selfName: 'わたし',
+    callUser: 'ひろっち',
+    replyLength: 'medium',
+    description: '性格・口調・距離感などを書いてね。',
+    color: '#ff7aa2',
   }
-}
-
-function normalizeCharacterForSave(x: any): CharacterProfile {
-  const draft = normalizeCharacterForDraft(x)
-  const base = DEFAULT_CHARACTER
-
-  return {
-    ...draft,
-    name: draft.name.trim() ? draft.name : base.name,
-    selfName: draft.selfName.trim() ? draft.selfName : base.selfName,
-    callUser: draft.callUser.trim() ? draft.callUser : base.callUser,
-    description: typeof x?.description === 'string' ? x.description : base.description,
-    color: normalizeHexColor(draft.color, base.color ?? '#ff7aa2'),
-  }
-}
-
-function dedupeById(list: CharacterProfile[]) {
-  const seen = new Set<string>()
-  const uniq: CharacterProfile[] = []
-  for (const c of list) {
-    if (!c?.id) continue
-    if (seen.has(c.id)) continue
-    seen.add(c.id)
-    uniq.push(c)
-  }
-  return uniq
 }
 
 function safeLoadCharacters(): CharacterProfile[] {
-  try {
-    const raw = localStorage.getItem(CHARACTERS_STORAGE_KEY)
-    if (!raw) return [DEFAULT_CHARACTER]
-    const j = JSON.parse(raw)
-    if (!Array.isArray(j)) return [DEFAULT_CHARACTER]
-
-    const list = j.map((c: any) => normalizeCharacterForSave(c))
-    const uniq = dedupeById(list)
-    return uniq.length ? uniq : [DEFAULT_CHARACTER]
-  } catch {
-    return [DEFAULT_CHARACTER]
-  }
+  const list = safeJsonParse<CharacterProfile[]>(localStorage.getItem(CHARACTERS_STORAGE_KEY), [])
+  if (Array.isArray(list) && list.length) return list
+  return [
+    {
+      id: 'tsuduri',
+      name: '釣嫁つづり',
+      selfName: 'つづり',
+      callUser: 'ひろっち',
+      replyLength: 'medium',
+      description: '元気で可愛い、少し甘え＆少し世話焼き。釣りは現実的に頼れる相棒。説教しない。危ないことは心配として止める。',
+      color: '#ff7aa2',
+    },
+  ]
 }
 
-function safeSaveCharacters(chars: CharacterProfile[]) {
+function safeSaveCharacters(list: CharacterProfile[]) {
   try {
-    localStorage.setItem(CHARACTERS_STORAGE_KEY, JSON.stringify(chars))
+    localStorage.setItem(CHARACTERS_STORAGE_KEY, JSON.stringify(list))
+    localStorage.setItem(BACKUP_KEY, JSON.stringify({ at: new Date().toISOString(), list }))
   } catch {
     // ignore
   }
@@ -110,11 +90,10 @@ function safeSaveCharacters(chars: CharacterProfile[]) {
 function safeLoadSelectedId(fallback: string) {
   try {
     const raw = localStorage.getItem(SELECTED_CHARACTER_ID_KEY)
-    if (raw && raw.trim()) return raw
+    return raw && raw.trim() ? raw : fallback
   } catch {
-    // ignore
+    return fallback
   }
-  return fallback
 }
 
 function safeSaveSelectedId(id: string) {
@@ -125,502 +104,566 @@ function safeSaveSelectedId(id: string) {
   }
 }
 
-function isSame(a: CharacterProfile, b: CharacterProfile) {
-  return JSON.stringify(a) === JSON.stringify(b)
-}
-
-type ExportPayloadV1 = {
-  schema: 'tsuduri.characters.v1'
-  exportedAt: string
-  app?: string
-  characters: CharacterProfile[]
-}
-
-function buildExportPayload(chars: CharacterProfile[]): ExportPayloadV1 {
-  return { schema: 'tsuduri.characters.v1', exportedAt: new Date().toISOString(), app: 'tsuduri-pwa', characters: chars }
-}
-
-function prettyJson(x: any) {
-  return JSON.stringify(x, null, 2)
-}
-
-function downloadTextFile(filename: string, content: string) {
+function safeLoadBanterEnabled() {
   try {
-    const blob = new Blob([content], { type: 'application/json;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
+    const raw = localStorage.getItem(ALLHANDS_BANTER_ENABLED_KEY)
+    if (raw == null) return true
+    return raw === '1' || raw === 'true'
+  } catch {
+    return true
+  }
+}
+
+function safeSaveBanterEnabled(v: boolean) {
+  try {
+    localStorage.setItem(ALLHANDS_BANTER_ENABLED_KEY, v ? '1' : '0')
   } catch {
     // ignore
   }
 }
 
-function safeReadBackup(): ExportPayloadV1 | null {
+function safeLoadBanterRate() {
   try {
-    const raw = localStorage.getItem(CHARACTERS_BACKUP_KEY)
-    if (!raw) return null
-    const j = JSON.parse(raw)
-    if (!j || j.schema !== 'tsuduri.characters.v1' || !Array.isArray(j.characters)) return null
-    return j as ExportPayloadV1
+    const raw = localStorage.getItem(ALLHANDS_BANTER_RATE_KEY)
+    if (raw == null) return 35
+    const n = Number(raw)
+    if (!Number.isFinite(n)) return 35
+    return clamp(Math.round(n), 0, 100)
   } catch {
-    return null
+    return 35
   }
 }
 
-function safeWriteBackup(prevChars: CharacterProfile[]) {
+function safeSaveBanterRate(n: number) {
   try {
-    const payload = buildExportPayload(prevChars)
-    localStorage.setItem(CHARACTERS_BACKUP_KEY, JSON.stringify(payload))
+    localStorage.setItem(ALLHANDS_BANTER_RATE_KEY, String(clamp(Math.round(n), 0, 100)))
   } catch {
     // ignore
   }
 }
 
-function parseImportText(raw: string): CharacterProfile[] {
-  const trimmed = (raw ?? '').trim()
-  if (!trimmed) throw new Error('空です（JSONを貼り付けてね）')
-
-  const j = JSON.parse(trimmed)
-
-  if (Array.isArray(j)) return j.map((x) => normalizeCharacterForSave(x))
-  if (j && typeof j === 'object' && Array.isArray((j as any).characters)) return (j as any).characters.map((x: any) => normalizeCharacterForSave(x))
-
-  throw new Error('形式が違うみたい（配列 か { characters: [...] } のJSONが必要）')
+function downloadText(filename: string, text: string) {
+  const blob = new Blob([text], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 500)
 }
 
-function makeUniqueId(baseId: string, used: Set<string>) {
-  let id = baseId
-  if (!id.trim()) id = uid()
-  if (!used.has(id)) return id
-  let n = 2
-  while (used.has(`${id}-${n}`)) n++
-  return `${id}-${n}`
-}
+export default function CharacterSettings({ back }: { back: () => void }) {
+  const [list, setList] = useState<CharacterProfile[]>(() => safeLoadCharacters())
+  const [selectedId, setSelectedId] = useState<string>(() => safeLoadSelectedId(safeLoadCharacters()[0]?.id ?? 'tsuduri'))
 
-type ImportMode = 'overwrite' | 'merge'
+  const [banterEnabled, setBanterEnabled] = useState<boolean>(() => safeLoadBanterEnabled())
+  const [banterRate, setBanterRate] = useState<number>(() => safeLoadBanterRate())
 
-export default function CharacterSettings({ back }: Props) {
-  const [characters, setCharacters] = useState<CharacterProfile[]>(() => safeLoadCharacters())
-  const [selectedId, setSelectedId] = useState<string>(() => {
-    const initial = safeLoadCharacters()
-    return safeLoadSelectedId(initial[0]?.id ?? DEFAULT_CHARACTER.id)
-  })
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const selected = useMemo(() => characters.find((c) => c.id === selectedId) ?? characters[0], [characters, selectedId])
-  const [saved, setSaved] = useState<CharacterProfile>(() => selected ?? DEFAULT_CHARACTER)
-  const [draft, setDraft] = useState<CharacterProfile>(() => normalizeCharacterForDraft(selected ?? DEFAULT_CHARACTER))
-
-  const prevCharactersRef = useRef<CharacterProfile[] | null>(null)
-  useEffect(() => {
-    prevCharactersRef.current = characters
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const selected = useMemo(() => list.find((c) => c.id === selectedId) ?? list[0], [list, selectedId])
 
   useEffect(() => {
-    const cur = characters.find((c) => c.id === selectedId) ?? characters[0]
-    if (!cur) return
-    setSaved(cur)
-    setDraft(normalizeCharacterForDraft(cur))
-    safeSaveSelectedId(cur.id)
+    if (!list.length) {
+      const next = safeLoadCharacters()
+      setList(next)
+      setSelectedId(next[0]?.id ?? 'tsuduri')
+      return
+    }
+    const exists = list.some((c) => c.id === selectedId)
+    if (!exists) setSelectedId(list[0]?.id ?? 'tsuduri')
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list])
+
+  useEffect(() => {
+    safeSaveSelectedId(selectedId)
   }, [selectedId])
 
   useEffect(() => {
-    const prev = prevCharactersRef.current
-    if (prev && JSON.stringify(prev) !== JSON.stringify(characters)) safeWriteBackup(prev)
-    prevCharactersRef.current = characters
-    safeSaveCharacters(characters)
-  }, [characters])
+    safeSaveBanterEnabled(banterEnabled)
+  }, [banterEnabled])
 
-  const dirty = useMemo(() => !isSame(saved, normalizeCharacterForSave(draft)), [saved, draft])
+  useEffect(() => {
+    safeSaveBanterRate(banterRate)
+  }, [banterRate])
 
-  function updateDraft(patch: Partial<CharacterProfile>) {
-    setDraft((p) => normalizeCharacterForDraft({ ...p, ...patch }))
-  }
-
-  function save() {
-    const fixed = normalizeCharacterForSave(draft)
-    setCharacters((prev) => prev.map((c) => (c.id === fixed.id ? fixed : c)))
-    setSaved(fixed)
-    setDraft(normalizeCharacterForDraft(fixed))
-    alert('キャラ設定を保存したよ')
-  }
-
-  function saveAndBack() {
-    const fixed = normalizeCharacterForSave(draft)
-    setCharacters((prev) => prev.map((c) => (c.id === fixed.id ? fixed : c)))
-    setSaved(fixed)
-    setDraft(normalizeCharacterForDraft(fixed))
-    back()
-  }
-
-  function handleBack() {
-    if (dirty) {
-      const ok = confirm('キャラ設定が未保存だよ。保存せずに戻る？')
-      if (!ok) return
-    }
-    back()
+  function updateSelected(patch: Partial<CharacterProfile>) {
+    setList((prev) =>
+      prev.map((c) => {
+        if (c.id !== selectedId) return c
+        return { ...c, ...patch }
+      })
+    )
   }
 
   function createNew() {
-    const base = DEFAULT_CHARACTER
-    const c: CharacterProfile = { ...base, id: uid(), name: `新キャラ${characters.length + 1}`, description: 'このキャラはどんな子？（自由に書いてね）' }
-    setCharacters((prev) => [c, ...prev])
+    const c = defaultCharacter()
+    const next = [c, ...list]
+    setList(next)
     setSelectedId(c.id)
   }
 
-  function duplicateCurrent() {
-    const cur = characters.find((c) => c.id === selectedId) ?? characters[0]
-    if (!cur) return
-    const copy: CharacterProfile = { ...cur, id: uid(), name: `${cur.name}（コピー）` }
-    setCharacters((prev) => [copy, ...prev])
+  function duplicate() {
+    if (!selected) return
+    const copy: CharacterProfile = {
+      ...selected,
+      id: uid(),
+      name: `${selected.name}（複製）`,
+    }
+    const next = [copy, ...list]
+    setList(next)
     setSelectedId(copy.id)
   }
 
-  function deleteCurrent() {
-    if (characters.length <= 1) {
-      alert('最後の1人は消せないよ（最低1キャラは必要）')
+  function removeSelected() {
+    if (!selected) return
+    const ok = confirm(`「${selected.name}」を削除する？（戻せないよ）`)
+    if (!ok) return
+    const next = list.filter((c) => c.id !== selected.id)
+    setList(next)
+    setSelectedId(next[0]?.id ?? '')
+  }
+
+  function saveOnly() {
+    const fixed = list.map((c) => ({
+      ...c,
+      name: (c.name ?? '').trim() || '（無名）',
+      selfName: (c.selfName ?? '').trim(),
+      callUser: (c.callUser ?? '').trim(),
+      replyLength: (c.replyLength ?? 'medium') as ReplyLength,
+      description: String(c.description ?? ''),
+      color: normalizeColor(String(c.color ?? '#ff7aa2')),
+    }))
+    safeSaveCharacters(fixed)
+    alert('保存したよ！')
+  }
+
+  function saveAndBack() {
+    const fixed = list.map((c) => ({
+      ...c,
+      name: (c.name ?? '').trim() || '（無名）',
+      selfName: (c.selfName ?? '').trim(),
+      callUser: (c.callUser ?? '').trim(),
+      replyLength: (c.replyLength ?? 'medium') as ReplyLength,
+      description: String(c.description ?? ''),
+      color: normalizeColor(String(c.color ?? '#ff7aa2')),
+    }))
+    safeSaveCharacters(fixed)
+    back()
+  }
+
+  function exportJson() {
+    const payload = {
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      characters: list,
+      selectedId,
+      allhands: { banterEnabled, banterRate },
+    }
+    downloadText(`tsuduri_characters_export_${Date.now()}.json`, JSON.stringify(payload, null, 2))
+  }
+
+  async function importJson(file: File) {
+    const text = await file.text()
+    const parsed = safeJsonParse<any>(text, null)
+
+    // 形式ゆるめ対応
+    const importedList: CharacterProfile[] =
+      parsed?.characters && Array.isArray(parsed.characters)
+        ? parsed.characters
+        : Array.isArray(parsed)
+          ? parsed
+          : []
+
+    if (!importedList.length) {
+      alert('インポート失敗：形式が違うかも')
       return
     }
-    const cur = characters.find((c) => c.id === selectedId)
-    if (!cur) return
-    const ok = confirm(`「${cur.name}」を削除する？（戻せないよ）`)
+
+    const ok = confirm('インポートすると、現在のキャラ一覧は置き換えになるよ。続ける？')
     if (!ok) return
-    const next = characters.filter((c) => c.id !== cur.id)
-    setCharacters(next)
-    setSelectedId(next[0].id)
-  }
 
-  const [ioOpen, setIoOpen] = useState(false)
-  const [ioText, setIoText] = useState('')
-  const [ioMode, setIoMode] = useState<ImportMode>('merge')
-  const [ioMsg, setIoMsg] = useState<string>('')
+    const cleaned = importedList
+      .filter((c) => c && typeof c.id === 'string' && typeof c.name === 'string')
+      .map((c) => ({
+        id: String(c.id),
+        name: String(c.name),
+        selfName: typeof c.selfName === 'string' ? c.selfName : 'わたし',
+        callUser: typeof c.callUser === 'string' ? c.callUser : 'ひろっち',
+        replyLength: (c.replyLength as ReplyLength) ?? 'medium',
+        description: typeof c.description === 'string' ? c.description : '',
+        color: normalizeColor(typeof c.color === 'string' ? c.color : '#ff7aa2'),
+      }))
 
-  function openIO() {
-    const payload = buildExportPayload(characters)
-    setIoText(prettyJson(payload))
-    setIoMsg('')
-    setIoOpen(true)
-  }
+    setList(cleaned)
+    setSelectedId(parsed?.selectedId && typeof parsed.selectedId === 'string' ? parsed.selectedId : cleaned[0]?.id ?? cleaned[0].id)
 
-  async function copyExportToClipboard() {
-    try {
-      const payload = buildExportPayload(characters)
-      await navigator.clipboard.writeText(prettyJson(payload))
-      setIoMsg('✅ クリップボードにコピーしたよ')
-    } catch {
-      setIoMsg('⚠️ コピーできなかったみたい。下のテキストを手動でコピーしてね。')
-    }
-  }
+    // 掛け合い設定も一緒に入ってたら反映
+    const be = parsed?.allhands?.banterEnabled
+    const br = parsed?.allhands?.banterRate
+    if (typeof be === 'boolean') setBanterEnabled(be)
+    if (Number.isFinite(Number(br))) setBanterRate(clamp(Number(br), 0, 100))
 
-  function downloadExport() {
-    const payload = buildExportPayload(characters)
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').replace('Z', '')
-    downloadTextFile(`tsuduri-characters_${stamp}.json`, prettyJson(payload))
-    setIoMsg('✅ JSONファイルをダウンロードしたよ（できない場合は手動コピーでもOK）')
-  }
-
-  function importFromText() {
-    try {
-      const imported = parseImportText(ioText)
-      if (!imported.length) {
-        setIoMsg('⚠️ 読み込めたけど、キャラが0件だったよ')
-        return
-      }
-
-      const next = (() => {
-        if (ioMode === 'overwrite') {
-          const uniq = dedupeById(imported)
-          return uniq.length ? uniq : [DEFAULT_CHARACTER]
-        }
-
-        const used = new Set<string>(characters.map((c) => c.id))
-        const toAdd: CharacterProfile[] = []
-        for (const c of imported) {
-          const id = makeUniqueId(c.id, used)
-          used.add(id)
-          toAdd.push({ ...c, id })
-        }
-        const merged = dedupeById([...toAdd, ...characters])
-        return merged.length ? merged : [DEFAULT_CHARACTER]
-      })()
-
-      setCharacters(next)
-
-      const stillExists = next.some((c) => c.id === selectedId)
-      if (!stillExists) setSelectedId(next[0].id)
-
-      setIoMsg(ioMode === 'overwrite' ? '✅ インポート（上書き）したよ' : '✅ インポート（追加）したよ')
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setIoMsg(`❌ インポート失敗：${msg}`)
-    }
+    safeSaveCharacters(cleaned)
+    alert('インポート完了！')
   }
 
   function restoreFromBackup() {
-    const backup = safeReadBackup()
-    if (!backup?.characters?.length) {
-      setIoMsg('⚠️ バックアップが見つからなかったよ')
+    const raw = localStorage.getItem(BACKUP_KEY)
+    const parsed = safeJsonParse<any>(raw, null)
+    const backupList = parsed?.list
+    if (!Array.isArray(backupList) || !backupList.length) {
+      alert('バックアップが見つからないよ')
       return
     }
-
-    const ok = confirm('直近バックアップから復元する？（いまのキャラは上書きされるよ）')
+    const ok = confirm('直近バックアップから復元する？（現在の内容は上書き）')
     if (!ok) return
-
-    const restored = dedupeById(backup.characters.map((x) => normalizeCharacterForSave(x)))
-    const next = restored.length ? restored : [DEFAULT_CHARACTER]
-
-    setCharacters(next)
-    const stillExists = next.some((c) => c.id === selectedId)
-    if (!stillExists) setSelectedId(next[0].id)
-
-    setIoMsg(`✅ バックアップから復元したよ（${backup.exportedAt}）`)
+    setList(backupList as CharacterProfile[])
+    const firstId = (backupList[0] as any)?.id
+    setSelectedId(typeof firstId === 'string' ? firstId : selectedId)
+    safeSaveCharacters(backupList as CharacterProfile[])
+    alert('復元したよ！')
   }
 
-  const backupInfo = useMemo(() => safeReadBackup(), [characters])
+  // ===== 透過UI共通 =====
+  const glassCard: React.CSSProperties = {
+    border: '1px solid rgba(255,255,255,0.14)',
+    background: 'rgba(0,0,0,0.18)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
+    borderRadius: 14,
+  }
+
+  const sectionTitle: React.CSSProperties = {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.60)',
+    marginBottom: 6,
+  }
+
+  const smallHint: React.CSSProperties = {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.50)',
+    lineHeight: 1.6,
+  }
+
+  const btn: React.CSSProperties = {
+    width: '100%',
+    textAlign: 'center',
+    padding: '10px 12px',
+    borderRadius: 14,
+    border: '1px solid rgba(255,255,255,0.14)',
+    background: 'rgba(255,255,255,0.06)',
+    color: 'rgba(255,255,255,0.90)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
+    cursor: 'pointer',
+  }
+
+  const btnRow: React.CSSProperties = {
+    display: 'flex',
+    gap: 10,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    borderRadius: 12,
+    border: '1px solid rgba(255,255,255,0.14)',
+    background: 'rgba(0,0,0,0.22)',
+    color: '#fff',
+    padding: '10px 12px',
+    outline: 'none',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
+  }
+
+  const selectStyle: React.CSSProperties = {
+    ...inputStyle,
+    appearance: 'none',
+    WebkitAppearance: 'none',
+    MozAppearance: 'none',
+    paddingRight: 34,
+  }
 
   return (
-    <PageShell title={<h1 style={{ margin: 0 }}>🎭 キャラ管理</h1>} maxWidth={1100} showBack onBack={handleBack}>
-      <div style={{ fontSize: 12, color: '#777' }}>
-        ※ キャラはローカル（端末ごと）に保存されます。スマホとPCで自動同期はされません。必要なら下の「エクスポート / インポート」で移せます。
-      </div>
-
-      <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '280px 1fr', gap: 14, alignItems: 'start' }}>
-        {/* Left: list */}
-        <div
-          style={{
-            border: '1px solid #333',
-            borderRadius: 12,
-            padding: 12,
-            background: '#0f0f0f',
-            color: '#ddd',
-            display: 'grid',
-            gap: 10,
-          }}
-        >
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={createNew} style={{ flex: 1 }}>
+    <PageShell
+      title={
+        <div>
+          <h1 style={{ margin: 0 }}>🎭 キャラ管理</h1>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 6, lineHeight: 1.6 }}>
+            ※キャラはローカル（端末ごと）に保存されます。別端末へはエクスポート/インポートで移せるよ。
+          </div>
+        </div>
+      }
+      maxWidth={1100}
+      showBack
+      onBack={back}
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 14, alignItems: 'start', minWidth: 0 }}>
+        {/* 左：操作＆一覧 */}
+        <div style={{ ...glassCard, padding: 12, minWidth: 0 }}>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <button type="button" onClick={createNew} style={btn}>
               ➕ 新規
             </button>
-            <button type="button" onClick={duplicateCurrent} style={{ flex: 1 }}>
+            <button type="button" onClick={duplicate} style={btn}>
               🧬 複製
             </button>
+            <button type="button" onClick={removeSelected} style={btn}>
+              🗑 選択中を削除
+            </button>
+
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.10)', margin: '2px 0' }} />
+
+            <button type="button" onClick={exportJson} style={btn}>
+              📦 エクスポート
+            </button>
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              style={btn}
+              title="JSONをインポートしてキャラ一覧を置き換え"
+            >
+              📥 インポート
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              hidden
+              onChange={async (e) => {
+                const f = e.target.files?.[0]
+                e.currentTarget.value = ''
+                if (!f) return
+                await importJson(f)
+              }}
+            />
+
+            <button type="button" onClick={restoreFromBackup} style={{ ...btn, opacity: 0.9 }}>
+              🛟 直近バックアップから復元
+            </button>
+
+            <div style={{ ...smallHint }}>
+              保存先: localStorage key = {CHARACTERS_STORAGE_KEY} / 選択中 = {SELECTED_CHARACTER_ID_KEY}
+            </div>
           </div>
 
-          <button type="button" onClick={deleteCurrent} style={{ opacity: 0.9 }}>
-            🗑 選択中を削除
-          </button>
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.10)', margin: '12px 0' }} />
 
-          <button type="button" onClick={openIO} style={{ opacity: 0.95 }}>
-            📦 エクスポート / インポート
-          </button>
+          <div style={sectionTitle}>キャラ一覧（クリックで選択）</div>
 
-          <button
-            type="button"
-            onClick={restoreFromBackup}
-            style={{ opacity: backupInfo?.characters?.length ? 0.95 : 0.4 }}
-            disabled={!backupInfo?.characters?.length}
-            title={backupInfo?.exportedAt ? `最終バックアップ: ${backupInfo.exportedAt}` : 'バックアップなし'}
-          >
-            🛟 直近バックアップから復元
-          </button>
-
-          <hr style={{ opacity: 0.25, margin: '6px 0' }} />
-
-          <div style={{ fontSize: 12, color: '#aaa' }}>キャラ一覧（クリックで選択）</div>
-
-          <div style={{ display: 'grid', gap: 8, maxHeight: 420, overflowY: 'auto' }}>
-            {characters.map((c) => {
-              const active = c.id === selectedId
+          <div style={{ display: 'grid', gap: 10 }}>
+            {list.map((c) => {
+              const isSel = c.id === selectedId
+              const color = normalizeColor(c.color ?? '#ff7aa2')
               return (
                 <button
                   key={c.id}
                   type="button"
                   onClick={() => setSelectedId(c.id)}
                   style={{
+                    width: '100%',
                     textAlign: 'left',
-                    padding: '10px 10px',
-                    borderRadius: 10,
-                    border: '1px solid #333',
-                    background: active ? '#1b1b1b' : '#111',
-                    color: active ? '#fff' : '#ddd',
+                    borderRadius: 14,
+                    border: isSel ? `1px solid rgba(255,77,109,0.65)` : '1px solid rgba(255,255,255,0.12)',
+                    background: isSel ? 'rgba(255,77,109,0.12)' : 'rgba(0,0,0,0.16)',
+                    backdropFilter: 'blur(10px)',
+                    WebkitBackdropFilter: 'blur(10px)',
+                    padding: 12,
                     cursor: 'pointer',
+                    color: '#fff',
+                    minWidth: 0,
                   }}
-                  title={c.description?.slice(0, 80)}
                 >
-                  <div style={{ fontWeight: 800 }}>{c.name}</div>
-                  <div style={{ fontSize: 12, color: '#aaa', marginTop: 2 }}>
-                    一人称: {c.selfName} / 呼称: {c.callUser}
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 999,
+                        background: color,
+                        boxShadow: '0 0 0 4px rgba(255,255,255,0.06)',
+                        flex: '0 0 auto',
+                      }}
+                    />
+                    <div style={{ fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                      {c.name}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11, color: '#777', marginTop: 2 }}>長さ: {c.replyLength}</div>
+
+                  <div style={{ marginTop: 6, fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.55 }}>
+                    一人称: {c.selfName || '—'} / 呼称: {c.callUser || '—'}
+                    <br />
+                    長さ: {c.replyLength || 'medium'}
+                  </div>
                 </button>
               )
             })}
           </div>
         </div>
 
-        {/* Right: editor */}
-        <div
-          style={{
-            border: '1px solid #333',
-            borderRadius: 12,
-            padding: 12,
-            background: '#0f0f0f',
-            color: '#ddd',
-            display: 'grid',
-            gap: 12,
-          }}
-        >
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ fontSize: 12, color: '#aaa' }}>選択中：</div>
-            <div style={{ fontWeight: 800 }}>{draft.name || '（未入力）'}</div>
+        {/* 右：編集 */}
+        <div style={{ ...glassCard, padding: 12, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
+              選択中： <strong style={{ color: '#fff' }}>{selected?.name ?? '—'}</strong>
+            </div>
 
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-              <button type="button" onClick={save} disabled={!dirty} title="保存">
+            <div style={btnRow}>
+              <button type="button" onClick={saveOnly} style={{ ...btn, width: 'auto', padding: '10px 14px' }}>
                 💾 保存
               </button>
-              <button type="button" onClick={saveAndBack} title="保存して戻る">
+              <button type="button" onClick={saveAndBack} style={{ ...btn, width: 'auto', padding: '10px 14px' }}>
                 ✅ 保存して戻る
               </button>
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <label style={{ fontSize: 12, color: '#bbb' }}>
-              名前（表示名）：
-              <input value={draft.name} onChange={(e) => updateDraft({ name: e.target.value })} style={{ marginLeft: 8, width: 220 }} />
-            </label>
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.10)', margin: '12px 0' }} />
 
-            <label style={{ fontSize: 12, color: '#bbb' }}>
-              自称（一人称）：
-              <input value={draft.selfName} onChange={(e) => updateDraft({ selfName: e.target.value })} style={{ marginLeft: 8, width: 140 }} />
-            </label>
+          {/* ✅ 全員集合：掛け合い設定（ここに移動） */}
+          <div style={{ ...glassCard, padding: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 900 }}>🗣 全員集合：掛け合い</div>
+                <div style={smallHint}>全員集合モードで「後ろ2人が感想係になる」挙動のON/OFFと頻度。</div>
+              </div>
 
-            <label style={{ fontSize: 12, color: '#bbb' }}>
-              ユーザー呼称：
-              <input value={draft.callUser} onChange={(e) => updateDraft({ callUser: e.target.value })} style={{ marginLeft: 8, width: 140 }} />
-            </label>
-          </div>
-
-          <label style={{ fontSize: 12, color: '#bbb' }}>
-            返答の長さ：
-            <select value={draft.replyLength} onChange={(e) => updateDraft({ replyLength: e.target.value as ReplyLength })} style={{ marginLeft: 8 }}>
-              <option value="short">短め</option>
-              <option value="medium">標準</option>
-              <option value="long">長め</option>
-            </select>
-            <span style={{ marginLeft: 10, fontSize: 11, color: '#777' }}>※ここは max_output_tokens に直結（体感差が出る）</span>
-          </label>
-
-          <label style={{ fontSize: 12, color: '#bbb' }}>
-            テーマカラー：
-            <input
-              type="color"
-              value={normalizeHexColor(draft.color, DEFAULT_CHARACTER.color ?? '#ff7aa2')}
-              onChange={(e) => updateDraft({ color: e.target.value })}
-              style={{ marginLeft: 8, verticalAlign: 'middle' }}
-            />
-            <span style={{ marginLeft: 8, fontSize: 11, color: '#777' }}>{normalizeHexColor(draft.color, DEFAULT_CHARACTER.color ?? '#ff7aa2')}</span>
-          </label>
-
-          <label style={{ fontSize: 12, color: '#bbb' }}>
-            キャラクター設定（自由記述）：
-            <textarea
-              value={draft.description}
-              onChange={(e) => updateDraft({ description: e.target.value })}
-              rows={10}
-              style={{ width: '100%', marginTop: 6, lineHeight: 1.5 }}
-              placeholder="性格・距離感・雰囲気・釣りとの関係…好きに書いてOK"
-            />
-            <div style={{ fontSize: 11, color: '#777', marginTop: 6 }}>コツ：ルールを増やしすぎず、「どんな子か」の雰囲気だけ書くと生き物っぽくなるよ。</div>
-          </label>
-
-          <div style={{ fontSize: 12, color: '#777' }}>
-            保存先：localStorage key = <code>{CHARACTERS_STORAGE_KEY}</code> / 選択中 = <code style={{ marginLeft: 6 }}>{SELECTED_CHARACTER_ID_KEY}</code>
-          </div>
-        </div>
-      </div>
-
-      {ioOpen && (
-        <div
-          style={{
-            marginTop: 14,
-            border: '1px solid #333',
-            borderRadius: 12,
-            padding: 12,
-            background: '#0f0f0f',
-            color: '#ddd',
-            display: 'grid',
-            gap: 10,
-          }}
-        >
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ fontWeight: 900 }}>📦 エクスポート / インポート</div>
-
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button type="button" onClick={copyExportToClipboard}>
-                📋 コピー
+              <button
+                type="button"
+                onClick={() => setBanterEnabled((v) => !v)}
+                style={{
+                  ...btn,
+                  width: 'auto',
+                  padding: '10px 14px',
+                  border: banterEnabled ? '1px solid rgba(255,77,109,0.65)' : '1px solid rgba(255,255,255,0.14)',
+                  background: banterEnabled ? 'rgba(255,77,109,0.14)' : 'rgba(255,255,255,0.06)',
+                }}
+                title="掛け合い ON/OFF"
+              >
+                {banterEnabled ? '🗣 掛け合い：ON' : '🤐 掛け合い：OFF'}
               </button>
-              <button type="button" onClick={downloadExport}>
-                ⬇️ JSON保存
-              </button>
-              <button type="button" onClick={() => setIoOpen(false)}>
-                ✖ 閉じる
-              </button>
+            </div>
+
+            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.70)' }}>頻度</div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={banterRate}
+                onChange={(e) => setBanterRate(Number(e.target.value))}
+                style={{ width: 220 }}
+                disabled={!banterEnabled}
+              />
+              <div style={{ width: 44, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: banterEnabled ? '#fff' : 'rgba(255,255,255,0.45)' }}>
+                {banterRate}%
+              </div>
             </div>
           </div>
 
-          <div style={{ fontSize: 12, color: '#888' }}>
-            使い方：PCでエクスポート → スマホでこの欄に貼り付け → インポート。 「追加（merge）」なら既存キャラを残したまま増やせるよ（idが被ったら自動で末尾に -2 とか付ける）。
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.10)', margin: '12px 0' }} />
+
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px', gap: 12, minWidth: 0 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={sectionTitle}>名前（表示名）</div>
+                <input value={selected?.name ?? ''} onChange={(e) => updateSelected({ name: e.target.value })} style={inputStyle} />
+              </div>
+
+              <div style={{ minWidth: 0 }}>
+                <div style={sectionTitle}>自称（一人称）</div>
+                <input value={selected?.selfName ?? ''} onChange={(e) => updateSelected({ selfName: e.target.value })} style={inputStyle} />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 12, minWidth: 0 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={sectionTitle}>ユーザー呼び</div>
+                <input value={selected?.callUser ?? ''} onChange={(e) => updateSelected({ callUser: e.target.value })} style={inputStyle} />
+              </div>
+
+              <div style={{ minWidth: 0 }}>
+                <div style={sectionTitle}>返答の長さ</div>
+                <div style={{ position: 'relative' }}>
+                  <select
+                    value={(selected?.replyLength ?? 'medium') as ReplyLength}
+                    onChange={(e) => updateSelected({ replyLength: e.target.value as ReplyLength })}
+                    style={selectStyle}
+                  >
+                    <option value="short">短め</option>
+                    <option value="medium">標準</option>
+                    <option value="long">長め</option>
+                  </select>
+                  <span
+                    style={{
+                      position: 'absolute',
+                      right: 12,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      pointerEvents: 'none',
+                      color: 'rgba(255,255,255,0.55)',
+                      fontSize: 12,
+                    }}
+                  >
+                    ▼
+                  </span>
+                </div>
+                <div style={{ marginTop: 6, ...smallHint }}>※max_output_tokens に直結（体感差が出る）</div>
+              </div>
+            </div>
+
+            <div style={{ minWidth: 0 }}>
+              <div style={sectionTitle}>テーマカラー</div>
+              <input
+                value={selected?.color ?? ''}
+                onChange={(e) => updateSelected({ color: e.target.value })}
+                style={inputStyle}
+                placeholder="#ff7aa2"
+              />
+              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ ...smallHint }}>プレビュー</span>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: 999,
+                    background: normalizeColor(selected?.color ?? '#ff7aa2'),
+                    boxShadow: '0 0 0 4px rgba(255,255,255,0.06)',
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ minWidth: 0 }}>
+              <div style={sectionTitle}>キャラクター設定（自由記述）</div>
+              <textarea
+                value={selected?.description ?? ''}
+                onChange={(e) => updateSelected({ description: e.target.value })}
+                rows={10}
+                style={{
+                  ...inputStyle,
+                  resize: 'vertical',
+                  minHeight: 220,
+                  lineHeight: 1.7,
+                }}
+              />
+              <div style={{ marginTop: 6, ...smallHint }}>コツ：ルールを増やしすぎず、“雰囲気”を先に書くと安定しやすいよ。</div>
+            </div>
+
+            <div style={{ ...smallHint }}>
+              保存先: localStorage key = {CHARACTERS_STORAGE_KEY} / 選択中 = {SELECTED_CHARACTER_ID_KEY}
+            </div>
           </div>
-
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ fontSize: 12, color: '#bbb' }}>
-              インポート方式：
-              <select value={ioMode} onChange={(e) => setIoMode(e.target.value as ImportMode)} style={{ marginLeft: 8 }}>
-                <option value="merge">追加（merge）</option>
-                <option value="overwrite">上書き（overwrite）</option>
-              </select>
-            </label>
-
-            <button type="button" onClick={importFromText} style={{ fontWeight: 800 }}>
-              ⬆️ このJSONをインポート
-            </button>
-
-            {backupInfo?.exportedAt && (
-              <span style={{ fontSize: 12, color: '#777' }} title="直近バックアップ">
-                🛟 backup: {backupInfo.exportedAt}
-              </span>
-            )}
-          </div>
-
-          <textarea
-            value={ioText}
-            onChange={(e) => setIoText(e.target.value)}
-            rows={12}
-            style={{
-              width: '100%',
-              borderRadius: 10,
-              border: '1px solid #333',
-              background: '#111',
-              color: '#eee',
-              padding: 10,
-              lineHeight: 1.45,
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-              fontSize: 12,
-            }}
-          />
-
-          {ioMsg && (
-            <div style={{ fontSize: 12, color: ioMsg.startsWith('❌') ? '#ff9aa2' : ioMsg.startsWith('⚠️') ? '#ffd08a' : '#bfffbf' }}>{ioMsg}</div>
-          )}
         </div>
-      )}
+      </div>
     </PageShell>
   )
 }
