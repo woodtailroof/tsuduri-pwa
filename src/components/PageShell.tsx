@@ -38,17 +38,6 @@ type Props = {
   testCharacterOffset?: { right?: number; bottom?: number }
   /** ✅ キャラの不透明度（0〜1） */
   testCharacterOpacity?: number
-
-  /** ✅ UI面（カード/箱）の透過度（0〜1）デフォルト: 0.60 */
-  uiSurfaceAlpha?: number
-  /** ✅ UI面の色（RGB文字列）デフォルト: "17,17,17"（#111相当） */
-  uiSurfaceRgb?: string
-  /** ✅ UI面の境界線（RGBA）デフォルトは薄い白 */
-  uiBorderColor?: string
-
-  /** ✅ 上下スクリーン（文字の読みやすさ） */
-  uiScrimTop?: boolean
-  uiScrimBottom?: boolean
 }
 
 const STACK_KEY = 'tsuduri_nav_stack_v1'
@@ -95,15 +84,6 @@ export default function PageShell({
   testCharacterHeight = 'clamp(140px, 18vw, 220px)',
   testCharacterOffset = { right: 16, bottom: 16 },
   testCharacterOpacity = 1,
-
-  // ✅ UI面（透明ガラス）
-  uiSurfaceAlpha = 0.6,
-  uiSurfaceRgb = '17,17,17',
-  uiBorderColor = 'rgba(255,255,255,0.18)',
-
-  // ✅ UIスクリーン
-  uiScrimTop = true,
-  uiScrimBottom = true,
 }: Props) {
   const current = useMemo(() => getPath(), [])
 
@@ -139,94 +119,134 @@ export default function PageShell({
     window.location.assign(prev ?? fallbackHref)
   }, [onBack, fallbackHref])
 
-  // iPhoneなどのセーフエリア
-  const safeRight = 'env(safe-area-inset-right, 0px)'
-  const safeTop = 'env(safe-area-inset-top, 0px)'
-  const safeBottom = 'env(safe-area-inset-bottom, 0px)'
-
   return (
     <div
       className="page-shell"
       style={{
         width: '100%',
-        height: '100dvh',
+        minHeight: '100vh',
         boxSizing: 'border-box',
-        overflow: 'hidden',
-        position: 'relative',
+        overflowX: 'hidden',
 
-        // ✅ CSS変数（背景）
+        // ✅ 背景（ページ単位で差し替え可能）
         ['--bg-image' as any]: bgImage ? `url(${bgImage})` : 'none',
         ['--bg-dim' as any]: String(bgDim),
         ['--bg-blur' as any]: `${bgBlur}px`,
 
-        // ✅ CSS変数（UI面 = 透過ガラス）
-        ['--ui-surface-rgb' as any]: uiSurfaceRgb,
-        ['--ui-surface-a' as any]: String(uiSurfaceAlpha),
-        ['--ui-surface' as any]: `rgba(${uiSurfaceRgb}, ${uiSurfaceAlpha})`,
-        ['--ui-surface-2' as any]: `rgba(${uiSurfaceRgb}, ${Math.max(0, Math.min(1, uiSurfaceAlpha + 0.08))})`,
-        ['--ui-border' as any]: uiBorderColor,
+        // ✅ UIガラス用のCSS変数（デフォで“透過”）
+        // PC: ほんのり濃いめ / Mobile: さらに透ける（下の <style> のmediaで上書き）
+        ['--ui-surface-a' as any]: '0.22',
+        ['--ui-surface-2-a' as any]: '0.16',
+        ['--ui-border-a' as any]: '0.28',
 
-        // ✅ 文字色系
-        ['--ui-text' as any]: '#e9e9e9',
-        ['--ui-text-dim' as any]: 'rgba(255,255,255,0.72)',
-        ['--ui-text-mute' as any]: 'rgba(255,255,255,0.55)',
+        ['--ui-surface' as any]: 'rgba(18,18,18,var(--ui-surface-a))',
+        ['--ui-surface-2' as any]: 'rgba(12,12,12,var(--ui-surface-2-a))',
+        ['--ui-border' as any]: 'rgba(255,255,255,var(--ui-border-a))',
+
+        ['--ui-text' as any]: '#eaeaea',
+        ['--ui-text-dim' as any]: '#cfcfcf',
+        ['--ui-text-mute' as any]: '#a8a8a8',
       }}
     >
-      {/* ✅ ここで「スマホだけ UI面をもっと透過」にする */}
-      <style>
-        {`
-          @media (max-width: 640px) {
-            .page-shell{
-              --ui-surface-a: ${Math.max(0.18, uiSurfaceAlpha - 0.18)};
-              --ui-surface: rgba(var(--ui-surface-rgb), var(--ui-surface-a));
-              --ui-surface-2: rgba(var(--ui-surface-rgb), calc(var(--ui-surface-a) + 0.08));
-            }
+      {/* ✅ ここでレスポンシブに“透過率”だけ変える（スマホほど薄く） */}
+      <style>{`
+        .page-shell {
+          position: relative;
+          isolation: isolate; /* z-indexを安定させる（レイヤー構成用） */
+        }
+
+        /* 背景レイヤー（最背面） */
+        .page-shell::before {
+          content: "";
+          position: fixed;
+          inset: 0;
+          z-index: 0;
+          background-image: var(--bg-image);
+          background-size: cover;
+          background-position: center;
+          background-repeat: no-repeat;
+          filter: blur(var(--bg-blur));
+          transform: translateZ(0);
+          opacity: 1;
+          pointer-events: none;
+        }
+
+        /* 暗幕（背景の上、でもまだ最背面） */
+        .page-shell::after {
+          content: "";
+          position: fixed;
+          inset: 0;
+          z-index: 1;
+          background: rgba(0,0,0,var(--bg-dim));
+          pointer-events: none;
+        }
+
+        /* 情報レイヤー（最前面） */
+        .page-shell-inner {
+          position: relative;
+          z-index: 30;
+        }
+
+        /* 戻るボタンも最前面 */
+        .back-button {
+          position: fixed;
+          top: 12px;
+          right: 12px;
+          z-index: 40;
+        }
+
+        /* スマホはUIを“もっと透けさせる” */
+        @media (max-width: 520px) {
+          .page-shell {
+            --ui-surface-a: 0.14;
+            --ui-surface-2-a: 0.10;
+            --ui-border-a: 0.22;
           }
-        `}
-      </style>
+        }
 
-      {/* =========================
-          背景レイヤー（固定）
-         ========================= */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 0,
-          pointerEvents: 'none',
-          userSelect: 'none',
-          backgroundImage: bgImage ? `url(${bgImage})` : undefined,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
-          filter: bgBlur ? `blur(${bgBlur}px)` : undefined,
-          transform: bgBlur ? 'scale(1.03)' : undefined, // ぼかし縁のはみ出し対策
-        }}
-      />
-      {/* 背景の暗幕（固定） */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 1,
-          pointerEvents: 'none',
-          background: `rgba(0,0,0,${Math.max(0, Math.min(1, bgDim))})`,
-        }}
-      />
+        /* さらに小さい端末 */
+        @media (max-width: 380px) {
+          .page-shell {
+            --ui-surface-a: 0.12;
+            --ui-surface-2-a: 0.08;
+            --ui-border-a: 0.20;
+          }
+        }
+      `}</style>
 
-      {/* =========================
-          キャラレイヤー（固定・UIより下）
-         ========================= */}
+      {showBack && (
+        <button type="button" className="back-button" onClick={handleBack} aria-label="戻る">
+          {backLabel}
+        </button>
+      )}
+
+      <div
+        className={showBack ? 'with-back-button page-shell-inner' : 'page-shell-inner'}
+        style={{
+          maxWidth,
+          margin: '0 auto',
+          padding: 'clamp(16px, 3vw, 24px)',
+          boxSizing: 'border-box',
+        }}
+      >
+        {(title || subtitle) && (
+          <div style={{ marginBottom: 16 }}>
+            {title}
+            {subtitle}
+          </div>
+        )}
+        {children}
+      </div>
+
+      {/* ✅ キャラレイヤー（情報の下、背景の上） */}
       {showTestCharacter && !!testCharacterSrc && (
         <div
           aria-hidden="true"
           style={{
             position: 'fixed',
-            right: `calc(${testCharacterOffset.right ?? 16}px + ${safeRight})`,
-            bottom: `calc(${testCharacterOffset.bottom ?? 16}px + ${safeBottom})`,
-            zIndex: 20,
+            right: testCharacterOffset.right ?? 16,
+            bottom: testCharacterOffset.bottom ?? 16,
+            zIndex: 20, // ✅ 情報(30/40)より下、背景(0/1)より上
             pointerEvents: 'none',
             userSelect: 'none',
             opacity: testCharacterOpacity,
@@ -245,91 +265,6 @@ export default function PageShell({
           />
         </div>
       )}
-
-      {/* =========================
-          UIレイヤー（最前面・スクロール）
-         ========================= */}
-      <div
-        className="page-shell-ui"
-        style={{
-          position: 'relative',
-          zIndex: 30,
-          height: '100dvh',
-          overflowY: 'auto',
-          overflowX: 'hidden',
-          WebkitOverflowScrolling: 'touch',
-        }}
-      >
-        {/* UIスクリーン（上） */}
-        {uiScrimTop && (
-          <div
-            aria-hidden="true"
-            style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 40,
-              height: 90,
-              pointerEvents: 'none',
-              background: 'linear-gradient(to bottom, rgba(0,0,0,0.45), rgba(0,0,0,0))',
-            }}
-          />
-        )}
-
-        {/* 戻るボタン（UI最前面・固定） */}
-        {showBack && (
-          <button
-            type="button"
-            className="back-button"
-            onClick={handleBack}
-            aria-label="戻る"
-            style={{
-              position: 'fixed',
-              top: `calc(12px + ${safeTop})`,
-              right: `calc(12px + ${safeRight})`,
-              zIndex: 50,
-            }}
-          >
-            {backLabel}
-          </button>
-        )}
-
-        {/* コンテンツ */}
-        <div
-          className={showBack ? 'with-back-button page-shell-inner' : 'page-shell-inner'}
-          style={{
-            maxWidth,
-            margin: '0 auto',
-            padding: 'clamp(16px, 3vw, 24px)',
-            paddingTop: `calc(clamp(16px, 3vw, 24px) + ${safeTop})`,
-            paddingBottom: `calc(clamp(16px, 3vw, 24px) + ${safeBottom})`,
-            boxSizing: 'border-box',
-            color: 'var(--ui-text)',
-          }}
-        >
-          {(title || subtitle) && (
-            <div style={{ marginBottom: 16 }}>
-              {title}
-              {subtitle}
-            </div>
-          )}
-          {children}
-        </div>
-
-        {/* UIスクリーン（下） */}
-        {uiScrimBottom && (
-          <div
-            aria-hidden="true"
-            style={{
-              position: 'sticky',
-              bottom: 0,
-              zIndex: 40,
-              height: 110,
-              pointerEvents: 'none',
-              background: 'linear-gradient(to top, rgba(0,0,0,0.50), rgba(0,0,0,0))',
-            }}
-          />
-        )}
-      </div>
     </div>
   )
 }
