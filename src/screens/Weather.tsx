@@ -122,7 +122,7 @@ function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
   for (const e of raw) {
     const last = merged[merged.length - 1]
     if (last && last.kind === e.kind && Math.abs(e.min - last.min) <= MERGE_MIN) {
-      const pick = e.kind === 'high' ? (e.cm >= last.cm ? e : last) : e.cm <= last.cm ? e : last
+      const pick = e.kind === 'high' ? (e.cm >= last.cm ? e : last) : (e.cm <= last.cm ? e : last)
       merged[merged.length - 1] = pick
     } else {
       merged.push(e)
@@ -229,7 +229,6 @@ export default function Weather({ back }: Props) {
 
   const highlightAt = useMemo(() => {
     const now = new Date()
-    // 今日だけ「今」を赤マーカー。別日だと意味がズレるのでオフにする
     if (sameDay(targetDate, now)) return now
     return null
   }, [targetDate])
@@ -252,7 +251,6 @@ export default function Weather({ back }: Props) {
         </div>
       }
       maxWidth={980}
-      showBack={false}
     >
       {/* タブ */}
       <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
@@ -334,7 +332,16 @@ export default function Weather({ back }: Props) {
           minWidth: 0,
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: 12,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            minWidth: 0,
+          }}
+        >
           <div style={{ fontSize: 12, color: '#aaa', minWidth: 0 }}>📅 {targetDate.toLocaleDateString()}</div>
 
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
@@ -368,19 +375,32 @@ export default function Weather({ back }: Props) {
         )}
 
         {state.status === 'ok' && !online && state.source === 'stale-cache' && (
-          <div style={{ marginTop: 8, fontSize: 12, color: '#f6c' }}>⚠ オフラインのため、期限切れキャッシュで表示中（オンライン復帰後に再取得できます）</div>
+          <div style={{ marginTop: 8, fontSize: 12, color: '#f6c' }}>
+            ⚠ オフラインのため、期限切れキャッシュで表示中（オンライン復帰後に再取得できます）
+          </div>
         )}
       </div>
 
       {/* 満潮/干潮 */}
       <div style={{ marginTop: 12, display: 'grid', gap: 10, minWidth: 0 }}>
-        <div style={{ border: '1px solid #333', borderRadius: 12, padding: 12, background: '#111', color: '#ddd', minWidth: 0 }}>
+        <div
+          style={{
+            border: '1px solid #333',
+            borderRadius: 12,
+            padding: 12,
+            background: '#111',
+            color: '#ddd',
+            minWidth: 0,
+          }}
+        >
           <div style={{ fontWeight: 700, marginBottom: 6 }}>🟡 満潮 / 🔵 干潮</div>
 
           {state.status !== 'ok' ? (
             <div style={{ fontSize: 12, color: '#888' }}>データ準備中…</div>
           ) : state.series.length === 0 ? (
-            <div style={{ fontSize: 12, color: '#888' }}>{!online ? '📴 オフラインで、この日のキャッシュが無いよ（オンライン復帰後に取得できる）' : '潮位データが無いよ'}</div>
+            <div style={{ fontSize: 12, color: '#888' }}>
+              {!online ? '📴 オフラインで、この日のキャッシュが無いよ（オンライン復帰後に取得できる）' : '潮位データが無いよ'}
+            </div>
           ) : extremes.length === 0 ? (
             <div style={{ fontSize: 12, color: '#888' }}>極値がうまく取れなかったよ（データ不足かも）</div>
           ) : (
@@ -435,8 +455,7 @@ export default function Weather({ back }: Props) {
         )}
       </div>
 
-      {/* 将来拡張：天気（風/雨/気温など） */}
-      <div style={{ marginTop: 18, fontSize: 12, color: '#666' }}>💬 つづり：「これで“小潮が盛られる問題”は成敗っ…♡」</div>
+      <div style={{ marginTop: 18, fontSize: 12, color: '#666' }}>💬 つづり：「これで『小潮が盛られる問題』は成敗っ…♡」</div>
     </PageShell>
   )
 }
