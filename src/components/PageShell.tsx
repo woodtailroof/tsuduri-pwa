@@ -20,6 +20,13 @@ type Props = {
   fallbackHref?: string
   /** この画面を履歴に積まない（ホームなど） */
   disableStackPush?: boolean
+
+  /** ✅ 背景画像（ページ単位で差し替えたい時）例: "/bg/home.webp" */
+  bgImage?: string
+  /** ✅ 背景の暗幕の濃さ（0〜1）デフォルト: 0.55 */
+  bgDim?: number
+  /** ✅ 背景のぼかし(px) デフォルト: 0 */
+  bgBlur?: number
 }
 
 const STACK_KEY = 'tsuduri_nav_stack_v1'
@@ -56,6 +63,9 @@ export default function PageShell({
   backLabel = '← 戻る',
   fallbackHref = '/',
   disableStackPush = false,
+  bgImage,
+  bgDim = 0.55,
+  bgBlur = 0,
 }: Props) {
   const current = useMemo(() => getPath(), [])
 
@@ -91,57 +101,33 @@ export default function PageShell({
     window.location.assign(prev ?? fallbackHref)
   }, [onBack, fallbackHref])
 
-  // ✅ 右上固定ボタンがタイトルに被らないための上余白
-  // 端末のセーフエリア（ノッチ）も考慮して、少し余裕を持たせる
-  const contentPaddingTop = showBack ? 'clamp(64px, 8vw, 84px)' : undefined
-
   return (
     <div
+      className="page-shell"
       style={{
         width: '100%',
         minHeight: '100vh',
         boxSizing: 'border-box',
         overflowX: 'hidden',
-        position: 'relative',
+
+        // ✅ CSS変数で背景を制御（ページ単位で差し替え可能）
+        ['--bg-image' as any]: bgImage ? `url(${bgImage})` : 'none',
+        ['--bg-dim' as any]: String(bgDim),
+        ['--bg-blur' as any]: `${bgBlur}px`,
       }}
     >
       {showBack && (
-        <button
-          type="button"
-          className="back-button"
-          onClick={handleBack}
-          aria-label="戻る"
-          style={{
-            position: 'fixed',
-            top: 'max(12px, env(safe-area-inset-top))',
-            right: 'max(12px, env(safe-area-inset-right))',
-            zIndex: 1000,
-
-            borderRadius: 999,
-            padding: '8px 12px',
-            fontSize: 14,
-            lineHeight: 1.1,
-
-            background: 'rgba(18,18,18,0.75)',
-            color: '#eee',
-            border: '1px solid rgba(255,255,255,0.22)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-            WebkitTapHighlightColor: 'transparent',
-            cursor: 'pointer',
-          }}
-        >
+        <button type="button" className="back-button" onClick={handleBack} aria-label="戻る">
           {backLabel}
         </button>
       )}
 
       <div
-        className={showBack ? 'with-back-button' : undefined}
+        className={showBack ? 'with-back-button page-shell-inner' : 'page-shell-inner'}
         style={{
           maxWidth,
           margin: '0 auto',
           padding: 'clamp(16px, 3vw, 24px)',
-          paddingTop: contentPaddingTop,
           boxSizing: 'border-box',
         }}
       >
