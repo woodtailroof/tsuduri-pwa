@@ -245,7 +245,7 @@ export default function Weather({ back }: Props) {
 
   return (
     <PageShell
-      title={<h1 style={{ margin: 0 }}☀️ Weather（釣行判断）</h1>}
+      title={<h1 style={{ margin: 0 }}>☀️ Weather（釣行判断）</h1>}
       subtitle={
         <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
           🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
