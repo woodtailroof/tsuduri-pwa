@@ -33,45 +33,12 @@ export default function App() {
       id="app-root"
       style={{
         width: '100vw',
-        height: '100svh', // ✅ iPhone Safariで安定
-        overflow: 'hidden', // ✅ bodyスクロールに逃がさない
+        height: '100svh', // ✅ iPhone Safariのアドレスバー伸縮に強い
+        overflow: 'hidden', // ✅ アプリ全体はスクロールさせない（各PageShell内でスクロール）
         position: 'relative',
       }}
     >
-      {/* ✅ ここに FixedBackground / CharacterLayer を “センター箱の外” に置くと最強 */}
-      {/* 例:
-        <FixedBackground />
-        <CharacterLayer />
-      */}
-
-      {/* ✅ 情報(=画面コンテンツ)だけをスクロールさせる器 */}
-      <div
-        id="app-scroll"
-        style={{
-          width: '100vw',
-          height: '100svh',
-          overflowY: 'auto',
-          overflowX: 'hidden',
-          WebkitOverflowScrolling: 'touch',
-          overscrollBehavior: 'contain',
-          position: 'relative',
-          zIndex: 10,
-        }}
-      >
-        {/* ✅ “センター固定” はスクロール内の中身にだけ適用 */}
-        <div
-          style={{
-            width: '100%',
-            maxWidth: 960,
-            margin: '0 auto',
-            padding: '16px 16px 24px',
-            boxSizing: 'border-box',
-            minWidth: 0,
-          }}
-        >
-          {content}
-        </div>
-      </div>
+      {content}
     </div>
   )
 }
