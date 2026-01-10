@@ -7,7 +7,7 @@ type Props = {
   baseDate: Date
   highlightAt?: Date | null
   height?: number
-  // ✅ 追加：Y軸レンジ固定（cm）
+  // ✅ Y軸レンジ固定（cm）
   yDomain?: { min: number; max: number } | null
 }
 
@@ -22,12 +22,11 @@ function pad2(n: number) {
 }
 
 /**
- * ✅ time(HH:mm) を最優先（ズレ/跳ねの主因を潰す）
- * unix は fallback（秒/ms両対応）
+ * time(HH:mm) 優先、unixはfallback
  */
 function toMinutes(p: TidePoint): number | null {
   if (p.time) {
-    const [hh, mm] = p.time.split(':').map((v) => Number(v))
+    const [hh, mm] = p.time.split(':').map(Number)
     if (Number.isFinite(hh) && Number.isFinite(mm)) return hh * 60 + mm
   }
   if (typeof p.unix === 'number') {
@@ -38,7 +37,7 @@ function toMinutes(p: TidePoint): number | null {
   return null
 }
 
-/** いい感じの目盛り幅（1/2/5 * 10^n） */
+/** いい感じの目盛り幅 */
 function niceStep(range: number, targetTicks = 5) {
   if (range <= 0) return 1
   const rough = range / targetTicks
@@ -58,12 +57,6 @@ function buildYTicks(min: number, max: number, targetTicks = 5) {
   return { ticks, start, end }
 }
 
-function trianglePath(x: number, y: number, dir: 'up' | 'down', size: number) {
-  const s = size
-  if (dir === 'up') return `M ${x} ${y - s} L ${x + s} ${y + s} L ${x - s} ${y + s} Z`
-  return `M ${x} ${y + s} L ${x + s} ${y - s} L ${x - s} ${y - s} Z`
-}
-
 export default function TideGraph({
   series,
   baseDate,
@@ -73,7 +66,6 @@ export default function TideGraph({
 }: Props) {
   const width = 360
 
-  // 左にY軸ラベル分の余白
   const padTop = 12
   const padBottom = 16
   const padRight = 10
@@ -90,7 +82,6 @@ export default function TideGraph({
     )
   }
 
-  // ✅ time/unix から分が取れる点だけ集める（欠損点での“跳ね”を防ぐ）
   const ptsTime: Pt[] = []
   for (const p of series) {
     const m = toMinutes(p)
@@ -98,14 +89,13 @@ export default function TideGraph({
     ptsTime.push({ min: clamp(m, 0, 1440), cm: p.cm, src: p })
   }
 
-  // ほぼあり得ない保険：時間が取れない時だけ index モード
   const useIndex = ptsTime.length < 3
-  const ptsBase: Pt[] = useIndex ? series.map((p, i) => ({ min: i, cm: p.cm, src: p })) : ptsTime
+  const ptsBase: Pt[] = useIndex
+    ? series.map((p, i) => ({ min: i, cm: p.cm, src: p }))
+    : ptsTime
 
-  // ✅ 時刻順にソート
   const ptsSorted = [...ptsBase].sort((a, b) => a.min - b.min)
 
-  // ✅ 同一分が複数ある場合、最後の点を採用（暴れ防止）
   const ptsUniq: Pt[] = []
   for (const p of ptsSorted) {
     const last = ptsUniq[ptsUniq.length - 1]
@@ -113,7 +103,6 @@ export default function TideGraph({
     else ptsUniq.push(p)
   }
 
-  // ✅ 0:00 / 24:00 を補完（始点終点が欠ける日での“跳ね”を抑える）
   if (!useIndex && ptsUniq.length >= 2) {
     const first = ptsUniq[0]
     const last = ptsUniq[ptsUniq.length - 1]
@@ -128,10 +117,8 @@ export default function TideGraph({
   const minY0 = Math.min(...cms)
   const maxY0 = Math.max(...cms)
 
-  // ✅ 縦軸レンジ：指定があれば固定、なければ自動
   let yMin: number
   let yMax: number
-
   if (yDomain) {
     yMin = yDomain.min
     yMax = yDomain.max
@@ -150,11 +137,10 @@ export default function TideGraph({
     .map((p) => `${xToPx(p.min).toFixed(2)},${yToPx(p.cm).toFixed(2)}`)
     .join(' ')
 
-  // ✅ ハイライト（撮影時刻に一番近い点）
   let hi: Pt | null = null
   if (highlightAt) {
     const targetMin = highlightAt.getHours() * 60 + highlightAt.getMinutes()
-    let best = Number.POSITIVE_INFINITY
+    let best = Infinity
     for (const p of ptsUniq) {
       const d = Math.abs(p.min - targetMin)
       if (d < best) {
@@ -167,95 +153,56 @@ export default function TideGraph({
   const hiX = hi ? xToPx(hi.min) : null
   const hiY = hi ? yToPx(hi.cm) : null
 
-  // X軸目盛り（0/6/12/18/24）
   const ticksX = [0, 6, 12, 18, 24].map((h) => ({
     label: `${h}`,
-    x: xToPx(useIndex ? clamp((ptsUniq.length - 1) * (h / 24), 0, Math.max(0, ptsUniq.length - 1)) : h * 60),
+    x: xToPx(useIndex ? clamp((ptsUniq.length - 1) * (h / 24), 0, ptsUniq.length - 1) : h * 60),
   }))
-
-  // フォント少し下げる（重なり対策）
-  const FONT_Y = 10
-  const FONT_X = 10
 
   return (
     <div style={{ border: '1px solid #333', borderRadius: 12, padding: 12, background: '#111' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-        <div style={{ color: '#eee', fontSize: 13, fontWeight: 700 }}>タイドグラフ</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ color: '#eee', fontWeight: 700 }}>タイドグラフ</div>
         <div style={{ color: '#aaa', fontSize: 12 }}>{baseDate.toLocaleDateString()}</div>
       </div>
 
-      <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ marginTop: 10, display: 'block' }}>
-        <rect x="0" y="0" width={width} height={height} fill="transparent" />
-
-        {/* Y軸：水平グリッド + 目盛り */}
+      <svg width="100%" viewBox={`0 0 ${width} ${height}`}>
         {yTicks.map((v) => {
           const y = yToPx(v)
           return (
-            <g key={`y-${v}`}>
+            <g key={v}>
               <line x1={padLeft} y1={y} x2={width - padRight} y2={y} stroke="#1f1f1f" />
-              <text x={padLeft - 6} y={y + 3} textAnchor="end" fontSize={FONT_Y} fill="#888">
+              <text x={padLeft - 6} y={y + 3} textAnchor="end" fontSize={10} fill="#888">
                 {Math.round(v)}
               </text>
             </g>
           )
         })}
 
-        {/* X軸：縦グリッド + 目盛り */}
         {ticksX.map((t) => (
           <g key={t.label}>
             <line x1={t.x} y1={padTop} x2={t.x} y2={height - padBottom} stroke="#222" />
-            <text x={t.x} y={height - 2} textAnchor="middle" fontSize={FONT_X} fill="#888">
+            <text x={t.x} y={height - 2} textAnchor="middle" fontSize={10} fill="#888">
               {t.label}
             </text>
           </g>
         ))}
 
-        {/* 潮位0cm基準線（範囲内だけ） */}
-        {0 >= yStart && 0 <= yEnd && (
-          <line x1={padLeft} y1={yToPx(0)} x2={width - padRight} y2={yToPx(0)} stroke="#2b2b2b" strokeDasharray="3 4" />
-        )}
+        <polyline
+          points={polyPoints}
+          fill="none"
+          stroke="#00e0a8"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
 
-        {/* 波（折れ線） */}
-        <polyline points={polyPoints} fill="none" stroke="#00e0a8" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-
-        {/* ハイライト（撮影時刻） + ラベル */}
-        {hiX != null && hiY != null && hi != null && (
+        {hiX != null && hiY != null && hi && (
           <>
             <line x1={hiX} y1={padTop} x2={hiX} y2={height - padBottom} stroke="#ff4d6d" strokeDasharray="4 4" />
-            <circle cx={hiX} cy={hiY} r="5.5" fill="#ff4d6d" />
-            <circle cx={hiX} cy={hiY} r="9" fill="transparent" stroke="#ff4d6d" />
-
-            {/* ラベル（枠内clamp） */}
-            {(() => {
-              const label = `${pad2(Math.floor(hi.min / 60))}:${pad2(hi.min % 60)} (${Math.round(hi.cm)}cm)`
-              const x = clamp(hiX + 10, padLeft + 2, width - padRight - 2)
-              const y = clamp(hiY + 18, padTop + 12, height - padBottom - 6)
-              const anchor = hiX > width - padRight - 70 ? 'end' : 'start'
-              const x2 = anchor === 'end' ? clamp(hiX - 10, padLeft + 2, width - padRight - 2) : x
-
-              return (
-                <text x={x2} y={y} textAnchor={anchor} fontSize={11} fill="#ff4d6d" stroke="#111" strokeWidth={2} paintOrder="stroke">
-                  {label}
-                </text>
-              )
-            })()}
+            <circle cx={hiX} cy={hiY} r={6} fill="#ff4d6d" />
           </>
         )}
-
-        {/* max/min表示 */}
-        <text x={padLeft} y={padTop + 12} fontSize={10} fill="#888">
-          max {Math.round(maxY0)}cm
-        </text>
-        <text x={padLeft} y={height - padBottom - 4} fontSize={10} fill="#888">
-          min {Math.round(minY0)}cm
-        </text>
       </svg>
-
-      {highlightAt && (
-        <div style={{ marginTop: 8, fontSize: 12, color: '#aaa' }}>
-          📸 撮影時刻付近をマーキング：{highlightAt.toLocaleTimeString()}
-        </div>
-      )}
     </div>
   )
 }
