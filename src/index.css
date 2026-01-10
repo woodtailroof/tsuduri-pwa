@@ -49,8 +49,7 @@ body {
   --bg-base-1: #0b0d13;
   --bg-accent: rgba(255, 77, 109, 0.18);
 
-  /* ✅ PageShell用（未定義だと背景が丸ごと無効化され得るので、ここで定義）
-     B案：public/assets/bg/ui-check.png を使う */
+  /* ✅ B案：public/assets/bg/ui-check.png */
   --bg-image: url("/assets/bg/ui-check.png");
   --bg-blur: 0px;
   --bg-dim: 0.25;
@@ -176,18 +175,19 @@ p, li, div, span, label, h1, h2, h3 {
   isolation: isolate; /* 背景をこの要素内で完結 */
 }
 
+/* ✅ 画像を“最前面の背景レイヤー”にする（これで見える） */
 .page-shell::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -2;
 
-  /* ✅ var() が未定義でも background 宣言自体が無効化されないように fallback を入れる */
+  /* 先頭ほど上に描画されるので、画像を先頭に置く */
   background:
-    radial-gradient(1000px 700px at 20% -10%, var(--bg-accent), transparent 55%),
+    var(--bg-image, none),
+    radial-gradient(1000px 700px at 20% -10%, rgba(255, 77, 109, 0.18), transparent 55%),
     radial-gradient(900px 600px at 110% 10%, rgba(110, 207, 255, 0.10), transparent 60%),
-    linear-gradient(180deg, var(--bg-base-0), var(--bg-base-1)),
-    var(--bg-image, none);
+    linear-gradient(180deg, rgba(7, 8, 11, 0.55), rgba(11, 13, 19, 0.55));
 
   background-size: cover;
   background-position: center;
