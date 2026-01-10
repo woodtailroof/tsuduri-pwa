@@ -27,6 +27,17 @@ type Props = {
   bgDim?: number
   /** ✅ 背景のぼかし(px) デフォルト: 0 */
   bgBlur?: number
+
+  /** ✅ テスト用キャラを表示するか（デフォルト: true） */
+  showTestCharacter?: boolean
+  /** ✅ テスト用キャラ画像パス（例: "/assets/character-test.png"） */
+  testCharacterSrc?: string
+  /** ✅ テスト用キャラの高さ(px)をclampで制御（デフォルト: "clamp(140px, 18vw, 220px)"） */
+  testCharacterHeight?: string
+  /** ✅ キャラの位置微調整（px） */
+  testCharacterOffset?: { right?: number; bottom?: number }
+  /** ✅ キャラの不透明度（0〜1） */
+  testCharacterOpacity?: number
 }
 
 const STACK_KEY = 'tsuduri_nav_stack_v1'
@@ -66,6 +77,13 @@ export default function PageShell({
   bgImage,
   bgDim = 0.55,
   bgBlur = 0,
+
+  // ✅ テストキャラ（全画面共通）
+  showTestCharacter = true,
+  testCharacterSrc = '/assets/character-test.png',
+  testCharacterHeight = 'clamp(140px, 18vw, 220px)',
+  testCharacterOffset = { right: 16, bottom: 16 },
+  testCharacterOpacity = 1,
 }: Props) {
   const current = useMemo(() => getPath(), [])
 
@@ -139,6 +157,34 @@ export default function PageShell({
         )}
         {children}
       </div>
+
+      {/* ✅ テスト用キャラ（全モード画面に表示） */}
+      {showTestCharacter && !!testCharacterSrc && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            right: testCharacterOffset.right ?? 16,
+            bottom: testCharacterOffset.bottom ?? 16,
+            zIndex: 10,
+            pointerEvents: 'none',
+            userSelect: 'none',
+            opacity: testCharacterOpacity,
+            filter: 'drop-shadow(0 10px 28px rgba(0,0,0,0.28))',
+          }}
+        >
+          <img
+            src={testCharacterSrc}
+            alt=""
+            style={{
+              height: testCharacterHeight,
+              width: 'auto',
+              display: 'block',
+            }}
+            draggable={false}
+          />
+        </div>
+      )}
     </div>
   )
 }
