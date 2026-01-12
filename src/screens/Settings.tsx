@@ -11,7 +11,7 @@ import {
 } from '../lib/tide736Cache'
 import type { TideCacheEntry } from '../db'
 import PageShell from '../components/PageShell'
-import { CHARACTER_OPTIONS as CHARACTER_OPTIONS_RAW, DEFAULT_SETTINGS, useAppSettings } from '../lib/appSettings'
+import * as AppSettings from '../lib/appSettings'
 
 type Props = {
   back: () => void
@@ -33,38 +33,86 @@ function clamp(n: number, min: number, max: number) {
 type CharacterOption = { id: string; label: string }
 
 function safeCharacterOptions(): CharacterOption[] {
-  const v = CHARACTER_OPTIONS_RAW as unknown
-  if (Array.isArray(v)) {
-    const ok = v.filter((x) => x && typeof (x as any).id === 'string' && typeof (x as any).label === 'string') as CharacterOption[]
+  const raw = (AppSettings as any).CHARACTER_OPTIONS
+  if (Array.isArray(raw)) {
+    const ok = raw.filter((x) => x && typeof x.id === 'string' && typeof x.label === 'string') as CharacterOption[]
     if (ok.length > 0) return ok
   }
-  return [{ id: 'tsuduri', label: 'つづり（fallback）' }]
+  // 最低限のfallback
+  return [
+    { id: 'tsuduri', label: 'つづり' },
+    { id: 'kokoro', label: 'こころ' },
+    { id: 'matsuri', label: 'まつり' },
+  ]
+}
+
+const FALLBACK_DEFAULT_SETTINGS = {
+  characterEnabled: true,
+  characterMode: 'fixed' as 'fixed' | 'random',
+  fixedCharacterId: 'tsuduri',
+  characterScale: 1,
+  characterOpacity: 1,
+  bgDim: 0.55,
+  bgBlur: 0,
+  infoPanelAlpha: 0,
 }
 
 export default function Settings({ back }: Props) {
-  let settingsHook: { settings: any; set: (patch: any) => void; reset: () => void } | null = null
-  let settingsHookError: string | null = null
-  try {
-    settingsHook = useAppSettings() as any
-  } catch (e) {
-    settingsHookError = e instanceof Error ? e.message : String(e)
-  }
+  // ✅ named exportズレで真っ黒にならないように、存在チェックしてから使う
+  const useAppSettings = (AppSettings as any).useAppSettings as undefined | (() => {
+    settings: any
+    set: (patch: any) => void
+    reset: () => void
+  })
 
-  if (!settingsHook) {
+  if (!useAppSettings) {
     return (
       <PageShell
         title={<h1 style={{ margin: 0, fontSize: 'clamp(20px, 5.5vw, 32px)' }}>⚙ 総合設定</h1>}
-        subtitle={<div style={{ marginTop: 8, color: 'rgba(255,255,255,0.72)' }}>設定の読み込みでエラーが出たよ</div>}
+        subtitle={<div style={{ marginTop: 8, color: 'rgba(255,255,255,0.72)' }}>設定モジュールが読めてないみたい</div>}
         maxWidth={980}
         showBack
         onBack={back}
       >
         <div className="glass glass-strong" style={{ borderRadius: 16, padding: 14, display: 'grid', gap: 10 }}>
-          <div style={{ fontWeight: 900, color: '#ff7a7a' }}>⚠ 設定ストアが落ちてる</div>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', overflowWrap: 'anywhere' }}>{settingsHookError ?? 'unknown error'}</div>
+          <div style={{ fontWeight: 900, color: '#ff7a7a' }}>⚠ ../lib/appSettings の export が見つからない</div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)' }}>
+            useAppSettings が undefined になってるよ。<br />
+            appSettings.ts の export 名と一致してるか確認してね。
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              alert('appSettings.ts の export 名を確認してね（useAppSettings / DEFAULT_SETTINGS 等）')
+            }}
+          >
+            何を見ればいい？
+          </button>
+        </div>
+      </PageShell>
+    )
+  }
 
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>対処：localStorage の設定が壊れている可能性があるので、初期化を試してね。</div>
+  let hook: { settings: any; set: (patch: any) => void; reset: () => void } | null = null
+  let hookError: string | null = null
+  try {
+    hook = useAppSettings()
+  } catch (e) {
+    hookError = e instanceof Error ? e.message : String(e)
+  }
 
+  if (!hook) {
+    return (
+      <PageShell
+        title={<h1 style={{ margin: 0, fontSize: 'clamp(20px, 5.5vw, 32px)' }}>⚙ 総合設定</h1>}
+        subtitle={<div style={{ marginTop: 8, color: 'rgba(255,255,255,0.72)' }}>設定の読み込みで落ちたよ</div>}
+        maxWidth={980}
+        showBack
+        onBack={back}
+      >
+        <div className="glass glass-strong" style={{ borderRadius: 16, padding: 14, display: 'grid', gap: 10 }}>
+          <div style={{ fontWeight: 900, color: '#ff7a7a' }}>⚠ useAppSettings が例外</div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', overflowWrap: 'anywhere' }}>{hookError ?? 'unknown error'}</div>
           <button
             type="button"
             onClick={() => {
@@ -73,7 +121,7 @@ export default function Settings({ back }: Props) {
               } catch {
                 // ignore
               }
-              alert('設定を初期化したよ。再読み込みしてね')
+              alert('設定(localStorage)を初期化したよ。再読み込みしてね')
               location.reload()
             }}
           >
@@ -84,7 +132,7 @@ export default function Settings({ back }: Props) {
     )
   }
 
-  const { settings, set, reset } = settingsHook
+  const { settings, set, reset } = hook
   const characterOptions = useMemo(() => safeCharacterOptions(), [])
 
   const [loading, setLoading] = useState(true)
@@ -145,30 +193,19 @@ export default function Settings({ back }: Props) {
     refresh()
   }, [])
 
-  // ✅ TS6133対策：ちゃんと使う（表示に出す）
   const approxMB = useMemo(() => {
     const kb = stats?.approxKB ?? 0
     return Math.round((kb / 1024) * 100) / 100
   }, [stats])
 
-  const cutoffDateLabel = useMemo(() => {
-    const ms = Date.now() - days * 24 * 60 * 60 * 1000
-    const d = new Date(ms)
-    try {
-      return d.toLocaleString()
-    } catch {
-      return d.toISOString()
-    }
-  }, [days])
-
-  const characterEnabled = settings?.characterEnabled ?? true
-  const characterMode = settings?.characterMode ?? 'fixed'
-  const fixedCharacterId = settings?.fixedCharacterId ?? characterOptions[0]?.id ?? 'tsuduri'
-  const characterScale = Number.isFinite(settings?.characterScale) ? settings.characterScale : 1
-  const characterOpacity = Number.isFinite(settings?.characterOpacity) ? settings.characterOpacity : 1
-  const bgDim = Number.isFinite(settings?.bgDim) ? settings.bgDim : 0.55
-  const bgBlur = Number.isFinite(settings?.bgBlur) ? settings.bgBlur : 0
-  const infoPanelAlpha = Number.isFinite(settings?.infoPanelAlpha) ? settings.infoPanelAlpha : 0
+  const characterEnabled = settings?.characterEnabled ?? FALLBACK_DEFAULT_SETTINGS.characterEnabled
+  const characterMode = settings?.characterMode ?? FALLBACK_DEFAULT_SETTINGS.characterMode
+  const fixedCharacterId = settings?.fixedCharacterId ?? characterOptions[0]?.id ?? FALLBACK_DEFAULT_SETTINGS.fixedCharacterId
+  const characterScale = Number.isFinite(settings?.characterScale) ? settings.characterScale : FALLBACK_DEFAULT_SETTINGS.characterScale
+  const characterOpacity = Number.isFinite(settings?.characterOpacity) ? settings.characterOpacity : FALLBACK_DEFAULT_SETTINGS.characterOpacity
+  const bgDim = Number.isFinite(settings?.bgDim) ? settings.bgDim : FALLBACK_DEFAULT_SETTINGS.bgDim
+  const bgBlur = Number.isFinite(settings?.bgBlur) ? settings.bgBlur : FALLBACK_DEFAULT_SETTINGS.bgBlur
+  const infoPanelAlpha = Number.isFinite(settings?.infoPanelAlpha) ? settings.infoPanelAlpha : FALLBACK_DEFAULT_SETTINGS.infoPanelAlpha
 
   return (
     <PageShell
@@ -213,8 +250,6 @@ export default function Settings({ back }: Props) {
                   </option>
                 ))}
               </select>
-
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>※チャット画面と連動させるのも、この仕組みを土台にできるよ</div>
             </div>
 
             <div style={{ display: 'grid', gap: 6 }}>
@@ -231,7 +266,6 @@ export default function Settings({ back }: Props) {
                 value={characterScale}
                 onChange={(e) => set({ characterScale: clamp(Number(e.target.value), 0.7, 2.0) })}
               />
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>目安：スマホは 120%〜160% あたりがいい感じ</div>
             </div>
 
             <div style={{ display: 'grid', gap: 6 }}>
@@ -297,7 +331,7 @@ export default function Settings({ back }: Props) {
           </div>
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button type="button" style={loading || !!busy ? pillDisabled : pill} disabled={loading || !!busy} onClick={() => refresh()} title="キャッシュ状況を再読込">
+            <button type="button" style={loading || !!busy ? pillDisabled : pill} disabled={loading || !!busy} onClick={() => refresh()}>
               ↻ 更新
             </button>
 
@@ -317,7 +351,6 @@ export default function Settings({ back }: Props) {
                   setBusy(null)
                 }
               }}
-              title="キャッシュ全削除"
             >
               🗑 全削除
             </button>
@@ -345,7 +378,6 @@ export default function Settings({ back }: Props) {
                     setBusy(null)
                   }
                 }}
-                title={`cutoff(表示用): ${cutoffDateLabel}`}
               >
                 実行
               </button>
@@ -381,7 +413,7 @@ export default function Settings({ back }: Props) {
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                     <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', overflowWrap: 'anywhere' }}>
-                      {e.day}（{(e as any).pc}:{(e as any).hc}）
+                      {(e as any).day}（{(e as any).pc}:{(e as any).hc}）
                     </div>
                     <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>fetched: {fmtIso((e as any).fetchedAt ?? null)}</div>
                   </div>
@@ -428,20 +460,13 @@ export default function Settings({ back }: Props) {
                     >
                       ↻ 強制再取得
                     </button>
-
-                    {(e as any).tideName != null && (
-                      <div style={{ fontSize: 12, color: '#ffd166', display: 'inline-flex', alignItems: 'center' }}>🌙 {(e as any).tideName}</div>
-                    )}
                   </div>
                 </div>
               ))}
-
-              {entries.length > 80 && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>※多すぎると重くなるから先頭80件まで表示してるよ</div>}
             </div>
           )}
         </div>
 
-        {/* 🔁 リセット */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <button
             type="button"
@@ -460,10 +485,10 @@ export default function Settings({ back }: Props) {
             type="button"
             style={pill}
             onClick={() => {
-              set(DEFAULT_SETTINGS)
+              const defaults = (AppSettings as any).DEFAULT_SETTINGS ?? FALLBACK_DEFAULT_SETTINGS
+              set(defaults)
               alert('設定を保存し直したよ')
             }}
-            title="設定を正規化して保存し直す"
           >
             ✅ 設定を保存し直す
           </button>
