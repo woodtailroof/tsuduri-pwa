@@ -11,7 +11,7 @@ import {
 } from '../lib/tide736Cache'
 import type { TideCacheEntry } from '../db'
 import PageShell from '../components/PageShell'
-import { CHARACTER_OPTIONS, DEFAULT_SETTINGS, useAppSettings } from '../lib/appSettings'
+import { CHARACTER_OPTIONS as CHARACTER_OPTIONS_RAW, DEFAULT_SETTINGS, useAppSettings } from '../lib/appSettings'
 
 type Props = {
   back: () => void
@@ -30,8 +30,76 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
 }
 
+type CharacterOption = { id: string; label: string }
+
+function safeCharacterOptions(): CharacterOption[] {
+  const v = CHARACTER_OPTIONS_RAW as unknown
+  if (Array.isArray(v)) {
+    const ok = v.filter(
+      (x) =>
+        x &&
+        typeof (x as any).id === 'string' &&
+        typeof (x as any).label === 'string'
+    ) as CharacterOption[]
+    if (ok.length > 0) return ok
+  }
+  // ✅ フォールバック（ここに落ちても画面が死なない）
+  return [{ id: 'tsuduri', label: 'つづり（fallback）' }]
+}
+
 export default function Settings({ back }: Props) {
-  const { settings, set, reset } = useAppSettings()
+  // ✅ ここで落ちると画面真っ暗になりがちなので、try/catchで救出する
+  let settingsHook:
+    | { settings: any; set: (patch: any) => void; reset: () => void }
+    | null = null
+  let settingsHookError: string | null = null
+  try {
+    settingsHook = useAppSettings() as any
+  } catch (e) {
+    settingsHookError = e instanceof Error ? e.message : String(e)
+  }
+
+  // もし hook が壊れてたら「救助UI」だけ出す
+  if (!settingsHook) {
+    return (
+      <PageShell
+        title={<h1 style={{ margin: 0, fontSize: 'clamp(20px, 5.5vw, 32px)' }}>⚙ 総合設定</h1>}
+        subtitle={<div style={{ marginTop: 8, color: 'rgba(255,255,255,0.72)' }}>設定の読み込みでエラーが出たよ</div>}
+        maxWidth={980}
+        showBack
+        onBack={back}
+      >
+        <div className="glass glass-strong" style={{ borderRadius: 16, padding: 14, display: 'grid', gap: 10 }}>
+          <div style={{ fontWeight: 900, color: '#ff7a7a' }}>⚠ 設定ストアが落ちてる</div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', overflowWrap: 'anywhere' }}>
+            {settingsHookError ?? 'unknown error'}
+          </div>
+
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>
+            対処：localStorage の設定が壊れている可能性があるので、初期化を試してね。
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                localStorage.removeItem('tsuduri_app_settings_v1')
+              } catch {
+                // ignore
+              }
+              alert('設定を初期化したよ。再読み込みしてね')
+              location.reload()
+            }}
+          >
+            🧯 設定を初期化して再読み込み
+          </button>
+        </div>
+      </PageShell>
+    )
+  }
+
+  const { settings, set, reset } = settingsHook
+  const characterOptions = useMemo(() => safeCharacterOptions(), [])
 
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
@@ -96,7 +164,6 @@ export default function Settings({ back }: Props) {
     return Math.round((kb / 1024) * 100) / 100
   }, [stats])
 
-  // 表示用：カットオフ日時（削除APIには使わない。UIの説明用）
   const cutoffDateLabel = useMemo(() => {
     const ms = Date.now() - days * 24 * 60 * 60 * 1000
     const d = new Date(ms)
@@ -107,35 +174,39 @@ export default function Settings({ back }: Props) {
     }
   }, [days])
 
+  // ✅ 万一 settings のキーが欠けてても落ちないように、表示側はフォールバックで読む
+  const characterEnabled = settings?.characterEnabled ?? true
+  const characterMode = settings?.characterMode ?? 'fixed'
+  const fixedCharacterId = settings?.fixedCharacterId ?? characterOptions[0]?.id ?? 'tsuduri'
+  const characterScale = Number.isFinite(settings?.characterScale) ? settings.characterScale : 1
+  const characterOpacity = Number.isFinite(settings?.characterOpacity) ? settings.characterOpacity : 1
+  const bgDim = Number.isFinite(settings?.bgDim) ? settings.bgDim : 0.55
+  const bgBlur = Number.isFinite(settings?.bgBlur) ? settings.bgBlur : 0
+  const infoPanelAlpha = Number.isFinite(settings?.infoPanelAlpha) ? settings.infoPanelAlpha : 0
+
   return (
     <PageShell
       title={<h1 style={{ margin: 0, fontSize: 'clamp(20px, 5.5vw, 32px)' }}>⚙ 総合設定</h1>}
-      subtitle={
-        <div style={{ marginTop: 8, color: 'rgba(255,255,255,0.72)' }}>
-          ここで「キャラ」「見た目」「キャッシュ」をまとめて調整できるよ。
-        </div>
-      }
+      subtitle={<div style={{ marginTop: 8, color: 'rgba(255,255,255,0.72)' }}>ここで「キャラ」「見た目」「キャッシュ」をまとめて調整できるよ。</div>}
       maxWidth={980}
       showBack
       onBack={back}
     >
       <div style={{ display: 'grid', gap: 16 }}>
-        {/* =======================
-            👧 キャラ
-        ======================= */}
+        {/* 👧 キャラ */}
         <div className="glass glass-strong" style={{ borderRadius: 16, padding: 14, display: 'grid', gap: 12 }}>
           <h2 style={sectionTitle}>👧 キャラクター</h2>
 
           <label style={{ display: 'flex', gap: 10, alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
             <input
               type="checkbox"
-              checked={settings.characterEnabled}
+              checked={characterEnabled}
               onChange={(e) => set({ characterEnabled: e.target.checked })}
             />
             <span style={{ color: 'rgba(255,255,255,0.85)' }}>キャラを表示する</span>
           </label>
 
-          <div style={{ display: 'grid', gap: 10, opacity: settings.characterEnabled ? 1 : 0.5 }}>
+          <div style={{ display: 'grid', gap: 10, opacity: characterEnabled ? 1 : 0.5 }}>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>切替：</div>
 
@@ -143,8 +214,8 @@ export default function Settings({ back }: Props) {
                 <input
                   type="radio"
                   name="characterMode"
-                  checked={settings.characterMode === 'fixed'}
-                  disabled={!settings.characterEnabled}
+                  checked={characterMode === 'fixed'}
+                  disabled={!characterEnabled}
                   onChange={() => set({ characterMode: 'fixed' })}
                 />
                 <span>固定</span>
@@ -154,8 +225,8 @@ export default function Settings({ back }: Props) {
                 <input
                   type="radio"
                   name="characterMode"
-                  checked={settings.characterMode === 'random'}
-                  disabled={!settings.characterEnabled}
+                  checked={characterMode === 'random'}
+                  disabled={!characterEnabled}
                   onChange={() => set({ characterMode: 'random' })}
                 />
                 <span>ランダム（画面遷移ごと）</span>
@@ -166,11 +237,11 @@ export default function Settings({ back }: Props) {
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>固定キャラ：</div>
 
               <select
-                value={settings.fixedCharacterId}
-                disabled={!settings.characterEnabled || settings.characterMode !== 'fixed'}
+                value={fixedCharacterId}
+                disabled={!characterEnabled || characterMode !== 'fixed'}
                 onChange={(e) => set({ fixedCharacterId: e.target.value })}
               >
-                {CHARACTER_OPTIONS.map((c) => (
+                {characterOptions.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.label}
                   </option>
@@ -185,75 +256,70 @@ export default function Settings({ back }: Props) {
             <div style={{ display: 'grid', gap: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>大きさ</div>
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)' }}>{Math.round(settings.characterScale * 100)}%</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)' }}>{Math.round(characterScale * 100)}%</div>
               </div>
               <input
                 type="range"
                 min={0.7}
                 max={2.0}
                 step={0.05}
-                disabled={!settings.characterEnabled}
-                value={settings.characterScale}
+                disabled={!characterEnabled}
+                value={characterScale}
                 onChange={(e) => set({ characterScale: clamp(Number(e.target.value), 0.7, 2.0) })}
               />
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>
-                目安：スマホは 120%〜160% あたりが「推し」が効きやすい
+                目安：スマホは 120%〜160% あたりがいい感じ
               </div>
             </div>
 
             <div style={{ display: 'grid', gap: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>不透明度</div>
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)' }}>{Math.round(settings.characterOpacity * 100)}%</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)' }}>{Math.round(characterOpacity * 100)}%</div>
               </div>
               <input
                 type="range"
                 min={0}
                 max={1}
                 step={0.05}
-                disabled={!settings.characterEnabled}
-                value={settings.characterOpacity}
+                disabled={!characterEnabled}
+                value={characterOpacity}
                 onChange={(e) => set({ characterOpacity: clamp(Number(e.target.value), 0, 1) })}
               />
             </div>
           </div>
         </div>
 
-        {/* =======================
-            🪟 表示
-        ======================= */}
+        {/* 🪟 表示 */}
         <div className="glass glass-strong" style={{ borderRadius: 16, padding: 14, display: 'grid', gap: 12 }}>
           <h2 style={sectionTitle}>🪟 表示</h2>
 
           <div style={{ display: 'grid', gap: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>背景の暗幕（bgDim）</div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)' }}>{Math.round(settings.bgDim * 100)}%</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)' }}>{Math.round(bgDim * 100)}%</div>
             </div>
             <input
               type="range"
               min={0}
               max={1}
               step={0.02}
-              value={settings.bgDim}
+              value={bgDim}
               onChange={(e) => set({ bgDim: clamp(Number(e.target.value), 0, 1) })}
             />
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>
-              低いほど「背景映え」/ 高いほど「情報が読みやすい」
-            </div>
           </div>
 
           <div style={{ display: 'grid', gap: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>背景ぼかし（bgBlur）</div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)' }}>{settings.bgBlur}px</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)' }}>{bgBlur}px</div>
             </div>
             <input
               type="range"
               min={0}
               max={24}
               step={1}
-              value={settings.bgBlur}
+              value={bgBlur}
               onChange={(e) => set({ bgBlur: clamp(Number(e.target.value), 0, 24) })}
             />
           </div>
@@ -261,37 +327,20 @@ export default function Settings({ back }: Props) {
           <div style={{ display: 'grid', gap: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>情報レイヤーの「板」（透過）</div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)' }}>{Math.round(settings.infoPanelAlpha * 100)}%</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)' }}>{Math.round(infoPanelAlpha * 100)}%</div>
             </div>
             <input
               type="range"
               min={0}
               max={0.85}
               step={0.05}
-              value={settings.infoPanelAlpha}
+              value={infoPanelAlpha}
               onChange={(e) => set({ infoPanelAlpha: clamp(Number(e.target.value), 0, 1) })}
             />
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>
-              文字は薄くせず、背面だけ敷くよ（読みやすさアップ）
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button type="button" style={pill} onClick={() => set({ bgDim: 0.45, infoPanelAlpha: 0 })}>
-              🎨 背景寄り
-            </button>
-            <button type="button" style={pill} onClick={() => set({ bgDim: 0.55, infoPanelAlpha: 0.15 })}>
-              ⚖ 標準
-            </button>
-            <button type="button" style={pill} onClick={() => set({ bgDim: 0.68, infoPanelAlpha: 0.25 })}>
-              📖 読みやすさ寄り
-            </button>
           </div>
         </div>
 
-        {/* =======================
-            🌊 キャッシュ
-        ======================= */}
+        {/* 🌊 キャッシュ */}
         <div className="glass glass-strong" style={{ borderRadius: 16, padding: 14, display: 'grid', gap: 12 }}>
           <h2 style={sectionTitle}>🌊 tide736 キャッシュ</h2>
 
@@ -347,8 +396,7 @@ export default function Settings({ back }: Props) {
                 onClick={async () => {
                   setBusy('deleteOld')
                   try {
-                    // ✅ ここが修正点：この関数は「日数(number)」を要求してる
-                    await deleteTideCacheOlderThan(days)
+                    await deleteTideCacheOlderThan(days) // ✅ number（日数）
                     await refresh()
                     alert(`古いキャッシュ（${days}日より前）を削除したよ`)
                   } finally {
@@ -365,7 +413,7 @@ export default function Settings({ back }: Props) {
           <div style={{ display: 'grid', gap: 6 }}>
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>
               {stats
-                ? `件数: ${stats.count} / 容量(概算): ${stats.approxKB}KB（約 ${approxMB}MB）`
+                ? `件数: ${stats.count} / 容量(概算): ${stats.approxKB}KB（約 ${Math.round((stats.approxKB / 1024) * 100) / 100}MB）`
                 : loading
                   ? '読み込み中…'
                   : '—'}
@@ -376,13 +424,6 @@ export default function Settings({ back }: Props) {
           </div>
 
           <hr style={{ opacity: 0.2 }} />
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ fontWeight: 800 }}>キャッシュ一覧</div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-              ※ 1行ずつ削除 or 日付を強制再取得できるよ
-            </div>
-          </div>
 
           {entries.length === 0 ? (
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>{loading ? '読み込み中…' : 'キャッシュがまだ無いよ'}</div>
@@ -436,8 +477,7 @@ export default function Settings({ back }: Props) {
                         if (!ok) return
                         setBusy(`force:${e.key}`)
                         try {
-                          // ✅ ここが修正点：この関数は Date を要求してる（stringはNG）
-                          await forceRefreshTide736Day(e.pc, e.hc, new Date(e.day))
+                          await forceRefreshTide736Day(e.pc, e.hc, new Date(e.day)) // ✅ Date
                           await refresh()
                           alert('再取得したよ')
                         } catch (err) {
@@ -462,16 +502,14 @@ export default function Settings({ back }: Props) {
 
               {entries.length > 80 && (
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-                  ※ 多すぎると重くなるから、とりあえず先頭80件まで表示してるよ（必要ならページングする）
+                  ※多すぎると重くなるから先頭80件まで表示してるよ
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* =======================
-            🔁 リセット
-        ======================= */}
+        {/* 🔁 リセット */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <button
             type="button"
