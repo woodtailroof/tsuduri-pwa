@@ -85,8 +85,6 @@ function useIsMobile() {
   return isMobile
 }
 
-type SheetPhase = 'entering' | 'entered' | 'exiting'
-
 function prefersReducedMotion() {
   try {
     return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -95,6 +93,12 @@ function prefersReducedMotion() {
   }
 }
 
+/**
+ * ✅ BottomSheet（修正版）
+ * - mount直後は overlayActive=false / sheetActive=false（透明＆下）
+ * - rAFで overlayActive=true（暗転フェード）
+ * - 次のrAFで sheetActive=true（スーッ）
+ */
 function BottomSheet({
   open,
   onClose,
@@ -109,33 +113,45 @@ function BottomSheet({
   pillBtnStyle: CSSProperties
 }) {
   const [mounted, setMounted] = useState(false)
-  const [phase, setPhase] = useState<SheetPhase>('entering')
+  const [overlayActive, setOverlayActive] = useState(false)
+  const [sheetActive, setSheetActive] = useState(false)
   const reduce = prefersReducedMotion()
 
   useEffect(() => {
     if (open) {
       setMounted(true)
-      setPhase('entering')
+      // ✅ 初期は「透明＆下」に固定（差分を必ず作る）
+      setOverlayActive(false)
+      setSheetActive(false)
 
-      // ✅ ここが「スーッ」を作るポイント：必ず “画面外” の描画フレームを挟む
+      // ✅ 2段階で確実に走らせる
       const raf1 = requestAnimationFrame(() => {
+        setOverlayActive(true)
         const raf2 = requestAnimationFrame(() => {
-          setPhase('entered')
+          setSheetActive(true)
         })
-        ;(window as any).__tsuduri_raf2__ = raf2
+        ;(window as any).__tsuduri_sheet_raf2__ = raf2
       })
-      ;(window as any).__tsuduri_raf1__ = raf1
-      return
+      ;(window as any).__tsuduri_sheet_raf1__ = raf1
+
+      return () => {
+        cancelAnimationFrame(raf1)
+      }
     }
 
     if (!mounted) return
 
-    setPhase('exiting')
-    const ms = reduce ? 0 : 260
-    const t = window.setTimeout(() => {
-      setMounted(false)
-    }, ms)
-    return () => window.clearTimeout(t)
+    // close: シート→暗転の順で戻す
+    setSheetActive(false)
+    const t1 = window.setTimeout(() => setOverlayActive(false), reduce ? 0 : 120)
+
+    const ms = reduce ? 0 : 280
+    const t2 = window.setTimeout(() => setMounted(false), ms)
+
+    return () => {
+      window.clearTimeout(t1)
+      window.clearTimeout(t2)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -152,22 +168,20 @@ function BottomSheet({
 
   const easing = 'cubic-bezier(0.2, 0.9, 0.2, 1)'
   const overlayMs = reduce ? 0 : 220
-  const sheetMs = reduce ? 0 : 260
+  const sheetMs = reduce ? 0 : 280
 
-  const overlayShow = phase !== 'exiting'
   const overlayStyle: CSSProperties = {
     position: 'fixed',
     inset: 0,
     zIndex: 9999,
-    background: overlayShow ? 'rgba(0,0,0,0.62)' : 'rgba(0,0,0,0)',
-    backdropFilter: overlayShow ? 'blur(6px)' : 'blur(0px)',
-    WebkitBackdropFilter: overlayShow ? 'blur(6px)' : 'blur(0px)',
+    background: overlayActive ? 'rgba(0,0,0,0.62)' : 'rgba(0,0,0,0)',
+    backdropFilter: overlayActive ? 'blur(6px)' : 'blur(0px)',
+    WebkitBackdropFilter: overlayActive ? 'blur(6px)' : 'blur(0px)',
     display: 'grid',
     alignItems: 'end',
     transition: `background ${overlayMs}ms ease, backdrop-filter ${overlayMs}ms ease`,
   }
 
-  const entered = phase === 'entered'
   const sheetStyle: CSSProperties = {
     width: '100%',
     maxHeight: '85svh',
@@ -176,9 +190,11 @@ function BottomSheet({
     padding: 12,
     boxShadow: '0 -14px 40px rgba(0,0,0,0.35)',
     overflow: 'hidden',
-    // ✅ entering は必ず画面外 / entered で 0 / exiting で戻す
-    transform: entered ? 'translate3d(0, 0, 0)' : 'translate3d(0, 24px, 0)',
-    opacity: entered ? 1 : 0.001,
+
+    // ✅ 画面外→0（差分がデカいほど“スーッ”が出る）
+    transform: sheetActive ? 'translate3d(0, 0, 0)' : 'translate3d(0, 100%, 0)',
+    opacity: sheetActive ? 1 : 0.001,
+
     transition: `transform ${sheetMs}ms ${easing}, opacity ${sheetMs}ms ease`,
     willChange: 'transform, opacity',
     contain: 'layout paint',
@@ -322,7 +338,6 @@ export default function Archive({ back }: Props) {
   const [archiveMonth, setArchiveMonth] = useState<string>('')
 
   const [selectedId, setSelectedId] = useState<number | null>(null)
-
   const [sheetOpen, setSheetOpen] = useState(false)
 
   const [detailLoading, setDetailLoading] = useState(false)
@@ -357,18 +372,6 @@ export default function Archive({ back }: Props) {
   useEffect(() => {
     loadAll()
   }, [])
-
-  useEffect(() => {
-    if (!allLoadedOnce) return
-    if (all.length === 0) {
-      setSelectedId(null)
-      return
-    }
-    if (!isMobile) {
-      if (selectedId == null) setSelectedId(all[0].id ?? null)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allLoadedOnce, all, isMobile])
 
   const yearMonthsMap = useMemo(() => {
     const map = new Map<number, Set<number>>()
@@ -468,6 +471,7 @@ export default function Archive({ back }: Props) {
     setSelectedId(r.id)
 
     if (isMobile) setSheetOpen(true)
+
     setDetailError('')
     setDetailTide(null)
     setDetailPointMap({})
@@ -484,6 +488,7 @@ export default function Archive({ back }: Props) {
 
       const whenMs = shot.getTime()
       const info = getTideAtTime(series, whenMs)
+
       const map: Record<number, TideInfo> = {}
       if (info && r.id) map[r.id] = { cm: info.cm, trend: info.trend }
 
@@ -503,13 +508,6 @@ export default function Archive({ back }: Props) {
       })
     }
   }
-
-  useEffect(() => {
-    if (isMobile) return
-    if (!selected || !selected.id) return
-    openDetailForRecord(selected)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, isMobile])
 
   const headerSub = (
     <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
@@ -553,8 +551,7 @@ export default function Archive({ back }: Props) {
           <div style={{ fontSize: 12, color: '#ffd166' }}>{formatResultLine(record)}</div>
 
           <div style={{ fontSize: 12, color: '#7ef', overflowWrap: 'anywhere' }}>
-            🌊 焼津潮位：
-            {detailLoading ? '取得中…' : detailError ? '失敗（下に理由）' : tide ? `${tide.cm}cm / ${tide.trend}` : '（なし）'}
+            🌊 焼津潮位：{detailLoading ? '取得中…' : detailError ? '失敗（下に理由）' : tide ? `${tide.cm}cm / ${tide.trend}` : '（なし）'}
           </div>
 
           <div style={{ color: '#eee', overflowWrap: 'anywhere' }}>{record.memo || '（メモなし）'}</div>
@@ -768,7 +765,6 @@ export default function Archive({ back }: Props) {
         const created = new Date(r.createdAt)
         const shotDate = r.capturedAt ? new Date(r.capturedAt) : null
         const thumbUrl = r.photoBlob ? URL.createObjectURL(r.photoBlob) : null
-        const isSel = !isMobile && r.id != null && selectedId != null && r.id === selectedId
 
         return (
           <button
@@ -785,11 +781,10 @@ export default function Archive({ back }: Props) {
               alignItems: 'center',
               textAlign: 'left',
               cursor: 'pointer',
-              border: isSel ? '2px solid #ff4d6d' : '1px solid rgba(255,255,255,0.12)',
-              background: isSel ? 'rgba(255,77,109,0.10)' : 'rgba(255,255,255,0.06)',
-              boxShadow: isSel ? '0 10px 26px rgba(0,0,0,0.22)' : '0 6px 18px rgba(0,0,0,0.16)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              background: 'rgba(255,255,255,0.06)',
+              boxShadow: '0 6px 18px rgba(0,0,0,0.16)',
             }}
-            aria-pressed={isSel}
             title="この記録を開く"
           >
             <div
@@ -858,8 +853,19 @@ export default function Archive({ back }: Props) {
           ) : all.length === 0 ? (
             <p>まだ記録がないよ</p>
           ) : (
-            <>
-              {!isMobile ? (
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
+                絞り込み {filteredArchive.length} 件（表示 {Math.min(archivePageSize, filteredArchive.length)} 件）
+              </div>
+
+              {isMobile ? (
+                <>
+                  {ListView}
+                  <BottomSheet open={sheetOpen} onClose={() => setSheetOpen(false)} title="📌 記録の詳細" pillBtnStyle={pillBtnStyle}>
+                    {selected ? <DetailView record={selected} /> : <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>—</div>}
+                  </BottomSheet>
+                </>
+              ) : (
                 <div
                   style={{
                     display: 'grid',
@@ -869,12 +875,7 @@ export default function Archive({ back }: Props) {
                     minWidth: 0,
                   }}
                 >
-                  <div style={{ display: 'grid', gap: 10, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
-                      絞り込み {filteredArchive.length} 件（表示 {Math.min(archivePageSize, filteredArchive.length)} 件）
-                    </div>
-                    {ListView}
-                  </div>
+                  <div style={{ display: 'grid', gap: 10, minWidth: 0 }}>{ListView}</div>
 
                   <div
                     ref={detailPaneRef}
@@ -890,20 +891,8 @@ export default function Archive({ back }: Props) {
                     {selected ? <DetailView record={selected} /> : <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>左の履歴から選択してね</div>}
                   </div>
                 </div>
-              ) : (
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
-                    絞り込み {filteredArchive.length} 件（表示 {Math.min(archivePageSize, filteredArchive.length)} 件）
-                  </div>
-
-                  {ListView}
-
-                  <BottomSheet open={sheetOpen} onClose={() => setSheetOpen(false)} title="📌 記録の詳細" pillBtnStyle={pillBtnStyle}>
-                    {selected ? <DetailView record={selected} /> : <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>—</div>}
-                  </BottomSheet>
-                </div>
               )}
-            </>
+            </div>
           )}
         </div>
       </div>
