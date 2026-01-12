@@ -255,7 +255,6 @@ export default function Archive({ back }: Props) {
     await db.catches.delete(id)
     await loadAll()
 
-    // 選択してたやつ消したら閉じる/選び直し
     if (selectedId === id) {
       setSelectedId(null)
       setDetailTide(null)
@@ -275,7 +274,6 @@ export default function Archive({ back }: Props) {
 
       if (!selected) return
 
-      // 撮影日時がない場合は詳細でも出せる範囲だけ出す
       if (!selected.capturedAt) {
         setDetailTide({
           series: [],
@@ -327,7 +325,7 @@ export default function Archive({ back }: Props) {
     return () => {
       cancelled = true
     }
-  }, [selectedId]) // selectedはallに依存して再生成されるので、ID基準でOK
+  }, [selectedId])
 
   function openDetail(r: CatchRecord) {
     if (r.id == null) return
@@ -379,7 +377,7 @@ export default function Archive({ back }: Props) {
 
   // ===== 詳細ビュー（PC右ペイン / スマホシート共通） =====
   function DetailView({ record }: { record: CatchRecord }) {
-    const shotIso = safeShotISO(record)
+    const shotIso = safeShotISO(record) // ✅ これを未使用にしない
     const shot = record.capturedAt ? new Date(record.capturedAt) : null
     const created = new Date(record.createdAt)
 
@@ -418,7 +416,10 @@ export default function Archive({ back }: Props) {
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>🕒 記録：{isValidDate(created) ? created.toLocaleString() : record.createdAt}</div>
 
           <div style={{ fontSize: 12, color: '#6cf', overflowWrap: 'anywhere' }}>
-            📸 {shot && isValidDate(shot) ? shot.toLocaleString() : '（撮影日時なし）'}
+            📸{' '}
+            {shot && isValidDate(shot)
+              ? shot.toLocaleString()
+              : `（撮影日時なし / 参照: ${isValidDate(new Date(shotIso)) ? new Date(shotIso).toLocaleString() : shotIso}）`}
             {shot && isValidDate(shot) ? ` / 🕒 ${band}` : ''}
             {detailTide?.tideName ? ` / 🌙 ${detailTide.tideName}` : ''}
             {detailTide?.phaseShown ? ` / 🌊 ${detailTide.phaseShown}` : ''}
@@ -441,7 +442,7 @@ export default function Archive({ back }: Props) {
 
           <div style={{ color: '#eee', overflowWrap: 'anywhere' }}>{record.memo || '（メモなし）'}</div>
 
-          {/* ✅ 削除ボタンは “メモの下” に配置（ひろっち案採用） */}
+          {/* ✅ 削除ボタンは “メモの下” */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
             <button
               type="button"
@@ -536,10 +537,8 @@ export default function Archive({ back }: Props) {
       onBack={back}
     >
       <div style={{ display: 'grid', gap: 12 }}>
-        {/* 上部ボタン */}
         {headerActions}
 
-        {/* 絞り込み・表示件数 */}
         <div className="glass glass-strong" style={{ ...glassBoxStyle }}>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>🔎 絞り込み</div>
@@ -618,22 +617,8 @@ export default function Archive({ back }: Props) {
           </div>
         </div>
 
-        {/* 本体：PCは2ペイン、スマホはリストのみ + ボトムシート */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 16,
-            alignItems: 'stretch',
-            minWidth: 0,
-          }}
-        >
-          {/* 左：リスト */}
-          <div
-            style={{
-              flex: isMobile ? '1 1 auto' : '0 0 520px',
-              minWidth: 0,
-            }}
-          >
+        <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', minWidth: 0 }}>
+          <div style={{ flex: isMobile ? '1 1 auto' : '0 0 520px', minWidth: 0 }}>
             {allLoading && !loadedOnce ? (
               <p>読み込み中…</p>
             ) : all.length === 0 ? (
@@ -723,7 +708,6 @@ export default function Archive({ back }: Props) {
             )}
           </div>
 
-          {/* 右：詳細（PCのみ常設） */}
           {!isMobile && (
             <div style={{ flex: '1 1 auto', minWidth: 0 }}>
               {selected ? (
@@ -738,7 +722,6 @@ export default function Archive({ back }: Props) {
         </div>
       </div>
 
-      {/* スマホ：ボトムシート */}
       {isMobile && (
         <BottomSheet
           open={sheetOpen}
