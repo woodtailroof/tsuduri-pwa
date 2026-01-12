@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import PageShell from '../components/PageShell'
 
 type Props = {
-  go: (screen: 'record' | 'recordHistory' | 'recordAnalysis' | 'weather' | 'chat' | 'settings') => void
+  go: (screen: 'record' | 'archive' | 'weather' | 'chat' | 'settings') => void
 }
 
 const APP_LOCK_PASS_KEY = 'tsuduri_app_pass_v1'
@@ -57,11 +57,7 @@ export default function Home({ go }: Props) {
   }
 
   return (
-    <PageShell
-      title={<h1 style={{ margin: 0 }}>🎣 釣嫁つづり</h1>}
-      subtitle={<p style={{ marginTop: 8 }}>ひろっちの釣りライフ、今日も一投いこ？</p>}
-      maxWidth={760}
-    >
+    <PageShell title={<h1 style={{ margin: 0 }}>🎣 釣嫁つづり</h1>} subtitle={<p style={{ marginTop: 8 }}>ひろっちの釣りライフ、今日も一投いこ？</p>} maxWidth={760}>
       {!canUse && (
         <div
           style={{
@@ -147,11 +143,7 @@ export default function Home({ go }: Props) {
         }}
       >
         <button onClick={() => go('record')}>📸 釣果を記録する</button>
-        <button onClick={() => go('recordHistory')}>📚 全履歴を見る</button>
-        <button onClick={() => go('recordAnalysis')}>📈 偏差分析を見る</button>
-
-        <hr style={{ margin: '12px 0', opacity: 0.3 }} />
-
+        <button onClick={() => go('archive')}>🧾 全履歴を見る</button>
         <button onClick={() => go('weather')}>🌊 天気・潮を見る</button>
         <button onClick={() => go('chat')}>💬 話す</button>
 
