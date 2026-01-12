@@ -33,19 +33,19 @@ function clamp(n: number, min: number, max: number) {
 export default function Settings({ back }: Props) {
   const { settings, set, reset } = useAppSettings()
 
-  // 既存：キャッシュ管理系
   const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState<string | null>(null) // key or action
+  const [busy, setBusy] = useState<string | null>(null)
+
   const [stats, setStats] = useState<{
     count: number
     approxKB: number
     newestFetchedAt: string | null
     oldestFetchedAt: string | null
   } | null>(null)
+
   const [entries, setEntries] = useState<TideCacheEntry[]>([])
   const [days, setDays] = useState<30 | 60 | 90 | 180>(30)
 
-  // 共通UI
   const pill: CSSProperties = {
     borderRadius: 999,
     padding: '10px 12px',
@@ -96,10 +96,15 @@ export default function Settings({ back }: Props) {
     return Math.round((kb / 1024) * 100) / 100
   }, [stats])
 
-  // ✅「N日前より前」を Date に変換（deleteTideCacheOlderThan が Date 想定のため）
-  const cutoffDate = useMemo(() => {
+  // 表示用：カットオフ日時（削除APIには使わない。UIの説明用）
+  const cutoffDateLabel = useMemo(() => {
     const ms = Date.now() - days * 24 * 60 * 60 * 1000
-    return new Date(ms)
+    const d = new Date(ms)
+    try {
+      return d.toLocaleString()
+    } catch {
+      return d.toISOString()
+    }
   }, [days])
 
   return (
@@ -285,7 +290,7 @@ export default function Settings({ back }: Props) {
         </div>
 
         {/* =======================
-            🌊 キャッシュ（既存機能）
+            🌊 キャッシュ
         ======================= */}
         <div className="glass glass-strong" style={{ borderRadius: 16, padding: 14, display: 'grid', gap: 12 }}>
           <h2 style={sectionTitle}>🌊 tide736 キャッシュ</h2>
@@ -334,6 +339,7 @@ export default function Settings({ back }: Props) {
                 <option value={90}>90日</option>
                 <option value={180}>180日</option>
               </select>
+
               <button
                 type="button"
                 style={!!busy ? pillDisabled : pill}
@@ -341,15 +347,15 @@ export default function Settings({ back }: Props) {
                 onClick={async () => {
                   setBusy('deleteOld')
                   try {
-                    // ✅ ここが修正点：Date を渡す
-                    await deleteTideCacheOlderThan(cutoffDate)
+                    // ✅ ここが修正点：この関数は「日数(number)」を要求してる
+                    await deleteTideCacheOlderThan(days)
                     await refresh()
                     alert(`古いキャッシュ（${days}日より前）を削除したよ`)
                   } finally {
                     setBusy(null)
                   }
                 }}
-                title={`cutoff: ${cutoffDate.toISOString()}`}
+                title={`cutoff(表示用): ${cutoffDateLabel}`}
               >
                 実行
               </button>
@@ -430,7 +436,8 @@ export default function Settings({ back }: Props) {
                         if (!ok) return
                         setBusy(`force:${e.key}`)
                         try {
-                          await forceRefreshTide736Day(e.pc, e.hc, e.day)
+                          // ✅ ここが修正点：この関数は Date を要求してる（stringはNG）
+                          await forceRefreshTide736Day(e.pc, e.hc, new Date(e.day))
                           await refresh()
                           alert('再取得したよ')
                         } catch (err) {
@@ -463,7 +470,7 @@ export default function Settings({ back }: Props) {
         </div>
 
         {/* =======================
-            🔁 全リセット
+            🔁 リセット
         ======================= */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <button
