@@ -1,7 +1,8 @@
 // src/components/PageShell.tsx
 
 import type { CSSProperties, ReactNode } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { pickRandomCharacterId, resolveCharacterSrc, useAppSettings } from '../lib/appSettings'
 
 type Props = {
   title?: ReactNode
@@ -23,19 +24,16 @@ type Props = {
 
   /** ✅ 背景画像（ページ単位で差し替えたい時）例: "/bg/home.webp" */
   bgImage?: string
-  /** ✅ 背景の暗幕の濃さ（0〜1）デフォルト: 0.55 */
+  /** ✅ 背景の暗幕の濃さ（0〜1）デフォルト: 0.55（※設定があれば設定を優先） */
   bgDim?: number
-  /** ✅ 背景のぼかし(px) デフォルト: 0 */
+  /** ✅ 背景のぼかし(px) デフォルト: 0（※設定があれば設定を優先） */
   bgBlur?: number
 
   /** ✅ テスト用キャラを表示するか（デフォルト: true） */
   showTestCharacter?: boolean
   /** ✅ テスト用キャラ画像パス（例: "/assets/character-test.png"） */
   testCharacterSrc?: string
-  /**
-   * ✅ テスト用キャラの高さ(px)をclampで制御
-   * 未指定なら、端末（スマホ/PC）で自動最適化するよ
-   */
+  /** ✅ テスト用キャラの高さ(px)をclampで制御（デフォルト: "clamp(140px, 18vw, 220px)"） */
   testCharacterHeight?: string
   /** ✅ キャラの位置微調整（px） */
   testCharacterOffset?: { right?: number; bottom?: number }
@@ -70,34 +68,8 @@ function writeStack(stack: string[]) {
   }
 }
 
-/** ✅ 端末判別（スマホっぽい表示幅 or タッチ端末） */
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true
-    const mq = window.matchMedia('(max-width: 820px)')
-    const coarse = window.matchMedia('(pointer: coarse)')
-    return mq.matches || coarse.matches
-  })
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const mq = window.matchMedia('(max-width: 820px)')
-    const coarse = window.matchMedia('(pointer: coarse)')
-
-    const onChange = () => setIsMobile(mq.matches || coarse.matches)
-
-    mq.addEventListener?.('change', onChange)
-    coarse.addEventListener?.('change', onChange)
-    window.addEventListener('orientationchange', onChange)
-
-    return () => {
-      mq.removeEventListener?.('change', onChange)
-      coarse.removeEventListener?.('change', onChange)
-      window.removeEventListener('orientationchange', onChange)
-    }
-  }, [])
-
-  return isMobile
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n))
 }
 
 export default function PageShell({
@@ -116,13 +88,14 @@ export default function PageShell({
 
   showTestCharacter = true,
   testCharacterSrc = '/assets/character-test.png',
-  testCharacterHeight, // ← デフォルトは「自動」にした
+  testCharacterHeight = 'clamp(140px, 18vw, 220px)',
   testCharacterOffset = { right: 16, bottom: 16 },
   testCharacterOpacity = 1,
 
   hideScrollbar = true,
 }: Props) {
-  const isMobile = useIsMobile()
+  const { settings } = useAppSettings()
+
   const current = useMemo(() => getPath(), [])
 
   useEffect(() => {
@@ -152,6 +125,76 @@ export default function PageShell({
     window.location.assign(prev ?? fallbackHref)
   }, [onBack, fallbackHref])
 
+  // ===========
+  // ✅ 設定反映（暗幕/ぼかし/情報板）
+  // ===========
+  const effectiveBgDim = settings?.bgDim ?? bgDim
+  const effectiveBgBlur = settings?.bgBlur ?? bgBlur
+  const infoPanelAlpha = clamp(settings?.infoPanelAlpha ?? 0, 0, 1)
+
+  // ===========
+  // ✅ キャラ（固定/ランダム） + チラつき対策
+  // ===========
+  const requestedCharacterId = useMemo(() => {
+    if (!settings.characterEnabled) return null
+    if (settings.characterMode === 'random') return pickRandomCharacterId()
+    return settings.fixedCharacterId
+  }, [settings.characterEnabled, settings.characterMode, settings.fixedCharacterId])
+
+  const requestedCharacterSrc = useMemo(() => {
+    if (!requestedCharacterId) return null
+    return resolveCharacterSrc(requestedCharacterId)
+  }, [requestedCharacterId])
+
+  // 「画面遷移の瞬間に一瞬消える」を防ぐため、
+  // 新しい src を先読みしてから差し替える（旧表示は残す）
+  const [displaySrc, setDisplaySrc] = useState<string | null>(() => {
+    if (!requestedCharacterSrc) return testCharacterSrc
+    return requestedCharacterSrc
+  })
+  const [fadeIn, setFadeIn] = useState(true)
+  const lastSrcRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const next = requestedCharacterSrc ?? testCharacterSrc
+    if (!next) return
+
+    if (lastSrcRef.current === next) return
+    lastSrcRef.current = next
+
+    // 先読みしてから差し替え
+    const img = new Image()
+    img.decoding = 'async'
+    img.src = next
+
+    let cancelled = false
+    const onLoad = () => {
+      if (cancelled) return
+      setFadeIn(false) // 一旦 0 に落として
+      // 次フレームで差し替え→フェード
+      requestAnimationFrame(() => {
+        setDisplaySrc(next)
+        requestAnimationFrame(() => setFadeIn(true))
+      })
+    }
+    const onError = () => {
+      if (cancelled) return
+      // エラー時は無理に変えない（表示継続）
+    }
+
+    img.addEventListener('load', onLoad)
+    img.addEventListener('error', onError)
+
+    return () => {
+      cancelled = true
+      img.removeEventListener('load', onLoad)
+      img.removeEventListener('error', onError)
+    }
+  }, [requestedCharacterSrc, testCharacterSrc])
+
+  const characterScale = clamp(settings.characterScale ?? 1, 0.7, 2.0)
+  const characterOpacity = clamp(settings.characterOpacity ?? testCharacterOpacity, 0, 1)
+
   // ✅ bgImage 未指定時に :root の --bg-image を潰さない
   const shellStyle: CSSProperties & Record<string, string> = {
     width: '100vw',
@@ -159,61 +202,48 @@ export default function PageShell({
     overflow: 'hidden',
     position: 'relative',
 
-    ['--bg-dim' as any]: String(bgDim),
-    ['--bg-blur' as any]: `${bgBlur}px`,
+    ['--bg-dim' as any]: String(effectiveBgDim),
+    ['--bg-blur' as any]: `${effectiveBgBlur}px`,
   }
   if (bgImage) shellStyle['--bg-image' as any] = `url(${bgImage})`
 
-  // ✅ キャラサイズ：未指定ならスマホ/PCで自動最適化
-  // 置物化の元は「最大が小さすぎる」なので、上限を一気に引き上げる
-  const autoCharacterHeight = isMobile
-    ? 'clamp(280px, 72vw, 520px)' // スマホは“画面幅”基準でドーン
-    : 'clamp(360px, 34vw, 720px)' // PCは横幅に比例して育つ
-
-  const characterHeight = testCharacterHeight ?? autoCharacterHeight
-
-  // ✅ キャラの位置：safe-area込みで右下固定（スマホは少しはみ出し気味でデカく見せる）
-  const rightPx = testCharacterOffset.right ?? 16
-  const bottomPx = testCharacterOffset.bottom ?? 16
-
-  const characterRight = `calc(env(safe-area-inset-right) + ${rightPx}px)`
-  const characterBottom = isMobile
-    ? `calc(env(safe-area-inset-bottom) - 8px)` // スマホはちょい下に沈めて“迫力”
-    : `calc(env(safe-area-inset-bottom) + ${bottomPx}px)`
-
-  // ✅ 情報の読み取りを守るための“下余白”
-  // キャラがでかくなった分、コンテンツの最下部が踏まれないようにする
-  const contentPadBottom = isMobile ? 'clamp(140px, 22svh, 240px)' : 'clamp(80px, 14svh, 180px)'
+  const shouldShowCharacter = showTestCharacter && settings.characterEnabled && !!displaySrc
 
   return (
     <div className="page-shell" style={shellStyle}>
       {/* ✅ キャラレイヤ（固定） */}
-      {showTestCharacter && !!testCharacterSrc && (
+      {shouldShowCharacter && (
         <div
           aria-hidden="true"
           style={{
             position: 'fixed',
-            right: characterRight,
-            bottom: characterBottom,
+            right: testCharacterOffset.right ?? 16,
+            bottom: testCharacterOffset.bottom ?? 16,
             zIndex: 5,
             pointerEvents: 'none',
             userSelect: 'none',
-            opacity: testCharacterOpacity,
+            opacity: characterOpacity,
+            transform: `scale(${characterScale})`,
+            transformOrigin: 'right bottom',
             filter: 'drop-shadow(0 10px 28px rgba(0,0,0,0.28))',
-            // ✅ でかいキャラでも描画が安定しやすい
-            transform: 'translateZ(0)',
-            willChange: 'transform',
+            transition: 'opacity 220ms ease, transform 220ms ease',
+            willChange: 'opacity, transform',
           }}
         >
           <img
-            src={testCharacterSrc}
+            src={displaySrc ?? ''}
             alt=""
+            draggable={false}
+            loading="eager"
+            decoding="async"
             style={{
-              height: characterHeight,
+              height: testCharacterHeight,
               width: 'auto',
               display: 'block',
+              opacity: fadeIn ? 1 : 0,
+              transition: 'opacity 260ms ease',
+              willChange: 'opacity',
             }}
-            draggable={false}
           />
         </div>
       )}
@@ -225,11 +255,9 @@ export default function PageShell({
         </button>
       )}
 
-      {/* ✅ 情報レイヤ：全幅スクロール（スクロールバーは画面右端に出る） */}
+      {/* ✅ 情報レイヤ：全幅スクロール */}
       <div
-        className={['page-shell-scroll', hideScrollbar ? 'scrollbar-hidden' : '', showBack ? 'with-back-button' : '']
-          .filter(Boolean)
-          .join(' ')}
+        className={['page-shell-scroll', hideScrollbar ? 'scrollbar-hidden' : '', showBack ? 'with-back-button' : ''].filter(Boolean).join(' ')}
         style={{
           position: 'relative',
           zIndex: 10,
@@ -247,17 +275,37 @@ export default function PageShell({
             maxWidth,
             margin: '0 auto',
             padding: 'clamp(16px, 3vw, 24px)',
-            paddingBottom: `calc(clamp(16px, 3vw, 24px) + ${contentPadBottom})`,
             boxSizing: 'border-box',
+            position: 'relative',
           }}
         >
-          {(title || subtitle) && (
-            <div style={{ marginBottom: 16 }}>
-              {title}
-              {subtitle}
-            </div>
+          {/* ✅ 情報板（文字は薄くしない） */}
+          {infoPanelAlpha > 0 && (
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                borderRadius: 18,
+                background: `rgba(0,0,0,${infoPanelAlpha})`,
+                backdropFilter: 'blur(8px)',
+                WebkitBackdropFilter: 'blur(8px)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
+                pointerEvents: 'none',
+              }}
+            />
           )}
-          {children}
+
+          <div style={{ position: 'relative' }}>
+            {(title || subtitle) && (
+              <div style={{ marginBottom: 16 }}>
+                {title}
+                {subtitle}
+              </div>
+            )}
+            {children}
+          </div>
         </div>
       </div>
     </div>
