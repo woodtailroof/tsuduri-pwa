@@ -2,7 +2,7 @@
 
 import type { CSSProperties, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { pickRandomCharacterId, resolveCharacterSrc, useAppSettings } from '../lib/appSettings'
+import * as AppSettings from '../lib/appSettings'
 
 type Props = {
   title?: ReactNode
@@ -72,6 +72,18 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
 }
 
+// PageShell が落ちないための最低限デフォルト
+const FALLBACK_SETTINGS = {
+  characterEnabled: true,
+  characterMode: 'fixed' as 'fixed' | 'random',
+  fixedCharacterId: 'tsuduri',
+  characterScale: 1,
+  characterOpacity: 1,
+  bgDim: 0.55,
+  bgBlur: 0,
+  infoPanelAlpha: 0,
+}
+
 export default function PageShell({
   title,
   subtitle,
@@ -94,7 +106,26 @@ export default function PageShell({
 
   hideScrollbar = true,
 }: Props) {
-  const { settings } = useAppSettings()
+  // ✅ named export ズレ耐性
+  const useAppSettings =
+    (AppSettings as any).useAppSettings as
+      | undefined
+      | (() => {
+          settings: any
+          set?: (patch: any) => void
+          reset?: () => void
+        })
+
+  // hook が無い/壊れてるなら fallback で動かす（画面真っ黒回避）
+  let settings: any = FALLBACK_SETTINGS
+  try {
+    if (useAppSettings) {
+      const hook = useAppSettings()
+      settings = hook?.settings ?? FALLBACK_SETTINGS
+    }
+  } catch {
+    settings = FALLBACK_SETTINGS
+  }
 
   const current = useMemo(() => getPath(), [])
 
@@ -128,23 +159,29 @@ export default function PageShell({
   // ===========
   // ✅ 設定反映（暗幕/ぼかし/情報板）
   // ===========
-  const effectiveBgDim = settings?.bgDim ?? bgDim
-  const effectiveBgBlur = settings?.bgBlur ?? bgBlur
-  const infoPanelAlpha = clamp(settings?.infoPanelAlpha ?? 0, 0, 1)
+  const effectiveBgDim = Number.isFinite(settings?.bgDim) ? settings.bgDim : bgDim
+  const effectiveBgBlur = Number.isFinite(settings?.bgBlur) ? settings.bgBlur : bgBlur
+  const infoPanelAlpha = clamp(Number.isFinite(settings?.infoPanelAlpha) ? settings.infoPanelAlpha : 0, 0, 1)
 
   // ===========
   // ✅ キャラ（固定/ランダム） + チラつき対策
   // ===========
+  const pickRandomCharacterId = (AppSettings as any).pickRandomCharacterId as undefined | (() => string)
+  const resolveCharacterSrc = (AppSettings as any).resolveCharacterSrc as undefined | ((id: string) => string)
+
   const requestedCharacterId = useMemo(() => {
-    if (!settings.characterEnabled) return null
-    if (settings.characterMode === 'random') return pickRandomCharacterId()
-    return settings.fixedCharacterId
-  }, [settings.characterEnabled, settings.characterMode, settings.fixedCharacterId])
+    if (!settings?.characterEnabled) return null
+    if (settings?.characterMode === 'random') {
+      return pickRandomCharacterId ? pickRandomCharacterId() : settings?.fixedCharacterId ?? FALLBACK_SETTINGS.fixedCharacterId
+    }
+    return settings?.fixedCharacterId ?? FALLBACK_SETTINGS.fixedCharacterId
+  }, [settings?.characterEnabled, settings?.characterMode, settings?.fixedCharacterId, pickRandomCharacterId])
 
   const requestedCharacterSrc = useMemo(() => {
     if (!requestedCharacterId) return null
+    if (!resolveCharacterSrc) return null
     return resolveCharacterSrc(requestedCharacterId)
-  }, [requestedCharacterId])
+  }, [requestedCharacterId, resolveCharacterSrc])
 
   // 「画面遷移の瞬間に一瞬消える」を防ぐため、
   // 新しい src を先読みしてから差し替える（旧表示は残す）
@@ -170,8 +207,7 @@ export default function PageShell({
     let cancelled = false
     const onLoad = () => {
       if (cancelled) return
-      setFadeIn(false) // 一旦 0 に落として
-      // 次フレームで差し替え→フェード
+      setFadeIn(false)
       requestAnimationFrame(() => {
         setDisplaySrc(next)
         requestAnimationFrame(() => setFadeIn(true))
@@ -192,8 +228,8 @@ export default function PageShell({
     }
   }, [requestedCharacterSrc, testCharacterSrc])
 
-  const characterScale = clamp(settings.characterScale ?? 1, 0.7, 2.0)
-  const characterOpacity = clamp(settings.characterOpacity ?? testCharacterOpacity, 0, 1)
+  const characterScale = clamp(Number.isFinite(settings?.characterScale) ? settings.characterScale : 1, 0.7, 2.0)
+  const characterOpacity = clamp(Number.isFinite(settings?.characterOpacity) ? settings.characterOpacity : testCharacterOpacity, 0, 1)
 
   // ✅ bgImage 未指定時に :root の --bg-image を潰さない
   const shellStyle: CSSProperties & Record<string, string> = {
@@ -207,7 +243,7 @@ export default function PageShell({
   }
   if (bgImage) shellStyle['--bg-image' as any] = `url(${bgImage})`
 
-  const shouldShowCharacter = showTestCharacter && settings.characterEnabled && !!displaySrc
+  const shouldShowCharacter = showTestCharacter && !!settings?.characterEnabled && !!displaySrc
 
   return (
     <div className="page-shell" style={shellStyle}>
