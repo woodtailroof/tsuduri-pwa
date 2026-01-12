@@ -96,6 +96,12 @@ export default function Settings({ back }: Props) {
     return Math.round((kb / 1024) * 100) / 100
   }, [stats])
 
+  // ✅「N日前より前」を Date に変換（deleteTideCacheOlderThan が Date 想定のため）
+  const cutoffDate = useMemo(() => {
+    const ms = Date.now() - days * 24 * 60 * 60 * 1000
+    return new Date(ms)
+  }, [days])
+
   return (
     <PageShell
       title={<h1 style={{ margin: 0, fontSize: 'clamp(20px, 5.5vw, 32px)' }}>⚙ 総合設定</h1>}
@@ -335,13 +341,15 @@ export default function Settings({ back }: Props) {
                 onClick={async () => {
                   setBusy('deleteOld')
                   try {
-                    await deleteTideCacheOlderThan(days)
+                    // ✅ ここが修正点：Date を渡す
+                    await deleteTideCacheOlderThan(cutoffDate)
                     await refresh()
                     alert(`古いキャッシュ（${days}日より前）を削除したよ`)
                   } finally {
                     setBusy(null)
                   }
                 }}
+                title={`cutoff: ${cutoffDate.toISOString()}`}
               >
                 実行
               </button>
@@ -387,7 +395,9 @@ export default function Settings({ back }: Props) {
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', overflowWrap: 'anywhere' }}>{e.day}（{e.pc}:{e.hc}）</div>
+                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', overflowWrap: 'anywhere' }}>
+                      {e.day}（{e.pc}:{e.hc}）
+                    </div>
                     <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>fetched: {fmtIso(e.fetchedAt)}</div>
                   </div>
 
@@ -473,7 +483,6 @@ export default function Settings({ back }: Props) {
             type="button"
             style={pill}
             onClick={() => {
-              // 未来のバージョンアップ時に押しても壊れないように明示
               set(DEFAULT_SETTINGS)
               alert('設定を保存し直したよ')
             }}
