@@ -1,10 +1,10 @@
 // src/screens/RecordHistory.tsx
+
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import PageShell from '../components/PageShell'
 import { db, type CatchRecord } from '../db'
 import { exportCatches, importCatches } from '../lib/catchTransfer'
 import { getTimeBand } from '../lib/timeband'
-import { FIXED_PORT } from '../points'
-import PageShell from '../components/PageShell'
 
 type Props = {
   back: () => void
@@ -21,7 +21,12 @@ function formatResultLine(r: CatchRecord) {
 }
 
 export default function RecordHistory({ back }: Props) {
-  const glassBoxStyle: CSSProperties = { borderRadius: 16, padding: 12, display: 'grid', gap: 10 }
+  const glassBoxStyle: CSSProperties = {
+    borderRadius: 16,
+    padding: 12,
+    display: 'grid',
+    gap: 10,
+  }
 
   const segWrapStyle: CSSProperties = {
     display: 'flex',
@@ -93,6 +98,7 @@ export default function RecordHistory({ back }: Props) {
 
   const [all, setAll] = useState<CatchRecord[]>([])
   const [allLoading, setAllLoading] = useState(false)
+  const [allLoadedOnce, setAllLoadedOnce] = useState(false)
 
   const [archivePageSize, setArchivePageSize] = useState<10 | 30 | 50>(30)
   const [archiveYear, setArchiveYear] = useState<string>('')
@@ -103,6 +109,7 @@ export default function RecordHistory({ back }: Props) {
     try {
       const list = await db.catches.orderBy('createdAt').reverse().toArray()
       setAll(list)
+      setAllLoadedOnce(true)
     } finally {
       setAllLoading(false)
     }
@@ -111,14 +118,6 @@ export default function RecordHistory({ back }: Props) {
   useEffect(() => {
     loadAll()
   }, [])
-
-  async function onDelete(id?: number) {
-    if (!id) return
-    const ok = confirm('この記録を削除する？（戻せないよ）')
-    if (!ok) return
-    await db.catches.delete(id)
-    await loadAll()
-  }
 
   const yearMonthsMap = useMemo(() => {
     const map = new Map<number, Set<number>>()
@@ -136,7 +135,9 @@ export default function RecordHistory({ back }: Props) {
     }
 
     const out: Record<number, number[]> = {}
-    for (const [y, set] of map.entries()) out[y] = Array.from(set).sort((a, b) => a - b)
+    for (const [y, set] of map.entries()) {
+      out[y] = Array.from(set).sort((a, b) => a - b)
+    }
     return out
   }, [all])
 
@@ -170,7 +171,7 @@ export default function RecordHistory({ back }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [archiveYear, yearMonthsMap])
 
-  const filtered = useMemo(() => {
+  const filteredArchive = useMemo(() => {
     let list = all
 
     if (archiveYear) {
@@ -198,31 +199,37 @@ export default function RecordHistory({ back }: Props) {
     return list
   }, [all, archiveYear, archiveMonth])
 
-  const listShown = useMemo(() => filtered.slice(0, archivePageSize), [filtered, archivePageSize])
+  const archiveList = useMemo(() => filteredArchive.slice(0, archivePageSize), [filteredArchive, archivePageSize])
 
-  const ellipsis1: CSSProperties = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }
+  async function onDelete(id?: number) {
+    if (!id) return
+    const ok = confirm('この記録を削除する？（戻せないよ）')
+    if (!ok) return
+    await db.catches.delete(id)
+    await loadAll()
+  }
+
+  const ellipsis1: CSSProperties = {
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    minWidth: 0,
+  }
 
   return (
-    <PageShell
-      title={<h1 style={{ margin: 0, fontSize: 'clamp(20px, 6vw, 32px)', lineHeight: 1.15 }}>📚 全履歴</h1>}
-      maxWidth={1100}
-      showBack
-      onBack={back}
-    >
-      <div style={{ display: 'grid', gap: 12 }}>
-        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-          🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
-        </div>
+    <PageShell title={<h1 style={{ margin: 0, fontSize: 'clamp(20px, 6vw, 32px)', lineHeight: 1.15 }}>📚 全履歴</h1>} maxWidth={1100} showBack onBack={back}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button type="button" onClick={() => loadAll()} disabled={allLoading} title="全履歴を再読み込み">
+            {allLoading ? '読み込み中…' : '↻ 全履歴更新'}
+          </button>
 
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => loadAll()} disabled={allLoading}>
-            {allLoading ? '読み込み中…' : '↻ 更新'}
-          </button>
           <button type="button" onClick={exportCatches} title="釣果（写真含む）をZIPで保存">
-            📤 エクスポート
+            📤 釣果をエクスポート
           </button>
+
           <label title="ZIPから釣果（写真含む）を復元（端末内データは置き換え）" style={{ cursor: 'pointer' }}>
-            📥 インポート
+            📥 釣果をインポート
             <input
               type="file"
               accept=".zip"
@@ -252,103 +259,106 @@ export default function RecordHistory({ back }: Props) {
           </label>
         </div>
 
-        {all.length === 0 && !allLoading ? (
+        <div className="glass glass-strong" style={{ ...glassBoxStyle }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>🔎 絞り込み</div>
+
+            <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
+              年：
+              <select value={archiveYear} onChange={(e) => setArchiveYear(e.target.value)} style={{ marginLeft: 8 }}>
+                <option value="">すべて</option>
+                {years.map((y) => (
+                  <option key={y} value={String(y)}>
+                    {y}年
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
+              月：
+              <select
+                value={archiveMonth}
+                onChange={(e) => setArchiveMonth(e.target.value)}
+                style={{ marginLeft: 8 }}
+                disabled={!!archiveYear && (monthsForSelectedYear?.length ?? 0) === 0}
+                title={archiveYear ? '選択中の年に存在する月だけ出すよ' : '年を選ばなくても月で絞れるよ'}
+              >
+                <option value="">すべて</option>
+
+                {archiveYear && monthsForSelectedYear
+                  ? monthsForSelectedYear.map((m) => (
+                      <option key={m} value={String(m)}>
+                        {m}月
+                      </option>
+                    ))
+                  : Array.from({ length: 12 }).map((_, i) => {
+                      const m = i + 1
+                      return (
+                        <option key={m} value={String(m)}>
+                          {m}月
+                        </option>
+                      )
+                    })}
+              </select>
+            </label>
+
+            <button
+              type="button"
+              onClick={() => {
+                setArchiveYear('')
+                setArchiveMonth('')
+              }}
+              style={{ marginLeft: 'auto' }}
+              title="絞り込みを解除"
+            >
+              リセット
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>📦 表示件数</div>
+
+            <div style={segWrapStyle} aria-label="表示件数">
+              <label style={segLabelStyle}>
+                <input type="radio" name="archivePageSize" checked={archivePageSize === 10} onChange={() => setArchivePageSize(10)} style={segInputHidden} />
+                <span style={segPill(archivePageSize === 10)}>
+                  <span style={segDot(archivePageSize === 10)} aria-hidden="true" />
+                  10件
+                </span>
+              </label>
+
+              <label style={segLabelStyle}>
+                <input type="radio" name="archivePageSize" checked={archivePageSize === 30} onChange={() => setArchivePageSize(30)} style={segInputHidden} />
+                <span style={segPill(archivePageSize === 30)}>
+                  <span style={segDot(archivePageSize === 30)} aria-hidden="true" />
+                  30件
+                </span>
+              </label>
+
+              <label style={segLabelStyle}>
+                <input type="radio" name="archivePageSize" checked={archivePageSize === 50} onChange={() => setArchivePageSize(50)} style={segInputHidden} />
+                <span style={segPill(archivePageSize === 50)}>
+                  <span style={segDot(archivePageSize === 50)} aria-hidden="true" />
+                  50件
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
+            全 {all.length} 件 → 絞り込み {filteredArchive.length} 件（表示 {Math.min(archivePageSize, filteredArchive.length)} 件）
+          </div>
+        </div>
+
+        {allLoading && !allLoadedOnce ? (
+          <p>読み込み中…</p>
+        ) : all.length === 0 ? (
           <p>まだ記録がないよ</p>
         ) : (
           <>
-            <div className="glass glass-strong" style={{ ...glassBoxStyle }}>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>🔎 絞り込み</div>
-
-                <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
-                  年：
-                  <select value={archiveYear} onChange={(e) => setArchiveYear(e.target.value)} style={{ marginLeft: 8 }}>
-                    <option value="">すべて</option>
-                    {years.map((y) => (
-                      <option key={y} value={String(y)}>
-                        {y}年
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
-                  月：
-                  <select
-                    value={archiveMonth}
-                    onChange={(e) => setArchiveMonth(e.target.value)}
-                    style={{ marginLeft: 8 }}
-                    disabled={!!archiveYear && (monthsForSelectedYear?.length ?? 0) === 0}
-                    title={archiveYear ? '選択中の年に存在する月だけ出すよ' : '年を選ばなくても月で絞れるよ'}
-                  >
-                    <option value="">すべて</option>
-                    {archiveYear && monthsForSelectedYear
-                      ? monthsForSelectedYear.map((m) => (
-                          <option key={m} value={String(m)}>
-                            {m}月
-                          </option>
-                        ))
-                      : Array.from({ length: 12 }).map((_, i) => {
-                          const m = i + 1
-                          return (
-                            <option key={m} value={String(m)}>
-                              {m}月
-                            </option>
-                          )
-                        })}
-                  </select>
-                </label>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setArchiveYear('')
-                    setArchiveMonth('')
-                  }}
-                  style={{ marginLeft: 'auto' }}
-                  title="絞り込みを解除"
-                >
-                  リセット
-                </button>
-              </div>
-
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>📦 表示件数</div>
-
-                <div style={segWrapStyle} aria-label="表示件数">
-                  <label style={segLabelStyle}>
-                    <input type="radio" name="archivePageSize" checked={archivePageSize === 10} onChange={() => setArchivePageSize(10)} style={segInputHidden} />
-                    <span style={segPill(archivePageSize === 10)}>
-                      <span style={segDot(archivePageSize === 10)} aria-hidden="true" />
-                      10件
-                    </span>
-                  </label>
-
-                  <label style={segLabelStyle}>
-                    <input type="radio" name="archivePageSize" checked={archivePageSize === 30} onChange={() => setArchivePageSize(30)} style={segInputHidden} />
-                    <span style={segPill(archivePageSize === 30)}>
-                      <span style={segDot(archivePageSize === 30)} aria-hidden="true" />
-                      30件
-                    </span>
-                  </label>
-
-                  <label style={segLabelStyle}>
-                    <input type="radio" name="archivePageSize" checked={archivePageSize === 50} onChange={() => setArchivePageSize(50)} style={segInputHidden} />
-                    <span style={segPill(archivePageSize === 50)}>
-                      <span style={segDot(archivePageSize === 50)} aria-hidden="true" />
-                      50件
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-                全 {all.length} 件 → 絞り込み {filtered.length} 件（表示 {Math.min(archivePageSize, filtered.length)} 件）
-              </div>
-            </div>
-
             <div style={{ display: 'grid', gap: 10 }}>
-              {listShown.map((r) => {
+              {archiveList.map((r) => {
                 const shotDate = r.capturedAt ? new Date(r.capturedAt) : null
                 const created = new Date(r.createdAt)
                 const thumbUrl = r.photoBlob ? URL.createObjectURL(r.photoBlob) : null
@@ -428,8 +438,10 @@ export default function RecordHistory({ back }: Props) {
               })}
             </div>
 
-            {filtered.length > archivePageSize && (
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>※「表示件数」を増やすと、もっと下まで見れるよ</div>
+            {filteredArchive.length > archivePageSize && (
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
+                ※「表示件数」を増やすと、もっと下まで見れるよ（スクロール長くなるから段階にしてる）
+              </div>
             )}
           </>
         )}

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import PageShell from '../components/PageShell'
 
 type Props = {
-  go: (screen: 'record' | 'weather' | 'chat' | 'settings') => void
+  go: (screen: 'record' | 'recordHistory' | 'recordAnalysis' | 'weather' | 'chat' | 'settings') => void
 }
 
 const APP_LOCK_PASS_KEY = 'tsuduri_app_pass_v1'
@@ -39,7 +39,6 @@ export default function Home({ go }: Props) {
   const [pass, setPass] = useState<string>(() => loadSavedPass())
   const [error, setError] = useState<string>('')
 
-  // 初期同期（ブラウザ復帰や別タブ変更を拾いやすく）
   useEffect(() => {
     setUnlockedState(isUnlocked())
   }, [])
@@ -52,7 +51,6 @@ export default function Home({ go }: Props) {
       setError('合言葉を入れてね')
       return
     }
-    // ※ここでは“形式チェック”だけ。正誤は /api/chat の 401 で確定する設計
     setUnlocked(p)
     setUnlockedState(true)
     setError('')
@@ -64,7 +62,6 @@ export default function Home({ go }: Props) {
       subtitle={<p style={{ marginTop: 8 }}>ひろっちの釣りライフ、今日も一投いこ？</p>}
       maxWidth={760}
     >
-      {/* ===== ロック画面（ホームを玄関にする） ===== */}
       {!canUse && (
         <div
           style={{
@@ -135,14 +132,11 @@ export default function Home({ go }: Props) {
 
             {!!error && <div style={{ marginTop: 10, color: '#ffb3c1', fontSize: 12 }}>{error}</div>}
 
-            <div style={{ marginTop: 10, fontSize: 11, color: '#777' }}>
-              ヒント：合言葉は端末内に保存されるよ（localStorage）
-            </div>
+            <div style={{ marginTop: 10, fontSize: 11, color: '#777' }}>ヒント：合言葉は端末内に保存されるよ（localStorage）</div>
           </div>
         </div>
       )}
 
-      {/* ===== 本体 ===== */}
       <div
         style={{
           marginTop: 24,
@@ -153,6 +147,11 @@ export default function Home({ go }: Props) {
         }}
       >
         <button onClick={() => go('record')}>📸 釣果を記録する</button>
+        <button onClick={() => go('recordHistory')}>📚 全履歴を見る</button>
+        <button onClick={() => go('recordAnalysis')}>📈 偏差分析を見る</button>
+
+        <hr style={{ margin: '12px 0', opacity: 0.3 }} />
+
         <button onClick={() => go('weather')}>🌊 天気・潮を見る</button>
         <button onClick={() => go('chat')}>💬 話す</button>
 

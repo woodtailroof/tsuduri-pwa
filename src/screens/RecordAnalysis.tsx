@@ -1,12 +1,13 @@
 // src/screens/RecordAnalysis.tsx
+
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { db, type CatchRecord } from '../db'
-import { getTimeBand } from '../lib/timeband'
+import PageShell from '../components/PageShell'
 import { FIXED_PORT } from '../points'
+import { getTimeBand } from '../lib/timeband'
 import { getTideAtTime } from '../lib/tide736'
 import { getTide736DayCached, type TideCacheSource } from '../lib/tide736Cache'
 import { getTidePhaseFromSeries } from '../lib/tidePhase736'
-import PageShell from '../components/PageShell'
 
 type Props = {
   back: () => void
@@ -33,6 +34,7 @@ type AnalysisGroup =
   | 'species'
   | 'species_timeBand'
 
+type TideInfo = { cm: number; trend: string }
 type TidePoint = { unix?: number; cm: number; time?: string }
 
 function dayKeyFromISO(iso: string) {
@@ -85,13 +87,50 @@ function formatDeltaPercent(x: number) {
 }
 
 export default function RecordAnalysis({ back }: Props) {
-  const glassBoxStyle: CSSProperties = { borderRadius: 16, padding: 12, display: 'grid', gap: 10 }
+  // =========================
+  // ✅ UI共通（Record.tsxの雰囲気踏襲）
+  // =========================
+  const pillBtnStyle: CSSProperties = {
+    borderRadius: 999,
+    padding: '8px 12px',
+    border: '1px solid rgba(255,255,255,0.18)',
+    background: 'rgba(0,0,0,0.24)',
+    color: 'rgba(255,255,255,0.78)',
+    cursor: 'pointer',
+    userSelect: 'none',
+    lineHeight: 1,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    whiteSpace: 'nowrap',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
+  }
 
+  const pillBtnStyleDisabled: CSSProperties = {
+    ...pillBtnStyle,
+    opacity: 0.55,
+    cursor: 'not-allowed',
+  }
+
+  const glassBoxStyle: CSSProperties = {
+    borderRadius: 16,
+    padding: 12,
+    display: 'grid',
+    gap: 10,
+  }
+
+  // =========================
+  // ✅ 状態
+  // =========================
   const [all, setAll] = useState<CatchRecord[]>([])
   const [allLoading, setAllLoading] = useState(false)
+  const [allLoadedOnce, setAllLoadedOnce] = useState(false)
 
   const [archiveYear, setArchiveYear] = useState<string>('')
   const [archiveMonth, setArchiveMonth] = useState<string>('')
+
+  const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true)
 
   const [analysisMetric, setAnalysisMetric] = useState<AnalysisMetric>('catchRate')
   const [analysisGroup, setAnalysisGroup] = useState<AnalysisGroup>('tideName_timeBand')
@@ -102,8 +141,6 @@ export default function RecordAnalysis({ back }: Props) {
   const [analysisTideLoading, setAnalysisTideLoading] = useState(false)
   const [analysisTideProgress, setAnalysisTideProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 })
   const [analysisTideError, setAnalysisTideError] = useState<string>('')
-
-  const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true)
 
   useEffect(() => {
     const onUp = () => setOnline(true)
@@ -121,6 +158,7 @@ export default function RecordAnalysis({ back }: Props) {
     try {
       const list = await db.catches.orderBy('createdAt').reverse().toArray()
       setAll(list)
+      setAllLoadedOnce(true)
     } finally {
       setAllLoading(false)
     }
@@ -130,8 +168,12 @@ export default function RecordAnalysis({ back }: Props) {
     loadAll()
   }, [])
 
+  // =========================
+  // ✅ 絞り込み（年→月）
+  // =========================
   const yearMonthsMap = useMemo(() => {
     const map = new Map<number, Set<number>>()
+
     for (const r of all) {
       const iso = r.capturedAt ?? r.createdAt
       const d = new Date(iso)
@@ -139,11 +181,15 @@ export default function RecordAnalysis({ back }: Props) {
       if (!Number.isFinite(t)) continue
       const y = d.getFullYear()
       const m = d.getMonth() + 1
+
       if (!map.has(y)) map.set(y, new Set<number>())
       map.get(y)!.add(m)
     }
+
     const out: Record<number, number[]> = {}
-    for (const [y, set] of map.entries()) out[y] = Array.from(set).sort((a, b) => a - b)
+    for (const [y, set] of map.entries()) {
+      out[y] = Array.from(set).sort((a, b) => a - b)
+    }
     return out
   }, [all])
 
@@ -209,7 +255,12 @@ export default function RecordAnalysis({ back }: Props) {
     return filteredArchive.filter((r) => r.id && r.capturedAt) as Array<CatchRecord & { id: number; capturedAt: string }>
   }, [filteredArchive])
 
+  // =========================
+  // ✅ 分析用：潮データ付与（撮影日時あり対象のみ）
+  // =========================
   useEffect(() => {
+    if (!allLoadedOnce) return
+
     if (analysisTargets.length === 0) {
       setAnalysisTideMap({})
       setAnalysisTideLoading(false)
@@ -248,17 +299,27 @@ export default function RecordAnalysis({ back }: Props) {
           for (const r of records) {
             const shot = new Date(r.capturedAt)
             const whenMs = shot.getTime()
-            const info = getTideAtTime(series as TidePoint[], whenMs)
+            const info: TideInfo | null = getTideAtTime(series as TidePoint[], whenMs)
             const phaseRaw = getTidePhaseFromSeries(series as TidePoint[], shot, shot)
             const phase = phaseRaw ? phaseRaw : '不明'
 
-            nextMap[r.id] = { dayKey: key, tideName: tideName ?? null, phase, cm: info?.cm, trend: info?.trend, source, isStale }
+            nextMap[r.id] = {
+              dayKey: key,
+              tideName: tideName ?? null,
+              phase,
+              cm: info?.cm,
+              trend: info?.trend,
+              source,
+              isStale,
+            }
           }
 
           setAnalysisTideProgress({ done: i + 1, total: entries.length })
         }
 
-        if (!cancelled) setAnalysisTideMap(nextMap)
+        if (!cancelled) {
+          setAnalysisTideMap(nextMap)
+        }
       } catch (e) {
         console.error(e)
         const msg = e instanceof Error ? e.message : String(e)
@@ -272,8 +333,11 @@ export default function RecordAnalysis({ back }: Props) {
     return () => {
       cancelled = true
     }
-  }, [analysisTargets])
+  }, [allLoadedOnce, analysisTargets])
 
+  // =========================
+  // ✅ 分析テーブル生成
+  // =========================
   function labelForRecord(r: CatchRecord): string {
     const id = r.id
     const tide = id != null ? analysisTideMap[id] : undefined
@@ -312,7 +376,9 @@ export default function RecordAnalysis({ back }: Props) {
 
   const analysisRecords = useMemo(() => {
     let list = analysisTargets as CatchRecord[]
-    if (!analysisIncludeUnknown) list = list.filter((r) => r.result === 'caught' || r.result === 'skunk')
+    if (!analysisIncludeUnknown) {
+      list = list.filter((r) => r.result === 'caught' || r.result === 'skunk')
+    }
     return list
   }, [analysisTargets, analysisIncludeUnknown])
 
@@ -331,6 +397,7 @@ export default function RecordAnalysis({ back }: Props) {
       .map((r) => r.sizeCm as number)
 
     const avgSize = sizeList.length > 0 ? mean(sizeList) : 0
+
     return { total, caught, skunk, unknown, catchRate, avgSize }
   }, [analysisRecords, analysisIncludeUnknown])
 
@@ -376,10 +443,12 @@ export default function RecordAnalysis({ back }: Props) {
     const totals = rows.map((r) => r.total)
     const m = mean(totals)
     const sd = stddev(totals)
+
     const withZ = rows.map((r) => ({ ...r, z: zScore(r.total, m, sd) }))
 
     const sorted = [...withZ].sort((a, b) => {
       if (analysisMetric === 'effortBias') return b.z - a.z
+
       if (analysisMetric === 'avgSize') {
         const aHas = a.sizeList.length > 0
         const bHas = b.sizeList.length > 0
@@ -387,6 +456,7 @@ export default function RecordAnalysis({ back }: Props) {
         if (b.avgSize !== a.avgSize) return b.avgSize - a.avgSize
         return b.total - a.total
       }
+
       if (b.wilsonLower !== a.wilsonLower) return b.wilsonLower - a.wilsonLower
       if (b.denom !== a.denom) return b.denom - a.denom
       return b.catchRate - a.catchRate
@@ -398,6 +468,9 @@ export default function RecordAnalysis({ back }: Props) {
   const analysisTop = useMemo(() => analysisTable.slice(0, 10), [analysisTable])
   const analysisBottom = useMemo(() => [...analysisTable].slice(-10).reverse(), [analysisTable])
 
+  // =========================
+  // ✅ 描画
+  // =========================
   return (
     <PageShell
       title={<h1 style={{ margin: 0, fontSize: 'clamp(20px, 6vw, 32px)', lineHeight: 1.15 }}>📈 偏差分析</h1>}
@@ -405,136 +478,143 @@ export default function RecordAnalysis({ back }: Props) {
       showBack
       onBack={back}
     >
-      <div style={{ display: 'grid', gap: 12 }}>
-        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-          🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
-          {!online && <span style={{ marginLeft: 10, color: '#f6c' }}>📴 オフライン</span>}
-        </div>
+      <div style={{ overflowX: 'clip', maxWidth: '100vw' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
+            🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
+            {!online && <span style={{ marginLeft: 10, color: '#f6c' }}>📴 オフライン</span>}
+          </div>
 
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => loadAll()} disabled={allLoading}>
-            {allLoading ? '読み込み中…' : '↻ 更新'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setAnalysisTideMap({})
-              setAnalysisTideError('')
-            }}
-            title="分析用の潮データをリセット（必要なら再取得）"
-          >
-            リセット
-          </button>
-        </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button type="button" onClick={() => loadAll()} disabled={allLoading} style={allLoading ? pillBtnStyleDisabled : pillBtnStyle} title="全履歴を再読み込み">
+              {allLoading ? '読み込み中…' : '↻ 全履歴更新'}
+            </button>
 
-        {all.length === 0 && !allLoading ? (
-          <p>まだ記録がないよ</p>
-        ) : (
-          <>
-            <div className="glass glass-strong" style={{ ...glassBoxStyle }}>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>🔎 絞り込み</div>
+            <button
+              type="button"
+              onClick={() => {
+                setAnalysisTideMap({})
+                setAnalysisTideError('')
+              }}
+              style={pillBtnStyle}
+              title="分析用の潮データ付与を一旦リセット（必要なら再取得される）"
+            >
+              🧹 潮データ付与をリセット
+            </button>
 
-                <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
-                  年：
-                  <select value={archiveYear} onChange={(e) => setArchiveYear(e.target.value)} style={{ marginLeft: 8 }}>
-                    <option value="">すべて</option>
-                    {years.map((y) => (
-                      <option key={y} value={String(y)}>
-                        {y}年
-                      </option>
-                    ))}
-                  </select>
-                </label>
+            <div style={{ marginLeft: 'auto', fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
+              {allLoadedOnce ? `全 ${all.length} 件（絞り込み ${filteredArchive.length} 件）` : '—'}
+            </div>
+          </div>
 
-                <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
-                  月：
-                  <select
-                    value={archiveMonth}
-                    onChange={(e) => setArchiveMonth(e.target.value)}
-                    style={{ marginLeft: 8 }}
-                    disabled={!!archiveYear && (monthsForSelectedYear?.length ?? 0) === 0}
-                  >
-                    <option value="">すべて</option>
-                    {archiveYear && monthsForSelectedYear
-                      ? monthsForSelectedYear.map((m) => (
+          {/* 絞り込み */}
+          <div className="glass glass-strong" style={{ ...glassBoxStyle }}>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>🔎 絞り込み</div>
+
+              <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
+                年：
+                <select value={archiveYear} onChange={(e) => setArchiveYear(e.target.value)} style={{ marginLeft: 8 }}>
+                  <option value="">すべて</option>
+                  {years.map((y) => (
+                    <option key={y} value={String(y)}>
+                      {y}年
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
+                月：
+                <select
+                  value={archiveMonth}
+                  onChange={(e) => setArchiveMonth(e.target.value)}
+                  style={{ marginLeft: 8 }}
+                  disabled={!!archiveYear && (monthsForSelectedYear?.length ?? 0) === 0}
+                  title={archiveYear ? '選択中の年に存在する月だけ出すよ' : '年を選ばなくても月で絞れるよ'}
+                >
+                  <option value="">すべて</option>
+
+                  {archiveYear && monthsForSelectedYear
+                    ? monthsForSelectedYear.map((m) => (
+                        <option key={m} value={String(m)}>
+                          {m}月
+                        </option>
+                      ))
+                    : Array.from({ length: 12 }).map((_, i) => {
+                        const m = i + 1
+                        return (
                           <option key={m} value={String(m)}>
                             {m}月
                           </option>
-                        ))
-                      : Array.from({ length: 12 }).map((_, i) => {
-                          const m = i + 1
-                          return (
-                            <option key={m} value={String(m)}>
-                              {m}月
-                            </option>
-                          )
-                        })}
-                  </select>
-                </label>
+                        )
+                      })}
+                </select>
+              </label>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setArchiveYear('')
-                    setArchiveMonth('')
-                  }}
-                  style={{ marginLeft: 'auto' }}
-                >
-                  リセット
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setArchiveYear('')
+                  setArchiveMonth('')
+                }}
+                style={{ marginLeft: 'auto' }}
+                title="絞り込みを解除"
+              >
+                リセット
+              </button>
+            </div>
 
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
-                  指標：
-                  <select value={analysisMetric} onChange={(e) => setAnalysisMetric(e.target.value as AnalysisMetric)} style={{ marginLeft: 8 }}>
-                    <option value="catchRate">釣れた率（Wilsonで安定）</option>
-                    <option value="avgSize">平均サイズ（釣れた＆サイズあり）</option>
-                    <option value="effortBias">行きがち偏り（Z）</option>
-                  </select>
-                </label>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>
+              対象：絞り込み {filteredArchive.length} 件（分析対象（撮影日時あり）：{analysisTargets.length} 件）
+            </div>
+          </div>
 
-                <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
-                  区切り：
-                  <select value={analysisGroup} onChange={(e) => setAnalysisGroup(e.target.value as AnalysisGroup)} style={{ marginLeft: 8 }}>
-                    <option value="tideName_timeBand">潮名 × 時間帯</option>
-                    <option value="phase_timeBand">フェーズ × 時間帯</option>
-                    <option value="tideName">潮名（大潮など）</option>
-                    <option value="phase">フェーズ</option>
-                    <option value="trend">上げ/下げ</option>
-                    <option value="timeBand">時間帯</option>
-                    <option value="species">魚種</option>
-                    <option value="species_timeBand">魚種 × 時間帯</option>
-                  </select>
-                </label>
+          {/* 分析設定 */}
+          <div className="glass glass-strong" style={{ ...glassBoxStyle }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
+                指標：
+                <select value={analysisMetric} onChange={(e) => setAnalysisMetric(e.target.value as AnalysisMetric)} style={{ marginLeft: 8 }}>
+                  <option value="catchRate">釣れた率（Wilsonで安定）</option>
+                  <option value="avgSize">平均サイズ（釣れた＆サイズあり）</option>
+                  <option value="effortBias">行きがち偏り（Z）</option>
+                </select>
+              </label>
 
-                <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
-                  最低件数：
-                  <select value={analysisMinN} onChange={(e) => setAnalysisMinN(Number(e.target.value) as 1 | 3 | 5 | 10)} style={{ marginLeft: 8 }}>
-                    <option value={1}>1</option>
-                    <option value={3}>3</option>
-                    <option value={5}>5</option>
-                    <option value={10}>10</option>
-                  </select>
-                </label>
+              <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
+                区切り：
+                <select value={analysisGroup} onChange={(e) => setAnalysisGroup(e.target.value as AnalysisGroup)} style={{ marginLeft: 8 }}>
+                  <option value="tideName_timeBand">潮名 × 時間帯</option>
+                  <option value="phase_timeBand">フェーズ × 時間帯</option>
+                  <option value="tideName">潮名（大潮など）</option>
+                  <option value="phase">フェーズ</option>
+                  <option value="trend">上げ/下げ</option>
+                  <option value="timeBand">時間帯</option>
+                  <option value="species">魚種</option>
+                  <option value="species_timeBand">魚種 × 時間帯</option>
+                </select>
+              </label>
 
-                <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={analysisIncludeUnknown} onChange={(e) => setAnalysisIncludeUnknown(e.target.checked)} />
-                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>結果未入力も含める（未入力＝ボウズ扱い）</span>
-                </label>
-              </div>
+              <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
+                最低件数：
+                <select value={analysisMinN} onChange={(e) => setAnalysisMinN(Number(e.target.value) as 1 | 3 | 5 | 10)} style={{ marginLeft: 8 }}>
+                  <option value={1}>1</option>
+                  <option value={3}>3</option>
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                </select>
+              </label>
 
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>
-                対象：絞り込み {filteredArchive.length} 件（分析対象（撮影日時あり）：{analysisTargets.length} 件）
-              </div>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+                <input type="checkbox" checked={analysisIncludeUnknown} onChange={(e) => setAnalysisIncludeUnknown(e.target.checked)} />
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>結果未入力も含める（未入力＝ボウズ扱い）</span>
+              </label>
+            </div>
 
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>
-                ベースライン：釣れた率 {formatPercent(baseline.catchRate)}（{baseline.caught}/{analysisIncludeUnknown ? baseline.total : baseline.caught + baseline.skunk}） / 平均サイズ{' '}
-                {baseline.avgSize ? `${Math.round(baseline.avgSize * 10) / 10}cm` : '—'}
-              </div>
-
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>✅ 上位は “運じゃなく再現性” 寄りにするため、釣れた率は Wilson 下限で並べてるよ😼</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>
+              ベースライン：釣れた率 {formatPercent(baseline.catchRate)}（{baseline.caught}/{analysisIncludeUnknown ? baseline.total : baseline.caught + baseline.skunk}） / 平均サイズ{' '}
+              {baseline.avgSize ? `${Math.round(baseline.avgSize * 10) / 10}cm` : '—'}
             </div>
 
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>
@@ -546,9 +626,17 @@ export default function RecordAnalysis({ back }: Props) {
               ) : (
                 <span style={{ color: '#0a6' }}> OK（{Object.keys(analysisTideMap).length}件に付与）</span>
               )}
-              {!online && <span style={{ marginLeft: 10, color: '#f6c' }}>📴 オフライン</span>}
             </div>
 
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>✅ 上位は “運じゃなく再現性” 寄りにするため、釣れた率は Wilson 下限で並べてるよ😼</div>
+          </div>
+
+          {/* 結果 */}
+          {!allLoadedOnce && allLoading ? (
+            <p>読み込み中…</p>
+          ) : filteredArchive.length === 0 ? (
+            <p>まだ記録がないよ</p>
+          ) : (
             <div style={{ display: 'grid', gap: 16 }}>
               <div className="glass glass-strong" style={{ borderRadius: 16, padding: 12 }}>
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>🏆 上位（強い条件）</div>
@@ -608,8 +696,8 @@ export default function RecordAnalysis({ back }: Props) {
                 )}
               </div>
             </div>
-          </>
-        )}
+          )}
+        </div>
       </div>
     </PageShell>
   )
