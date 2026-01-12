@@ -77,8 +77,16 @@ function normalize(input: unknown): AppSettings {
     characterEnabled: typeof x.characterEnabled === 'boolean' ? x.characterEnabled : DEFAULT_SETTINGS.characterEnabled,
     characterMode: x.characterMode === 'random' ? 'random' : 'fixed',
     fixedCharacterId: fixedId,
-    characterScale: clamp(Number.isFinite(x.characterScale as number) ? (x.characterScale as number) : DEFAULT_SETTINGS.characterScale, 0.7, 2.0),
-    characterOpacity: clamp(Number.isFinite(x.characterOpacity as number) ? (x.characterOpacity as number) : DEFAULT_SETTINGS.characterOpacity, 0, 1),
+    characterScale: clamp(
+      Number.isFinite(x.characterScale as number) ? (x.characterScale as number) : DEFAULT_SETTINGS.characterScale,
+      0.7,
+      2.0
+    ),
+    characterOpacity: clamp(
+      Number.isFinite(x.characterOpacity as number) ? (x.characterOpacity as number) : DEFAULT_SETTINGS.characterOpacity,
+      0,
+      1
+    ),
 
     bgDim: clamp(Number.isFinite(x.bgDim as number) ? (x.bgDim as number) : DEFAULT_SETTINGS.bgDim, 0, 1),
     bgBlur: clamp(Number.isFinite(x.bgBlur as number) ? (x.bgBlur as number) : DEFAULT_SETTINGS.bgBlur, 0, 24),
@@ -96,21 +104,44 @@ function normalize(input: unknown): AppSettings {
   return normalized
 }
 
+/**
+ * ✅ useSyncExternalStore の getSnapshot(read) は
+ * “変わってない時は同じ参照を返す”必要がある。
+ * 毎回新しい object を返すと無限再レンダーになり得る。
+ */
+let cachedRaw: string | null | undefined = undefined
+let cachedSettings: AppSettings = DEFAULT_SETTINGS
+
 function read(): AppSettings {
   try {
-    const raw = localStorage.getItem(KEY)
-    return normalize(safeParse(raw))
+    const raw = localStorage.getItem(KEY) // null もあり得る
+
+    // 文字列が同じなら、同じ参照を返す（これが超重要）
+    if (raw === cachedRaw) return cachedSettings
+
+    const next = normalize(safeParse(raw))
+    cachedRaw = raw
+    cachedSettings = next
+    return next
   } catch {
+    cachedRaw = undefined
+    cachedSettings = DEFAULT_SETTINGS
     return DEFAULT_SETTINGS
   }
 }
 
 function write(next: AppSettings) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(next))
+    const raw = JSON.stringify(next)
+    localStorage.setItem(KEY, raw)
+
+    // ✅ 書いた瞬間にキャッシュも同期（同一タブの再描画が安定する）
+    cachedRaw = raw
+    cachedSettings = next
   } catch {
     // ignore
   }
+
   // 同一タブ内へ通知
   window.dispatchEvent(new Event('tsuduri-settings'))
 }
@@ -128,7 +159,10 @@ export function setAppSettings(patch: Partial<AppSettings> | ((prev: AppSettings
 function subscribe(cb: () => void) {
   const onLocal = () => cb()
   const onStorage = (e: StorageEvent) => {
-    if (e.key === KEY) cb()
+    if (e.key === KEY) {
+      // 他タブから変更されたときはキャッシュを更新するため read() させる
+      cb()
+    }
   }
   window.addEventListener('tsuduri-settings', onLocal)
   window.addEventListener('storage', onStorage)
