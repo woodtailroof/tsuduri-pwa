@@ -223,7 +223,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     if (!ok) return
     const next = list.filter((c) => c.id !== selected.id)
     setList(next)
-    setSelectedId(next[0]?.id ?? '')
+    setSelectedId(next[0]?.id ?? 'tsuduri')
   }
 
   function saveOnly() {
@@ -269,7 +269,6 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     const text = await file.text()
     const parsed = safeJsonParse<any>(text, null)
 
-    // 形式ゆるめ対応
     const importedList: CharacterProfile[] =
       parsed?.characters && Array.isArray(parsed.characters)
         ? parsed.characters
@@ -300,7 +299,6 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     setList(cleaned)
     setSelectedId(parsed?.selectedId && typeof parsed.selectedId === 'string' ? parsed.selectedId : cleaned[0]?.id ?? cleaned[0].id)
 
-    // 掛け合い設定も一緒に入ってたら反映
     const be = parsed?.allhands?.banterEnabled
     const br = parsed?.allhands?.banterRate
     if (typeof be === 'boolean') setBanterEnabled(be)
@@ -322,7 +320,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     if (!ok) return
     setList(backupList as CharacterProfile[])
     const firstId = (backupList[0] as any)?.id
-    setSelectedId(typeof firstId === 'string' ? firstId : selectedId)
+    setSelectedId(typeof firstId === 'string' ? firstId : 'tsuduri')
     safeSaveCharacters(backupList as CharacterProfile[])
     alert('復元したよ！')
   }
@@ -361,14 +359,6 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     cursor: 'pointer',
   }
 
-  const btnRow: React.CSSProperties = {
-    display: 'flex',
-    gap: 10,
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-  }
-
   const inputStyle: React.CSSProperties = {
     width: '100%',
     borderRadius: 12,
@@ -379,6 +369,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     outline: 'none',
     backdropFilter: 'blur(10px)',
     WebkitBackdropFilter: 'blur(10px)',
+    boxSizing: 'border-box',
   }
 
   const selectStyle: React.CSSProperties = {
@@ -403,34 +394,85 @@ export default function CharacterSettings({ back }: { back: () => void }) {
       showBack
       onBack={back}
     >
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 14, alignItems: 'start', minWidth: 0 }}>
-        {/* 左：操作＆一覧 */}
-        <div style={{ ...glassCard, padding: 12, minWidth: 0 }}>
-          <div style={{ display: 'grid', gap: 10 }}>
-            <button type="button" onClick={createNew} style={btn}>
-              ➕ 新規
-            </button>
-            <button type="button" onClick={duplicate} style={btn}>
-              🧬 複製
-            </button>
-            <button type="button" onClick={removeSelected} style={btn}>
-              🗑 選択中を削除
-            </button>
+      <style>{`
+        /* ✅ スマホで「2カラムがはみ出す」問題を潰す */
+        .cs-wrap {
+          overflow-x: hidden;
+        }
+        .cs-grid {
+          display: grid;
+          grid-template-columns: 320px 1fr;
+          gap: 14px;
+          align-items: start;
+          min-width: 0;
+        }
+        .cs-panel {
+          min-width: 0;
+        }
 
-            <div style={{ height: 1, background: 'rgba(255,255,255,0.10)', margin: '2px 0' }} />
+        /* ✅ iPhoneなど狭い幅は縦積みにする */
+        @media (max-width: 900px) {
+          .cs-grid {
+            grid-template-columns: 1fr;
+          }
+          .cs-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+          }
+          .cs-actions .full {
+            grid-column: 1 / -1;
+          }
+        }
 
-            <button type="button" onClick={exportJson} style={btn}>
-              📦 エクスポート
-            </button>
+        /* ✅ さらに狭い場合はボタン2列を1列へ */
+        @media (max-width: 380px) {
+          .cs-actions {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
 
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              style={btn}
-              title="JSONをインポートしてキャラ一覧を置き換え"
-            >
-              📥 インポート
-            </button>
+      <div className="cs-wrap">
+        <div className="cs-grid">
+          {/* 左：操作＆一覧 */}
+          <div className="cs-panel" style={{ ...glassCard, padding: 12 }}>
+            {/* 操作ボタン群（スマホは2列） */}
+            <div className="cs-actions">
+              <button type="button" onClick={createNew} style={btn}>
+                ➕ 新規
+              </button>
+              <button type="button" onClick={duplicate} style={btn}>
+                🧬 複製
+              </button>
+              <button type="button" onClick={removeSelected} style={btn}>
+                🗑 選択中を削除
+              </button>
+
+              <div className="full" style={{ height: 1, background: 'rgba(255,255,255,0.10)', margin: '2px 0' }} />
+
+              <button type="button" onClick={exportJson} style={btn}>
+                📦 エクスポート
+              </button>
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                style={btn}
+                title="JSONをインポートしてキャラ一覧を置き換え"
+              >
+                📥 インポート
+              </button>
+
+              <button type="button" onClick={restoreFromBackup} style={{ ...btn, opacity: 0.9 }} className="full">
+                🛟 直近バックアップから復元
+              </button>
+
+              <div className="full" style={{ ...smallHint }}>
+                保存先: localStorage key = {CHARACTERS_STORAGE_KEY} / 選択中 = {SELECTED_CHARACTER_ID_KEY}
+              </div>
+            </div>
+
             <input
               ref={fileInputRef}
               type="file"
@@ -444,222 +486,217 @@ export default function CharacterSettings({ back }: { back: () => void }) {
               }}
             />
 
-            <button type="button" onClick={restoreFromBackup} style={{ ...btn, opacity: 0.9 }}>
-              🛟 直近バックアップから復元
-            </button>
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.10)', margin: '12px 0' }} />
 
-            <div style={{ ...smallHint }}>
-              保存先: localStorage key = {CHARACTERS_STORAGE_KEY} / 選択中 = {SELECTED_CHARACTER_ID_KEY}
-            </div>
-          </div>
+            <div style={sectionTitle}>キャラ一覧（クリックで選択）</div>
 
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.10)', margin: '12px 0' }} />
-
-          <div style={sectionTitle}>キャラ一覧（クリックで選択）</div>
-
-          <div style={{ display: 'grid', gap: 10 }}>
-            {list.map((c) => {
-              const isSel = c.id === selectedId
-              const color = normalizeColor(c.color ?? '#ff7aa2')
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setSelectedId(c.id)}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    borderRadius: 14,
-                    border: isSel ? `1px solid rgba(255,77,109,0.65)` : '1px solid rgba(255,255,255,0.12)',
-                    background: isSel ? 'rgba(255,77,109,0.12)' : 'rgba(0,0,0,0.16)',
-                    backdropFilter: 'blur(10px)',
-                    WebkitBackdropFilter: 'blur(10px)',
-                    padding: 12,
-                    cursor: 'pointer',
-                    color: '#fff',
-                    minWidth: 0,
-                  }}
-                >
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 999,
-                        background: color,
-                        boxShadow: '0 0 0 4px rgba(255,255,255,0.06)',
-                        flex: '0 0 auto',
-                      }}
-                    />
-                    <div style={{ fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-                      {c.name}
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: 6, fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.55 }}>
-                    一人称: {c.selfName || '—'} / 呼称: {c.callUser || '—'}
-                    <br />
-                    長さ: {c.replyLength || 'medium'}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* 右：編集 */}
-        <div style={{ ...glassCard, padding: 12, minWidth: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
-              選択中： <strong style={{ color: '#fff' }}>{selected?.name ?? '—'}</strong>
-            </div>
-
-            <div style={btnRow}>
-              <button type="button" onClick={saveOnly} style={{ ...btn, width: 'auto', padding: '10px 14px' }}>
-                💾 保存
-              </button>
-              <button type="button" onClick={saveAndBack} style={{ ...btn, width: 'auto', padding: '10px 14px' }}>
-                ✅ 保存して戻る
-              </button>
-            </div>
-          </div>
-
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.10)', margin: '12px 0' }} />
-
-          {/* ✅ 全員集合：掛け合い設定（ここに移動） */}
-          <div style={{ ...glassCard, padding: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: 900 }}>🗣 全員集合：掛け合い</div>
-                <div style={smallHint}>全員集合モードで「後ろ2人が感想係になる」挙動のON/OFFと頻度。</div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setBanterEnabled((v) => !v)}
-                style={{
-                  ...btn,
-                  width: 'auto',
-                  padding: '10px 14px',
-                  border: banterEnabled ? '1px solid rgba(255,77,109,0.65)' : '1px solid rgba(255,255,255,0.14)',
-                  background: banterEnabled ? 'rgba(255,77,109,0.14)' : 'rgba(255,255,255,0.06)',
-                }}
-                title="掛け合い ON/OFF"
-              >
-                {banterEnabled ? '🗣 掛け合い：ON' : '🤐 掛け合い：OFF'}
-              </button>
-            </div>
-
-            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.70)' }}>頻度</div>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={banterRate}
-                onChange={(e) => setBanterRate(Number(e.target.value))}
-                style={{ width: 220 }}
-                disabled={!banterEnabled}
-              />
-              <div style={{ width: 44, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: banterEnabled ? '#fff' : 'rgba(255,255,255,0.45)' }}>
-                {banterRate}%
-              </div>
-            </div>
-          </div>
-
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.10)', margin: '12px 0' }} />
-
-          <div style={{ display: 'grid', gap: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px', gap: 12, minWidth: 0 }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={sectionTitle}>名前（表示名）</div>
-                <input value={selected?.name ?? ''} onChange={(e) => updateSelected({ name: e.target.value })} style={inputStyle} />
-              </div>
-
-              <div style={{ minWidth: 0 }}>
-                <div style={sectionTitle}>自称（一人称）</div>
-                <input value={selected?.selfName ?? ''} onChange={(e) => updateSelected({ selfName: e.target.value })} style={inputStyle} />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 12, minWidth: 0 }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={sectionTitle}>ユーザー呼び</div>
-                <input value={selected?.callUser ?? ''} onChange={(e) => updateSelected({ callUser: e.target.value })} style={inputStyle} />
-              </div>
-
-              <div style={{ minWidth: 0 }}>
-                <div style={sectionTitle}>返答の長さ</div>
-                <div style={{ position: 'relative' }}>
-                  <select
-                    value={(selected?.replyLength ?? 'medium') as ReplyLength}
-                    onChange={(e) => updateSelected({ replyLength: e.target.value as ReplyLength })}
-                    style={selectStyle}
-                  >
-                    <option value="short">短め</option>
-                    <option value="medium">標準</option>
-                    <option value="long">長め</option>
-                  </select>
-                  <span
+            <div style={{ display: 'grid', gap: 10 }}>
+              {list.map((c) => {
+                const isSel = c.id === selectedId
+                const color = normalizeColor(c.color ?? '#ff7aa2')
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setSelectedId(c.id)}
                     style={{
-                      position: 'absolute',
-                      right: 12,
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      pointerEvents: 'none',
-                      color: 'rgba(255,255,255,0.55)',
-                      fontSize: 12,
+                      width: '100%',
+                      textAlign: 'left',
+                      borderRadius: 14,
+                      border: isSel ? `1px solid rgba(255,77,109,0.65)` : '1px solid rgba(255,255,255,0.12)',
+                      background: isSel ? 'rgba(255,77,109,0.12)' : 'rgba(0,0,0,0.16)',
+                      backdropFilter: 'blur(10px)',
+                      WebkitBackdropFilter: 'blur(10px)',
+                      padding: 12,
+                      cursor: 'pointer',
+                      color: '#fff',
+                      minWidth: 0,
+                      boxSizing: 'border-box',
                     }}
                   >
-                    ▼
-                  </span>
-                </div>
-                <div style={{ marginTop: 6, ...smallHint }}>※max_output_tokens に直結（体感差が出る）</div>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: 999,
+                          background: color,
+                          boxShadow: '0 0 0 4px rgba(255,255,255,0.06)',
+                          flex: '0 0 auto',
+                        }}
+                      />
+                      <div style={{ fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                        {c.name}
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 6, fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.55 }}>
+                      一人称: {c.selfName || '—'} / 呼称: {c.callUser || '—'}
+                      <br />
+                      長さ: {c.replyLength || 'medium'}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* 右：編集 */}
+          <div className="cs-panel" style={{ ...glassCard, padding: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
+                選択中： <strong style={{ color: '#fff' }}>{selected?.name ?? '—'}</strong>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center' }}>
+                <button type="button" onClick={saveOnly} style={{ ...btn, width: 'auto', padding: '10px 14px' }}>
+                  💾 保存
+                </button>
+                <button type="button" onClick={saveAndBack} style={{ ...btn, width: 'auto', padding: '10px 14px' }}>
+                  ✅ 保存して戻る
+                </button>
               </div>
             </div>
 
-            <div style={{ minWidth: 0 }}>
-              <div style={sectionTitle}>テーマカラー</div>
-              <input
-                value={selected?.color ?? ''}
-                onChange={(e) => updateSelected({ color: e.target.value })}
-                style={inputStyle}
-                placeholder="#ff7aa2"
-              />
-              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ ...smallHint }}>プレビュー</span>
-                <span
-                  aria-hidden="true"
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.10)', margin: '12px 0' }} />
+
+            {/* 全員集合：掛け合い設定 */}
+            <div style={{ ...glassCard, padding: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 900 }}>🗣 全員集合：掛け合い</div>
+                  <div style={smallHint}>全員集合モードで「後ろ2人が感想係になる」挙動のON/OFFと頻度。</div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setBanterEnabled((v) => !v)}
                   style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 999,
-                    background: normalizeColor(selected?.color ?? '#ff7aa2'),
-                    boxShadow: '0 0 0 4px rgba(255,255,255,0.06)',
+                    ...btn,
+                    width: 'auto',
+                    padding: '10px 14px',
+                    border: banterEnabled ? '1px solid rgba(255,77,109,0.65)' : '1px solid rgba(255,255,255,0.14)',
+                    background: banterEnabled ? 'rgba(255,77,109,0.14)' : 'rgba(255,255,255,0.06)',
+                  }}
+                  title="掛け合い ON/OFF"
+                >
+                  {banterEnabled ? '🗣 掛け合い：ON' : '🤐 掛け合い：OFF'}
+                </button>
+              </div>
+
+              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.70)' }}>頻度</div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={banterRate}
+                  onChange={(e) => setBanterRate(Number(e.target.value))}
+                  style={{ width: 220, maxWidth: '70vw' }}
+                  disabled={!banterEnabled}
+                />
+                <div
+                  style={{
+                    width: 44,
+                    textAlign: 'right',
+                    fontVariantNumeric: 'tabular-nums',
+                    color: banterEnabled ? '#fff' : 'rgba(255,255,255,0.45)',
+                  }}
+                >
+                  {banterRate}%
+                </div>
+              </div>
+            </div>
+
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.10)', margin: '12px 0' }} />
+
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px', gap: 12, minWidth: 0 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={sectionTitle}>名前（表示名）</div>
+                  <input value={selected?.name ?? ''} onChange={(e) => updateSelected({ name: e.target.value })} style={inputStyle} />
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <div style={sectionTitle}>自称（一人称）</div>
+                  <input value={selected?.selfName ?? ''} onChange={(e) => updateSelected({ selfName: e.target.value })} style={inputStyle} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 12, minWidth: 0 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={sectionTitle}>ユーザー呼び</div>
+                  <input value={selected?.callUser ?? ''} onChange={(e) => updateSelected({ callUser: e.target.value })} style={inputStyle} />
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <div style={sectionTitle}>返答の長さ</div>
+                  <div style={{ position: 'relative' }}>
+                    <select
+                      value={(selected?.replyLength ?? 'medium') as ReplyLength}
+                      onChange={(e) => updateSelected({ replyLength: e.target.value as ReplyLength })}
+                      style={selectStyle}
+                    >
+                      <option value="short">短め</option>
+                      <option value="medium">標準</option>
+                      <option value="long">長め</option>
+                    </select>
+                    <span
+                      style={{
+                        position: 'absolute',
+                        right: 12,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        pointerEvents: 'none',
+                        color: 'rgba(255,255,255,0.55)',
+                        fontSize: 12,
+                      }}
+                    >
+                      ▼
+                    </span>
+                  </div>
+                  <div style={{ marginTop: 6, ...smallHint }}>※max_output_tokens に直結（体感差が出る）</div>
+                </div>
+              </div>
+
+              <div style={{ minWidth: 0 }}>
+                <div style={sectionTitle}>テーマカラー</div>
+                <input value={selected?.color ?? ''} onChange={(e) => updateSelected({ color: e.target.value })} style={inputStyle} placeholder="#ff7aa2" />
+                <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ ...smallHint }}>プレビュー</span>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 999,
+                      background: normalizeColor(selected?.color ?? '#ff7aa2'),
+                      boxShadow: '0 0 0 4px rgba(255,255,255,0.06)',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ minWidth: 0 }}>
+                <div style={sectionTitle}>キャラクター設定（自由記述）</div>
+                <textarea
+                  value={selected?.description ?? ''}
+                  onChange={(e) => updateSelected({ description: e.target.value })}
+                  rows={10}
+                  style={{
+                    ...inputStyle,
+                    resize: 'vertical',
+                    minHeight: 220,
+                    lineHeight: 1.7,
                   }}
                 />
+                <div style={{ marginTop: 6, ...smallHint }}>コツ：ルールを増やしすぎず、“雰囲気”を先に書くと安定しやすいよ。</div>
               </div>
-            </div>
 
-            <div style={{ minWidth: 0 }}>
-              <div style={sectionTitle}>キャラクター設定（自由記述）</div>
-              <textarea
-                value={selected?.description ?? ''}
-                onChange={(e) => updateSelected({ description: e.target.value })}
-                rows={10}
-                style={{
-                  ...inputStyle,
-                  resize: 'vertical',
-                  minHeight: 220,
-                  lineHeight: 1.7,
-                }}
-              />
-              <div style={{ marginTop: 6, ...smallHint }}>コツ：ルールを増やしすぎず、“雰囲気”を先に書くと安定しやすいよ。</div>
-            </div>
-
-            <div style={{ ...smallHint }}>
-              保存先: localStorage key = {CHARACTERS_STORAGE_KEY} / 選択中 = {SELECTED_CHARACTER_ID_KEY}
+              <div style={{ ...smallHint }}>
+                保存先: localStorage key = {CHARACTERS_STORAGE_KEY} / 選択中 = {SELECTED_CHARACTER_ID_KEY}
+              </div>
             </div>
           </div>
         </div>
