@@ -35,23 +35,14 @@ type CharacterOption = { id: string; label: string }
 function safeCharacterOptions(): CharacterOption[] {
   const v = CHARACTER_OPTIONS_RAW as unknown
   if (Array.isArray(v)) {
-    const ok = v.filter(
-      (x) =>
-        x &&
-        typeof (x as any).id === 'string' &&
-        typeof (x as any).label === 'string'
-    ) as CharacterOption[]
+    const ok = v.filter((x) => x && typeof (x as any).id === 'string' && typeof (x as any).label === 'string') as CharacterOption[]
     if (ok.length > 0) return ok
   }
-  // ✅ フォールバック（ここに落ちても画面が死なない）
   return [{ id: 'tsuduri', label: 'つづり（fallback）' }]
 }
 
 export default function Settings({ back }: Props) {
-  // ✅ ここで落ちると画面真っ暗になりがちなので、try/catchで救出する
-  let settingsHook:
-    | { settings: any; set: (patch: any) => void; reset: () => void }
-    | null = null
+  let settingsHook: { settings: any; set: (patch: any) => void; reset: () => void } | null = null
   let settingsHookError: string | null = null
   try {
     settingsHook = useAppSettings() as any
@@ -59,7 +50,6 @@ export default function Settings({ back }: Props) {
     settingsHookError = e instanceof Error ? e.message : String(e)
   }
 
-  // もし hook が壊れてたら「救助UI」だけ出す
   if (!settingsHook) {
     return (
       <PageShell
@@ -71,9 +61,7 @@ export default function Settings({ back }: Props) {
       >
         <div className="glass glass-strong" style={{ borderRadius: 16, padding: 14, display: 'grid', gap: 10 }}>
           <div style={{ fontWeight: 900, color: '#ff7a7a' }}>⚠ 設定ストアが落ちてる</div>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', overflowWrap: 'anywhere' }}>
-            {settingsHookError ?? 'unknown error'}
-          </div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', overflowWrap: 'anywhere' }}>{settingsHookError ?? 'unknown error'}</div>
 
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>
             対処：localStorage の設定が壊れている可能性があるので、初期化を試してね。
@@ -159,6 +147,7 @@ export default function Settings({ back }: Props) {
     refresh()
   }, [])
 
+  // ✅ TS6133対策：ちゃんと使う（表示に出す）
   const approxMB = useMemo(() => {
     const kb = stats?.approxKB ?? 0
     return Math.round((kb / 1024) * 100) / 100
@@ -174,7 +163,6 @@ export default function Settings({ back }: Props) {
     }
   }, [days])
 
-  // ✅ 万一 settings のキーが欠けてても落ちないように、表示側はフォールバックで読む
   const characterEnabled = settings?.characterEnabled ?? true
   const characterMode = settings?.characterMode ?? 'fixed'
   const fixedCharacterId = settings?.fixedCharacterId ?? characterOptions[0]?.id ?? 'tsuduri'
@@ -198,11 +186,7 @@ export default function Settings({ back }: Props) {
           <h2 style={sectionTitle}>👧 キャラクター</h2>
 
           <label style={{ display: 'flex', gap: 10, alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
-            <input
-              type="checkbox"
-              checked={characterEnabled}
-              onChange={(e) => set({ characterEnabled: e.target.checked })}
-            />
+            <input type="checkbox" checked={characterEnabled} onChange={(e) => set({ characterEnabled: e.target.checked })} />
             <span style={{ color: 'rgba(255,255,255,0.85)' }}>キャラを表示する</span>
           </label>
 
@@ -211,24 +195,12 @@ export default function Settings({ back }: Props) {
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>切替：</div>
 
               <label style={{ display: 'inline-flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="characterMode"
-                  checked={characterMode === 'fixed'}
-                  disabled={!characterEnabled}
-                  onChange={() => set({ characterMode: 'fixed' })}
-                />
+                <input type="radio" name="characterMode" checked={characterMode === 'fixed'} disabled={!characterEnabled} onChange={() => set({ characterMode: 'fixed' })} />
                 <span>固定</span>
               </label>
 
               <label style={{ display: 'inline-flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="characterMode"
-                  checked={characterMode === 'random'}
-                  disabled={!characterEnabled}
-                  onChange={() => set({ characterMode: 'random' })}
-                />
+                <input type="radio" name="characterMode" checked={characterMode === 'random'} disabled={!characterEnabled} onChange={() => set({ characterMode: 'random' })} />
                 <span>ランダム（画面遷移ごと）</span>
               </label>
             </div>
@@ -236,11 +208,7 @@ export default function Settings({ back }: Props) {
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>固定キャラ：</div>
 
-              <select
-                value={fixedCharacterId}
-                disabled={!characterEnabled || characterMode !== 'fixed'}
-                onChange={(e) => set({ fixedCharacterId: e.target.value })}
-              >
+              <select value={fixedCharacterId} disabled={!characterEnabled || characterMode !== 'fixed'} onChange={(e) => set({ fixedCharacterId: e.target.value })}>
                 {characterOptions.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.label}
@@ -248,9 +216,7 @@ export default function Settings({ back }: Props) {
                 ))}
               </select>
 
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-                ※チャット画面と連動させるのも、この仕組みを土台にできるよ
-              </div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>※チャット画面と連動させるのも、この仕組みを土台にできるよ</div>
             </div>
 
             <div style={{ display: 'grid', gap: 6 }}>
@@ -267,9 +233,7 @@ export default function Settings({ back }: Props) {
                 value={characterScale}
                 onChange={(e) => set({ characterScale: clamp(Number(e.target.value), 0.7, 2.0) })}
               />
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>
-                目安：スマホは 120%〜160% あたりがいい感じ
-              </div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>目安：スマホは 120%〜160% あたりがいい感じ</div>
             </div>
 
             <div style={{ display: 'grid', gap: 6 }}>
@@ -299,29 +263,16 @@ export default function Settings({ back }: Props) {
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>背景の暗幕（bgDim）</div>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)' }}>{Math.round(bgDim * 100)}%</div>
             </div>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.02}
-              value={bgDim}
-              onChange={(e) => set({ bgDim: clamp(Number(e.target.value), 0, 1) })}
-            />
+            <input type="range" min={0} max={1} step={0.02} value={bgDim} onChange={(e) => set({ bgDim: clamp(Number(e.target.value), 0, 1) })} />
           </div>
 
           <div style={{ display: 'grid', gap: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>背景ぼかし（bgBlur）</div>
+              <div style={{ fontSize
+                fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>背景ぼかし（bgBlur）</div>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)' }}>{bgBlur}px</div>
             </div>
-            <input
-              type="range"
-              min={0}
-              max={24}
-              step={1}
-              value={bgBlur}
-              onChange={(e) => set({ bgBlur: clamp(Number(e.target.value), 0, 24) })}
-            />
+            <input type="range" min={0} max={24} step={1} value={bgBlur} onChange={(e) => set({ bgBlur: clamp(Number(e.target.value), 0, 24) })} />
           </div>
 
           <div style={{ display: 'grid', gap: 8 }}>
@@ -349,13 +300,7 @@ export default function Settings({ back }: Props) {
           </div>
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button
-              type="button"
-              style={loading || !!busy ? pillDisabled : pill}
-              disabled={loading || !!busy}
-              onClick={() => refresh()}
-              title="キャッシュ状況を再読込"
-            >
+            <button type="button" style={loading || !!busy ? pillDisabled : pill} disabled={loading || !!busy} onClick={() => refresh()} title="キャッシュ状況を再読込">
               ↻ 更新
             </button>
 
@@ -396,7 +341,7 @@ export default function Settings({ back }: Props) {
                 onClick={async () => {
                   setBusy('deleteOld')
                   try {
-                    await deleteTideCacheOlderThan(days) // ✅ number（日数）
+                    await deleteTideCacheOlderThan(days)
                     await refresh()
                     alert(`古いキャッシュ（${days}日より前）を削除したよ`)
                   } finally {
@@ -412,11 +357,7 @@ export default function Settings({ back }: Props) {
 
           <div style={{ display: 'grid', gap: 6 }}>
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>
-              {stats
-                ? `件数: ${stats.count} / 容量(概算): ${stats.approxKB}KB（約 ${Math.round((stats.approxKB / 1024) * 100) / 100}MB）`
-                : loading
-                  ? '読み込み中…'
-                  : '—'}
+              {stats ? `件数: ${stats.count} / 容量(概算): ${stats.approxKB}KB（約 ${approxMB}MB）` : loading ? '読み込み中…' : '—'}
             </div>
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)' }}>
               newest: {fmtIso(stats?.newestFetchedAt ?? null)} / oldest: {fmtIso(stats?.oldestFetchedAt ?? null)}
@@ -477,7 +418,7 @@ export default function Settings({ back }: Props) {
                         if (!ok) return
                         setBusy(`force:${e.key}`)
                         try {
-                          await forceRefreshTide736Day(e.pc, e.hc, new Date(e.day)) // ✅ Date
+                          await forceRefreshTide736Day(e.pc, e.hc, new Date(e.day))
                           await refresh()
                           alert('再取得したよ')
                         } catch (err) {
@@ -492,19 +433,13 @@ export default function Settings({ back }: Props) {
                     </button>
 
                     {e.tideName != null && (
-                      <div style={{ fontSize: 12, color: '#ffd166', display: 'inline-flex', alignItems: 'center' }}>
-                        🌙 {e.tideName}
-                      </div>
+                      <div style={{ fontSize: 12, color: '#ffd166', display: 'inline-flex', alignItems: 'center' }}>🌙 {e.tideName}</div>
                     )}
                   </div>
                 </div>
               ))}
 
-              {entries.length > 80 && (
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-                  ※多すぎると重くなるから先頭80件まで表示してるよ
-                </div>
-              )}
+              {entries.length > 80 && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>※多すぎると重くなるから先頭80件まで表示してるよ</div>}
             </div>
           )}
         </div>
