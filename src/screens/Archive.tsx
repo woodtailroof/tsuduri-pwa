@@ -1,28 +1,26 @@
 // src/screens/Archive.tsx
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { db, type CatchRecord } from '../db'
 import { exportCatches, importCatches } from '../lib/catchTransfer'
 import { getTimeBand } from '../lib/timeband'
 import { FIXED_PORT } from '../points'
-import PageShell from '../components/PageShell'
-import TideGraph from '../components/TideGraph'
 import { getTideAtTime } from '../lib/tide736'
 import { getTide736DayCached, type TideCacheSource } from '../lib/tide736Cache'
 import { getTidePhaseFromSeries } from '../lib/tidePhase736'
-import { useMediaQuery } from '../lib/useMediaQuery'
+import TideGraph from '../components/TideGraph'
+import PageShell from '../components/PageShell'
 
-type Props = { back: () => void }
+type Props = {
+  back: () => void
+}
 
-type TidePoint = { unix?: number; cm: number; time?: string }
+type TideInfo = { cm: number; trend: string }
 
-type DetailTideInfo = {
-  series: TidePoint[]
-  tideName: string | null
-  phaseRaw: string
-  phaseShown: string
-  cm: number | null
-  trend: string | null
-  source: TideCacheSource | null
+type DetailTide = {
+  series: Array<{ unix?: number; cm: number; time?: string }>
+  tideName?: string | null
+  source: TideCacheSource
   isStale: boolean
 }
 
@@ -58,45 +56,133 @@ function sourceLabel(source: TideCacheSource | null, isStale: boolean) {
   return { text: isStale ? '期限切れキャッシュ' : 'キャッシュ', color: '#f6c' }
 }
 
-function safeShotISO(r: CatchRecord) {
-  return r.capturedAt ?? r.createdAt
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true
+    // だいたい “スマホ” として扱いたいライン（好みで調整OK）
+    const mq = window.matchMedia('(max-width: 820px)')
+    const coarse = window.matchMedia('(pointer: coarse)')
+    return mq.matches || coarse.matches
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const mq = window.matchMedia('(max-width: 820px)')
+    const coarse = window.matchMedia('(pointer: coarse)')
+
+    const onChange = () => setIsMobile(mq.matches || coarse.matches)
+
+    mq.addEventListener?.('change', onChange)
+    coarse.addEventListener?.('change', onChange)
+    window.addEventListener('orientationchange', onChange)
+
+    return () => {
+      mq.removeEventListener?.('change', onChange)
+      coarse.removeEventListener?.('change', onChange)
+      window.removeEventListener('orientationchange', onChange)
+    }
+  }, [])
+
+  return isMobile
 }
 
-function isValidDate(d: Date) {
-  return Number.isFinite(d.getTime())
-}
+function BottomSheet({
+  open,
+  onClose,
+  title,
+  children,
+  pillBtnStyle,
+}: {
+  open: boolean
+  onClose: () => void
+  title?: string
+  children: React.ReactNode
+  pillBtnStyle: CSSProperties
+}) {
+  const [mounted, setMounted] = useState(false)
+  const [show, setShow] = useState(false)
 
-function thumbUrlFromRecord(r: CatchRecord) {
-  if (!r.photoBlob) return null
-  try {
-    return URL.createObjectURL(r.photoBlob)
-  } catch {
-    return null
+  useEffect(() => {
+    if (open) {
+      setMounted(true)
+      requestAnimationFrame(() => setShow(true))
+      return
+    }
+
+    setShow(false)
+    const t = window.setTimeout(() => setMounted(false), 220)
+    return () => window.clearTimeout(t)
+  }, [open])
+
+  useEffect(() => {
+    if (!mounted) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mounted, onClose])
+
+  if (!mounted) return null
+
+  const overlayStyle: CSSProperties = {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 9999,
+    background: show ? 'rgba(0,0,0,0.62)' : 'rgba(0,0,0,0)',
+    backdropFilter: show ? 'blur(6px)' : 'blur(0px)',
+    WebkitBackdropFilter: show ? 'blur(6px)' : 'blur(0px)',
+    display: 'grid',
+    alignItems: 'end',
+    transition: 'background 220ms ease, backdrop-filter 220ms ease',
   }
+
+  const sheetStyle: CSSProperties = {
+    width: '100%',
+    maxHeight: '85svh',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    padding: 12,
+    boxShadow: '0 -14px 40px rgba(0,0,0,0.35)',
+    overflow: 'hidden',
+    transform: show ? 'translateY(0px)' : 'translateY(18px)',
+    opacity: show ? 1 : 0.001,
+    transition: 'transform 220ms ease, opacity 220ms ease',
+    willChange: 'transform, opacity',
+  }
+
+  const grabberStyle: CSSProperties = {
+    width: 44,
+    height: 5,
+    borderRadius: 999,
+    background: 'rgba(255,255,255,0.28)',
+    margin: '0 auto 10px',
+  }
+
+  return (
+    <div style={overlayStyle} onClick={onClose}>
+      <div className="glass glass-strong" style={sheetStyle} onClick={(e) => e.stopPropagation()}>
+        <div style={grabberStyle} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+          <div style={{ fontWeight: 900 }}>{title ?? '📌 記録の詳細'}</div>
+          <button type="button" onClick={onClose} style={pillBtnStyle}>
+            ✕ 閉じる
+          </button>
+        </div>
+
+        <div style={{ height: 8 }} />
+        <div style={{ overflowY: 'auto', paddingRight: 2, maxHeight: 'calc(85svh - 68px)' }}>{children}</div>
+      </div>
+    </div>
+  )
 }
 
 export default function Archive({ back }: Props) {
-  // PC/スマホ判定（広さ + タッチ優先）
-  const isNarrow = useMediaQuery('(max-width: 900px)')
-  const isCoarse = useMediaQuery('(pointer: coarse)')
-  const isMobile = isNarrow || isCoarse
+  const isMobile = useIsMobile()
 
-  const [all, setAll] = useState<CatchRecord[]>([])
-  const [allLoading, setAllLoading] = useState(false)
-  const [loadedOnce, setLoadedOnce] = useState(false)
-
-  const [pageSize, setPageSize] = useState<10 | 30 | 50>(30)
-  const [year, setYear] = useState<string>('')
-  const [month, setMonth] = useState<string>('')
-
-  const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [sheetOpen, setSheetOpen] = useState(false)
-
-  const [detailLoading, setDetailLoading] = useState(false)
-  const [detailError, setDetailError] = useState<string>('')
-  const [detailTide, setDetailTide] = useState<DetailTideInfo | null>(null)
-
-  // ===== 共通スタイル =====
+  // =========================
+  // ✅ 共通：ピルボタン（ガラス）
+  // =========================
   const pillBtnStyle: CSSProperties = {
     borderRadius: 999,
     padding: '8px 12px',
@@ -114,25 +200,78 @@ export default function Archive({ back }: Props) {
     WebkitBackdropFilter: 'blur(10px)',
   }
 
-  const pillBtnStyleActive: CSSProperties = {
-    ...pillBtnStyle,
-    border: '2px solid #ff4d6d',
-    background: 'rgba(255,77,109,0.16)',
-    color: '#fff',
-    boxShadow: '0 8px 22px rgba(0,0,0,0.22), inset 0 0 0 1px rgba(255,77,109,0.25)',
-  }
-
   const pillBtnStyleDisabled: CSSProperties = {
     ...pillBtnStyle,
     opacity: 0.55,
     cursor: 'not-allowed',
   }
 
-  const glassBoxStyle: CSSProperties = {
-    borderRadius: 16,
-    padding: 12,
-    display: 'grid',
+  const segWrapStyle: CSSProperties = {
+    display: 'flex',
+    gap: 12,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    minWidth: 0,
+  }
+
+  const segLabelStyle: CSSProperties = {
+    position: 'relative',
+    display: 'inline-flex',
+    alignItems: 'center',
+    cursor: 'pointer',
+    userSelect: 'none',
+    minWidth: 0,
+  }
+
+  const segInputHidden: CSSProperties = {
+    position: 'absolute',
+    opacity: 0,
+    pointerEvents: 'none',
+    width: 1,
+    height: 1,
+  }
+
+  const segPillBase: CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
     gap: 10,
+    padding: '10px 14px',
+    borderRadius: 16,
+    lineHeight: 1.2,
+    whiteSpace: 'nowrap',
+    minWidth: 0,
+    maxWidth: '100%',
+    border: '1px solid rgba(255,255,255,0.22)',
+    background: 'rgba(255,255,255,0.06)',
+    color: '#ddd',
+    boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.12)',
+    WebkitTapHighlightColor: 'transparent',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
+  }
+
+  function segPill(checked: boolean): CSSProperties {
+    return {
+      ...segPillBase,
+      border: checked ? '2px solid #ff4d6d' : segPillBase.border,
+      background: checked ? 'rgba(255,77,109,0.18)' : segPillBase.background,
+      color: checked ? '#fff' : segPillBase.color,
+      boxShadow: checked
+        ? '0 6px 18px rgba(0,0,0,0.22), inset 0 0 0 1px rgba(255,77,109,0.25)'
+        : segPillBase.boxShadow,
+    }
+  }
+
+  function segDot(checked: boolean): CSSProperties {
+    return {
+      width: 10,
+      height: 10,
+      borderRadius: 999,
+      flex: '0 0 auto',
+      border: checked ? '1px solid rgba(255,77,109,0.9)' : '1px solid rgba(255,255,255,0.35)',
+      background: checked ? '#ff4d6d' : 'transparent',
+      boxShadow: checked ? '0 0 0 4px rgba(255,77,109,0.16)' : 'none',
+    }
   }
 
   const ellipsis1: CSSProperties = {
@@ -142,12 +281,48 @@ export default function Archive({ back }: Props) {
     minWidth: 0,
   }
 
+  const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true)
+
+  const [all, setAll] = useState<CatchRecord[]>([])
+  const [allLoading, setAllLoading] = useState(false)
+  const [allLoadedOnce, setAllLoadedOnce] = useState(false)
+
+  const [archivePageSize, setArchivePageSize] = useState<10 | 30 | 50>(30)
+  const [archiveYear, setArchiveYear] = useState<string>('')
+  const [archiveMonth, setArchiveMonth] = useState<string>('')
+
+  // 選択
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+
+  // モバイル：ボトムシート
+  const [sheetOpen, setSheetOpen] = useState(false)
+
+  // 詳細（タイド）
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState('')
+  const [detailTide, setDetailTide] = useState<DetailTide | null>(null)
+  const [detailPointMap, setDetailPointMap] = useState<Record<number, TideInfo>>({})
+
+  // PC：右ペインスクロール用
+  const detailPaneRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const onUp = () => setOnline(true)
+    const onDown = () => setOnline(false)
+    window.addEventListener('online', onUp)
+    window.addEventListener('offline', onDown)
+    return () => {
+      window.removeEventListener('online', onUp)
+      window.removeEventListener('offline', onDown)
+    }
+  }, [])
+
   async function loadAll() {
     setAllLoading(true)
     try {
       const list = await db.catches.orderBy('createdAt').reverse().toArray()
       setAll(list)
-      setLoadedOnce(true)
+      setAllLoadedOnce(true)
     } finally {
       setAllLoading(false)
     }
@@ -157,293 +332,215 @@ export default function Archive({ back }: Props) {
     loadAll()
   }, [])
 
-  // 年月マップ
+  // 初回選択（PCだけデフォ選択すると便利）
+  useEffect(() => {
+    if (!allLoadedOnce) return
+    if (all.length === 0) {
+      setSelectedId(null)
+      return
+    }
+    if (!isMobile) {
+      if (selectedId == null) setSelectedId(all[0].id ?? null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allLoadedOnce, all, isMobile])
+
+  // 年月インデックス
   const yearMonthsMap = useMemo(() => {
     const map = new Map<number, Set<number>>()
     for (const r of all) {
-      const iso = safeShotISO(r)
+      const iso = r.capturedAt ?? r.createdAt
       const d = new Date(iso)
-      if (!isValidDate(d)) continue
+      const t = d.getTime()
+      if (!Number.isFinite(t)) continue
       const y = d.getFullYear()
       const m = d.getMonth() + 1
       if (!map.has(y)) map.set(y, new Set<number>())
       map.get(y)!.add(m)
     }
+
     const out: Record<number, number[]> = {}
     for (const [y, set] of map.entries()) out[y] = Array.from(set).sort((a, b) => a - b)
     return out
   }, [all])
 
   const years = useMemo(() => {
-    return Object.keys(yearMonthsMap)
-      .map(Number)
+    const ys = Object.keys(yearMonthsMap)
+      .map((x) => Number(x))
       .filter(Number.isFinite)
-      .sort((a, b) => b - a)
+    return ys.sort((a, b) => b - a)
   }, [yearMonthsMap])
 
   const monthsForSelectedYear = useMemo(() => {
-    if (!year) return null
-    const y = Number(year)
+    if (!archiveYear) return null
+    const y = Number(archiveYear)
     if (!Number.isFinite(y)) return null
     return yearMonthsMap[y] ?? []
-  }, [year, yearMonthsMap])
+  }, [archiveYear, yearMonthsMap])
 
   useEffect(() => {
-    if (!year) return
-    const y = Number(year)
+    if (!archiveYear) return
+    const y = Number(archiveYear)
     if (!Number.isFinite(y)) return
 
     const months = yearMonthsMap[y] ?? []
-    if (!month) return
+    if (!archiveMonth) return
 
-    const m = Number(month)
+    const m = Number(archiveMonth)
     if (!Number.isFinite(m)) {
-      setMonth('')
+      setArchiveMonth('')
       return
     }
-    if (!months.includes(m)) setMonth('')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [year, yearMonthsMap])
+    if (!months.includes(m)) setArchiveMonth('')
+  }, [archiveYear, archiveMonth, yearMonthsMap])
 
-  const filtered = useMemo(() => {
+  const filteredArchive = useMemo(() => {
     let list = all
 
-    if (year) {
-      const y = Number(year)
+    if (archiveYear) {
+      const y = Number(archiveYear)
       if (Number.isFinite(y)) {
         list = list.filter((r) => {
-          const d = new Date(safeShotISO(r))
-          return isValidDate(d) && d.getFullYear() === y
+          const iso = r.capturedAt ?? r.createdAt
+          const d = new Date(iso)
+          return d.getFullYear() === y
         })
       }
     }
 
-    if (month) {
-      const m = Number(month)
+    if (archiveMonth) {
+      const m = Number(archiveMonth)
       if (Number.isFinite(m) && m >= 1 && m <= 12) {
         list = list.filter((r) => {
-          const d = new Date(safeShotISO(r))
-          return isValidDate(d) && d.getMonth() + 1 === m
+          const iso = r.capturedAt ?? r.createdAt
+          const d = new Date(iso)
+          return d.getMonth() + 1 === m
         })
       }
     }
 
     return list
-  }, [all, year, month])
+  }, [all, archiveYear, archiveMonth])
 
-  const listShown = useMemo(() => filtered.slice(0, pageSize), [filtered, pageSize])
-
-  // 初期選択（PCは常設詳細があるので、先頭を自動選択）
-  useEffect(() => {
-    if (isMobile) return
-    if (selectedId != null) return
-    const first = listShown.find((r) => r.id != null)?.id ?? null
-    if (first != null) setSelectedId(first)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMobile, listShown])
+  const archiveList = useMemo(() => filteredArchive.slice(0, archivePageSize), [filteredArchive, archivePageSize])
 
   const selected = useMemo(() => {
     if (selectedId == null) return null
-    return all.find((r) => r.id === selectedId) ?? null
-  }, [all, selectedId])
+    return filteredArchive.find((r) => r.id === selectedId) ?? null
+  }, [filteredArchive, selectedId])
 
   async function onDelete(id?: number) {
     if (!id) return
     const ok = confirm('この記録を削除する？（戻せないよ）')
     if (!ok) return
-
     await db.catches.delete(id)
     await loadAll()
 
-    if (selectedId === id) {
-      setSelectedId(null)
-      setDetailTide(null)
-      setDetailError('')
-      setDetailLoading(false)
-      setSheetOpen(false)
-    }
+    // 選択が消えたら調整
+    if (selectedId === id) setSelectedId(null)
+    if (isMobile) setSheetOpen(false)
   }
 
-  // 選択レコードの潮データ取得（選ばれた分だけ）
-  useEffect(() => {
-    let cancelled = false
-
-    async function run() {
-      setDetailError('')
-      setDetailTide(null)
-
-      if (!selected) return
-
-      if (!selected.capturedAt) {
-        setDetailTide({
-          series: [],
-          tideName: null,
-          phaseRaw: '',
-          phaseShown: '',
-          cm: null,
-          trend: null,
-          source: null,
-          isStale: false,
-        })
-        return
-      }
-
-      const shot = new Date(selected.capturedAt)
-      if (!isValidDate(shot)) {
-        setDetailError('撮影日時が壊れてるかも…')
-        return
-      }
-
-      setDetailLoading(true)
-      try {
-        const { series, source, isStale, tideName } = await getTide736DayCached(FIXED_PORT.pc, FIXED_PORT.hc, shot, { ttlDays: 30 })
-        const info = getTideAtTime(series, shot.getTime())
-        const phaseRaw = series.length ? getTidePhaseFromSeries(series, shot, shot) : ''
-        const phaseShown = phaseRaw ? displayPhaseForHeader(phaseRaw) || phaseRaw : ''
-
-        if (!cancelled) {
-          setDetailTide({
-            series,
-            tideName: tideName ?? null,
-            phaseRaw,
-            phaseShown,
-            cm: info?.cm ?? null,
-            trend: info?.trend ?? null,
-            source,
-            isStale,
-          })
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e)
-        if (!cancelled) setDetailError(msg)
-      } finally {
-        if (!cancelled) setDetailLoading(false)
-      }
-    }
-
-    run()
-    return () => {
-      cancelled = true
-    }
-  }, [selectedId])
-
-  function openDetail(r: CatchRecord) {
-    if (r.id == null) return
+  async function openDetailForRecord(r: CatchRecord) {
+    if (!r.id) return
     setSelectedId(r.id)
+
     if (isMobile) setSheetOpen(true)
+    setDetailError('')
+    setDetailTide(null)
+    setDetailPointMap({})
+    setDetailLoading(true)
+
+    try {
+      if (!r.capturedAt) {
+        setDetailLoading(false)
+        return
+      }
+
+      const shot = new Date(r.capturedAt)
+      const { series, source, isStale, tideName } = await getTide736DayCached(FIXED_PORT.pc, FIXED_PORT.hc, shot, { ttlDays: 30 })
+
+      const whenMs = shot.getTime()
+      const info = getTideAtTime(series, whenMs)
+      const map: Record<number, TideInfo> = {}
+      if (info && r.id) map[r.id] = { cm: info.cm, trend: info.trend }
+
+      setDetailTide({ series, source, isStale, tideName: tideName ?? null })
+      setDetailPointMap(map)
+    } catch (e) {
+      console.error(e)
+      const msg = e instanceof Error ? e.message : String(e)
+      setDetailError(msg)
+    } finally {
+      setDetailLoading(false)
+    }
+
+    // PCは右ペイン先頭へ
+    if (!isMobile) {
+      requestAnimationFrame(() => {
+        detailPaneRef.current?.scrollTo({ top: 0 })
+      })
+    }
   }
 
-  const headerActions = (
-    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-      <button type="button" onClick={() => loadAll()} disabled={allLoading} style={allLoading ? pillBtnStyleDisabled : pillBtnStyle} title="全履歴を再読み込み">
-        {allLoading ? '読み込み中…' : '↻ 全履歴更新'}
-      </button>
+  // PC: 選択が変わったら自動で詳細を読み込み
+  useEffect(() => {
+    if (isMobile) return
+    if (!selected || !selected.id) return
+    openDetailForRecord(selected)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, isMobile])
 
-      <button type="button" onClick={exportCatches} style={pillBtnStyle} title="釣果（写真含む）をZIPで保存">
-        📤 釣果をエクスポート
-      </button>
-
-      <label style={pillBtnStyle} title="ZIPから釣果（写真含む）を復元（端末内データは置き換え）">
-        📥 釣果をインポート
-        <input
-          type="file"
-          accept=".zip"
-          hidden
-          onChange={async (e) => {
-            const file = e.target.files?.[0]
-            if (!file) return
-
-            const ok = confirm('既存の釣果はすべて削除され、ZIPの内容で置き換えられるよ。続ける？')
-            if (!ok) {
-              e.currentTarget.value = ''
-              return
-            }
-
-            try {
-              await importCatches(file)
-              alert('インポート完了！')
-              location.reload()
-            } catch (err) {
-              console.error(err)
-              alert('インポート失敗…（ZIPが壊れてる or 形式違いかも）')
-            } finally {
-              e.currentTarget.value = ''
-            }
-          }}
-        />
-      </label>
+  const headerSub = (
+    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
+      🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
+      {!online && <span style={{ marginLeft: 10, color: '#f6c' }}>📴 オフライン</span>}
     </div>
   )
 
-  // ===== 詳細ビュー（PC右ペイン / スマホシート共通） =====
   function DetailView({ record }: { record: CatchRecord }) {
-    const shotIso = safeShotISO(record) // ✅ これを未使用にしない
+    const shotIso = record.capturedAt ?? record.createdAt
     const shot = record.capturedAt ? new Date(record.capturedAt) : null
     const created = new Date(record.createdAt)
 
-    const band = shot && isValidDate(shot) ? getTimeBand(shot) : '不明'
-    const dk = record.capturedAt ? dayKeyFromISO(record.capturedAt) : null
+    const tide = record.id != null ? detailPointMap[record.id] : undefined
+    const phaseRaw =
+      shot && detailTide?.series && detailTide.series.length > 0 ? getTidePhaseFromSeries(detailTide.series, shot, shot) : ''
+    const phase = phaseRaw ? displayPhaseForHeader(phaseRaw) : ''
 
     const lab = detailTide ? sourceLabel(detailTide.source, detailTide.isStale) : null
 
     return (
-      <div style={{ display: 'grid', gap: 10 }}>
-        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)' }}>
-          🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
-        </div>
-
+      <div style={{ display: 'grid', gap: 12 }}>
         <div className="glass glass-strong" style={{ borderRadius: 16, padding: 12, display: 'grid', gap: 8 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ fontWeight: 900, overflowWrap: 'anywhere' }}>
-              📌 選択中：{dk ? dk.key : '（撮影日時なし）'}
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              {detailLoading && <span style={{ fontSize: 12, color: '#0a6' }}>🌊 tide736：取得中…</span>}
-              {!!detailError && (
-                <span style={{ fontSize: 12, color: '#ff7a7a' }} title="取得失敗">
-                  🌊 tide736：失敗 → {detailError}
-                </span>
-              )}
-              {!detailLoading && !detailError && lab && (
-                <span style={{ fontSize: 12, color: lab.color }} title="tide736取得元">
-                  🌊 {lab.text}
-                </span>
-              )}
-            </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ fontWeight: 900, ...ellipsis1 }}>🧾 記録の概要</div>
+            {lab && (
+              <div style={{ fontSize: 11, color: lab.color, whiteSpace: 'nowrap' }} title="tide736取得元">
+                🌊 {lab.text}
+              </div>
+            )}
           </div>
 
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>🕒 記録：{isValidDate(created) ? created.toLocaleString() : record.createdAt}</div>
-
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)', ...ellipsis1 }}>記録：{created.toLocaleString()}</div>
           <div style={{ fontSize: 12, color: '#6cf', overflowWrap: 'anywhere' }}>
-            📸{' '}
-            {shot && isValidDate(shot)
-              ? shot.toLocaleString()
-              : `（撮影日時なし / 参照: ${isValidDate(new Date(shotIso)) ? new Date(shotIso).toLocaleString() : shotIso}）`}
-            {shot && isValidDate(shot) ? ` / 🕒 ${band}` : ''}
+            📸 {record.capturedAt ? new Date(record.capturedAt).toLocaleString() : '（撮影日時なし）'}
+            {shot ? ` / 🕒 ${getTimeBand(shot)}` : ''}
             {detailTide?.tideName ? ` / 🌙 ${detailTide.tideName}` : ''}
-            {detailTide?.phaseShown ? ` / 🌊 ${detailTide.phaseShown}` : ''}
+            {phase ? ` / 🌊 ${phase}` : ''}
           </div>
 
           <div style={{ fontSize: 12, color: '#ffd166' }}>{formatResultLine(record)}</div>
 
           <div style={{ fontSize: 12, color: '#7ef', overflowWrap: 'anywhere' }}>
             🌊 焼津潮位：
-            {record.capturedAt
-              ? detailLoading
-                ? '取得中…'
-                : detailError
-                  ? '取得失敗（上の理由）'
-                  : detailTide?.cm != null && detailTide?.trend
-                    ? `${detailTide.cm}cm / ${detailTide.trend}`
-                    : '（データなし）'
-              : '（撮影日時がないため紐づけ不可）'}
+            {detailLoading ? '取得中…' : detailError ? '失敗（下に理由）' : tide ? `${tide.cm}cm / ${tide.trend}` : '（なし）'}
           </div>
 
           <div style={{ color: '#eee', overflowWrap: 'anywhere' }}>{record.memo || '（メモなし）'}</div>
 
-          {/* ✅ 削除ボタンは “メモの下” */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+          {/* ✅ 削除ボタンは「メモの下」 */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button
               type="button"
               onClick={() => onDelete(record.id)}
@@ -458,7 +555,6 @@ export default function Archive({ back }: Props) {
                 backdropFilter: 'blur(8px)',
                 WebkitBackdropFilter: 'blur(8px)',
               }}
-              title="削除"
             >
               🗑 削除
             </button>
@@ -471,267 +567,335 @@ export default function Archive({ back }: Props) {
 
           {!record.capturedAt ? (
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>撮影日時が無いから、この記録はタイドを紐づけられないよ</div>
-          ) : detailTide && detailTide.series.length > 0 && shot ? (
-            <TideGraph series={detailTide.series} baseDate={shot} highlightAt={shot} yDomain={{ min: -50, max: 200 }} />
           ) : (
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>
-              {detailLoading ? '準備中…' : detailError ? 'グラフの準備に失敗…' : 'この日のタイドデータがまだ無いよ（取得待ち/なし）'}
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  // ===== スマホ用ボトムシート =====
-  function BottomSheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
-    if (!open) return null
-
-    return (
-      <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 9999,
-          background: 'rgba(0,0,0,0.62)',
-          backdropFilter: 'blur(6px)',
-          WebkitBackdropFilter: 'blur(6px)',
-          display: 'grid',
-          alignItems: 'end',
-        }}
-        onClick={onClose}
-      >
-        <div
-          className="glass glass-strong"
-          style={{
-            width: '100%',
-            maxHeight: '85svh',
-            borderTopLeftRadius: 18,
-            borderTopRightRadius: 18,
-            padding: 12,
-            boxShadow: '0 -14px 40px rgba(0,0,0,0.35)',
-            overflow: 'hidden',
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
-            <div style={{ fontWeight: 900 }}>📌 記録の詳細</div>
-            <button type="button" onClick={onClose} style={pillBtnStyle}>
-              ✕ 閉じる
-            </button>
-          </div>
-
-          <div style={{ height: 8 }} />
-
-          <div style={{ overflowY: 'auto', paddingRight: 2, maxHeight: 'calc(85svh - 58px)' }}>{children}</div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <PageShell
-      title={<h1 style={{ margin: 0, fontSize: 'clamp(20px, 6vw, 32px)', lineHeight: 1.15 }}>🧾 全履歴</h1>}
-      maxWidth={1100}
-      showBack
-      onBack={back}
-    >
-      <div style={{ display: 'grid', gap: 12 }}>
-        {headerActions}
-
-        <div className="glass glass-strong" style={{ ...glassBoxStyle }}>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>🔎 絞り込み</div>
-
-            <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
-              年：
-              <select value={year} onChange={(e) => setYear(e.target.value)} style={{ marginLeft: 8 }}>
-                <option value="">すべて</option>
-                {years.map((y) => (
-                  <option key={y} value={String(y)}>
-                    {y}年
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
-              月：
-              <select
-                value={month}
-                onChange={(e) => setMonth(e.target.value)}
-                style={{ marginLeft: 8 }}
-                disabled={!!year && (monthsForSelectedYear?.length ?? 0) === 0}
-                title={year ? '選択中の年に存在する月だけ出すよ' : '年を選ばなくても月で絞れるよ'}
-              >
-                <option value="">すべて</option>
-
-                {year && monthsForSelectedYear
-                  ? monthsForSelectedYear.map((m) => (
-                      <option key={m} value={String(m)}>
-                        {m}月
-                      </option>
-                    ))
-                  : Array.from({ length: 12 }).map((_, i) => {
-                      const m = i + 1
-                      return (
-                        <option key={m} value={String(m)}>
-                          {m}月
-                        </option>
-                      )
-                    })}
-              </select>
-            </label>
-
-            <button
-              type="button"
-              onClick={() => {
-                setYear('')
-                setMonth('')
+            <div
+              className="glass glass-strong"
+              style={{
+                borderRadius: 16,
+                padding: 10,
+                minHeight: 320, // ✅ 高さ固定で「ガッ！」を抑える
+                display: 'grid',
+                alignItems: 'center',
               }}
-              style={{ marginLeft: 'auto' }}
-              title="絞り込みを解除"
             >
-              リセット
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>📦 表示件数</div>
-
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-              <button type="button" onClick={() => setPageSize(10)} style={pageSize === 10 ? pillBtnStyleActive : pillBtnStyle}>
-                10件
-              </button>
-              <button type="button" onClick={() => setPageSize(30)} style={pageSize === 30 ? pillBtnStyleActive : pillBtnStyle}>
-                30件
-              </button>
-              <button type="button" onClick={() => setPageSize(50)} style={pageSize === 50 ? pillBtnStyleActive : pillBtnStyle}>
-                50件
-              </button>
-            </div>
-          </div>
-
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-            全 {all.length} 件 → 絞り込み {filtered.length} 件（表示 {Math.min(pageSize, filtered.length)} 件）
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', minWidth: 0 }}>
-          <div style={{ flex: isMobile ? '1 1 auto' : '0 0 520px', minWidth: 0 }}>
-            {allLoading && !loadedOnce ? (
-              <p>読み込み中…</p>
-            ) : all.length === 0 ? (
-              <p>まだ記録がないよ</p>
-            ) : (
-              <div style={{ display: 'grid', gap: 10 }}>
-                {listShown.map((r) => {
-                  const shotDate = r.capturedAt ? new Date(r.capturedAt) : null
-                  const created = new Date(r.createdAt)
-                  const thumbUrl = thumbUrlFromRecord(r)
-                  const isSel = r.id != null && r.id === selectedId
-
-                  return (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => openDetail(r)}
-                      className="glass glass-strong"
-                      style={{
-                        borderRadius: 16,
-                        padding: 12,
-                        display: 'grid',
-                        gridTemplateColumns: '72px 1fr',
-                        gap: 12,
-                        alignItems: 'center',
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        border: isSel && !isMobile ? '2px solid #ff4d6d' : '1px solid rgba(255,255,255,0.12)',
-                        background: isSel && !isMobile ? 'rgba(255,77,109,0.10)' : 'rgba(255,255,255,0.06)',
-                      }}
-                      aria-pressed={isSel}
-                      title="この記録を開く"
-                    >
-                      <div
-                        style={{
-                          width: 72,
-                          height: 72,
-                          borderRadius: 12,
-                          overflow: 'hidden',
-                          background: 'rgba(0,0,0,0.18)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {thumbUrl ? (
-                          <img
-                            src={thumbUrl}
-                            alt="thumb"
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            onLoad={() => URL.revokeObjectURL(thumbUrl)}
-                          />
-                        ) : (
-                          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>No Photo</span>
-                        )}
-                      </div>
-
-                      <div style={{ display: 'grid', gap: 6, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)', ...ellipsis1 }}>
-                          記録：{isValidDate(created) ? created.toLocaleString() : r.createdAt}
-                        </div>
-
-                        <div style={{ fontSize: 12, color: '#6cf', overflowWrap: 'anywhere' }}>
-                          📸 {shotDate && isValidDate(shotDate) ? shotDate.toLocaleString() : '（撮影日時なし）'}
-                          {shotDate && isValidDate(shotDate) ? ` / 🕒 ${getTimeBand(shotDate)}` : ''}
-                        </div>
-
-                        <div style={{ fontSize: 12, color: '#ffd166' }}>{formatResultLine(r)}</div>
-
-                        <div style={{ color: '#eee', overflowWrap: 'anywhere' }}>{r.memo || '（メモなし）'}</div>
-
-                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-                          {isMobile ? 'タップで詳細（タイド）を表示' : 'クリックで右に詳細'}
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })}
-
-                {filtered.length > pageSize && (
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-                    ※「表示件数」を増やすと、もっと下まで見れるよ（スクロール長くなるから段階にしてる）
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {!isMobile && (
-            <div style={{ flex: '1 1 auto', minWidth: 0 }}>
-              {selected ? (
-                <DetailView record={selected} />
-              ) : (
-                <div className="glass glass-strong" style={{ borderRadius: 16, padding: 12, color: 'rgba(255,255,255,0.72)' }}>
-                  左の履歴を選択すると、ここにタイドグラフが出るよ
+              {detailTide && detailTide.series.length > 0 && shot ? (
+                <div
+                  style={{
+                    opacity: detailLoading ? 0.65 : 1,
+                    transform: detailLoading ? 'translateY(4px)' : 'translateY(0px)',
+                    transition: 'opacity 220ms ease, transform 220ms ease',
+                    willChange: 'opacity, transform',
+                  }}
+                >
+                  <TideGraph series={detailTide.series} baseDate={shot} highlightAt={shot} yDomain={{ min: -50, max: 200 }} />
                 </div>
+              ) : detailLoading ? (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <div style={{ height: 14, width: '60%', borderRadius: 999, background: 'rgba(255,255,255,0.10)' }} />
+                  <div style={{ height: 220, width: '100%', borderRadius: 14, background: 'rgba(255,255,255,0.08)' }} />
+                  <div style={{ height: 12, width: '40%', borderRadius: 999, background: 'rgba(255,255,255,0.10)' }} />
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)' }}>準備中…</div>
+                </div>
+              ) : detailError ? (
+                <div style={{ fontSize: 12, color: '#ff7a7a' }}>グラフの準備に失敗… → {detailError}</div>
+              ) : (
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>この日のタイドデータがまだ無いよ（取得待ち/なし）</div>
               )}
             </div>
           )}
         </div>
+
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>key: {FIXED_PORT.pc}:{FIXED_PORT.hc}:{shot ? dayKeyFromISO(shotIso).key : '—'}</div>
+      </div>
+    )
+  }
+
+  const Controls = (
+    <div className="glass glass-strong" style={{ borderRadius: 16, padding: 12, display: 'grid', gap: 10 }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button type="button" onClick={() => loadAll()} disabled={allLoading} style={allLoading ? pillBtnStyleDisabled : pillBtnStyle}>
+          {allLoading ? '読み込み中…' : '↻ 全履歴更新'}
+        </button>
+
+        <button type="button" onClick={exportCatches} style={pillBtnStyle} title="釣果（写真含む）をZIPで保存">
+          📤 釣果をエクスポート
+        </button>
+
+        <label style={pillBtnStyle} title="ZIPから釣果（写真含む）を復元（端末内データは置き換え）">
+          📥 釣果をインポート
+          <input
+            type="file"
+            accept=".zip"
+            hidden
+            onChange={async (e) => {
+              const file = e.target.files?.[0]
+              if (!file) return
+
+              const ok = confirm('既存の釣果はすべて削除され、ZIPの内容で置き換えられるよ。続ける？')
+              if (!ok) {
+                e.currentTarget.value = ''
+                return
+              }
+
+              try {
+                await importCatches(file)
+                alert('インポート完了！')
+                location.reload()
+              } catch (err) {
+                console.error(err)
+                alert('インポート失敗…（ZIPが壊れてる or 形式違いかも）')
+              } finally {
+                e.currentTarget.value = ''
+              }
+            }}
+          />
+        </label>
       </div>
 
-      {isMobile && (
-        <BottomSheet
-          open={sheetOpen}
-          onClose={() => {
-            setSheetOpen(false)
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>🔎 絞り込み</div>
+
+        <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
+          年：
+          <select value={archiveYear} onChange={(e) => setArchiveYear(e.target.value)} style={{ marginLeft: 8 }}>
+            <option value="">すべて</option>
+            {years.map((y) => (
+              <option key={y} value={String(y)}>
+                {y}年
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
+          月：
+          <select
+            value={archiveMonth}
+            onChange={(e) => setArchiveMonth(e.target.value)}
+            style={{ marginLeft: 8 }}
+            disabled={!!archiveYear && (monthsForSelectedYear?.length ?? 0) === 0}
+            title={archiveYear ? '選択中の年に存在する月だけ出すよ' : '年を選ばなくても月で絞れるよ'}
+          >
+            <option value="">すべて</option>
+
+            {archiveYear && monthsForSelectedYear
+              ? monthsForSelectedYear.map((m) => (
+                  <option key={m} value={String(m)}>
+                    {m}月
+                  </option>
+                ))
+              : Array.from({ length: 12 }).map((_, i) => {
+                  const m = i + 1
+                  return (
+                    <option key={m} value={String(m)}>
+                      {m}月
+                    </option>
+                  )
+                })}
+          </select>
+        </label>
+
+        <button
+          type="button"
+          onClick={() => {
+            setArchiveYear('')
+            setArchiveMonth('')
           }}
+          style={{ marginLeft: 'auto' }}
+          title="絞り込みを解除"
         >
-          {selected ? <DetailView record={selected} /> : <div style={{ color: 'rgba(255,255,255,0.72)' }}>記録を選択してね</div>}
-        </BottomSheet>
+          リセット
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>📦 表示件数</div>
+
+        <div style={segWrapStyle} aria-label="表示件数">
+          <label style={segLabelStyle}>
+            <input type="radio" name="archivePageSize" checked={archivePageSize === 10} onChange={() => setArchivePageSize(10)} style={segInputHidden} />
+            <span style={segPill(archivePageSize === 10)}>
+              <span style={segDot(archivePageSize === 10)} aria-hidden="true" />
+              10件
+            </span>
+          </label>
+
+          <label style={segLabelStyle}>
+            <input type="radio" name="archivePageSize" checked={archivePageSize === 30} onChange={() => setArchivePageSize(30)} style={segInputHidden} />
+            <span style={segPill(archivePageSize === 30)}>
+              <span style={segDot(archivePageSize === 30)} aria-hidden="true" />
+              30件
+            </span>
+          </label>
+
+          <label style={segLabelStyle}>
+            <input type="radio" name="archivePageSize" checked={archivePageSize === 50} onChange={() => setArchivePageSize(50)} style={segInputHidden} />
+            <span style={segPill(archivePageSize === 50)}>
+              <span style={segDot(archivePageSize === 50)} aria-hidden="true" />
+              50件
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
+        全 {all.length} 件 → 絞り込み {filteredArchive.length} 件（表示 {Math.min(archivePageSize, filteredArchive.length)} 件）
+      </div>
+    </div>
+  )
+
+  const ListView = (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {archiveList.map((r) => {
+        const created = new Date(r.createdAt)
+        const shotDate = r.capturedAt ? new Date(r.capturedAt) : null
+        const thumbUrl = r.photoBlob ? URL.createObjectURL(r.photoBlob) : null
+        const isSel = !isMobile && r.id != null && selectedId != null && r.id === selectedId
+
+        return (
+          <button
+            key={r.id}
+            type="button"
+            onClick={() => openDetailForRecord(r)}
+            className="glass glass-strong"
+            style={{
+              borderRadius: 16,
+              padding: 12,
+              display: 'grid',
+              gridTemplateColumns: '72px 1fr',
+              gap: 12,
+              alignItems: 'center',
+              textAlign: 'left',
+              cursor: 'pointer',
+              border: isSel ? '2px solid #ff4d6d' : '1px solid rgba(255,255,255,0.12)',
+              background: isSel ? 'rgba(255,77,109,0.10)' : 'rgba(255,255,255,0.06)',
+              boxShadow: isSel ? '0 10px 26px rgba(0,0,0,0.22)' : '0 6px 18px rgba(0,0,0,0.16)',
+            }}
+            aria-pressed={isSel}
+            title="この記録を開く"
+          >
+            <div
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: 12,
+                overflow: 'hidden',
+                background: 'rgba(0,0,0,0.18)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              {thumbUrl ? (
+                <img
+                  src={thumbUrl}
+                  alt="thumb"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  onLoad={() => URL.revokeObjectURL(thumbUrl)}
+                />
+              ) : (
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>No Photo</span>
+              )}
+            </div>
+
+            <div style={{ display: 'grid', gap: 6, minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)', ...ellipsis1 }}>記録：{created.toLocaleString()}</div>
+
+              <div style={{ fontSize: 12, color: '#6cf', overflowWrap: 'anywhere' }}>
+                📸 {shotDate ? shotDate.toLocaleString() : '（撮影日時なし）'}
+                {shotDate ? ` / 🕒 ${getTimeBand(shotDate)}` : ''}
+              </div>
+
+              <div style={{ fontSize: 12, color: '#ffd166' }}>{formatResultLine(r)}</div>
+
+              <div style={{ color: '#eee', overflowWrap: 'anywhere' }}>{r.memo || '（メモなし）'}</div>
+            </div>
+          </button>
+        )
+      })}
+
+      {filteredArchive.length > archivePageSize && (
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
+          ※「表示件数」を増やすと、もっと下まで見れるよ（スクロール長くなるから段階にしてる）
+        </div>
       )}
+    </div>
+  )
+
+  return (
+    <PageShell
+      title={<h1 style={{ margin: 0, fontSize: 'clamp(20px, 6vw, 32px)', lineHeight: 1.15 }}>🗃 全履歴</h1>}
+      subtitle={headerSub}
+      maxWidth={1200}
+      showBack
+      onBack={back}
+    >
+      <div style={{ overflowX: 'clip', maxWidth: '100vw' }}>
+        <div style={{ display: 'grid', gap: 12 }}>
+          {Controls}
+
+          {!allLoadedOnce && allLoading ? (
+            <p>読み込み中…</p>
+          ) : all.length === 0 ? (
+            <p>まだ記録がないよ</p>
+          ) : (
+            <>
+              {/* =========================
+                  ✅ PC: 2カラム / ✅ スマホ: リスト + ボトムシート
+                 ========================= */}
+              {!isMobile ? (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(320px, 520px) 1fr',
+                    gap: 14,
+                    alignItems: 'start',
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ display: 'grid', gap: 10, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
+                      絞り込み {filteredArchive.length} 件（表示 {Math.min(archivePageSize, filteredArchive.length)} 件）
+                    </div>
+                    {ListView}
+                  </div>
+
+                  <div
+                    ref={detailPaneRef}
+                    className="glass glass-strong"
+                    style={{
+                      borderRadius: 16,
+                      padding: 12,
+                      minHeight: 520,
+                      maxHeight: 'calc(100svh - 220px)',
+                      overflowY: 'auto',
+                    }}
+                  >
+                    {selected ? (
+                      <DetailView record={selected} />
+                    ) : (
+                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>左の履歴から選択してね</div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
+                    絞り込み {filteredArchive.length} 件（表示 {Math.min(archivePageSize, filteredArchive.length)} 件）
+                  </div>
+
+                  {ListView}
+
+                  <BottomSheet open={sheetOpen} onClose={() => setSheetOpen(false)} title="📌 記録の詳細" pillBtnStyle={pillBtnStyle}>
+                    {selected ? <DetailView record={selected} /> : <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>—</div>}
+                  </BottomSheet>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </PageShell>
   )
 }
