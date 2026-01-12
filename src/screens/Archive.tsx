@@ -59,7 +59,6 @@ function sourceLabel(source: TideCacheSource | null, isStale: boolean) {
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true
-    // だいたい “スマホ” として扱いたいライン（好みで調整OK）
     const mq = window.matchMedia('(max-width: 820px)')
     const coarse = window.matchMedia('(pointer: coarse)')
     return mq.matches || coarse.matches
@@ -86,6 +85,16 @@ function useIsMobile() {
   return isMobile
 }
 
+type SheetPhase = 'entering' | 'entered' | 'exiting'
+
+function prefersReducedMotion() {
+  try {
+    return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  } catch {
+    return false
+  }
+}
+
 function BottomSheet({
   open,
   onClose,
@@ -100,18 +109,34 @@ function BottomSheet({
   pillBtnStyle: CSSProperties
 }) {
   const [mounted, setMounted] = useState(false)
-  const [show, setShow] = useState(false)
+  const [phase, setPhase] = useState<SheetPhase>('entering')
+  const reduce = prefersReducedMotion()
 
   useEffect(() => {
     if (open) {
       setMounted(true)
-      requestAnimationFrame(() => setShow(true))
+      setPhase('entering')
+
+      // ✅ ここが「スーッ」を作るポイント：必ず “画面外” の描画フレームを挟む
+      const raf1 = requestAnimationFrame(() => {
+        const raf2 = requestAnimationFrame(() => {
+          setPhase('entered')
+        })
+        ;(window as any).__tsuduri_raf2__ = raf2
+      })
+      ;(window as any).__tsuduri_raf1__ = raf1
       return
     }
 
-    setShow(false)
-    const t = window.setTimeout(() => setMounted(false), 220)
+    if (!mounted) return
+
+    setPhase('exiting')
+    const ms = reduce ? 0 : 260
+    const t = window.setTimeout(() => {
+      setMounted(false)
+    }, ms)
     return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   useEffect(() => {
@@ -125,18 +150,24 @@ function BottomSheet({
 
   if (!mounted) return null
 
+  const easing = 'cubic-bezier(0.2, 0.9, 0.2, 1)'
+  const overlayMs = reduce ? 0 : 220
+  const sheetMs = reduce ? 0 : 260
+
+  const overlayShow = phase !== 'exiting'
   const overlayStyle: CSSProperties = {
     position: 'fixed',
     inset: 0,
     zIndex: 9999,
-    background: show ? 'rgba(0,0,0,0.62)' : 'rgba(0,0,0,0)',
-    backdropFilter: show ? 'blur(6px)' : 'blur(0px)',
-    WebkitBackdropFilter: show ? 'blur(6px)' : 'blur(0px)',
+    background: overlayShow ? 'rgba(0,0,0,0.62)' : 'rgba(0,0,0,0)',
+    backdropFilter: overlayShow ? 'blur(6px)' : 'blur(0px)',
+    WebkitBackdropFilter: overlayShow ? 'blur(6px)' : 'blur(0px)',
     display: 'grid',
     alignItems: 'end',
-    transition: 'background 220ms ease, backdrop-filter 220ms ease',
+    transition: `background ${overlayMs}ms ease, backdrop-filter ${overlayMs}ms ease`,
   }
 
+  const entered = phase === 'entered'
   const sheetStyle: CSSProperties = {
     width: '100%',
     maxHeight: '85svh',
@@ -145,10 +176,12 @@ function BottomSheet({
     padding: 12,
     boxShadow: '0 -14px 40px rgba(0,0,0,0.35)',
     overflow: 'hidden',
-    transform: show ? 'translateY(0px)' : 'translateY(18px)',
-    opacity: show ? 1 : 0.001,
-    transition: 'transform 220ms ease, opacity 220ms ease',
+    // ✅ entering は必ず画面外 / entered で 0 / exiting で戻す
+    transform: entered ? 'translate3d(0, 0, 0)' : 'translate3d(0, 24px, 0)',
+    opacity: entered ? 1 : 0.001,
+    transition: `transform ${sheetMs}ms ${easing}, opacity ${sheetMs}ms ease`,
     willChange: 'transform, opacity',
+    contain: 'layout paint',
   }
 
   const grabberStyle: CSSProperties = {
@@ -180,9 +213,6 @@ function BottomSheet({
 export default function Archive({ back }: Props) {
   const isMobile = useIsMobile()
 
-  // =========================
-  // ✅ 共通：ピルボタン（ガラス）
-  // =========================
   const pillBtnStyle: CSSProperties = {
     borderRadius: 999,
     padding: '8px 12px',
@@ -291,19 +321,15 @@ export default function Archive({ back }: Props) {
   const [archiveYear, setArchiveYear] = useState<string>('')
   const [archiveMonth, setArchiveMonth] = useState<string>('')
 
-  // 選択
   const [selectedId, setSelectedId] = useState<number | null>(null)
 
-  // モバイル：ボトムシート
   const [sheetOpen, setSheetOpen] = useState(false)
 
-  // 詳細（タイド）
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
   const [detailTide, setDetailTide] = useState<DetailTide | null>(null)
   const [detailPointMap, setDetailPointMap] = useState<Record<number, TideInfo>>({})
 
-  // PC：右ペインスクロール用
   const detailPaneRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -332,7 +358,6 @@ export default function Archive({ back }: Props) {
     loadAll()
   }, [])
 
-  // 初回選択（PCだけデフォ選択すると便利）
   useEffect(() => {
     if (!allLoadedOnce) return
     if (all.length === 0) {
@@ -345,7 +370,6 @@ export default function Archive({ back }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allLoadedOnce, all, isMobile])
 
-  // 年月インデックス
   const yearMonthsMap = useMemo(() => {
     const map = new Map<number, Set<number>>()
     for (const r of all) {
@@ -435,8 +459,6 @@ export default function Archive({ back }: Props) {
     if (!ok) return
     await db.catches.delete(id)
     await loadAll()
-
-    // 選択が消えたら調整
     if (selectedId === id) setSelectedId(null)
     if (isMobile) setSheetOpen(false)
   }
@@ -475,7 +497,6 @@ export default function Archive({ back }: Props) {
       setDetailLoading(false)
     }
 
-    // PCは右ペイン先頭へ
     if (!isMobile) {
       requestAnimationFrame(() => {
         detailPaneRef.current?.scrollTo({ top: 0 })
@@ -483,7 +504,6 @@ export default function Archive({ back }: Props) {
     }
   }
 
-  // PC: 選択が変わったら自動で詳細を読み込み
   useEffect(() => {
     if (isMobile) return
     if (!selected || !selected.id) return
@@ -539,7 +559,6 @@ export default function Archive({ back }: Props) {
 
           <div style={{ color: '#eee', overflowWrap: 'anywhere' }}>{record.memo || '（メモなし）'}</div>
 
-          {/* ✅ 削除ボタンは「メモの下」 */}
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button
               type="button"
@@ -561,7 +580,6 @@ export default function Archive({ back }: Props) {
           </div>
         </div>
 
-        {/* グラフ */}
         <div style={{ display: 'grid', gap: 10 }}>
           <div style={{ fontWeight: 900 }}>📈 タイドグラフ</div>
 
@@ -573,7 +591,7 @@ export default function Archive({ back }: Props) {
               style={{
                 borderRadius: 16,
                 padding: 10,
-                minHeight: 320, // ✅ 高さ固定で「ガッ！」を抑える
+                minHeight: 320,
                 display: 'grid',
                 alignItems: 'center',
               }}
@@ -841,9 +859,6 @@ export default function Archive({ back }: Props) {
             <p>まだ記録がないよ</p>
           ) : (
             <>
-              {/* =========================
-                  ✅ PC: 2カラム / ✅ スマホ: リスト + ボトムシート
-                 ========================= */}
               {!isMobile ? (
                 <div
                   style={{
@@ -872,11 +887,7 @@ export default function Archive({ back }: Props) {
                       overflowY: 'auto',
                     }}
                   >
-                    {selected ? (
-                      <DetailView record={selected} />
-                    ) : (
-                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>左の履歴から選択してね</div>
-                    )}
+                    {selected ? <DetailView record={selected} /> : <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>左の履歴から選択してね</div>}
                   </div>
                 </div>
               ) : (
