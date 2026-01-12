@@ -63,9 +63,7 @@ export default function Settings({ back }: Props) {
           <div style={{ fontWeight: 900, color: '#ff7a7a' }}>⚠ 設定ストアが落ちてる</div>
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', overflowWrap: 'anywhere' }}>{settingsHookError ?? 'unknown error'}</div>
 
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>
-            対処：localStorage の設定が壊れている可能性があるので、初期化を試してね。
-          </div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>対処：localStorage の設定が壊れている可能性があるので、初期化を試してね。</div>
 
           <button
             type="button"
@@ -268,8 +266,7 @@ export default function Settings({ back }: Props) {
 
           <div style={{ display: 'grid', gap: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ fontSize
-                fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>背景ぼかし（bgBlur）</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>背景ぼかし（bgBlur）</div>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.62)' }}>{bgBlur}px</div>
             </div>
             <input type="range" min={0} max={24} step={1} value={bgBlur} onChange={(e) => set({ bgBlur: clamp(Number(e.target.value), 0, 24) })} />
@@ -384,9 +381,9 @@ export default function Settings({ back }: Props) {
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                     <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', overflowWrap: 'anywhere' }}>
-                      {e.day}（{e.pc}:{e.hc}）
+                      {e.day}（{(e as any).pc}:{(e as any).hc}）
                     </div>
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>fetched: {fmtIso(e.fetchedAt)}</div>
+                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>fetched: {fmtIso((e as any).fetchedAt ?? null)}</div>
                   </div>
 
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -414,11 +411,11 @@ export default function Settings({ back }: Props) {
                       style={busy === `force:${e.key}` ? pillDisabled : pill}
                       disabled={busy === `force:${e.key}`}
                       onClick={async () => {
-                        const ok = confirm(`この日を強制再取得する？（オンライン必須）\n${e.day}`)
+                        const ok = confirm(`この日を強制再取得する？（オンライン必須）\n${(e as any).day}`)
                         if (!ok) return
                         setBusy(`force:${e.key}`)
                         try {
-                          await forceRefreshTide736Day(e.pc, e.hc, new Date(e.day))
+                          await forceRefreshTide736Day((e as any).pc, (e as any).hc, new Date((e as any).day))
                           await refresh()
                           alert('再取得したよ')
                         } catch (err) {
@@ -432,8 +429,8 @@ export default function Settings({ back }: Props) {
                       ↻ 強制再取得
                     </button>
 
-                    {e.tideName != null && (
-                      <div style={{ fontSize: 12, color: '#ffd166', display: 'inline-flex', alignItems: 'center' }}>🌙 {e.tideName}</div>
+                    {(e as any).tideName != null && (
+                      <div style={{ fontSize: 12, color: '#ffd166', display: 'inline-flex', alignItems: 'center' }}>🌙 {(e as any).tideName}</div>
                     )}
                   </div>
                 </div>
