@@ -1,7 +1,7 @@
 // src/components/PageShell.tsx
 
 import type { CSSProperties, ReactNode } from 'react'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 type Props = {
   title?: ReactNode
@@ -32,7 +32,10 @@ type Props = {
   showTestCharacter?: boolean
   /** ✅ テスト用キャラ画像パス（例: "/assets/character-test.png"） */
   testCharacterSrc?: string
-  /** ✅ テスト用キャラの高さ(px)をclampで制御（デフォルト: "clamp(140px, 18vw, 220px)"） */
+  /**
+   * ✅ テスト用キャラの高さ(px)をclampで制御
+   * 未指定なら、端末（スマホ/PC）で自動最適化するよ
+   */
   testCharacterHeight?: string
   /** ✅ キャラの位置微調整（px） */
   testCharacterOffset?: { right?: number; bottom?: number }
@@ -67,6 +70,36 @@ function writeStack(stack: string[]) {
   }
 }
 
+/** ✅ 端末判別（スマホっぽい表示幅 or タッチ端末） */
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true
+    const mq = window.matchMedia('(max-width: 820px)')
+    const coarse = window.matchMedia('(pointer: coarse)')
+    return mq.matches || coarse.matches
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const mq = window.matchMedia('(max-width: 820px)')
+    const coarse = window.matchMedia('(pointer: coarse)')
+
+    const onChange = () => setIsMobile(mq.matches || coarse.matches)
+
+    mq.addEventListener?.('change', onChange)
+    coarse.addEventListener?.('change', onChange)
+    window.addEventListener('orientationchange', onChange)
+
+    return () => {
+      mq.removeEventListener?.('change', onChange)
+      coarse.removeEventListener?.('change', onChange)
+      window.removeEventListener('orientationchange', onChange)
+    }
+  }, [])
+
+  return isMobile
+}
+
 export default function PageShell({
   title,
   subtitle,
@@ -83,12 +116,13 @@ export default function PageShell({
 
   showTestCharacter = true,
   testCharacterSrc = '/assets/character-test.png',
-  testCharacterHeight = 'clamp(140px, 18vw, 220px)',
+  testCharacterHeight, // ← デフォルトは「自動」にした
   testCharacterOffset = { right: 16, bottom: 16 },
   testCharacterOpacity = 1,
 
   hideScrollbar = true,
 }: Props) {
+  const isMobile = useIsMobile()
   const current = useMemo(() => getPath(), [])
 
   useEffect(() => {
@@ -130,6 +164,27 @@ export default function PageShell({
   }
   if (bgImage) shellStyle['--bg-image' as any] = `url(${bgImage})`
 
+  // ✅ キャラサイズ：未指定ならスマホ/PCで自動最適化
+  // 置物化の元は「最大が小さすぎる」なので、上限を一気に引き上げる
+  const autoCharacterHeight = isMobile
+    ? 'clamp(280px, 72vw, 520px)' // スマホは“画面幅”基準でドーン
+    : 'clamp(360px, 34vw, 720px)' // PCは横幅に比例して育つ
+
+  const characterHeight = testCharacterHeight ?? autoCharacterHeight
+
+  // ✅ キャラの位置：safe-area込みで右下固定（スマホは少しはみ出し気味でデカく見せる）
+  const rightPx = testCharacterOffset.right ?? 16
+  const bottomPx = testCharacterOffset.bottom ?? 16
+
+  const characterRight = `calc(env(safe-area-inset-right) + ${rightPx}px)`
+  const characterBottom = isMobile
+    ? `calc(env(safe-area-inset-bottom) - 8px)` // スマホはちょい下に沈めて“迫力”
+    : `calc(env(safe-area-inset-bottom) + ${bottomPx}px)`
+
+  // ✅ 情報の読み取りを守るための“下余白”
+  // キャラがでかくなった分、コンテンツの最下部が踏まれないようにする
+  const contentPadBottom = isMobile ? 'clamp(140px, 22svh, 240px)' : 'clamp(80px, 14svh, 180px)'
+
   return (
     <div className="page-shell" style={shellStyle}>
       {/* ✅ キャラレイヤ（固定） */}
@@ -138,19 +193,26 @@ export default function PageShell({
           aria-hidden="true"
           style={{
             position: 'fixed',
-            right: testCharacterOffset.right ?? 16,
-            bottom: testCharacterOffset.bottom ?? 16,
+            right: characterRight,
+            bottom: characterBottom,
             zIndex: 5,
             pointerEvents: 'none',
             userSelect: 'none',
             opacity: testCharacterOpacity,
             filter: 'drop-shadow(0 10px 28px rgba(0,0,0,0.28))',
+            // ✅ でかいキャラでも描画が安定しやすい
+            transform: 'translateZ(0)',
+            willChange: 'transform',
           }}
         >
           <img
             src={testCharacterSrc}
             alt=""
-            style={{ height: testCharacterHeight, width: 'auto', display: 'block' }}
+            style={{
+              height: characterHeight,
+              width: 'auto',
+              display: 'block',
+            }}
             draggable={false}
           />
         </div>
@@ -158,24 +220,14 @@ export default function PageShell({
 
       {/* ✅ 戻るボタン（最前面） */}
       {showBack && (
-        <button
-          type="button"
-          className="back-button"
-          onClick={handleBack}
-          aria-label="戻る"
-          style={{ zIndex: 30 }}
-        >
+        <button type="button" className="back-button" onClick={handleBack} aria-label="戻る" style={{ zIndex: 30 }}>
           {backLabel}
         </button>
       )}
 
       {/* ✅ 情報レイヤ：全幅スクロール（スクロールバーは画面右端に出る） */}
       <div
-        className={[
-          'page-shell-scroll',
-          hideScrollbar ? 'scrollbar-hidden' : '',
-          showBack ? 'with-back-button' : '',
-        ]
+        className={['page-shell-scroll', hideScrollbar ? 'scrollbar-hidden' : '', showBack ? 'with-back-button' : '']
           .filter(Boolean)
           .join(' ')}
         style={{
@@ -195,6 +247,7 @@ export default function PageShell({
             maxWidth,
             margin: '0 auto',
             padding: 'clamp(16px, 3vw, 24px)',
+            paddingBottom: `calc(clamp(16px, 3vw, 24px) + ${contentPadBottom})`,
             boxSizing: 'border-box',
           }}
         >
