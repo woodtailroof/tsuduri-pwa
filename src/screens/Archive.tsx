@@ -44,7 +44,6 @@ function useIsMobile(breakpointPx = 820) {
     const onChange = () => setIsMobile(mq.matches)
     onChange()
 
-    // Safari含め互換
     if ('addEventListener' in mq) {
       mq.addEventListener('change', onChange)
       return () => mq.removeEventListener('change', onChange)
@@ -57,12 +56,6 @@ function useIsMobile(breakpointPx = 820) {
   }, [breakpointPx])
 
   return isMobile
-}
-
-function dayKeyFromISO(iso: string) {
-  const d = new Date(iso)
-  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  return { d, key }
 }
 
 function displayPhaseForHeader(phase: string) {
@@ -319,17 +312,19 @@ export default function Archive({ back }: Props) {
       return
     }
 
+    // ✅ ガード後に shot を確定させる（これで string|undefined が消える）
+    const shot = new Date(capturedIso)
+
     let cancelled = false
 
-    async function run() {
+    async function run(shotFixed: Date) {
       setDetail({ status: 'loading' })
       try {
-        const shot = new Date(capturedIso)
-        const { series, source, isStale, tideName } = await getTide736DayCached(FIXED_PORT.pc, FIXED_PORT.hc, shot, { ttlDays: 30 })
+        const { series, source, isStale, tideName } = await getTide736DayCached(FIXED_PORT.pc, FIXED_PORT.hc, shotFixed, { ttlDays: 30 })
 
-        const whenMs = shot.getTime()
+        const whenMs = shotFixed.getTime()
         const info = getTideAtTime(series, whenMs)
-        const phaseRaw = getTidePhaseFromSeries(series, shot, shot)
+        const phaseRaw = getTidePhaseFromSeries(series, shotFixed, shotFixed)
         const phaseShown = displayPhaseForHeader(phaseRaw || '不明') || (phaseRaw || '不明')
 
         if (cancelled) return
@@ -341,8 +336,8 @@ export default function Archive({ back }: Props) {
           series,
           source,
           isStale,
-          shot,
-          band: getTimeBand(shot),
+          shot: shotFixed,
+          band: getTimeBand(shotFixed),
         })
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
@@ -350,7 +345,7 @@ export default function Archive({ back }: Props) {
       }
     }
 
-    run()
+    run(shot)
     return () => {
       cancelled = true
     }
@@ -419,7 +414,6 @@ export default function Archive({ back }: Props) {
         </label>
       </div>
 
-      {/* フィルタ */}
       <div className="glass glass-strong" style={{ ...glassBoxStyle, marginBottom: 14 }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>🔎 絞り込み</div>
@@ -512,9 +506,7 @@ export default function Archive({ back }: Props) {
         </div>
       </div>
 
-      {/* ===== PC/スマホでレイアウト分岐 ===== */}
       {isMobile ? (
-        // ===== スマホ：縦（一覧→詳細） =====
         <div style={{ display: 'grid', gap: 14 }}>
           <div style={{ display: 'grid', gap: 10 }}>
             {archiveList.map((r) => {
@@ -580,7 +572,6 @@ export default function Archive({ back }: Props) {
 
                     <div style={{ color: '#eee', overflowWrap: 'anywhere' }}>{r.memo || '（メモ無し）'}</div>
 
-                    {/* ✅ 削除を（メモ無し）の下へ */}
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                       <span
                         onClick={(e) => {
@@ -680,7 +671,6 @@ export default function Archive({ back }: Props) {
           </div>
         </div>
       ) : (
-        // ===== PC：2カラム（左：一覧 / 右：詳細） =====
         <div
           style={{
             display: 'grid',
@@ -689,7 +679,6 @@ export default function Archive({ back }: Props) {
             alignItems: 'start',
           }}
         >
-          {/* 左：一覧 */}
           <div style={{ display: 'grid', gap: 10 }}>
             {archiveList.map((r) => {
               const isSel = r.id != null && r.id === selectedId
@@ -754,7 +743,6 @@ export default function Archive({ back }: Props) {
 
                     <div style={{ color: '#eee', overflowWrap: 'anywhere' }}>{r.memo || '（メモ無し）'}</div>
 
-                    {/* ✅ 削除を（メモ無し）の下へ */}
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                       <span
                         onClick={(e) => {
@@ -785,7 +773,6 @@ export default function Archive({ back }: Props) {
             })}
           </div>
 
-          {/* 右：詳細（sticky） */}
           <div style={{ position: 'sticky', top: 12 }}>
             <h2 style={{ margin: '0 0 10px 0' }}>📈 選択中の詳細</h2>
 
