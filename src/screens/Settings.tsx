@@ -96,7 +96,7 @@ export default function Settings({ back }: Props) {
       <PageShell
         title={
           <h1 style={{ margin: 0, fontSize: "clamp(20px, 5.5vw, 32px)" }}>
-            ⚙ 総合設定
+            ⚙ 設定
           </h1>
         }
         subtitle={
@@ -153,7 +153,7 @@ export default function Settings({ back }: Props) {
       <PageShell
         title={
           <h1 style={{ margin: 0, fontSize: "clamp(20px, 5.5vw, 32px)" }}>
-            ⚙ 総合設定
+            ⚙ 設定
           </h1>
         }
         subtitle={
@@ -362,7 +362,7 @@ export default function Settings({ back }: Props) {
     <PageShell
       title={
         <h1 style={{ margin: 0, fontSize: "clamp(20px, 5.5vw, 32px)" }}>
-          ⚙ 総合設定
+          ⚙ 設定
         </h1>
       }
       subtitle={
