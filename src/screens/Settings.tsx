@@ -357,9 +357,7 @@ export default function Settings({ back }: Props) {
 
   const fixedChar = useMemo(() => {
     if (!fixedCharacterId) return null;
-    return (
-      characterState.characters.find((c) => c.id === fixedCharacterId) ?? null
-    );
+    return characterState.characters.find((c) => c.id === fixedCharacterId) ?? null;
   }, [characterState.characters, fixedCharacterId]);
 
   const [portraitDraft, setPortraitDraft] = useState("");
@@ -462,7 +460,9 @@ export default function Settings({ back }: Props) {
                 <select
                   value={fixedCharacterId}
                   disabled={isFixedDisabled}
-                  onChange={(e) => set({ fixedCharacterId: e.target.value })}
+                  onChange={(e) =>
+                    set({ fixedCharacterId: e.target.value })
+                  }
                   style={fullWidthControl}
                 >
                   {characterOptions.map((c) => (
@@ -484,7 +484,7 @@ export default function Settings({ back }: Props) {
                   value={portraitDraft}
                   disabled={isFixedDisabled || !fixedChar}
                   onChange={(e) => setPortraitDraft(e.target.value)}
-                  placeholder="/assets/tsuduri.png みたいに入れてね"
+                  placeholder='/assets/tsuduri.png みたいに入れてね'
                   style={fullWidthControl}
                 />
                 <div style={controlLine}>
@@ -493,9 +493,7 @@ export default function Settings({ back }: Props) {
                   </span>
                   <button
                     type="button"
-                    style={
-                      isFixedDisabled || !fixedChar ? pillDisabled : pillBase
-                    }
+                    style={isFixedDisabled || !fixedChar ? pillDisabled : pillBase}
                     disabled={isFixedDisabled || !fixedChar}
                     onClick={() => {
                       if (!fixedChar) return;
@@ -508,14 +506,7 @@ export default function Settings({ back }: Props) {
                 </div>
 
                 {fixedChar?.portraitSrc && (
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                    }}
-                  >
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                     <div style={help}>プレビュー：</div>
                     <img
                       src={fixedChar.portraitSrc}
