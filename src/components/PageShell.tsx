@@ -34,10 +34,6 @@ type Props = {
 
 const STACK_KEY = "tsuduri_nav_stack_v1";
 
-// ✅ 上限は 4.0 に統一
-const CHARACTER_SCALE_MIN = 0.7;
-const CHARACTER_SCALE_MAX = 4.0;
-
 function getPath() {
   return (
     window.location.pathname + window.location.search + window.location.hash
@@ -145,8 +141,13 @@ export default function PageShell({
 
   const effectiveBgDim = settings?.bgDim ?? bgDim;
   const effectiveBgBlur = settings?.bgBlur ?? bgBlur;
-  const infoPanelAlphaRaw = clamp(settings?.infoPanelAlpha ?? 0, 0, 1);
 
+  const infoPanelAlphaRaw = clamp(settings?.infoPanelAlpha ?? 0, 0, 1);
+  const infoPanelBlurRaw = clamp(settings?.infoPanelBlur ?? 8, 0, 24);
+
+  // =============
+  // ✅ キャラ（固定/ランダム）
+  // =============
   const requestedCharacterId = useMemo(() => {
     if (!settings?.characterEnabled) return null;
     if (settings?.characterMode === "random")
@@ -204,46 +205,28 @@ export default function PageShell({
     };
   }, [requestedCharacterSrc, testCharacterSrc]);
 
-  // ✅ 4倍対応（統一）
-  const characterScale = clamp(
-    settings?.characterScale ?? 1,
-    CHARACTER_SCALE_MIN,
-    CHARACTER_SCALE_MAX
-  );
-
-  // ===========
-  // ✅ スマホ「画面外に逃げない」セーフティ
-  // ===========
-  const baseRight = testCharacterOffset.right ?? 16;
-  const baseBottom = testCharacterOffset.bottom ?? 16;
-
-  // 追い出しは“必要なだけ”でOK。やりすぎると画面外へ。
-  const rawPush = Math.max(0, characterScale - 1) * (isNarrow ? 60 : 24);
-
-  // ✅ 追い出し量の上限（スマホで暴走しない）
-  const push = isNarrow ? Math.min(rawPush, 120) : rawPush;
-
-  // right をマイナスにすると画面外に行くので、下限を設ける
-  // -40 くらいまでなら「少しはみ出す」演出で済む
-  const charRight = clamp(Math.round(baseRight - push), -40, baseRight);
-
-  // bottom も同様に安全柵（マイナスで下に消えるの防止）
-  const charBottom = clamp(Math.round(baseBottom - push * 0.18), 0, baseBottom);
-
-  // スマホは少しだけ透明化（ボタン可読性を守る）
+  const characterScale = clamp(settings?.characterScale ?? 1, 0.7, 5.0);
   const baseOpacity = clamp(
     settings?.characterOpacity ?? testCharacterOpacity,
     0,
     1
   );
-  const extraFade = isNarrow && characterScale >= 2.2 ? 0.82 : 1;
+
+  // ✅ スマホで巨大なときはUI保護（必要なら）
+  const extraFade = isNarrow && characterScale >= 2.5 ? 0.78 : 1;
   const characterOpacity = clamp(baseOpacity * extraFade, 0, 1);
 
-  // 情報板が0でも、スマホで大きい倍率なら最低限だけ入れて文字を守る
+  // ✅ 情報板が0でも、スマホで巨大化してたら最低限だけ入れて文字を守る
   const infoPanelAlpha =
-    isNarrow && characterScale >= 2.0
+    isNarrow && characterScale >= 2.2
       ? Math.max(infoPanelAlphaRaw, 0.12)
       : infoPanelAlphaRaw;
+
+  // ✅ 磨りガラスは設定値で（スマホで巨大化してる時は強すぎるとキャラが死ぬので少し抑える）
+  const infoPanelBlur =
+    isNarrow && characterScale >= 2.2
+      ? Math.min(infoPanelBlurRaw, 10)
+      : infoPanelBlurRaw;
 
   const shellStyle: CSSProperties & Record<string, string> = {
     width: "100vw",
@@ -259,11 +242,6 @@ export default function PageShell({
   const shouldShowCharacter =
     showTestCharacter && !!settings?.characterEnabled && !!displaySrc;
 
-  // ✅ 見た目微調整: スマホは影を少し弱めて“にじみ”体感を減らす
-  const characterShadow = isNarrow
-    ? "drop-shadow(0 6px 18px rgba(0,0,0,0.22))"
-    : "drop-shadow(0 10px 28px rgba(0,0,0,0.28))";
-
   return (
     <div className="page-shell" style={shellStyle}>
       {shouldShowCharacter && (
@@ -271,18 +249,17 @@ export default function PageShell({
           aria-hidden="true"
           style={{
             position: "fixed",
-            right: charRight,
-            bottom: charBottom,
+            right: 16,
+            bottom: 16,
             zIndex: 5,
             pointerEvents: "none",
             userSelect: "none",
             opacity: characterOpacity,
             transform: `scale(${characterScale})`,
             transformOrigin: "right bottom",
-            filter: characterShadow,
-            transition:
-              "opacity 220ms ease, transform 220ms ease, right 220ms ease, bottom 220ms ease",
-            willChange: "opacity, transform, right, bottom",
+            filter: "drop-shadow(0 10px 28px rgba(0,0,0,0.28))",
+            transition: "opacity 220ms ease, transform 220ms ease",
+            willChange: "opacity, transform",
           }}
         >
           <img
@@ -298,8 +275,6 @@ export default function PageShell({
               opacity: fadeIn ? 1 : 0,
               transition: "opacity 260ms ease",
               willChange: "opacity",
-              transform: "translateZ(0)",
-              backfaceVisibility: "hidden",
             }}
           />
         </div>
@@ -354,8 +329,13 @@ export default function PageShell({
                 inset: 0,
                 borderRadius: 18,
                 background: `rgba(0,0,0,${infoPanelAlpha})`,
-                backdropFilter: "blur(8px)",
-                WebkitBackdropFilter: "blur(8px)",
+
+                // ✅ ここが調整対象
+                backdropFilter:
+                  infoPanelBlur > 0 ? `blur(${infoPanelBlur}px)` : "none",
+                WebkitBackdropFilter:
+                  infoPanelBlur > 0 ? `blur(${infoPanelBlur}px)` : "none",
+
                 border: "1px solid rgba(255,255,255,0.12)",
                 boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
                 pointerEvents: "none",

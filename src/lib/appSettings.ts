@@ -10,7 +10,7 @@ export type AppSettings = {
   characterEnabled: boolean;
   characterMode: CharacterMode;
   fixedCharacterId: string;
-  /** 0.7〜4.0 推奨（見た目は PageShell 側で clamp と合成） */
+  /** 0.7〜5.0 推奨 */
   characterScale: number;
   /** 0〜1 */
   characterOpacity: number;
@@ -22,10 +22,13 @@ export type AppSettings = {
   bgBlur: number;
   /** 情報レイヤー背面の「板」不透明度 0〜1（文字は薄くしない） */
   infoPanelAlpha: number;
+  /** ✅ 情報レイヤー背面の「磨りガラス」強さ(px) */
+  infoPanelBlur: number;
 };
 
 const KEY = "tsuduri_app_settings_v1";
 
+// ここは「最初の気持ちよさ」重視の初期値
 export const DEFAULT_SETTINGS: AppSettings = {
   version: 1,
 
@@ -38,8 +41,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   bgDim: 0.55,
   bgBlur: 0,
   infoPanelAlpha: 0,
+
+  // ✅ 既存の PageShell の blur(8px) を初期値に
+  infoPanelBlur: 8,
 };
 
+// キャラ候補（ここ増やせばUIに出る）
 export type CharacterOption = { id: string; label: string; src: string };
 export const CHARACTER_OPTIONS: CharacterOption[] = [
   {
@@ -50,9 +57,6 @@ export const CHARACTER_OPTIONS: CharacterOption[] = [
   // { id: 'kokoro', label: 'こころ', src: '/assets/kokoro.png' },
   // { id: 'matsuri', label: 'まつり', src: '/assets/matsuri.png' },
 ];
-
-const CHARACTER_SCALE_MIN = 0.7;
-const CHARACTER_SCALE_MAX = 4.0;
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -85,13 +89,12 @@ function normalize(input: unknown): AppSettings {
     characterMode: x.characterMode === "random" ? "random" : "fixed",
     fixedCharacterId: fixedId,
 
-    // ✅ 上限を 4.0 に
     characterScale: clamp(
       Number.isFinite(x.characterScale as number)
         ? (x.characterScale as number)
         : DEFAULT_SETTINGS.characterScale,
-      CHARACTER_SCALE_MIN,
-      CHARACTER_SCALE_MAX
+      0.7,
+      5.0
     ),
     characterOpacity: clamp(
       Number.isFinite(x.characterOpacity as number)
@@ -121,6 +124,15 @@ function normalize(input: unknown): AppSettings {
         : DEFAULT_SETTINGS.infoPanelAlpha,
       0,
       1
+    ),
+
+    // ✅ 追加：情報板の磨りガラス強度
+    infoPanelBlur: clamp(
+      Number.isFinite(x.infoPanelBlur as number)
+        ? (x.infoPanelBlur as number)
+        : DEFAULT_SETTINGS.infoPanelBlur,
+      0,
+      24
     ),
   };
 

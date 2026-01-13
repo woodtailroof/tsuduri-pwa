@@ -56,11 +56,9 @@ const FALLBACK_DEFAULT_SETTINGS = {
   bgDim: 0.55,
   bgBlur: 0,
   infoPanelAlpha: 0,
+  // ✅ 追加
+  infoPanelBlur: 8,
 };
-
-// ✅ 上限は 4.0 に統一
-const CHARACTER_SCALE_MIN = 0.7;
-const CHARACTER_SCALE_MAX = 4.0;
 
 function useIsNarrow(breakpointPx = 720) {
   const [isNarrow, setIsNarrow] = useState(() => {
@@ -242,7 +240,6 @@ export default function Settings({ back }: Props) {
     gap: 12,
   };
 
-  // ✅ スマホは1カラム、PCは2カラム
   const row: CSSProperties = isNarrow
     ? { display: "grid", gap: 8, alignItems: "start" }
     : {
@@ -343,21 +340,31 @@ export default function Settings({ back }: Props) {
     settings?.fixedCharacterId ??
     characterOptions[0]?.id ??
     FALLBACK_DEFAULT_SETTINGS.fixedCharacterId;
+
   const characterScale = Number.isFinite(settings?.characterScale)
     ? settings.characterScale
     : FALLBACK_DEFAULT_SETTINGS.characterScale;
+
   const characterOpacity = Number.isFinite(settings?.characterOpacity)
     ? settings.characterOpacity
     : FALLBACK_DEFAULT_SETTINGS.characterOpacity;
+
   const bgDim = Number.isFinite(settings?.bgDim)
     ? settings.bgDim
     : FALLBACK_DEFAULT_SETTINGS.bgDim;
+
   const bgBlur = Number.isFinite(settings?.bgBlur)
     ? settings.bgBlur
     : FALLBACK_DEFAULT_SETTINGS.bgBlur;
+
   const infoPanelAlpha = Number.isFinite(settings?.infoPanelAlpha)
     ? settings.infoPanelAlpha
     : FALLBACK_DEFAULT_SETTINGS.infoPanelAlpha;
+
+  // ✅ 追加：磨りガラス強度
+  const infoPanelBlur = Number.isFinite(settings?.infoPanelBlur)
+    ? settings.infoPanelBlur
+    : FALLBACK_DEFAULT_SETTINGS.infoPanelBlur;
 
   const isCharControlsDisabled = !characterEnabled;
   const isFixedDisabled = !characterEnabled || characterMode !== "fixed";
@@ -377,7 +384,6 @@ export default function Settings({ back }: Props) {
       maxWidth={980}
       showBack
       onBack={back}
-      // ✅ スマホではキャラがフォームを邪魔しやすいので非表示
       showTestCharacter={!isNarrow}
     >
       <div style={{ display: "grid", gap: 16 }}>
@@ -479,18 +485,14 @@ export default function Settings({ back }: Props) {
                 </div>
                 <input
                   type="range"
-                  min={CHARACTER_SCALE_MIN}
-                  max={CHARACTER_SCALE_MAX}
+                  min={0.7}
+                  max={5.0}
                   step={0.05}
                   disabled={isCharControlsDisabled}
                   value={characterScale}
                   onChange={(e) =>
                     set({
-                      characterScale: clamp(
-                        Number(e.target.value),
-                        CHARACTER_SCALE_MIN,
-                        CHARACTER_SCALE_MAX
-                      ),
+                      characterScale: clamp(Number(e.target.value), 0.7, 5.0),
                     })
                   }
                   style={fullWidthControl}
@@ -577,7 +579,7 @@ export default function Settings({ back }: Props) {
               <div style={label}>情報レイヤーの板</div>
               <div style={rowStack}>
                 <div style={controlLine}>
-                  <span style={help}>板だけ透過（文字は薄くしない）</span>
+                  <span style={help}>板の暗さ（文字は薄くしない）</span>
                   <span style={help}>{Math.round(infoPanelAlpha * 100)}%</span>
                 </div>
                 <input
@@ -588,6 +590,30 @@ export default function Settings({ back }: Props) {
                   value={infoPanelAlpha}
                   onChange={(e) =>
                     set({ infoPanelAlpha: clamp(Number(e.target.value), 0, 1) })
+                  }
+                  style={fullWidthControl}
+                />
+              </div>
+            </div>
+
+            {/* ✅ 追加：磨りガラス度 */}
+            <div style={row}>
+              <div style={label}>磨りガラス</div>
+              <div style={rowStack}>
+                <div style={controlLine}>
+                  <span style={help}>
+                    背景のボケ（強いとキャラが見えにくい）
+                  </span>
+                  <span style={help}>{Math.round(infoPanelBlur)}px</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={24}
+                  step={1}
+                  value={infoPanelBlur}
+                  onChange={(e) =>
+                    set({ infoPanelBlur: clamp(Number(e.target.value), 0, 24) })
                   }
                   style={fullWidthControl}
                 />
