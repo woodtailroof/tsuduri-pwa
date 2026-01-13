@@ -10,7 +10,7 @@ export type AppSettings = {
   characterEnabled: boolean;
   characterMode: CharacterMode;
   fixedCharacterId: string;
-  /** 0.7〜5.0 推奨（見た目は PageShell 側で clamp と合成） */
+  /** 0.7〜4.0 推奨（見た目は PageShell 側で clamp と合成） */
   characterScale: number;
   /** 0〜1 */
   characterOpacity: number;
@@ -26,7 +26,6 @@ export type AppSettings = {
 
 const KEY = "tsuduri_app_settings_v1";
 
-// ここは「最初の気持ちよさ」重視の初期値
 export const DEFAULT_SETTINGS: AppSettings = {
   version: 1,
 
@@ -41,7 +40,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   infoPanelAlpha: 0,
 };
 
-// キャラ候補（ここ増やせばUIに出る）
 export type CharacterOption = { id: string; label: string; src: string };
 export const CHARACTER_OPTIONS: CharacterOption[] = [
   {
@@ -52,6 +50,9 @@ export const CHARACTER_OPTIONS: CharacterOption[] = [
   // { id: 'kokoro', label: 'こころ', src: '/assets/kokoro.png' },
   // { id: 'matsuri', label: 'まつり', src: '/assets/matsuri.png' },
 ];
+
+const CHARACTER_SCALE_MIN = 0.7;
+const CHARACTER_SCALE_MAX = 4.0;
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -84,13 +85,13 @@ function normalize(input: unknown): AppSettings {
     characterMode: x.characterMode === "random" ? "random" : "fixed",
     fixedCharacterId: fixedId,
 
-    // ✅ 上限を 5.0 に
+    // ✅ 上限を 4.0 に
     characterScale: clamp(
       Number.isFinite(x.characterScale as number)
         ? (x.characterScale as number)
         : DEFAULT_SETTINGS.characterScale,
-      0.7,
-      5.0
+      CHARACTER_SCALE_MIN,
+      CHARACTER_SCALE_MAX
     ),
     characterOpacity: clamp(
       Number.isFinite(x.characterOpacity as number)

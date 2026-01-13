@@ -34,6 +34,10 @@ type Props = {
 
 const STACK_KEY = "tsuduri_nav_stack_v1";
 
+// ✅ 上限は 4.0 に統一
+const CHARACTER_SCALE_MIN = 0.7;
+const CHARACTER_SCALE_MAX = 4.0;
+
 function getPath() {
   return (
     window.location.pathname + window.location.search + window.location.hash
@@ -62,6 +66,28 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+function useIsNarrow(breakpointPx = 720) {
+  const [isNarrow, setIsNarrow] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(`(max-width: ${breakpointPx}px)`).matches;
+  });
+
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${breakpointPx}px)`);
+    const onChange = () => setIsNarrow(mql.matches);
+    onChange();
+    if ("addEventListener" in mql) mql.addEventListener("change", onChange);
+    else (mql as any).addListener(onChange);
+    return () => {
+      if ("removeEventListener" in mql)
+        mql.removeEventListener("change", onChange);
+      else (mql as any).removeListener(onChange);
+    };
+  }, [breakpointPx]);
+
+  return isNarrow;
+}
+
 export default function PageShell({
   title,
   subtitle,
@@ -84,6 +110,7 @@ export default function PageShell({
 
   hideScrollbar = true,
 }: Props) {
+  const isNarrow = useIsNarrow(720);
   const hook = useAppSettings();
   const settings = hook?.settings;
 
@@ -118,7 +145,7 @@ export default function PageShell({
 
   const effectiveBgDim = settings?.bgDim ?? bgDim;
   const effectiveBgBlur = settings?.bgBlur ?? bgBlur;
-  const infoPanelAlpha = clamp(settings?.infoPanelAlpha ?? 0, 0, 1);
+  const infoPanelAlphaRaw = clamp(settings?.infoPanelAlpha ?? 0, 0, 1);
 
   const requestedCharacterId = useMemo(() => {
     if (!settings?.characterEnabled) return null;
@@ -177,13 +204,35 @@ export default function PageShell({
     };
   }, [requestedCharacterSrc, testCharacterSrc]);
 
-  // ✅ 上限を 5.0 に
-  const characterScale = clamp(settings?.characterScale ?? 1, 0.7, 5.0);
-  const characterOpacity = clamp(
+  // ✅ 4倍対応
+  const rawScale = clamp(
+    settings?.characterScale ?? 1,
+    CHARACTER_SCALE_MIN,
+    CHARACTER_SCALE_MAX
+  );
+  const characterScale = rawScale;
+
+  // 大きいほど右＆下に追い出す（スマホだけ強め）
+  const baseRight = testCharacterOffset.right ?? 16;
+  const baseBottom = testCharacterOffset.bottom ?? 16;
+  const push = Math.max(0, characterScale - 1) * (isNarrow ? 90 : 24);
+  const charRight = Math.round(baseRight - push);
+  const charBottom = Math.round(baseBottom - push * 0.25);
+
+  // スマホは少しだけ透明化（ボタン可読性を守る）
+  const baseOpacity = clamp(
     settings?.characterOpacity ?? testCharacterOpacity,
     0,
     1
   );
+  const extraFade = isNarrow && characterScale >= 2.2 ? 0.82 : 1;
+  const characterOpacity = clamp(baseOpacity * extraFade, 0, 1);
+
+  // 情報板が0でも、スマホで大きい倍率なら最低限だけ入れて文字を守る
+  const infoPanelAlpha =
+    isNarrow && characterScale >= 2.0
+      ? Math.max(infoPanelAlphaRaw, 0.12)
+      : infoPanelAlphaRaw;
 
   const shellStyle: CSSProperties & Record<string, string> = {
     width: "100vw",
@@ -199,6 +248,11 @@ export default function PageShell({
   const shouldShowCharacter =
     showTestCharacter && !!settings?.characterEnabled && !!displaySrc;
 
+  // ✅ 見た目微調整: スマホは影を少し弱めて“にじみ”体感を減らす
+  const characterShadow = isNarrow
+    ? "drop-shadow(0 6px 18px rgba(0,0,0,0.22))"
+    : "drop-shadow(0 10px 28px rgba(0,0,0,0.28))";
+
   return (
     <div className="page-shell" style={shellStyle}>
       {shouldShowCharacter && (
@@ -206,17 +260,18 @@ export default function PageShell({
           aria-hidden="true"
           style={{
             position: "fixed",
-            right: testCharacterOffset.right ?? 16,
-            bottom: testCharacterOffset.bottom ?? 16,
+            right: charRight,
+            bottom: charBottom,
             zIndex: 5,
             pointerEvents: "none",
             userSelect: "none",
             opacity: characterOpacity,
             transform: `scale(${characterScale})`,
             transformOrigin: "right bottom",
-            filter: "drop-shadow(0 10px 28px rgba(0,0,0,0.28))",
-            transition: "opacity 220ms ease, transform 220ms ease",
-            willChange: "opacity, transform",
+            filter: characterShadow,
+            transition:
+              "opacity 220ms ease, transform 220ms ease, right 220ms ease, bottom 220ms ease",
+            willChange: "opacity, transform, right, bottom",
           }}
         >
           <img
@@ -232,6 +287,9 @@ export default function PageShell({
               opacity: fadeIn ? 1 : 0,
               transition: "opacity 260ms ease",
               willChange: "opacity",
+              // ✅ ちょい改善: 端のにじみ軽減になりがち
+              transform: "translateZ(0)",
+              backfaceVisibility: "hidden",
             }}
           />
         </div>

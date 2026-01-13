@@ -58,6 +58,10 @@ const FALLBACK_DEFAULT_SETTINGS = {
   infoPanelAlpha: 0,
 };
 
+// ✅ 上限は 4.0 に統一
+const CHARACTER_SCALE_MIN = 0.7;
+const CHARACTER_SCALE_MAX = 4.0;
+
 function useIsNarrow(breakpointPx = 720) {
   const [isNarrow, setIsNarrow] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -475,14 +479,18 @@ export default function Settings({ back }: Props) {
                 </div>
                 <input
                   type="range"
-                  min={0.7}
-                  max={5.0}
+                  min={CHARACTER_SCALE_MIN}
+                  max={CHARACTER_SCALE_MAX}
                   step={0.05}
                   disabled={isCharControlsDisabled}
                   value={characterScale}
                   onChange={(e) =>
                     set({
-                      characterScale: clamp(Number(e.target.value), 0.7, 5.0),
+                      characterScale: clamp(
+                        Number(e.target.value),
+                        CHARACTER_SCALE_MIN,
+                        CHARACTER_SCALE_MAX
+                      ),
                     })
                   }
                   style={fullWidthControl}
