@@ -476,7 +476,7 @@ export default function Settings({ back }: Props) {
                 <input
                   type="range"
                   min={0.7}
-                  max={2.0}
+                  max={5.0}
                   step={0.05}
                   disabled={isCharControlsDisabled}
                   value={characterScale}
