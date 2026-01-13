@@ -12,7 +12,7 @@ import {
 import type { TideCacheEntry } from "../db";
 import PageShell from "../components/PageShell";
 import * as AppSettings from "../lib/appSettings";
-import { useCharacterStore } from "../lib/characterStore";
+import { useCharacterStore, type CharacterProfile } from "../lib/characterstore";
 
 type Props = {
   back: () => void;
@@ -107,16 +107,6 @@ export default function Settings({ back }: Props) {
             <br />
             appSettings.ts の export 名と一致してるか確認してね。
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              alert(
-                "appSettings.ts の export 名を確認してね（useAppSettings / DEFAULT_SETTINGS 等）"
-              );
-            }}
-          >
-            何を見ればいい？
-          </button>
         </div>
       </PageShell>
     );
@@ -127,11 +117,11 @@ export default function Settings({ back }: Props) {
     set: (patch: any) => void;
     reset: () => void;
   } | null = null;
-  let hookError: string | null = null;
+
   try {
     hook = useAppSettings();
-  } catch (e) {
-    hookError = e instanceof Error ? e.message : String(e);
+  } catch {
+    hook = null;
   }
 
   if (!hook) {
@@ -159,15 +149,6 @@ export default function Settings({ back }: Props) {
           <div style={{ fontWeight: 900, color: "#ff7a7a" }}>
             ⚠ useAppSettings が例外
           </div>
-          <div
-            style={{
-              fontSize: 12,
-              color: "rgba(255,255,255,0.75)",
-              overflowWrap: "anywhere",
-            }}
-          >
-            {hookError ?? "unknown error"}
-          </div>
           <button
             type="button"
             onClick={() => {
@@ -190,11 +171,9 @@ export default function Settings({ back }: Props) {
   const { settings, set, reset } = hook;
 
   const characterOptions = useMemo(() => {
-    const chars = characterState.characters ?? [];
-    if (!chars.length) {
-      return [{ id: "", label: "（キャラ未作成）" }];
-    }
-    return chars.map((c) => ({ id: c.id, label: c.label || c.id }));
+    const chars = (characterState.characters ?? []) as CharacterProfile[];
+    if (!chars.length) return [{ id: "", label: "（キャラ未作成）" }];
+    return chars.map((c: CharacterProfile) => ({ id: c.id, label: c.label || c.id }));
   }, [characterState.characters]);
 
   const [loading, setLoading] = useState(true);
@@ -328,10 +307,8 @@ export default function Settings({ back }: Props) {
   const characterMode =
     settings?.characterMode ?? FALLBACK_DEFAULT_SETTINGS.characterMode;
 
-  // ✅ fixedCharacterId が空/存在しない場合は先頭に寄せる（壊れないように）
   const fixedCharacterId = useMemo(() => {
-    const raw =
-      settings?.fixedCharacterId ?? FALLBACK_DEFAULT_SETTINGS.fixedCharacterId;
+    const raw = settings?.fixedCharacterId ?? FALLBACK_DEFAULT_SETTINGS.fixedCharacterId;
     const exists = characterOptions.some((c) => c.id === raw);
     return exists ? raw : characterOptions[0]?.id ?? "";
   }, [settings?.fixedCharacterId, characterOptions]);
@@ -339,15 +316,19 @@ export default function Settings({ back }: Props) {
   const characterScale = Number.isFinite(settings?.characterScale)
     ? settings.characterScale
     : FALLBACK_DEFAULT_SETTINGS.characterScale;
+
   const characterOpacity = Number.isFinite(settings?.characterOpacity)
     ? settings.characterOpacity
     : FALLBACK_DEFAULT_SETTINGS.characterOpacity;
+
   const bgDim = Number.isFinite(settings?.bgDim)
     ? settings.bgDim
     : FALLBACK_DEFAULT_SETTINGS.bgDim;
+
   const bgBlur = Number.isFinite(settings?.bgBlur)
     ? settings.bgBlur
     : FALLBACK_DEFAULT_SETTINGS.bgBlur;
+
   const infoPanelAlpha = Number.isFinite(settings?.infoPanelAlpha)
     ? settings.infoPanelAlpha
     : FALLBACK_DEFAULT_SETTINGS.infoPanelAlpha;
@@ -357,7 +338,7 @@ export default function Settings({ back }: Props) {
 
   const fixedChar = useMemo(() => {
     if (!fixedCharacterId) return null;
-    return characterState.characters.find((c) => c.id === fixedCharacterId) ?? null;
+    return (characterState.characters ?? []).find((c: CharacterProfile) => c.id === fixedCharacterId) ?? null;
   }, [characterState.characters, fixedCharacterId]);
 
   const [portraitDraft, setPortraitDraft] = useState("");
@@ -384,7 +365,6 @@ export default function Settings({ back }: Props) {
       showTestCharacter={!isNarrow}
     >
       <div style={{ display: "grid", gap: 16 }}>
-        {/* 👧 キャラ */}
         <div className="glass glass-strong" style={card}>
           <h2 style={sectionTitle}>👧 キャラクター</h2>
 
@@ -413,17 +393,8 @@ export default function Settings({ back }: Props) {
 
             <div style={row}>
               <div style={label}>切替</div>
-              <div
-                style={{ ...radioLine, opacity: characterEnabled ? 1 : 0.5 }}
-              >
-                <label
-                  style={{
-                    display: "inline-flex",
-                    gap: 8,
-                    alignItems: "center",
-                    cursor: characterEnabled ? "pointer" : "not-allowed",
-                  }}
-                >
+              <div style={{ ...radioLine, opacity: characterEnabled ? 1 : 0.5 }}>
+                <label style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
                   <input
                     type="radio"
                     name="characterMode"
@@ -434,14 +405,7 @@ export default function Settings({ back }: Props) {
                   <span>固定</span>
                 </label>
 
-                <label
-                  style={{
-                    display: "inline-flex",
-                    gap: 8,
-                    alignItems: "center",
-                    cursor: characterEnabled ? "pointer" : "not-allowed",
-                  }}
-                >
+                <label style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
                   <input
                     type="radio"
                     name="characterMode"
@@ -460,9 +424,7 @@ export default function Settings({ back }: Props) {
                 <select
                   value={fixedCharacterId}
                   disabled={isFixedDisabled}
-                  onChange={(e) =>
-                    set({ fixedCharacterId: e.target.value })
-                  }
+                  onChange={(e) => set({ fixedCharacterId: e.target.value })}
                   style={fullWidthControl}
                 >
                   {characterOptions.map((c) => (
@@ -475,7 +437,6 @@ export default function Settings({ back }: Props) {
               </div>
             </div>
 
-            {/* ✅ 統合：固定キャラの立ち絵URL（最低限の指定UI） */}
             <div style={row}>
               <div style={label}>立ち絵（URL/パス）</div>
               <div style={rowStack}>
@@ -488,9 +449,7 @@ export default function Settings({ back }: Props) {
                   style={fullWidthControl}
                 />
                 <div style={controlLine}>
-                  <span style={help}>
-                    public配下のパス（/assets/...）か URL を指定
-                  </span>
+                  <span style={help}>public配下（/assets/...）か URL</span>
                   <button
                     type="button"
                     style={isFixedDisabled || !fixedChar ? pillDisabled : pillBase}
@@ -504,26 +463,6 @@ export default function Settings({ back }: Props) {
                     💾 保存
                   </button>
                 </div>
-
-                {fixedChar?.portraitSrc && (
-                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                    <div style={help}>プレビュー：</div>
-                    <img
-                      src={fixedChar.portraitSrc}
-                      alt=""
-                      style={{
-                        height: 48,
-                        width: "auto",
-                        borderRadius: 10,
-                        border: "1px solid rgba(255,255,255,0.18)",
-                        background: "rgba(255,255,255,0.06)",
-                      }}
-                    />
-                    <div style={{ ...help, overflowWrap: "anywhere" }}>
-                      {fixedChar.portraitSrc}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -542,9 +481,7 @@ export default function Settings({ back }: Props) {
                   disabled={isCharControlsDisabled}
                   value={characterScale}
                   onChange={(e) =>
-                    set({
-                      characterScale: clamp(Number(e.target.value), 0.7, 5.0),
-                    })
+                    set({ characterScale: clamp(Number(e.target.value), 0.7, 5.0) })
                   }
                   style={fullWidthControl}
                 />
@@ -556,9 +493,7 @@ export default function Settings({ back }: Props) {
               <div style={rowStack}>
                 <div style={controlLine}>
                   <span style={help}>透け具合</span>
-                  <span style={help}>
-                    {Math.round(characterOpacity * 100)}%
-                  </span>
+                  <span style={help}>{Math.round(characterOpacity * 100)}%</span>
                 </div>
                 <input
                   type="range"
@@ -568,9 +503,7 @@ export default function Settings({ back }: Props) {
                   disabled={isCharControlsDisabled}
                   value={characterOpacity}
                   onChange={(e) =>
-                    set({
-                      characterOpacity: clamp(Number(e.target.value), 0, 1),
-                    })
+                    set({ characterOpacity: clamp(Number(e.target.value), 0, 1) })
                   }
                   style={fullWidthControl}
                 />
@@ -579,7 +512,6 @@ export default function Settings({ back }: Props) {
           </div>
         </div>
 
-        {/* 🪟 表示 */}
         <div className="glass glass-strong" style={card}>
           <h2 style={sectionTitle}>🪟 表示</h2>
 
@@ -597,9 +529,7 @@ export default function Settings({ back }: Props) {
                   max={1}
                   step={0.02}
                   value={bgDim}
-                  onChange={(e) =>
-                    set({ bgDim: clamp(Number(e.target.value), 0, 1) })
-                  }
+                  onChange={(e) => set({ bgDim: clamp(Number(e.target.value), 0, 1) })}
                   style={fullWidthControl}
                 />
               </div>
@@ -618,9 +548,7 @@ export default function Settings({ back }: Props) {
                   max={24}
                   step={1}
                   value={bgBlur}
-                  onChange={(e) =>
-                    set({ bgBlur: clamp(Number(e.target.value), 0, 24) })
-                  }
+                  onChange={(e) => set({ bgBlur: clamp(Number(e.target.value), 0, 24) })}
                   style={fullWidthControl}
                 />
               </div>
@@ -639,9 +567,7 @@ export default function Settings({ back }: Props) {
                   max={0.85}
                   step={0.05}
                   value={infoPanelAlpha}
-                  onChange={(e) =>
-                    set({ infoPanelAlpha: clamp(Number(e.target.value), 0, 1) })
-                  }
+                  onChange={(e) => set({ infoPanelAlpha: clamp(Number(e.target.value), 0, 1) })}
                   style={fullWidthControl}
                 />
               </div>
@@ -649,7 +575,6 @@ export default function Settings({ back }: Props) {
           </div>
         </div>
 
-        {/* 🌊 キャッシュ */}
         <div className="glass glass-strong" style={card}>
           <h2 style={sectionTitle}>🌊 tide736 キャッシュ</h2>
 
@@ -657,14 +582,7 @@ export default function Settings({ back }: Props) {
             基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              flexWrap: "wrap",
-              alignItems: "center",
-            }}
-          >
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <button
               type="button"
               style={loading || !!busy ? pillDisabled : pillBase}
@@ -679,9 +597,7 @@ export default function Settings({ back }: Props) {
               style={busy ? pillDisabled : pillBase}
               disabled={!!busy}
               onClick={async () => {
-                const ok = confirm(
-                  "tide736 キャッシュをすべて削除する？（戻せない）"
-                );
+                const ok = confirm("tide736 キャッシュをすべて削除する？（戻せない）");
                 if (!ok) return;
                 setBusy("deleteAll");
                 try {
@@ -696,24 +612,9 @@ export default function Settings({ back }: Props) {
               🗑 全削除
             </button>
 
-            <div
-              style={{
-                marginLeft: "auto",
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
-                古いの削除：
-              </span>
-              <select
-                value={days}
-                onChange={(e) =>
-                  setDays(Number(e.target.value) as 30 | 60 | 90 | 180)
-                }
-              >
+            <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>古いの削除：</span>
+              <select value={days} onChange={(e) => setDays(Number(e.target.value) as 30 | 60 | 90 | 180)}>
                 <option value={30}>30日</option>
                 <option value={60}>60日</option>
                 <option value={90}>90日</option>
@@ -742,24 +643,17 @@ export default function Settings({ back }: Props) {
 
           <div style={{ display: "grid", gap: 6 }}>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
-              {stats
-                ? `件数: ${stats.count} / 容量(概算): ${stats.approxKB}KB（約 ${approxMB}MB）`
-                : loading
-                ? "読み込み中…"
-                : "—"}
+              {stats ? `件数: ${stats.count} / 容量(概算): ${stats.approxKB}KB（約 ${approxMB}MB）` : loading ? "読み込み中…" : "—"}
             </div>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
-              newest: {fmtIso(stats?.newestFetchedAt ?? null)} / oldest:{" "}
-              {fmtIso(stats?.oldestFetchedAt ?? null)}
+              newest: {fmtIso(stats?.newestFetchedAt ?? null)} / oldest: {fmtIso(stats?.oldestFetchedAt ?? null)}
             </div>
           </div>
 
           <hr style={{ opacity: 0.2 }} />
 
           {entries.length === 0 ? (
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-              {loading ? "読み込み中…" : "キャッシュがまだ無いよ"}
-            </div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>{loading ? "読み込み中…" : "キャッシュがまだ無いよ"}</div>
           ) : (
             <div style={{ display: "grid", gap: 10 }}>
               {entries.slice(0, 80).map((e) => (
@@ -774,26 +668,11 @@ export default function Settings({ back }: Props) {
                     gap: 8,
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 10,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "rgba(255,255,255,0.85)",
-                        overflowWrap: "anywhere",
-                      }}
-                    >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", overflowWrap: "anywhere" }}>
                       {(e as any).day}（{(e as any).pc}:{(e as any).hc}）
                     </div>
-                    <div
-                      style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}
-                    >
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
                       fetched: {fmtIso((e as any).fetchedAt ?? null)}
                     </div>
                   </div>
@@ -804,9 +683,7 @@ export default function Settings({ back }: Props) {
                       style={busy === e.key ? pillDisabled : pillBase}
                       disabled={busy === e.key}
                       onClick={async () => {
-                        const ok = confirm(
-                          `このキャッシュを削除する？\n${e.key}`
-                        );
+                        const ok = confirm(`このキャッシュを削除する？\n${e.key}`);
                         if (!ok) return;
                         setBusy(e.key);
                         try {
@@ -822,24 +699,14 @@ export default function Settings({ back }: Props) {
 
                     <button
                       type="button"
-                      style={
-                        busy === `force:${e.key}` ? pillDisabled : pillBase
-                      }
+                      style={busy === `force:${e.key}` ? pillDisabled : pillBase}
                       disabled={busy === `force:${e.key}`}
                       onClick={async () => {
-                        const ok = confirm(
-                          `この日を強制再取得する？（オンライン必須）\n${
-                            (e as any).day
-                          }`
-                        );
+                        const ok = confirm(`この日を強制再取得する？（オンライン必須）\n${(e as any).day}`);
                         if (!ok) return;
                         setBusy(`force:${e.key}`);
                         try {
-                          await forceRefreshTide736Day(
-                            (e as any).pc,
-                            (e as any).hc,
-                            new Date((e as any).day)
-                          );
+                          await forceRefreshTide736Day((e as any).pc, (e as any).hc, new Date((e as any).day));
                           await refresh();
                           alert("再取得したよ");
                         } catch (err) {
@@ -859,21 +726,12 @@ export default function Settings({ back }: Props) {
           )}
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            flexWrap: "wrap",
-            alignItems: "center",
-          }}
-        >
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button
             type="button"
             style={pillBase}
             onClick={() => {
-              const ok = confirm(
-                "表示/キャラ設定を初期値に戻す？（キャッシュは触らない）"
-              );
+              const ok = confirm("表示/キャラ設定を初期値に戻す？（キャッシュは触らない）");
               if (!ok) return;
               reset();
               alert("初期値に戻したよ");
@@ -886,9 +744,7 @@ export default function Settings({ back }: Props) {
             type="button"
             style={pillBase}
             onClick={() => {
-              const defaults =
-                (AppSettings as any).DEFAULT_SETTINGS ??
-                FALLBACK_DEFAULT_SETTINGS;
+              const defaults = (AppSettings as any).DEFAULT_SETTINGS ?? FALLBACK_DEFAULT_SETTINGS;
               set(defaults);
               alert("設定を保存し直したよ");
             }}

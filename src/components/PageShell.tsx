@@ -2,7 +2,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppSettings } from '../lib/appSettings'
-import { useCharacterStore } from '../lib/characterStore'
+import { useCharacterStore, type CharacterProfile } from '../lib/characterstore'
 
 type Props = {
   title?: ReactNode
@@ -118,17 +118,14 @@ export default function PageShell({
     window.location.assign(prev ?? fallbackHref)
   }, [onBack, fallbackHref])
 
-  // ===========
-  // ✅ 設定反映（暗幕/ぼかし/情報板）
-  // ===========
   const effectiveBgDim = settings?.bgDim ?? bgDim
   const effectiveBgBlur = settings?.bgBlur ?? bgBlur
   const infoPanelAlpha = clamp(settings?.infoPanelAlpha ?? 0, 0, 1)
 
-  // ===========
-  // ✅ キャラ（固定/ランダム）
-  // ===========
-  const characterIds = useMemo(() => characterState.characters.map((c) => c.id), [characterState.characters])
+  const characterIds = useMemo(() => {
+    const list = characterState.characters ?? []
+    return list.map((c: CharacterProfile) => c.id)
+  }, [characterState.characters])
 
   const lastPickedIdRef = useRef<string | null>(null)
 
@@ -136,36 +133,38 @@ export default function PageShell({
     if (!settings?.characterEnabled) return null
     if (!characterIds.length) return null
 
-    // fixed のとき：設定にIDがなければ activeId に寄せる
     if (settings.characterMode !== 'random') {
-      const fixed = settings.fixedCharacterId && characterIds.includes(settings.fixedCharacterId) ? settings.fixedCharacterId : null
+      const fixed =
+        settings.fixedCharacterId && characterIds.includes(settings.fixedCharacterId)
+          ? settings.fixedCharacterId
+          : null
       return fixed ?? (characterIds.includes(characterState.activeId) ? characterState.activeId : characterIds[0])
     }
 
-    // random のとき：前回と被りにくく
     const picked = pickRandomId(characterIds, lastPickedIdRef.current ?? undefined)
     lastPickedIdRef.current = picked
     return picked
-  }, [settings?.characterEnabled, settings?.characterMode, settings?.fixedCharacterId, characterIds, characterState.activeId])
+  }, [
+    settings?.characterEnabled,
+    settings?.characterMode,
+    settings?.fixedCharacterId,
+    characterIds,
+    characterState.activeId,
+  ])
 
   const requestedCharacterSrc = useMemo(() => {
     if (!requestedCharacterId) return null
-    const hit = characterState.characters.find((c) => c.id === requestedCharacterId)
+    const hit = (characterState.characters ?? []).find((c: CharacterProfile) => c.id === requestedCharacterId)
     return hit?.portraitSrc ?? testCharacterSrc
   }, [requestedCharacterId, characterState.characters, testCharacterSrc])
 
-  // チラつき対策：先読みしてから差し替え
-  const [displaySrc, setDisplaySrc] = useState<string | null>(() => {
-    if (!requestedCharacterSrc) return testCharacterSrc
-    return requestedCharacterSrc
-  })
+  const [displaySrc, setDisplaySrc] = useState<string | null>(() => requestedCharacterSrc ?? testCharacterSrc)
   const [fadeIn, setFadeIn] = useState(true)
   const lastSrcRef = useRef<string | null>(null)
 
   useEffect(() => {
     const next = requestedCharacterSrc ?? testCharacterSrc
     if (!next) return
-
     if (lastSrcRef.current === next) return
     lastSrcRef.current = next
 
@@ -184,12 +183,10 @@ export default function PageShell({
     }
     const onError = () => {
       if (cancelled) return
-      // エラー時は無理に変えない
     }
 
     img.addEventListener('load', onLoad)
     img.addEventListener('error', onError)
-
     return () => {
       cancelled = true
       img.removeEventListener('load', onLoad)
@@ -200,13 +197,11 @@ export default function PageShell({
   const characterScale = clamp(settings?.characterScale ?? 1, 0.7, 5.0)
   const characterOpacity = clamp(settings?.characterOpacity ?? testCharacterOpacity, 0, 1)
 
-  // ✅ bgImage 未指定時に :root の --bg-image を潰さない
   const shellStyle: CSSProperties & Record<string, string> = {
     width: '100vw',
     height: '100svh',
     overflow: 'hidden',
     position: 'relative',
-
     ['--bg-dim' as any]: String(effectiveBgDim),
     ['--bg-blur' as any]: `${effectiveBgBlur}px`,
   }
@@ -259,7 +254,9 @@ export default function PageShell({
       )}
 
       <div
-        className={['page-shell-scroll', hideScrollbar ? 'scrollbar-hidden' : '', showBack ? 'with-back-button' : ''].filter(Boolean).join(' ')}
+        className={['page-shell-scroll', hideScrollbar ? 'scrollbar-hidden' : '', showBack ? 'with-back-button' : '']
+          .filter(Boolean)
+          .join(' ')}
         style={{
           position: 'relative',
           zIndex: 10,

@@ -1,4 +1,4 @@
-// src/lib/characterStore.ts
+// src/lib/characterstore.ts
 import { useMemo, useSyncExternalStore } from 'react'
 
 export type CharacterProfile = {
@@ -18,8 +18,7 @@ export type CharacterProfile = {
   affection: number // 0-100
   formality: number // 0-100
 
-  // ✅ 追加：立ち絵の画像（public 配下のパス or URL を想定）
-  // 例: "/assets/tsuduri.png"
+  // ✅ 立ち絵（public 配下のパス or URL）
   portraitSrc?: string
 }
 
@@ -32,14 +31,11 @@ type CharacterState = {
 export type ChatMsg = {
   role: 'user' | 'assistant'
   content: string
-  // 全員集合ルーム用（誰の発言か）
   speakerId?: string
   speakerLabel?: string
 }
 
 const CHARACTER_STATE_KEY = 'tsuduri_character_state_v1'
-
-// ルーム別履歴（キャラごと / 全員集合）
 const CHAT_KEY_PREFIX = 'tsuduri_chat_history_v2:'
 export const ALL_HANDS_ROOM_ID = '__all_hands__'
 
@@ -127,8 +123,6 @@ function normalizeProfile(x: any, fallback: CharacterProfile): CharacterProfile 
 }
 
 function defaultState(): CharacterState {
-  // ✅ 初回はプリセット3体を複製して保存（idは衝突回避で作り直す）
-  // ここを「固定ID」に寄せたい場合は後で方針Bに変更もできる
   const clones = PRESETS.map((p) => ({ ...p, id: genId() }))
   return { version: 1, activeId: clones[0].id, characters: clones }
 }
@@ -165,7 +159,6 @@ export function saveCharacterState(state: CharacterState) {
   } catch {
     // ignore
   }
-  // ✅ 同一タブ内へ通知
   window.dispatchEvent(new Event(CHARACTER_EVENT))
 }
 
@@ -205,11 +198,10 @@ export function upsertCharacter(profile: CharacterProfile) {
 
 export function deleteCharacter(id: string) {
   const st = loadCharacterState()
-  if (st.characters.length <= 1) return // 最後の1体は削除不可
+  if (st.characters.length <= 1) return
   const next = st.characters.filter((c) => c.id !== id)
   const activeId = st.activeId === id ? next[0].id : st.activeId
   saveCharacterState({ ...st, characters: next, activeId })
-  // キャラ履歴も消す
   try {
     localStorage.removeItem(chatKey(id))
   } catch {
@@ -228,7 +220,6 @@ export function createCharacterFromPreset(preset: CharacterProfile, labelSuffix?
   return p
 }
 
-// ✅ 立ち絵だけ更新したい時のユーティリティ
 export function setCharacterPortraitSrc(id: string, portraitSrc: string) {
   const st = loadCharacterState()
   const hit = st.characters.find((c) => c.id === id)
