@@ -482,7 +482,7 @@ export default function Settings({ back }: Props) {
                   value={characterScale}
                   onChange={(e) =>
                     set({
-                      characterScale: clamp(Number(e.target.value), 0.7, 2.0),
+                      characterScale: clamp(Number(e.target.value), 0.7, 5.0),
                     })
                   }
                   style={fullWidthControl}
