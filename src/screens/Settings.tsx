@@ -58,7 +58,31 @@ const FALLBACK_DEFAULT_SETTINGS = {
   infoPanelAlpha: 0,
 };
 
+function useIsNarrow(breakpointPx = 720) {
+  const [isNarrow, setIsNarrow] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(`(max-width: ${breakpointPx}px)`).matches;
+  });
+
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${breakpointPx}px)`);
+    const onChange = () => setIsNarrow(mql.matches);
+    onChange();
+    if ("addEventListener" in mql) mql.addEventListener("change", onChange);
+    else (mql as any).addListener(onChange);
+    return () => {
+      if ("removeEventListener" in mql)
+        mql.removeEventListener("change", onChange);
+      else (mql as any).removeListener(onChange);
+    };
+  }, [breakpointPx]);
+
+  return isNarrow;
+}
+
 export default function Settings({ back }: Props) {
+  const isNarrow = useIsNarrow(720);
+
   const useAppSettings = (AppSettings as any).useAppSettings as
     | undefined
     | (() => {
@@ -83,6 +107,7 @@ export default function Settings({ back }: Props) {
         maxWidth={980}
         showBack
         onBack={back}
+        showTestCharacter={!isNarrow}
       >
         <div
           className="glass glass-strong"
@@ -139,6 +164,7 @@ export default function Settings({ back }: Props) {
         maxWidth={980}
         showBack
         onBack={back}
+        showTestCharacter={!isNarrow}
       >
         <div
           className="glass glass-strong"
@@ -212,17 +238,15 @@ export default function Settings({ back }: Props) {
     gap: 12,
   };
 
-  const row: CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: "minmax(160px, 220px) 1fr",
-    gap: 12,
-    alignItems: "center",
-  };
-
-  const rowStack: CSSProperties = {
-    display: "grid",
-    gap: 8,
-  };
+  // ✅ スマホは1カラム、PCは2カラム
+  const row: CSSProperties = isNarrow
+    ? { display: "grid", gap: 8, alignItems: "start" }
+    : {
+        display: "grid",
+        gridTemplateColumns: "minmax(160px, 220px) 1fr",
+        gap: 12,
+        alignItems: "center",
+      };
 
   const label: CSSProperties = {
     fontSize: 12,
@@ -234,6 +258,12 @@ export default function Settings({ back }: Props) {
     fontSize: 12,
     color: "rgba(255,255,255,0.62)",
     lineHeight: 1.3,
+  };
+
+  const rowStack: CSSProperties = {
+    display: "grid",
+    gap: 8,
+    minWidth: 0,
   };
 
   const controlLine: CSSProperties = {
@@ -249,6 +279,12 @@ export default function Settings({ back }: Props) {
     gap: 16,
     alignItems: "center",
     flexWrap: "wrap",
+  };
+
+  const fullWidthControl: CSSProperties = {
+    width: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
   };
 
   const pillBase: CSSProperties = {
@@ -337,6 +373,8 @@ export default function Settings({ back }: Props) {
       maxWidth={980}
       showBack
       onBack={back}
+      // ✅ スマホではキャラがフォームを邪魔しやすいので非表示
+      showTestCharacter={!isNarrow}
     >
       <div style={{ display: "grid", gap: 16 }}>
         {/* 👧 キャラ */}
@@ -416,7 +454,7 @@ export default function Settings({ back }: Props) {
                   value={fixedCharacterId}
                   disabled={isFixedDisabled}
                   onChange={(e) => set({ fixedCharacterId: e.target.value })}
-                  style={{ width: "min(520px, 100%)" }}
+                  style={fullWidthControl}
                 >
                   {characterOptions.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -447,6 +485,7 @@ export default function Settings({ back }: Props) {
                       characterScale: clamp(Number(e.target.value), 0.7, 2.0),
                     })
                   }
+                  style={fullWidthControl}
                 />
               </div>
             </div>
@@ -472,6 +511,7 @@ export default function Settings({ back }: Props) {
                       characterOpacity: clamp(Number(e.target.value), 0, 1),
                     })
                   }
+                  style={fullWidthControl}
                 />
               </div>
             </div>
@@ -499,6 +539,7 @@ export default function Settings({ back }: Props) {
                   onChange={(e) =>
                     set({ bgDim: clamp(Number(e.target.value), 0, 1) })
                   }
+                  style={fullWidthControl}
                 />
               </div>
             </div>
@@ -519,6 +560,7 @@ export default function Settings({ back }: Props) {
                   onChange={(e) =>
                     set({ bgBlur: clamp(Number(e.target.value), 0, 24) })
                   }
+                  style={fullWidthControl}
                 />
               </div>
             </div>
@@ -539,6 +581,7 @@ export default function Settings({ back }: Props) {
                   onChange={(e) =>
                     set({ infoPanelAlpha: clamp(Number(e.target.value), 0, 1) })
                   }
+                  style={fullWidthControl}
                 />
               </div>
             </div>
