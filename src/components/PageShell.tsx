@@ -204,20 +204,31 @@ export default function PageShell({
     };
   }, [requestedCharacterSrc, testCharacterSrc]);
 
-  // ✅ 4倍対応
-  const rawScale = clamp(
+  // ✅ 4倍対応（統一）
+  const characterScale = clamp(
     settings?.characterScale ?? 1,
     CHARACTER_SCALE_MIN,
     CHARACTER_SCALE_MAX
   );
-  const characterScale = rawScale;
 
-  // 大きいほど右＆下に追い出す（スマホだけ強め）
+  // ===========
+  // ✅ スマホ「画面外に逃げない」セーフティ
+  // ===========
   const baseRight = testCharacterOffset.right ?? 16;
   const baseBottom = testCharacterOffset.bottom ?? 16;
-  const push = Math.max(0, characterScale - 1) * (isNarrow ? 90 : 24);
-  const charRight = Math.round(baseRight - push);
-  const charBottom = Math.round(baseBottom - push * 0.25);
+
+  // 追い出しは“必要なだけ”でOK。やりすぎると画面外へ。
+  const rawPush = Math.max(0, characterScale - 1) * (isNarrow ? 60 : 24);
+
+  // ✅ 追い出し量の上限（スマホで暴走しない）
+  const push = isNarrow ? Math.min(rawPush, 120) : rawPush;
+
+  // right をマイナスにすると画面外に行くので、下限を設ける
+  // -40 くらいまでなら「少しはみ出す」演出で済む
+  const charRight = clamp(Math.round(baseRight - push), -40, baseRight);
+
+  // bottom も同様に安全柵（マイナスで下に消えるの防止）
+  const charBottom = clamp(Math.round(baseBottom - push * 0.18), 0, baseBottom);
 
   // スマホは少しだけ透明化（ボタン可読性を守る）
   const baseOpacity = clamp(
@@ -287,7 +298,6 @@ export default function PageShell({
               opacity: fadeIn ? 1 : 0,
               transition: "opacity 260ms ease",
               willChange: "opacity",
-              // ✅ ちょい改善: 端のにじみ軽減になりがち
               transform: "translateZ(0)",
               backfaceVisibility: "hidden",
             }}
