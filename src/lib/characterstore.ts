@@ -1,5 +1,4 @@
-// src/lib/characterstore.ts
-import { useMemo, useSyncExternalStore } from 'react'
+// src/lib/characterStore.ts
 
 export type CharacterProfile = {
   id: string
@@ -18,8 +17,8 @@ export type CharacterProfile = {
   affection: number // 0-100
   formality: number // 0-100
 
-  // ✅ 立ち絵（public 配下のパス or URL）
-  portraitSrc?: string
+  // ✅ 追加：表示用キャラ画像（PWA表示にもチャットにも使う）
+  imageSrc: string // 例: "/assets/character/tsuduri.png"
 }
 
 type CharacterState = {
@@ -31,16 +30,18 @@ type CharacterState = {
 export type ChatMsg = {
   role: 'user' | 'assistant'
   content: string
+  // 全員集合ルーム用（誰の発言か）
   speakerId?: string
   speakerLabel?: string
 }
 
 const CHARACTER_STATE_KEY = 'tsuduri_character_state_v1'
+
+// ルーム別履歴（キャラごと / 全員集合）
 const CHAT_KEY_PREFIX = 'tsuduri_chat_history_v2:'
 export const ALL_HANDS_ROOM_ID = '__all_hands__'
 
-// ✅ 購読イベント（同一タブ内）
-const CHARACTER_EVENT = 'tsuduri-characters'
+export type CharacterOption = { id: string; label: string; src: string }
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
@@ -51,6 +52,8 @@ function genId() {
   if (g?.crypto?.randomUUID) return g.crypto.randomUUID()
   return `c_${Date.now()}_${Math.floor(Math.random() * 1e9)}`
 }
+
+const DEFAULT_IMAGE_SRC = '/assets/character-test.png'
 
 export const PRESETS: CharacterProfile[] = [
   {
@@ -67,7 +70,7 @@ export const PRESETS: CharacterProfile[] = [
     affection: 55,
     formality: 20,
     systemNote: '元気で可愛い、少し甘え＆少し世話焼き。釣りは現実的に頼れる相棒。説教禁止、心配として言う。',
-    portraitSrc: '/assets/character-test.png',
+    imageSrc: DEFAULT_IMAGE_SRC,
   },
   {
     id: 'cool',
@@ -83,7 +86,7 @@ export const PRESETS: CharacterProfile[] = [
     affection: 30,
     formality: 55,
     systemNote: '短く端的。判断は明確。距離は近いがベタベタしない。',
-    portraitSrc: '/assets/character-test.png',
+    imageSrc: DEFAULT_IMAGE_SRC,
   },
   {
     id: 'hyper',
@@ -99,7 +102,7 @@ export const PRESETS: CharacterProfile[] = [
     affection: 60,
     formality: 15,
     systemNote: 'ノリ良くテンポ重視。煽りは軽め。会話を前に転がす。',
-    portraitSrc: '/assets/character-test.png',
+    imageSrc: DEFAULT_IMAGE_SRC,
   },
 ]
 
@@ -118,11 +121,14 @@ function normalizeProfile(x: any, fallback: CharacterProfile): CharacterProfile 
     affection: clamp(Number(x?.affection ?? fallback.affection), 0, 100),
     formality: clamp(Number(x?.formality ?? fallback.formality), 0, 100),
     systemNote: typeof x?.systemNote === 'string' ? x.systemNote : fallback.systemNote,
-    portraitSrc: typeof x?.portraitSrc === 'string' ? x.portraitSrc : fallback.portraitSrc,
+
+    // ✅ 画像
+    imageSrc: typeof x?.imageSrc === 'string' && x.imageSrc.trim() ? x.imageSrc : fallback.imageSrc,
   }
 }
 
 function defaultState(): CharacterState {
+  // 初回はプリセット3体を複製して保存（idは衝突回避で作り直す）
   const clones = PRESETS.map((p) => ({ ...p, id: genId() }))
   return { version: 1, activeId: clones[0].id, characters: clones }
 }
@@ -159,11 +165,30 @@ export function saveCharacterState(state: CharacterState) {
   } catch {
     // ignore
   }
-  window.dispatchEvent(new Event(CHARACTER_EVENT))
 }
 
 export function listCharacters(): CharacterProfile[] {
   return loadCharacterState().characters
+}
+
+export function listCharacterOptions(): CharacterOption[] {
+  const chars = listCharacters()
+  if (!chars.length) return [{ id: 'fallback', label: 'つづり', src: DEFAULT_IMAGE_SRC }]
+  return chars.map((c) => ({ id: c.id, label: c.label, src: c.imageSrc || DEFAULT_IMAGE_SRC }))
+}
+
+export function getCharacterImageSrc(id: string): string {
+  const st = loadCharacterState()
+  const hit = st.characters.find((c) => c.id === id)
+  return hit?.imageSrc || st.characters[0]?.imageSrc || DEFAULT_IMAGE_SRC
+}
+
+export function pickRandomCharacterId(excludeId?: string) {
+  const list = listCharacters().map((c) => c.id)
+  if (list.length <= 1) return list[0] ?? 'tsuduri'
+  const filtered = excludeId ? list.filter((x) => x !== excludeId) : list
+  const idx = Math.floor(Math.random() * filtered.length)
+  return filtered[idx] ?? list[0] ?? 'tsuduri'
 }
 
 export function getActiveCharacterId(): string {
@@ -198,10 +223,11 @@ export function upsertCharacter(profile: CharacterProfile) {
 
 export function deleteCharacter(id: string) {
   const st = loadCharacterState()
-  if (st.characters.length <= 1) return
+  if (st.characters.length <= 1) return // 最後の1体は削除不可
   const next = st.characters.filter((c) => c.id !== id)
   const activeId = st.activeId === id ? next[0].id : st.activeId
   saveCharacterState({ ...st, characters: next, activeId })
+  // キャラ履歴も消す
   try {
     localStorage.removeItem(chatKey(id))
   } catch {
@@ -218,13 +244,6 @@ export function createCharacterFromPreset(preset: CharacterProfile, labelSuffix?
   }
   upsertCharacter(p)
   return p
-}
-
-export function setCharacterPortraitSrc(id: string, portraitSrc: string) {
-  const st = loadCharacterState()
-  const hit = st.characters.find((c) => c.id === id)
-  if (!hit) return
-  upsertCharacter({ ...hit, portraitSrc })
 }
 
 export function chatKey(roomId: string) {
@@ -264,37 +283,4 @@ export function clearChatHistory(roomId: string) {
   } catch {
     // ignore
   }
-}
-
-/* =========================
- * ✅ React から購読する hook
- * ========================= */
-
-function subscribe(cb: () => void) {
-  const onLocal = () => cb()
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === CHARACTER_STATE_KEY) cb()
-  }
-  window.addEventListener(CHARACTER_EVENT, onLocal)
-  window.addEventListener('storage', onStorage)
-  return () => {
-    window.removeEventListener(CHARACTER_EVENT, onLocal)
-    window.removeEventListener('storage', onStorage)
-  }
-}
-
-export function useCharacterStore() {
-  const state = useSyncExternalStore(subscribe, loadCharacterState, loadCharacterState)
-
-  const api = useMemo(
-    () => ({
-      setActiveId: (id: string) => setActiveCharacterId(id),
-      upsert: (profile: CharacterProfile) => upsertCharacter(profile),
-      remove: (id: string) => deleteCharacter(id),
-      setPortraitSrc: (id: string, src: string) => setCharacterPortraitSrc(id, src),
-    }),
-    []
-  )
-
-  return { state, ...api }
 }

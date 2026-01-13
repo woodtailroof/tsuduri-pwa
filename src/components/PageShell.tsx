@@ -2,30 +2,45 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppSettings } from '../lib/appSettings'
-import { useCharacterStore, type CharacterProfile } from '../lib/characterstore'
+import { getCharacterImageSrc, pickRandomCharacterId } from '../lib/characterStore'
 
 type Props = {
   title?: ReactNode
   subtitle?: ReactNode
   children: ReactNode
+  /** 画面ごとに幅を変えたい時用（チャットだけ広め…とか） */
   maxWidth?: number
 
+  /** 戻るボタンを表示するか（デフォルト: true） */
   showBack?: boolean
+  /** 戻るボタン押下時の挙動を上書きしたい場合 */
   onBack?: () => void
+  /** 戻るボタンのラベル */
   backLabel?: ReactNode
+  /** 戻れない場合の遷移先（デフォルト: "/"） */
   fallbackHref?: string
+  /** この画面を履歴に積まない（ホームなど） */
   disableStackPush?: boolean
 
+  /** ✅ 背景画像（ページ単位で差し替えたい時）例: "/bg/home.webp" */
   bgImage?: string
+  /** ✅ 背景の暗幕の濃さ（0〜1）デフォルト: 0.55（※設定があれば設定を優先） */
   bgDim?: number
+  /** ✅ 背景のぼかし(px) デフォルト: 0（※設定があれば設定を優先） */
   bgBlur?: number
 
+  /** ✅ テスト用キャラを表示するか（デフォルト: true） */
   showTestCharacter?: boolean
+  /** ✅ テスト用キャラ画像パス（例: "/assets/character-test.png"） */
   testCharacterSrc?: string
+  /** ✅ テスト用キャラの高さ(px)をclampで制御（デフォルト: "clamp(140px, 18vw, 220px)"） */
   testCharacterHeight?: string
+  /** ✅ キャラの位置微調整（px） */
   testCharacterOffset?: { right?: number; bottom?: number }
+  /** ✅ キャラの不透明度（0〜1） */
   testCharacterOpacity?: number
 
+  /** ✅ スクロールバーを非表示にしたい場合（デフォルト: true） */
   hideScrollbar?: boolean
 }
 
@@ -57,13 +72,6 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
 }
 
-function pickRandomId(ids: string[], excludeId?: string) {
-  if (ids.length <= 1) return ids[0] ?? null
-  const filtered = excludeId ? ids.filter((x) => x !== excludeId) : ids
-  const idx = Math.floor(Math.random() * filtered.length)
-  return filtered[idx] ?? ids[0] ?? null
-}
-
 export default function PageShell({
   title,
   subtitle,
@@ -87,7 +95,6 @@ export default function PageShell({
   hideScrollbar = true,
 }: Props) {
   const { settings } = useAppSettings()
-  const { state: characterState } = useCharacterStore()
 
   const current = useMemo(() => getPath(), [])
 
@@ -118,53 +125,40 @@ export default function PageShell({
     window.location.assign(prev ?? fallbackHref)
   }, [onBack, fallbackHref])
 
+  // ===========
+  // ✅ 設定反映（暗幕/ぼかし/情報板）
+  // ===========
   const effectiveBgDim = settings?.bgDim ?? bgDim
   const effectiveBgBlur = settings?.bgBlur ?? bgBlur
   const infoPanelAlpha = clamp(settings?.infoPanelAlpha ?? 0, 0, 1)
+  const infoPanelBlur = clamp(settings?.infoPanelBlur ?? 8, 0, 24)
 
-  const characterIds = useMemo(() => {
-    const list = characterState.characters ?? []
-    return list.map((c: CharacterProfile) => c.id)
-  }, [characterState.characters])
-
-  const lastPickedIdRef = useRef<string | null>(null)
-
+  // ===========
+  // ✅ キャラ（固定/ランダム） + チラつき対策
+  // ===========
   const requestedCharacterId = useMemo(() => {
     if (!settings?.characterEnabled) return null
-    if (!characterIds.length) return null
-
-    if (settings.characterMode !== 'random') {
-      const fixed =
-        settings.fixedCharacterId && characterIds.includes(settings.fixedCharacterId)
-          ? settings.fixedCharacterId
-          : null
-      return fixed ?? (characterIds.includes(characterState.activeId) ? characterState.activeId : characterIds[0])
-    }
-
-    const picked = pickRandomId(characterIds, lastPickedIdRef.current ?? undefined)
-    lastPickedIdRef.current = picked
-    return picked
-  }, [
-    settings?.characterEnabled,
-    settings?.characterMode,
-    settings?.fixedCharacterId,
-    characterIds,
-    characterState.activeId,
-  ])
+    if (settings.characterMode === 'random') return pickRandomCharacterId()
+    return settings.fixedCharacterId
+  }, [settings?.characterEnabled, settings?.characterMode, settings?.fixedCharacterId])
 
   const requestedCharacterSrc = useMemo(() => {
     if (!requestedCharacterId) return null
-    const hit = (characterState.characters ?? []).find((c: CharacterProfile) => c.id === requestedCharacterId)
-    return hit?.portraitSrc ?? testCharacterSrc
-  }, [requestedCharacterId, characterState.characters, testCharacterSrc])
+    return getCharacterImageSrc(requestedCharacterId)
+  }, [requestedCharacterId])
 
-  const [displaySrc, setDisplaySrc] = useState<string | null>(() => requestedCharacterSrc ?? testCharacterSrc)
+  // 新しい src を先読みしてから差し替える（旧表示は残す）
+  const [displaySrc, setDisplaySrc] = useState<string | null>(() => {
+    if (!requestedCharacterSrc) return testCharacterSrc
+    return requestedCharacterSrc
+  })
   const [fadeIn, setFadeIn] = useState(true)
   const lastSrcRef = useRef<string | null>(null)
 
   useEffect(() => {
     const next = requestedCharacterSrc ?? testCharacterSrc
     if (!next) return
+
     if (lastSrcRef.current === next) return
     lastSrcRef.current = next
 
@@ -187,6 +181,7 @@ export default function PageShell({
 
     img.addEventListener('load', onLoad)
     img.addEventListener('error', onError)
+
     return () => {
       cancelled = true
       img.removeEventListener('load', onLoad)
@@ -197,20 +192,23 @@ export default function PageShell({
   const characterScale = clamp(settings?.characterScale ?? 1, 0.7, 5.0)
   const characterOpacity = clamp(settings?.characterOpacity ?? testCharacterOpacity, 0, 1)
 
+  // ✅ bgImage 未指定時に :root の --bg-image を潰さない
   const shellStyle: CSSProperties & Record<string, string> = {
     width: '100vw',
     height: '100svh',
     overflow: 'hidden',
     position: 'relative',
+
     ['--bg-dim' as any]: String(effectiveBgDim),
     ['--bg-blur' as any]: `${effectiveBgBlur}px`,
   }
   if (bgImage) shellStyle['--bg-image' as any] = `url(${bgImage})`
 
-  const shouldShowCharacter = showTestCharacter && settings?.characterEnabled && !!displaySrc
+  const shouldShowCharacter = showTestCharacter && (settings?.characterEnabled ?? true) && !!displaySrc
 
   return (
     <div className="page-shell" style={shellStyle}>
+      {/* ✅ キャラレイヤ（固定） */}
       {shouldShowCharacter && (
         <div
           aria-hidden="true"
@@ -247,16 +245,16 @@ export default function PageShell({
         </div>
       )}
 
+      {/* ✅ 戻るボタン（最前面） */}
       {showBack && (
         <button type="button" className="back-button" onClick={handleBack} aria-label="戻る" style={{ zIndex: 30 }}>
           {backLabel}
         </button>
       )}
 
+      {/* ✅ 情報レイヤ：全幅スクロール */}
       <div
-        className={['page-shell-scroll', hideScrollbar ? 'scrollbar-hidden' : '', showBack ? 'with-back-button' : '']
-          .filter(Boolean)
-          .join(' ')}
+        className={['page-shell-scroll', hideScrollbar ? 'scrollbar-hidden' : '', showBack ? 'with-back-button' : ''].filter(Boolean).join(' ')}
         style={{
           position: 'relative',
           zIndex: 10,
@@ -278,6 +276,7 @@ export default function PageShell({
             position: 'relative',
           }}
         >
+          {/* ✅ 情報板（文字は薄くしない） */}
           {infoPanelAlpha > 0 && (
             <div
               aria-hidden="true"
@@ -286,8 +285,8 @@ export default function PageShell({
                 inset: 0,
                 borderRadius: 18,
                 background: `rgba(0,0,0,${infoPanelAlpha})`,
-                backdropFilter: 'blur(8px)',
-                WebkitBackdropFilter: 'blur(8px)',
+                backdropFilter: infoPanelBlur > 0 ? `blur(${infoPanelBlur}px)` : undefined,
+                WebkitBackdropFilter: infoPanelBlur > 0 ? `blur(${infoPanelBlur}px)` : undefined,
                 border: '1px solid rgba(255,255,255,0.12)',
                 boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
                 pointerEvents: 'none',
