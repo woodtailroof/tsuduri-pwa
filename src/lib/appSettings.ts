@@ -6,11 +6,12 @@ export type CharacterMode = "fixed" | "random";
 export type AppSettings = {
   version: 1;
 
-  // ===== キャラ =====
+  // ===== キャラ表示（※人格は characterStore 側が正本）=====
   characterEnabled: boolean;
   characterMode: CharacterMode;
+  /** ✅ characterStore の CharacterProfile.id を入れる */
   fixedCharacterId: string;
-  /** 0.7〜5.0 推奨 */
+  /** 0.7〜5.0 推奨（見た目は PageShell 側で clamp と合成） */
   characterScale: number;
   /** 0〜1 */
   characterOpacity: number;
@@ -22,41 +23,23 @@ export type AppSettings = {
   bgBlur: number;
   /** 情報レイヤー背面の「板」不透明度 0〜1（文字は薄くしない） */
   infoPanelAlpha: number;
-  /** ✅ 情報レイヤー背面の「磨りガラス」強さ(px) */
-  infoPanelBlur: number;
 };
 
 const KEY = "tsuduri_app_settings_v1";
 
-// ここは「最初の気持ちよさ」重視の初期値
 export const DEFAULT_SETTINGS: AppSettings = {
   version: 1,
 
   characterEnabled: true,
   characterMode: "fixed",
-  fixedCharacterId: "tsuduri",
+  fixedCharacterId: "", // ✅ 実際の初期値は PageShell 側で activeId/先頭に寄せる
   characterScale: 1.15,
   characterOpacity: 1,
 
   bgDim: 0.55,
   bgBlur: 0,
   infoPanelAlpha: 0,
-
-  // ✅ 既存の PageShell の blur(8px) を初期値に
-  infoPanelBlur: 8,
 };
-
-// キャラ候補（ここ増やせばUIに出る）
-export type CharacterOption = { id: string; label: string; src: string };
-export const CHARACTER_OPTIONS: CharacterOption[] = [
-  {
-    id: "tsuduri",
-    label: "つづり（テスト）",
-    src: "/assets/character-test.png",
-  },
-  // { id: 'kokoro', label: 'こころ', src: '/assets/kokoro.png' },
-  // { id: 'matsuri', label: 'まつり', src: '/assets/matsuri.png' },
-];
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -74,11 +57,6 @@ function safeParse(raw: string | null): unknown {
 function normalize(input: unknown): AppSettings {
   const x = (input ?? {}) as Partial<AppSettings>;
 
-  const fixedId =
-    typeof x.fixedCharacterId === "string" && x.fixedCharacterId.trim()
-      ? x.fixedCharacterId.trim()
-      : DEFAULT_SETTINGS.fixedCharacterId;
-
   const normalized: AppSettings = {
     version: 1,
 
@@ -87,8 +65,10 @@ function normalize(input: unknown): AppSettings {
         ? x.characterEnabled
         : DEFAULT_SETTINGS.characterEnabled,
     characterMode: x.characterMode === "random" ? "random" : "fixed",
-    fixedCharacterId: fixedId,
-
+    fixedCharacterId:
+      typeof x.fixedCharacterId === "string"
+        ? x.fixedCharacterId
+        : DEFAULT_SETTINGS.fixedCharacterId,
     characterScale: clamp(
       Number.isFinite(x.characterScale as number)
         ? (x.characterScale as number)
@@ -125,56 +105,23 @@ function normalize(input: unknown): AppSettings {
       0,
       1
     ),
-
-    // ✅ 追加：情報板の磨りガラス強度
-    infoPanelBlur: clamp(
-      Number.isFinite(x.infoPanelBlur as number)
-        ? (x.infoPanelBlur as number)
-        : DEFAULT_SETTINGS.infoPanelBlur,
-      0,
-      24
-    ),
   };
-
-  const exists = CHARACTER_OPTIONS.some(
-    (c) => c.id === normalized.fixedCharacterId
-  );
-  if (!exists)
-    normalized.fixedCharacterId =
-      CHARACTER_OPTIONS[0]?.id ?? DEFAULT_SETTINGS.fixedCharacterId;
 
   return normalized;
 }
 
-/**
- * ✅ useSyncExternalStore の getSnapshot(read) は
- * “変わってない時は同じ参照を返す”必要がある。
- */
-let cachedRaw: string | null | undefined = undefined;
-let cachedSettings: AppSettings = DEFAULT_SETTINGS;
-
 function read(): AppSettings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw === cachedRaw) return cachedSettings;
-
-    const next = normalize(safeParse(raw));
-    cachedRaw = raw;
-    cachedSettings = next;
-    return next;
+    return normalize(safeParse(raw));
   } catch {
-    cachedRaw = undefined;
-    cachedSettings = DEFAULT_SETTINGS;
     return DEFAULT_SETTINGS;
   }
 }
 
 function write(next: AppSettings) {
   try {
-    const raw = JSON.stringify(next);
-    localStorage.setItem(KEY, raw);
-    cachedRaw = raw;
-    cachedSettings = next;
+    localStorage.setItem(KEY, JSON.stringify(next));
   } catch {
     // ignore
   }
@@ -209,6 +156,7 @@ function subscribe(cb: () => void) {
   };
 }
 
+/** 設定を購読して UI に反映するための hook */
 export function useAppSettings() {
   const settings = useSyncExternalStore(subscribe, read, read);
 
@@ -230,18 +178,4 @@ export function useAppSettings() {
   }, []);
 
   return { settings, ...api };
-}
-
-export function resolveCharacterSrc(id: string) {
-  const hit = CHARACTER_OPTIONS.find((c) => c.id === id);
-  return hit?.src ?? CHARACTER_OPTIONS[0]?.src ?? "/assets/character-test.png";
-}
-
-export function pickRandomCharacterId(excludeId?: string) {
-  const list = CHARACTER_OPTIONS.map((c) => c.id);
-  if (list.length <= 1) return list[0] ?? "tsuduri";
-
-  const filtered = excludeId ? list.filter((x) => x !== excludeId) : list;
-  const idx = Math.floor(Math.random() * filtered.length);
-  return filtered[idx] ?? list[0] ?? "tsuduri";
 }

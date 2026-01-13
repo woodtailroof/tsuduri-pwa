@@ -1,11 +1,8 @@
 // src/components/PageShell.tsx
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  pickRandomCharacterId,
-  resolveCharacterSrc,
-  useAppSettings,
-} from "../lib/appSettings";
+import { useAppSettings } from "../lib/appSettings";
+import { useCharacterStore } from "../lib/characterStore";
 
 type Props = {
   title?: ReactNode;
@@ -62,26 +59,11 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-function useIsNarrow(breakpointPx = 720) {
-  const [isNarrow, setIsNarrow] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia(`(max-width: ${breakpointPx}px)`).matches;
-  });
-
-  useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${breakpointPx}px)`);
-    const onChange = () => setIsNarrow(mql.matches);
-    onChange();
-    if ("addEventListener" in mql) mql.addEventListener("change", onChange);
-    else (mql as any).addListener(onChange);
-    return () => {
-      if ("removeEventListener" in mql)
-        mql.removeEventListener("change", onChange);
-      else (mql as any).removeListener(onChange);
-    };
-  }, [breakpointPx]);
-
-  return isNarrow;
+function pickRandomId(ids: string[], excludeId?: string) {
+  if (ids.length <= 1) return ids[0] ?? null;
+  const filtered = excludeId ? ids.filter((x) => x !== excludeId) : ids;
+  const idx = Math.floor(Math.random() * filtered.length);
+  return filtered[idx] ?? ids[0] ?? null;
 }
 
 export default function PageShell({
@@ -106,9 +88,8 @@ export default function PageShell({
 
   hideScrollbar = true,
 }: Props) {
-  const isNarrow = useIsNarrow(720);
-  const hook = useAppSettings();
-  const settings = hook?.settings;
+  const { settings } = useAppSettings();
+  const { state: characterState } = useCharacterStore();
 
   const current = useMemo(() => getPath(), []);
 
@@ -139,31 +120,66 @@ export default function PageShell({
     window.location.assign(prev ?? fallbackHref);
   }, [onBack, fallbackHref]);
 
+  // ===========
+  // ✅ 設定反映（暗幕/ぼかし/情報板）
+  // ===========
   const effectiveBgDim = settings?.bgDim ?? bgDim;
   const effectiveBgBlur = settings?.bgBlur ?? bgBlur;
+  const infoPanelAlpha = clamp(settings?.infoPanelAlpha ?? 0, 0, 1);
 
-  const infoPanelAlphaRaw = clamp(settings?.infoPanelAlpha ?? 0, 0, 1);
-  const infoPanelBlurRaw = clamp(settings?.infoPanelBlur ?? 8, 0, 24);
-
-  // =============
+  // ===========
   // ✅ キャラ（固定/ランダム）
-  // =============
+  // ===========
+  const characterIds = useMemo(
+    () => characterState.characters.map((c) => c.id),
+    [characterState.characters]
+  );
+
+  const lastPickedIdRef = useRef<string | null>(null);
+
   const requestedCharacterId = useMemo(() => {
     if (!settings?.characterEnabled) return null;
-    if (settings?.characterMode === "random")
-      return pickRandomCharacterId(settings?.fixedCharacterId);
-    return settings?.fixedCharacterId ?? null;
+    if (!characterIds.length) return null;
+
+    // fixed のとき：設定にIDがなければ activeId に寄せる
+    if (settings.characterMode !== "random") {
+      const fixed =
+        settings.fixedCharacterId &&
+        characterIds.includes(settings.fixedCharacterId)
+          ? settings.fixedCharacterId
+          : null;
+      return (
+        fixed ??
+        (characterIds.includes(characterState.activeId)
+          ? characterState.activeId
+          : characterIds[0])
+      );
+    }
+
+    // random のとき：前回と被りにくく
+    const picked = pickRandomId(
+      characterIds,
+      lastPickedIdRef.current ?? undefined
+    );
+    lastPickedIdRef.current = picked;
+    return picked;
   }, [
     settings?.characterEnabled,
     settings?.characterMode,
     settings?.fixedCharacterId,
+    characterIds,
+    characterState.activeId,
   ]);
 
   const requestedCharacterSrc = useMemo(() => {
     if (!requestedCharacterId) return null;
-    return resolveCharacterSrc(requestedCharacterId);
-  }, [requestedCharacterId]);
+    const hit = characterState.characters.find(
+      (c) => c.id === requestedCharacterId
+    );
+    return hit?.portraitSrc ?? testCharacterSrc;
+  }, [requestedCharacterId, characterState.characters, testCharacterSrc]);
 
+  // チラつき対策：先読みしてから差し替え
   const [displaySrc, setDisplaySrc] = useState<string | null>(() => {
     if (!requestedCharacterSrc) return testCharacterSrc;
     return requestedCharacterSrc;
@@ -193,6 +209,7 @@ export default function PageShell({
     };
     const onError = () => {
       if (cancelled) return;
+      // エラー時は無理に変えない
     };
 
     img.addEventListener("load", onLoad);
@@ -206,24 +223,13 @@ export default function PageShell({
   }, [requestedCharacterSrc, testCharacterSrc]);
 
   const characterScale = clamp(settings?.characterScale ?? 1, 0.7, 5.0);
-  const baseOpacity = clamp(
+  const characterOpacity = clamp(
     settings?.characterOpacity ?? testCharacterOpacity,
     0,
     1
   );
 
-  const extraFade = isNarrow && characterScale >= 2.5 ? 0.78 : 1;
-  const characterOpacity = clamp(baseOpacity * extraFade, 0, 1);
-
-  const infoPanelAlpha =
-    isNarrow && characterScale >= 2.2
-      ? Math.max(infoPanelAlphaRaw, 0.12)
-      : infoPanelAlphaRaw;
-  const infoPanelBlur =
-    isNarrow && characterScale >= 2.2
-      ? Math.min(infoPanelBlurRaw, 10)
-      : infoPanelBlurRaw;
-
+  // ✅ bgImage 未指定時に :root の --bg-image を潰さない
   const shellStyle: CSSProperties & Record<string, string> = {
     width: "100vw",
     height: "100svh",
@@ -236,11 +242,7 @@ export default function PageShell({
   if (bgImage) shellStyle["--bg-image" as any] = `url(${bgImage})`;
 
   const shouldShowCharacter =
-    showTestCharacter && !!settings?.characterEnabled && !!displaySrc;
-
-  // ✅ ここで testCharacterOffset を使用（unused 回避 & ちゃんと反映）
-  const characterRight = testCharacterOffset?.right ?? 16;
-  const characterBottom = testCharacterOffset?.bottom ?? 16;
+    showTestCharacter && settings?.characterEnabled && !!displaySrc;
 
   return (
     <div className="page-shell" style={shellStyle}>
@@ -249,8 +251,8 @@ export default function PageShell({
           aria-hidden="true"
           style={{
             position: "fixed",
-            right: characterRight,
-            bottom: characterBottom,
+            right: testCharacterOffset.right ?? 16,
+            bottom: testCharacterOffset.bottom ?? 16,
             zIndex: 5,
             pointerEvents: "none",
             userSelect: "none",
@@ -329,10 +331,8 @@ export default function PageShell({
                 inset: 0,
                 borderRadius: 18,
                 background: `rgba(0,0,0,${infoPanelAlpha})`,
-                backdropFilter:
-                  infoPanelBlur > 0 ? `blur(${infoPanelBlur}px)` : "none",
-                WebkitBackdropFilter:
-                  infoPanelBlur > 0 ? `blur(${infoPanelBlur}px)` : "none",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
                 border: "1px solid rgba(255,255,255,0.12)",
                 boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
                 pointerEvents: "none",

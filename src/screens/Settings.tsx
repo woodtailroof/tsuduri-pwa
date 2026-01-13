@@ -12,6 +12,7 @@ import {
 import type { TideCacheEntry } from "../db";
 import PageShell from "../components/PageShell";
 import * as AppSettings from "../lib/appSettings";
+import { useCharacterStore } from "../lib/characterStore";
 
 type Props = {
   back: () => void;
@@ -30,34 +31,15 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-type CharacterOption = { id: string; label: string };
-
-function safeCharacterOptions(): CharacterOption[] {
-  const raw = (AppSettings as any).CHARACTER_OPTIONS;
-  if (Array.isArray(raw)) {
-    const ok = raw.filter(
-      (x) => x && typeof x.id === "string" && typeof x.label === "string"
-    ) as CharacterOption[];
-    if (ok.length > 0) return ok;
-  }
-  return [
-    { id: "tsuduri", label: "つづり" },
-    { id: "kokoro", label: "こころ" },
-    { id: "matsuri", label: "まつり" },
-  ];
-}
-
 const FALLBACK_DEFAULT_SETTINGS = {
   characterEnabled: true,
   characterMode: "fixed" as "fixed" | "random",
-  fixedCharacterId: "tsuduri",
+  fixedCharacterId: "",
   characterScale: 1,
   characterOpacity: 1,
   bgDim: 0.55,
   bgBlur: 0,
   infoPanelAlpha: 0,
-  // ✅ 追加
-  infoPanelBlur: 8,
 };
 
 function useIsNarrow(breakpointPx = 720) {
@@ -92,6 +74,8 @@ export default function Settings({ back }: Props) {
         set: (patch: any) => void;
         reset: () => void;
       });
+
+  const { state: characterState, setPortraitSrc } = useCharacterStore();
 
   if (!useAppSettings) {
     return (
@@ -204,7 +188,14 @@ export default function Settings({ back }: Props) {
   }
 
   const { settings, set, reset } = hook;
-  const characterOptions = useMemo(() => safeCharacterOptions(), []);
+
+  const characterOptions = useMemo(() => {
+    const chars = characterState.characters ?? [];
+    if (!chars.length) {
+      return [{ id: "", label: "（キャラ未作成）" }];
+    }
+    return chars.map((c) => ({ id: c.id, label: c.label || c.id }));
+  }, [characterState.characters]);
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -336,38 +327,46 @@ export default function Settings({ back }: Props) {
     settings?.characterEnabled ?? FALLBACK_DEFAULT_SETTINGS.characterEnabled;
   const characterMode =
     settings?.characterMode ?? FALLBACK_DEFAULT_SETTINGS.characterMode;
-  const fixedCharacterId =
-    settings?.fixedCharacterId ??
-    characterOptions[0]?.id ??
-    FALLBACK_DEFAULT_SETTINGS.fixedCharacterId;
+
+  // ✅ fixedCharacterId が空/存在しない場合は先頭に寄せる（壊れないように）
+  const fixedCharacterId = useMemo(() => {
+    const raw =
+      settings?.fixedCharacterId ?? FALLBACK_DEFAULT_SETTINGS.fixedCharacterId;
+    const exists = characterOptions.some((c) => c.id === raw);
+    return exists ? raw : characterOptions[0]?.id ?? "";
+  }, [settings?.fixedCharacterId, characterOptions]);
 
   const characterScale = Number.isFinite(settings?.characterScale)
     ? settings.characterScale
     : FALLBACK_DEFAULT_SETTINGS.characterScale;
-
   const characterOpacity = Number.isFinite(settings?.characterOpacity)
     ? settings.characterOpacity
     : FALLBACK_DEFAULT_SETTINGS.characterOpacity;
-
   const bgDim = Number.isFinite(settings?.bgDim)
     ? settings.bgDim
     : FALLBACK_DEFAULT_SETTINGS.bgDim;
-
   const bgBlur = Number.isFinite(settings?.bgBlur)
     ? settings.bgBlur
     : FALLBACK_DEFAULT_SETTINGS.bgBlur;
-
   const infoPanelAlpha = Number.isFinite(settings?.infoPanelAlpha)
     ? settings.infoPanelAlpha
     : FALLBACK_DEFAULT_SETTINGS.infoPanelAlpha;
 
-  // ✅ 追加：磨りガラス強度
-  const infoPanelBlur = Number.isFinite(settings?.infoPanelBlur)
-    ? settings.infoPanelBlur
-    : FALLBACK_DEFAULT_SETTINGS.infoPanelBlur;
-
   const isCharControlsDisabled = !characterEnabled;
   const isFixedDisabled = !characterEnabled || characterMode !== "fixed";
+
+  const fixedChar = useMemo(() => {
+    if (!fixedCharacterId) return null;
+    return (
+      characterState.characters.find((c) => c.id === fixedCharacterId) ?? null
+    );
+  }, [characterState.characters, fixedCharacterId]);
+
+  const [portraitDraft, setPortraitDraft] = useState("");
+
+  useEffect(() => {
+    setPortraitDraft(fixedChar?.portraitSrc ?? "");
+  }, [fixedChar?.portraitSrc]);
 
   return (
     <PageShell
@@ -476,6 +475,67 @@ export default function Settings({ back }: Props) {
               </div>
             </div>
 
+            {/* ✅ 統合：固定キャラの立ち絵URL（最低限の指定UI） */}
+            <div style={row}>
+              <div style={label}>立ち絵（URL/パス）</div>
+              <div style={rowStack}>
+                <input
+                  type="text"
+                  value={portraitDraft}
+                  disabled={isFixedDisabled || !fixedChar}
+                  onChange={(e) => setPortraitDraft(e.target.value)}
+                  placeholder="/assets/tsuduri.png みたいに入れてね"
+                  style={fullWidthControl}
+                />
+                <div style={controlLine}>
+                  <span style={help}>
+                    public配下のパス（/assets/...）か URL を指定
+                  </span>
+                  <button
+                    type="button"
+                    style={
+                      isFixedDisabled || !fixedChar ? pillDisabled : pillBase
+                    }
+                    disabled={isFixedDisabled || !fixedChar}
+                    onClick={() => {
+                      if (!fixedChar) return;
+                      setPortraitSrc(fixedChar.id, portraitDraft.trim());
+                      alert("立ち絵を保存したよ");
+                    }}
+                  >
+                    💾 保存
+                  </button>
+                </div>
+
+                {fixedChar?.portraitSrc && (
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={help}>プレビュー：</div>
+                    <img
+                      src={fixedChar.portraitSrc}
+                      alt=""
+                      style={{
+                        height: 48,
+                        width: "auto",
+                        borderRadius: 10,
+                        border: "1px solid rgba(255,255,255,0.18)",
+                        background: "rgba(255,255,255,0.06)",
+                      }}
+                    />
+                    <div style={{ ...help, overflowWrap: "anywhere" }}>
+                      {fixedChar.portraitSrc}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div style={row}>
               <div style={label}>大きさ</div>
               <div style={rowStack}>
@@ -579,7 +639,7 @@ export default function Settings({ back }: Props) {
               <div style={label}>情報レイヤーの板</div>
               <div style={rowStack}>
                 <div style={controlLine}>
-                  <span style={help}>板の暗さ（文字は薄くしない）</span>
+                  <span style={help}>板だけ透過（文字は薄くしない）</span>
                   <span style={help}>{Math.round(infoPanelAlpha * 100)}%</span>
                 </div>
                 <input
@@ -590,30 +650,6 @@ export default function Settings({ back }: Props) {
                   value={infoPanelAlpha}
                   onChange={(e) =>
                     set({ infoPanelAlpha: clamp(Number(e.target.value), 0, 1) })
-                  }
-                  style={fullWidthControl}
-                />
-              </div>
-            </div>
-
-            {/* ✅ 追加：磨りガラス度 */}
-            <div style={row}>
-              <div style={label}>磨りガラス</div>
-              <div style={rowStack}>
-                <div style={controlLine}>
-                  <span style={help}>
-                    背景のボケ（強いとキャラが見えにくい）
-                  </span>
-                  <span style={help}>{Math.round(infoPanelBlur)}px</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={24}
-                  step={1}
-                  value={infoPanelBlur}
-                  onChange={(e) =>
-                    set({ infoPanelBlur: clamp(Number(e.target.value), 0, 24) })
                   }
                   style={fullWidthControl}
                 />
