@@ -212,17 +212,13 @@ export default function PageShell({
     1
   );
 
-  // ✅ スマホで巨大なときはUI保護（必要なら）
   const extraFade = isNarrow && characterScale >= 2.5 ? 0.78 : 1;
   const characterOpacity = clamp(baseOpacity * extraFade, 0, 1);
 
-  // ✅ 情報板が0でも、スマホで巨大化してたら最低限だけ入れて文字を守る
   const infoPanelAlpha =
     isNarrow && characterScale >= 2.2
       ? Math.max(infoPanelAlphaRaw, 0.12)
       : infoPanelAlphaRaw;
-
-  // ✅ 磨りガラスは設定値で（スマホで巨大化してる時は強すぎるとキャラが死ぬので少し抑える）
   const infoPanelBlur =
     isNarrow && characterScale >= 2.2
       ? Math.min(infoPanelBlurRaw, 10)
@@ -242,6 +238,10 @@ export default function PageShell({
   const shouldShowCharacter =
     showTestCharacter && !!settings?.characterEnabled && !!displaySrc;
 
+  // ✅ ここで testCharacterOffset を使用（unused 回避 & ちゃんと反映）
+  const characterRight = testCharacterOffset?.right ?? 16;
+  const characterBottom = testCharacterOffset?.bottom ?? 16;
+
   return (
     <div className="page-shell" style={shellStyle}>
       {shouldShowCharacter && (
@@ -249,8 +249,8 @@ export default function PageShell({
           aria-hidden="true"
           style={{
             position: "fixed",
-            right: 16,
-            bottom: 16,
+            right: characterRight,
+            bottom: characterBottom,
             zIndex: 5,
             pointerEvents: "none",
             userSelect: "none",
@@ -329,13 +329,10 @@ export default function PageShell({
                 inset: 0,
                 borderRadius: 18,
                 background: `rgba(0,0,0,${infoPanelAlpha})`,
-
-                // ✅ ここが調整対象
                 backdropFilter:
                   infoPanelBlur > 0 ? `blur(${infoPanelBlur}px)` : "none",
                 WebkitBackdropFilter:
                   infoPanelBlur > 0 ? `blur(${infoPanelBlur}px)` : "none",
-
                 border: "1px solid rgba(255,255,255,0.12)",
                 boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
                 pointerEvents: "none",
