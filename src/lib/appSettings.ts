@@ -1,6 +1,5 @@
 // src/lib/appSettings.ts
 import { useEffect, useMemo, useSyncExternalStore } from "react";
-import { listCharacters } from "./characterstore";
 
 export type CharacterMode = "fixed" | "random";
 
@@ -11,7 +10,7 @@ export type AppSettings = {
   characterEnabled: boolean;
   characterMode: CharacterMode;
   fixedCharacterId: string;
-  /** 0.7〜5.0 推奨（見た目は PageShell 側で clamp） */
+  /** 0.7〜5.0（表示側でも clamp） */
   characterScale: number;
   /** 0〜1 */
   characterOpacity: number;
@@ -21,23 +20,11 @@ export type AppSettings = {
   bgDim: number;
   /** 背景ぼかし(px) */
   bgBlur: number;
-
   /** 情報レイヤー背面の「板」不透明度 0〜1（文字は薄くしない） */
   infoPanelAlpha: number;
-  /** ✅ 情報板の磨りガラス度（blur px） */
-  infoPanelBlur: number;
 };
 
 const KEY = "tsuduri_app_settings_v1";
-
-function firstCharacterIdFallback(): string {
-  try {
-    const chars = listCharacters();
-    return chars[0]?.id ?? "tsuduri";
-  } catch {
-    return "tsuduri";
-  }
-}
 
 // ここは「最初の気持ちよさ」重視の初期値
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -45,16 +32,28 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
   characterEnabled: true,
   characterMode: "fixed",
-  fixedCharacterId: firstCharacterIdFallback(),
+  fixedCharacterId: "tsuduri",
   characterScale: 1.15,
   characterOpacity: 1,
 
   bgDim: 0.55,
   bgBlur: 0,
-
   infoPanelAlpha: 0,
-  infoPanelBlur: 8,
 };
+
+// キャラ候補（ここ増やせばUIに出る）
+// ※ この src は「表示用の画像パス」。
+// 　将来 characterStore と統合して管理するなら、ここを動的に置き換える
+export type CharacterOption = { id: string; label: string; src: string };
+export const CHARACTER_OPTIONS: CharacterOption[] = [
+  {
+    id: "tsuduri",
+    label: "つづり（テスト）",
+    src: "/assets/character-test.png",
+  },
+  // { id: 'kokoro', label: 'こころ', src: '/assets/kokoro.png' },
+  // { id: 'matsuri', label: 'まつり', src: '/assets/matsuri.png' },
+];
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -72,11 +71,10 @@ function safeParse(raw: string | null): unknown {
 function normalize(input: unknown): AppSettings {
   const x = (input ?? {}) as Partial<AppSettings>;
 
-  const fallbackFirstId = firstCharacterIdFallback();
   const fixedId =
     typeof x.fixedCharacterId === "string" && x.fixedCharacterId.trim()
       ? x.fixedCharacterId.trim()
-      : DEFAULT_SETTINGS.fixedCharacterId || fallbackFirstId;
+      : DEFAULT_SETTINGS.fixedCharacterId;
 
   const normalized: AppSettings = {
     version: 1,
@@ -87,6 +85,8 @@ function normalize(input: unknown): AppSettings {
         : DEFAULT_SETTINGS.characterEnabled,
     characterMode: x.characterMode === "random" ? "random" : "fixed",
     fixedCharacterId: fixedId,
+
+    // ✅ 上限 5.0
     characterScale: clamp(
       Number.isFinite(x.characterScale as number)
         ? (x.characterScale as number)
@@ -116,7 +116,6 @@ function normalize(input: unknown): AppSettings {
       0,
       24
     ),
-
     infoPanelAlpha: clamp(
       Number.isFinite(x.infoPanelAlpha as number)
         ? (x.infoPanelAlpha as number)
@@ -124,23 +123,15 @@ function normalize(input: unknown): AppSettings {
       0,
       1
     ),
-    infoPanelBlur: clamp(
-      Number.isFinite(x.infoPanelBlur as number)
-        ? (x.infoPanelBlur as number)
-        : DEFAULT_SETTINGS.infoPanelBlur,
-      0,
-      24
-    ),
   };
 
-  // fixedCharacterId が今のキャラ一覧に無い時は先頭に寄せる（壊れないように）
-  try {
-    const chars = listCharacters();
-    const exists = chars.some((c) => c.id === normalized.fixedCharacterId);
-    if (!exists) normalized.fixedCharacterId = chars[0]?.id ?? fallbackFirstId;
-  } catch {
-    // ignore
-  }
+  // fixedCharacterId が候補に無い時は先頭に寄せる（壊れないように）
+  const exists = CHARACTER_OPTIONS.some(
+    (c) => c.id === normalized.fixedCharacterId
+  );
+  if (!exists)
+    normalized.fixedCharacterId =
+      CHARACTER_OPTIONS[0]?.id ?? DEFAULT_SETTINGS.fixedCharacterId;
 
   return normalized;
 }
@@ -194,6 +185,7 @@ function subscribe(cb: () => void) {
 
 /** 設定を購読して UI に反映するための hook */
 export function useAppSettings() {
+  // ✅ 例外を投げない / undefined を返さない（黒画面防止）
   const settings = useSyncExternalStore(subscribe, read, read);
 
   const api = useMemo(
@@ -215,4 +207,20 @@ export function useAppSettings() {
   }, []);
 
   return { settings, ...api };
+}
+
+/** id→src を解決（見つからなければ先頭） */
+export function resolveCharacterSrc(id: string) {
+  const hit = CHARACTER_OPTIONS.find((c) => c.id === id);
+  return hit?.src ?? CHARACTER_OPTIONS[0]?.src ?? "/assets/character-test.png";
+}
+
+/** ランダム選出（同じ候補が続きにくい程度のゆるい乱数） */
+export function pickRandomCharacterId(excludeId?: string) {
+  const list = CHARACTER_OPTIONS.map((c) => c.id);
+  if (list.length <= 1) return list[0] ?? "tsuduri";
+
+  const filtered = excludeId ? list.filter((x) => x !== excludeId) : list;
+  const idx = Math.floor(Math.random() * filtered.length);
+  return filtered[idx] ?? list[0] ?? "tsuduri";
 }

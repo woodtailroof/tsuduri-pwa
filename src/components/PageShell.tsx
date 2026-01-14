@@ -1,34 +1,49 @@
 // src/components/PageShell.tsx
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAppSettings } from "../lib/appSettings";
 import {
-  getCharacterImageSrc,
   pickRandomCharacterId,
-} from "../lib/characterstore";
+  resolveCharacterSrc,
+  useAppSettings,
+} from "../lib/appSettings";
 
 type Props = {
   title?: ReactNode;
   subtitle?: ReactNode;
   children: ReactNode;
+  /** 画面ごとに幅を変えたい時用（チャットだけ広め…とか） */
   maxWidth?: number;
 
+  /** 戻るボタンを表示するか（デフォルト: true） */
   showBack?: boolean;
+  /** 戻るボタン押下時の挙動を上書きしたい場合 */
   onBack?: () => void;
+  /** 戻るボタンのラベル */
   backLabel?: ReactNode;
+  /** 戻れない場合の遷移先（デフォルト: "/"） */
   fallbackHref?: string;
+  /** この画面を履歴に積まない（ホームなど） */
   disableStackPush?: boolean;
 
+  /** ✅ 背景画像（ページ単位で差し替えたい時）例: "/bg/home.webp" */
   bgImage?: string;
+  /** ✅ 背景の暗幕の濃さ（0〜1）デフォルト: 0.55（※設定があれば設定を優先） */
   bgDim?: number;
+  /** ✅ 背景のぼかし(px) デフォルト: 0（※設定があれば設定を優先） */
   bgBlur?: number;
 
+  /** ✅ テスト用キャラを表示するか（デフォルト: true） */
   showTestCharacter?: boolean;
+  /** ✅ テスト用キャラ画像パス（例: "/assets/character-test.png"） */
   testCharacterSrc?: string;
+  /** ✅ テスト用キャラの高さ(px)をclampで制御（デフォルト: "clamp(140px, 18vw, 220px)"） */
   testCharacterHeight?: string;
+  /** ✅ キャラの位置微調整（px） */
   testCharacterOffset?: { right?: number; bottom?: number };
+  /** ✅ キャラの不透明度（0〜1） */
   testCharacterOpacity?: number;
 
+  /** ✅ スクロールバーを非表示にしたい場合（デフォルト: true） */
   hideScrollbar?: boolean;
 };
 
@@ -115,26 +130,33 @@ export default function PageShell({
     window.location.assign(prev ?? fallbackHref);
   }, [onBack, fallbackHref]);
 
-  const effectiveBgDim = settings?.bgDim ?? bgDim;
-  const effectiveBgBlur = settings?.bgBlur ?? bgBlur;
-  const infoPanelAlpha = clamp(settings?.infoPanelAlpha ?? 0, 0, 1);
-  const infoPanelBlur = clamp(settings?.infoPanelBlur ?? 8, 0, 24);
+  // ===========
+  // ✅ 設定反映（暗幕/ぼかし/情報板）
+  // ===========
+  const effectiveBgDim = settings.bgDim ?? bgDim;
+  const effectiveBgBlur = settings.bgBlur ?? bgBlur;
+  const infoPanelAlpha = clamp(settings.infoPanelAlpha ?? 0, 0, 1);
 
+  // ===========
+  // ✅ キャラ（固定/ランダム） + チラつき対策
+  // ===========
   const requestedCharacterId = useMemo(() => {
-    if (!settings?.characterEnabled) return null;
+    if (!settings.characterEnabled) return null;
     if (settings.characterMode === "random") return pickRandomCharacterId();
     return settings.fixedCharacterId;
   }, [
-    settings?.characterEnabled,
-    settings?.characterMode,
-    settings?.fixedCharacterId,
+    settings.characterEnabled,
+    settings.characterMode,
+    settings.fixedCharacterId,
   ]);
 
   const requestedCharacterSrc = useMemo(() => {
     if (!requestedCharacterId) return null;
-    return getCharacterImageSrc(requestedCharacterId);
+    return resolveCharacterSrc(requestedCharacterId);
   }, [requestedCharacterId]);
 
+  // 「画面遷移の瞬間に一瞬消える」を防ぐため、
+  // 新しい src を先読みしてから差し替える（旧表示は残す）
   const [displaySrc, setDisplaySrc] = useState<string | null>(() => {
     if (!requestedCharacterSrc) return testCharacterSrc;
     return requestedCharacterSrc;
@@ -149,6 +171,7 @@ export default function PageShell({
     if (lastSrcRef.current === next) return;
     lastSrcRef.current = next;
 
+    // 先読みしてから差し替え
     const img = new Image();
     img.decoding = "async";
     img.src = next;
@@ -164,6 +187,7 @@ export default function PageShell({
     };
     const onError = () => {
       if (cancelled) return;
+      // エラー時は無理に変えない（表示継続）
     };
 
     img.addEventListener("load", onLoad);
@@ -176,13 +200,15 @@ export default function PageShell({
     };
   }, [requestedCharacterSrc, testCharacterSrc]);
 
-  const characterScale = clamp(settings?.characterScale ?? 1, 0.7, 5.0);
+  // ✅ 上限 5.0 まで許可
+  const characterScale = clamp(settings.characterScale ?? 1, 0.7, 5.0);
   const characterOpacity = clamp(
-    settings?.characterOpacity ?? testCharacterOpacity,
+    settings.characterOpacity ?? testCharacterOpacity,
     0,
     1
   );
 
+  // ✅ bgImage 未指定時に :root の --bg-image を潰さない
   const shellStyle: CSSProperties & Record<string, string> = {
     width: "100vw",
     height: "100svh",
@@ -195,10 +221,11 @@ export default function PageShell({
   if (bgImage) shellStyle["--bg-image" as any] = `url(${bgImage})`;
 
   const shouldShowCharacter =
-    showTestCharacter && (settings?.characterEnabled ?? true) && !!displaySrc;
+    showTestCharacter && settings.characterEnabled && !!displaySrc;
 
   return (
     <div className="page-shell" style={shellStyle}>
+      {/* ✅ キャラレイヤ（固定） */}
       {shouldShowCharacter && (
         <div
           aria-hidden="true"
@@ -235,6 +262,7 @@ export default function PageShell({
         </div>
       )}
 
+      {/* ✅ 戻るボタン（最前面） */}
       {showBack && (
         <button
           type="button"
@@ -247,6 +275,7 @@ export default function PageShell({
         </button>
       )}
 
+      {/* ✅ 情報レイヤ：全幅スクロール */}
       <div
         className={[
           "page-shell-scroll",
@@ -276,6 +305,7 @@ export default function PageShell({
             position: "relative",
           }}
         >
+          {/* ✅ 情報板（文字は薄くしない） */}
           {infoPanelAlpha > 0 && (
             <div
               aria-hidden="true"
@@ -284,10 +314,8 @@ export default function PageShell({
                 inset: 0,
                 borderRadius: 18,
                 background: `rgba(0,0,0,${infoPanelAlpha})`,
-                backdropFilter:
-                  infoPanelBlur > 0 ? `blur(${infoPanelBlur}px)` : undefined,
-                WebkitBackdropFilter:
-                  infoPanelBlur > 0 ? `blur(${infoPanelBlur}px)` : undefined,
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
                 border: "1px solid rgba(255,255,255,0.12)",
                 boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
                 pointerEvents: "none",

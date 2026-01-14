@@ -11,8 +11,11 @@ import {
 } from "../lib/tide736Cache";
 import type { TideCacheEntry } from "../db";
 import PageShell from "../components/PageShell";
-import { useAppSettings, DEFAULT_SETTINGS } from "../lib/appSettings";
-import { listCharacterOptions } from "../lib/characterstore";
+import {
+  CHARACTER_OPTIONS,
+  DEFAULT_SETTINGS,
+  useAppSettings,
+} from "../lib/appSettings";
 
 type Props = {
   back: () => void;
@@ -29,6 +32,23 @@ function fmtIso(iso: string | null) {
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
+}
+
+type CharacterOption = { id: string; label: string };
+
+// AppSettings 側の CHARACTER_OPTIONS から label だけ抜く
+function safeCharacterOptions(): CharacterOption[] {
+  const raw = CHARACTER_OPTIONS;
+  const ok = raw
+    .filter((x) => x && typeof x.id === "string" && typeof x.label === "string")
+    .map((x) => ({ id: x.id, label: x.label }));
+  if (ok.length > 0) return ok;
+
+  return [
+    { id: "tsuduri", label: "つづり" },
+    { id: "kokoro", label: "こころ" },
+    { id: "matsuri", label: "まつり" },
+  ];
 }
 
 function useIsNarrow(breakpointPx = 720) {
@@ -54,11 +74,12 @@ function useIsNarrow(breakpointPx = 720) {
 }
 
 export default function Settings({ back }: Props) {
-  const isNarrow = useIsNarrow(720);
-
+  // ✅ Hooks は必ずトップレベルで呼ぶ（try/catch禁止）
   const { settings, set, reset } = useAppSettings();
 
-  const characterOptions = useMemo(() => listCharacterOptions(), []);
+  const isNarrow = useIsNarrow(720);
+  const characterOptions = useMemo(() => safeCharacterOptions(), []);
+
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -93,6 +114,7 @@ export default function Settings({ back }: Props) {
     gap: 12,
   };
 
+  // ✅ スマホは1カラム、PCは2カラム
   const row: CSSProperties = isNarrow
     ? { display: "grid", gap: 8, alignItems: "start" }
     : {
@@ -185,35 +207,30 @@ export default function Settings({ back }: Props) {
     return Math.round((kb / 1024) * 100) / 100;
   }, [stats]);
 
+  // ✅ settings は常に存在する前提（useAppSettings が保証）
   const characterEnabled =
-    settings?.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
+    settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
   const characterMode =
-    settings?.characterMode ?? DEFAULT_SETTINGS.characterMode;
+    settings.characterMode ?? DEFAULT_SETTINGS.characterMode;
   const fixedCharacterId =
-    settings?.fixedCharacterId ??
+    settings.fixedCharacterId ??
     characterOptions[0]?.id ??
     DEFAULT_SETTINGS.fixedCharacterId;
-
-  const characterScale = Number.isFinite(settings?.characterScale)
-    ? (settings.characterScale as number)
+  const characterScale = Number.isFinite(settings.characterScale)
+    ? settings.characterScale
     : DEFAULT_SETTINGS.characterScale;
-  const characterOpacity = Number.isFinite(settings?.characterOpacity)
-    ? (settings.characterOpacity as number)
+  const characterOpacity = Number.isFinite(settings.characterOpacity)
+    ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
-
-  const bgDim = Number.isFinite(settings?.bgDim)
-    ? (settings.bgDim as number)
+  const bgDim = Number.isFinite(settings.bgDim)
+    ? settings.bgDim
     : DEFAULT_SETTINGS.bgDim;
-  const bgBlur = Number.isFinite(settings?.bgBlur)
-    ? (settings.bgBlur as number)
+  const bgBlur = Number.isFinite(settings.bgBlur)
+    ? settings.bgBlur
     : DEFAULT_SETTINGS.bgBlur;
-
-  const infoPanelAlpha = Number.isFinite(settings?.infoPanelAlpha)
-    ? (settings.infoPanelAlpha as number)
+  const infoPanelAlpha = Number.isFinite(settings.infoPanelAlpha)
+    ? settings.infoPanelAlpha
     : DEFAULT_SETTINGS.infoPanelAlpha;
-  const infoPanelBlur = Number.isFinite(settings?.infoPanelBlur)
-    ? (settings.infoPanelBlur as number)
-    : DEFAULT_SETTINGS.infoPanelBlur;
 
   const isCharControlsDisabled = !characterEnabled;
   const isFixedDisabled = !characterEnabled || characterMode !== "fixed";
@@ -233,11 +250,9 @@ export default function Settings({ back }: Props) {
       maxWidth={980}
       showBack
       onBack={back}
+      // ✅ スマホではキャラがフォームを邪魔しやすいので非表示（必要なら後でON/OFF設定化も可）
       showTestCharacter={!isNarrow}
     >
-      {/* 以降の中身は、さっき出した Settings.tsx のままでOK（importだけ直せば通る） */}
-      {/* ↓↓↓ ひろっちの手元の全文に合わせて、そのまま貼り替えてね ↓↓↓ */}
-
       <div style={{ display: "grid", gap: 16 }}>
         {/* 👧 キャラ */}
         <div className="glass glass-strong" style={card}>
@@ -349,6 +364,9 @@ export default function Settings({ back }: Props) {
                   }
                   style={fullWidthControl}
                 />
+                <div style={help}>
+                  ※ 上げすぎるとボタンが隠れやすいので注意だよ。
+                </div>
               </div>
             </div>
 
@@ -447,31 +465,10 @@ export default function Settings({ back }: Props) {
                 />
               </div>
             </div>
-
-            <div style={row}>
-              <div style={label}>磨りガラス度</div>
-              <div style={rowStack}>
-                <div style={controlLine}>
-                  <span style={help}>情報板の blur</span>
-                  <span style={help}>{infoPanelBlur}px</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={24}
-                  step={1}
-                  value={infoPanelBlur}
-                  onChange={(e) =>
-                    set({ infoPanelBlur: clamp(Number(e.target.value), 0, 24) })
-                  }
-                  style={fullWidthControl}
-                />
-              </div>
-            </div>
           </div>
         </div>
 
-        {/* 🌊 キャッシュ（以下略：ひろっちの現行のままでOK） */}
+        {/* 🌊 キャッシュ */}
         <div className="glass glass-strong" style={card}>
           <h2 style={sectionTitle}>🌊 tide736 キャッシュ</h2>
 
