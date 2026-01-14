@@ -1,15 +1,13 @@
-/* =========================================================
-   index.css（glass blur 0px 完全対応版）
-   ========================================================= */
+/* src/index.css */
 
-/* iOS Safari: 入力欄ズーム防止 */
+/* iOS Safari: 入力欄が原因の自動ズームを防ぐ */
 input,
 textarea,
 select {
   font-size: 16px;
 }
 
-/* iOSの謎拡大防止 */
+/* iOSの謎の文字拡大を抑制 */
 html {
   -webkit-text-size-adjust: 100%;
 }
@@ -27,43 +25,43 @@ body,
   height: 100%;
 }
 
+/* ✅ 微妙な横はみ出しを根絶（iOS含む） */
 html,
 body {
   margin: 0;
   overflow-x: hidden;
 }
 
+/* iOSの1pxスクロール対策の保険 */
 body {
   position: relative;
 }
 
-/* =========================================================
-   CSS Variables
-   ========================================================= */
+/* ===== ベースの見た目（土台） ===== */
 :root {
   color-scheme: dark;
-
   --text: rgba(255, 255, 255, 0.92);
   --muted: rgba(255, 255, 255, 0.68);
   --line: rgba(255, 255, 255, 0.14);
 
-  /* 背景 */
+  /* 背景の“空気” */
   --bg-base-0: #07080b;
   --bg-base-1: #0b0d13;
   --bg-accent: rgba(255, 77, 109, 0.18);
 
+  /* ✅ 背景画像 */
   --bg-image: url("/assets/bg/ui-check.png");
+
+  /* ✅ 背景のぼかし＆暗幕（Settingsから操作する想定） */
   --bg-blur: 0px;
   --bg-dim: 0.25;
 
-  /* ガラス（PageShellから上書き） */
-  --glass-alpha: 0.22;
-  --glass-blur: 10px;
+  /* ✅ すりガラス（情報レイヤー/入力/ボタン等すべてこれに統一） */
+  --glass-blur: 10px; /* 0pxで完全オフ */
+  --glass-alpha: 0.22; /* 0〜1（濃さ） */
+  --glass-alpha-strong: 0.35; /* “少し濃い”用 */
 }
 
-/* =========================================================
-   Body
-   ========================================================= */
 body {
   color: var(--text);
   background: radial-gradient(
@@ -81,7 +79,7 @@ body {
     "Noto Sans JP", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
 }
 
-/* root制御はPageShellに委譲 */
+/* Viteテンプレ由来のroot縛りを解除（PageShellに任せる） */
 #root {
   width: 100%;
   max-width: none;
@@ -90,14 +88,115 @@ body {
   text-align: initial;
 }
 
+/* スマホで崩れやすい要素を守る */
+img,
+svg,
+canvas,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+pre,
+code {
+  overflow-x: auto;
+}
+
+/* 見出し：スマホ最優先 */
+h1 {
+  font-size: clamp(22px, 7vw, 40px);
+  line-height: 1.1;
+  margin: 0 0 10px;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: clamp(18px, 5.8vw, 28px);
+  line-height: 1.15;
+  margin: 0 0 10px;
+}
+
+h3 {
+  font-size: clamp(16px, 4.8vw, 22px);
+  line-height: 1.2;
+  margin: 0 0 8px;
+}
+
+p,
+li {
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+/* 入力は16px以上（buttonも揃える） */
+input,
+textarea,
+select,
+button {
+  font-size: 16px;
+}
+
+/* ✅ 入力のはみ出し特効薬セット */
+input,
+textarea,
+select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* ボタンもはみ出し抑制 */
+button {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* 長いテキストが横に突き抜けるのを防ぐ */
+p,
+li,
+div,
+span,
+label,
+h1,
+h2,
+h3 {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* ✅ 横スワイプ用の汎用クラス（Recordの一覧に当てる） */
+.horizontal-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  width: 100%;
+  max-width: 100%;
+  padding: 6px 2px 10px;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+}
+
+.horizontal-scroll > * {
+  flex: 0 0 min(84vw, 360px);
+  scroll-snap-align: start;
+  min-width: 0;
+}
+
+/* safe-area対応（iPhone下のホームバー回避） */
+.safe-area-bottom {
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
 /* =========================================================
-   PageShell Background
+   ✅ PageShell背景レイヤー（全画面共通）
    ========================================================= */
 .page-shell {
   position: relative;
   isolation: isolate;
 }
 
+/* 背景画像＋空気 */
 .page-shell::before {
   content: "";
   position: fixed;
@@ -121,8 +220,8 @@ body {
   background-position: center;
   background-repeat: no-repeat;
 
-  /* 背景ぼかし（完全0対応） */
-  filter: blur(var(--bg-blur));
+  /* ✅ 背景ぼかし（ここは“背景”用のスライダーに紐づく想定） */
+  filter: blur(var(--bg-blur, 0px));
   transform: translateZ(0);
 }
 
@@ -131,88 +230,77 @@ body {
   position: fixed;
   inset: 0;
   z-index: -1;
-  pointer-events: none;
 
   background: linear-gradient(
       180deg,
-      rgba(0, 0, 0, calc(var(--bg-dim) + 0.1)),
-      rgba(0, 0, 0, var(--bg-dim))
+      rgba(0, 0, 0, calc(var(--bg-dim, 0.35) + 0.1)),
+      rgba(0, 0, 0, var(--bg-dim, 0.35))
     ),
     radial-gradient(
       800px 500px at 50% 30%,
       rgba(255, 255, 255, 0.06),
       transparent 65%
     );
+  pointer-events: none;
+}
+
+.page-shell-inner {
+  position: relative;
+  z-index: 0;
 }
 
 /* =========================================================
-   Typography
+   ✅ 戻るボタン（右上固定に統一）
    ========================================================= */
-h1 {
-  font-size: clamp(22px, 7vw, 40px);
-  line-height: 1.1;
-  margin: 0 0 10px;
+.back-button {
+  position: fixed;
+  z-index: 50;
+
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  left: auto;
+
+  width: auto;
+  max-width: calc(100vw - 20px);
+
+  border: 1px solid var(--line);
+  border-radius: 999px;
+
+  padding: 8px 12px;
+  line-height: 1;
+  white-space: nowrap;
+
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(10, 10, 12, 0.55);
+
+  /* ✅ ガラスは全部これに統一 */
+  backdrop-filter: blur(var(--glass-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
+
+  cursor: pointer;
 }
 
-h2 {
-  font-size: clamp(18px, 5.8vw, 28px);
-  margin: 0 0 10px;
+.back-button:active {
+  transform: translateY(1px);
 }
 
-h3 {
-  font-size: clamp(16px, 4.8vw, 22px);
-  margin: 0 0 8px;
-}
-
-p,
-li {
-  font-size: 16px;
-  line-height: 1.6;
-}
-
-/* =========================================================
-   Glass Utility
-   ========================================================= */
-
-/* blur が 0 のときは backdrop-filter を使わない */
-@supports (backdrop-filter: blur(1px)) {
-  .glass,
-  .glass-strong,
-  button,
-  input,
-  textarea,
-  select,
-  .back-button {
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-  }
+.with-back-button {
+  padding-top: 44px;
 }
 
 /* =========================================================
-   Glass Blocks
-   ========================================================= */
-.glass {
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 16px;
-  background: rgba(0, 0, 0, var(--glass-alpha));
-}
-
-.glass-strong {
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 16px;
-  background: rgba(0, 0, 0, calc(var(--glass-alpha) * 1.15));
-}
-
-/* =========================================================
-   Buttons / Inputs
+   ✅ 透過UIの“質感”ベース（固定blur撤去）
    ========================================================= */
 button {
   border: 1px solid var(--line);
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.06);
+
+  backdrop-filter: blur(var(--glass-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
+
   border-radius: 14px;
   padding: 10px 14px;
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(255, 255, 255, calc(var(--glass-alpha) * 0.28));
-  cursor: pointer;
 }
 
 button:disabled {
@@ -222,49 +310,70 @@ button:disabled {
 input,
 textarea,
 select {
-  width: 100%;
   border: 1px solid var(--line);
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(0, 0, 0, 0.28);
+
+  backdrop-filter: blur(var(--glass-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
+
   border-radius: 12px;
   padding: 10px 12px;
-  color: rgba(255, 255, 255, 0.92);
-  background: rgba(0, 0, 0, calc(var(--glass-alpha) + 0.06));
+  outline: none;
 }
 
 input:focus,
 textarea:focus,
 select:focus {
   border-color: rgba(255, 77, 109, 0.55);
-  outline: none;
 }
 
-/* =========================================================
-   Back Button
-   ========================================================= */
-.back-button {
-  position: fixed;
-  z-index: 50;
-  top: max(10px, env(safe-area-inset-top));
-  right: max(10px, env(safe-area-inset-right));
-  border-radius: 999px;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  background: rgba(10, 10, 12, calc(var(--glass-alpha) + 0.18));
+/* ✅ “情報レイヤー板”を作りたい時の共通クラス（必要なら使う） */
+.glass-panel {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
+  backdrop-filter: blur(var(--glass-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
 }
 
-.with-back-button {
-  padding-top: 44px;
+.glass-panel.strong {
+  background: rgba(17, 17, 17, var(--glass-alpha-strong, 0.35));
 }
 
-/* =========================================================
-   Utilities
-   ========================================================= */
-.horizontal-scroll {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+/* 以下は元のまま（使ってないなら消してOK） */
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
 }
 
-.safe-area-bottom {
-  padding-bottom: max(16px, env(safe-area-inset-bottom));
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
 }

@@ -1,5 +1,4 @@
 // src/screens/Weather.tsx
-
 import { useEffect, useMemo, useState } from "react";
 import { FIXED_PORT } from "../points";
 import TideGraph from "../components/TideGraph";
@@ -74,10 +73,6 @@ function toMinutes(p: TidePoint): number | null {
 type Pt = { min: number; cm: number };
 type TideExtreme = { kind: "high" | "low"; min: number; cm: number };
 
-/**
- * 満潮/干潮：単純なスロープ反転（TideGraphと同等）
- * 表示は 満潮2 / 干潮2
- */
 function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
   const pts: Pt[] = [];
   for (const p of series) {
@@ -89,7 +84,6 @@ function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
 
   pts.sort((a, b) => a.min - b.min);
 
-  // 同一分は最後を採用
   const uniq: Pt[] = [];
   for (const p of pts) {
     const last = uniq[uniq.length - 1];
@@ -97,7 +91,6 @@ function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
     else uniq.push(p);
   }
 
-  // 0:00/24:00補完
   if (uniq.length >= 2) {
     const first = uniq[0];
     const last = uniq[uniq.length - 1];
@@ -107,7 +100,7 @@ function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
 
   const EPS_CM = 1;
   const raw: TideExtreme[] = [];
-  let prevSlope = 0; // -1 down, +1 up, 0 flat
+  let prevSlope = 0;
 
   for (let i = 1; i < uniq.length; i++) {
     const d = uniq[i].cm - uniq[i - 1].cm;
@@ -125,7 +118,6 @@ function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
     if (slope !== 0) prevSlope = slope;
   }
 
-  // 近接重複をマージ（5分以内）
   const MERGE_MIN = 5;
   const merged: TideExtreme[] = [];
   for (const e of raw) {
@@ -181,14 +173,17 @@ type LoadState =
     }
   | { status: "error"; message: string };
 
-// ✅ “情報タイル”の共通ガラススタイル
+const GLASS_BG = "rgba(17,17,17,var(--glass-alpha,0.22))";
+const GLASS_BG_STRONG = "rgba(17,17,17,var(--glass-alpha-strong,0.35))";
+const GLASS_BLUR = "blur(var(--glass-blur,0px))";
+
 const TILE_STYLE: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.10)",
   borderRadius: 12,
   padding: 12,
-  background: "rgba(17,17,17,0.45)", // ← 透過の本丸
-  backdropFilter: "blur(10px)",
-  WebkitBackdropFilter: "blur(10px)",
+  background: GLASS_BG,
+  backdropFilter: GLASS_BLUR,
+  WebkitBackdropFilter: GLASS_BLUR,
   color: "#ddd",
   minWidth: 0,
 };
@@ -225,7 +220,6 @@ export default function Weather({ back }: Props) {
     return d ? startOfDay(d) : startOfDay(now);
   }, [tab, picked]);
 
-  // pickタブに入ったら、表示してる日付もピッカーに反映
   useEffect(() => {
     if (tab !== "pick") return;
     setPicked(toDateInputValue(targetDate));
@@ -320,16 +314,16 @@ export default function Weather({ back }: Props) {
               tab === "today"
                 ? "2px solid #ff4d6d"
                 : "1px solid rgba(255,255,255,0.15)",
-            background:
-              tab === "today" ? "rgba(26,17,21,0.55)" : "rgba(17,17,17,0.35)",
-            backdropFilter: "blur(10px)",
-            WebkitBackdropFilter: "blur(10px)",
+            background: tab === "today" ? GLASS_BG_STRONG : GLASS_BG,
+            backdropFilter: GLASS_BLUR,
+            WebkitBackdropFilter: GLASS_BLUR,
             color: "#eee",
             cursor: "pointer",
           }}
         >
           今日
         </button>
+
         <button
           onClick={() => setTab("tomorrow")}
           style={{
@@ -339,18 +333,16 @@ export default function Weather({ back }: Props) {
               tab === "tomorrow"
                 ? "2px solid #ff4d6d"
                 : "1px solid rgba(255,255,255,0.15)",
-            background:
-              tab === "tomorrow"
-                ? "rgba(26,17,21,0.55)"
-                : "rgba(17,17,17,0.35)",
-            backdropFilter: "blur(10px)",
-            WebkitBackdropFilter: "blur(10px)",
+            background: tab === "tomorrow" ? GLASS_BG_STRONG : GLASS_BG,
+            backdropFilter: GLASS_BLUR,
+            WebkitBackdropFilter: GLASS_BLUR,
             color: "#eee",
             cursor: "pointer",
           }}
         >
           明日
         </button>
+
         <button
           onClick={() => setTab("pick")}
           style={{
@@ -360,10 +352,9 @@ export default function Weather({ back }: Props) {
               tab === "pick"
                 ? "2px solid #ff4d6d"
                 : "1px solid rgba(255,255,255,0.15)",
-            background:
-              tab === "pick" ? "rgba(26,17,21,0.55)" : "rgba(17,17,17,0.35)",
-            backdropFilter: "blur(10px)",
-            WebkitBackdropFilter: "blur(10px)",
+            background: tab === "pick" ? GLASS_BG_STRONG : GLASS_BG,
+            backdropFilter: GLASS_BLUR,
+            WebkitBackdropFilter: GLASS_BLUR,
             color: "#eee",
             cursor: "pointer",
           }}
@@ -387,9 +378,9 @@ export default function Weather({ back }: Props) {
               value={picked}
               onChange={(e) => setPicked(e.target.value)}
               style={{
-                background: "rgba(17,17,17,0.35)",
-                backdropFilter: "blur(10px)",
-                WebkitBackdropFilter: "blur(10px)",
+                background: GLASS_BG,
+                backdropFilter: GLASS_BLUR,
+                WebkitBackdropFilter: GLASS_BLUR,
                 color: "#eee",
                 border: "1px solid rgba(255,255,255,0.15)",
                 borderRadius: 10,
@@ -425,24 +416,11 @@ export default function Weather({ back }: Props) {
             minWidth: 0,
           }}
         >
-          <div
-            style={{
-              fontSize: 12,
-              color: "rgba(255,255,255,0.65)",
-              minWidth: 0,
-            }}
-          >
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
             📅 {targetDate.toLocaleDateString()}
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              minWidth: 0,
-            }}
-          >
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             {state.status === "ok" &&
               (() => {
                 const lab = sourceLabel(state.source, state.isStale);
@@ -489,13 +467,6 @@ export default function Weather({ back }: Props) {
             }}
           >
             ※潮名（大潮など）が未取得のキャッシュです（TTL切れで再取得されたタイミングで入ります）
-          </div>
-        )}
-
-        {state.status === "ok" && !online && state.source === "stale-cache" && (
-          <div style={{ marginTop: 8, fontSize: 12, color: "#f6c" }}>
-            ⚠
-            オフラインのため、期限切れキャッシュで表示中（オンライン復帰後に再取得できます）
           </div>
         )}
       </div>
@@ -555,21 +526,12 @@ export default function Weather({ back }: Props) {
 
         {/* グラフ */}
         <div style={{ minWidth: 0 }}>
-          {state.status === "ok" && state.series.length > 0 ? (
-            <TideGraph
-              series={state.series}
-              baseDate={targetDate}
-              highlightAt={highlightAt}
-              yDomain={{ min: -50, max: 200 }}
-            />
-          ) : (
-            <TideGraph
-              series={[]}
-              baseDate={targetDate}
-              highlightAt={null}
-              yDomain={{ min: -50, max: 200 }}
-            />
-          )}
+          <TideGraph
+            series={state.status === "ok" ? state.series : []}
+            baseDate={targetDate}
+            highlightAt={highlightAt}
+            yDomain={{ min: -50, max: 200 }}
+          />
         </div>
       </div>
 
