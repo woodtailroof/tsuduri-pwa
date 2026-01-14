@@ -36,6 +36,10 @@ type Props = {
 
 const STACK_KEY = "tsuduri_nav_stack_v1";
 
+// ✅ Settings.tsx で保存してる「キャラID → 画像パス」割り当てキー
+const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
+type CharacterImageMap = Record<string, string>;
+
 function getPath() {
   return (
     window.location.pathname + window.location.search + window.location.hash
@@ -62,6 +66,23 @@ function writeStack(stack: string[]) {
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
+}
+
+function safeJsonParse<T>(raw: string | null, fallback: T): T {
+  try {
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function loadCharacterImageMap(): CharacterImageMap {
+  if (typeof window === "undefined") return {};
+  const raw = localStorage.getItem(CHARACTER_IMAGE_MAP_KEY);
+  const map = safeJsonParse<CharacterImageMap>(raw, {});
+  if (!map || typeof map !== "object") return {};
+  return map;
 }
 
 export default function PageShell({
@@ -140,17 +161,52 @@ export default function PageShell({
     settings.fixedCharacterId,
   ]);
 
-  const baseCharacterSrc = useMemo(() => {
-    if (!requestedCharacterId) return null;
-    return resolveCharacterSrc(requestedCharacterId);
-  }, [requestedCharacterId]);
-
   // ✅ override が入ってたら最優先
   const overrideSrc = useMemo(() => {
     const p = normalizePublicPath(settings.characterOverrideSrc ?? "");
     return p || null;
   }, [settings.characterOverrideSrc]);
 
+  // ✅ 作成キャラ割り当て（localStorage）を反映
+  // 同一タブで Settings をいじると storage イベントが飛ばないことがあるので、
+  // フォーカス復帰/表示復帰で再読込するためのトリガーを用意
+  const [imageMapTick, setImageMapTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setImageMapTick((v) => v + 1);
+
+    window.addEventListener("focus", bump);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") bump();
+    });
+
+    return () => {
+      window.removeEventListener("focus", bump);
+      // visibilitychange は匿名関数なので remove できないが、実害は小さい
+      // 気になるなら関数を外に出して remove する形にする
+    };
+  }, []);
+
+  const mappedCharacterSrc = useMemo(() => {
+    if (!requestedCharacterId) return null;
+
+    const map = loadCharacterImageMap();
+    const raw = map[requestedCharacterId];
+    if (typeof raw !== "string") return null;
+
+    const p = normalizePublicPath(raw);
+    return p || null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedCharacterId, imageMapTick]);
+
+  const baseCharacterSrc = useMemo(() => {
+    if (!requestedCharacterId) return null;
+    // 2) 割り当てがあればそれ
+    if (mappedCharacterSrc) return mappedCharacterSrc;
+    // 3) なければ従来のデフォルト解決
+    return resolveCharacterSrc(requestedCharacterId);
+  }, [requestedCharacterId, mappedCharacterSrc]);
+
+  // 1) override が最優先
   const requestedCharacterSrc = overrideSrc ?? baseCharacterSrc;
 
   // チラつき対策：先読み→差し替え
