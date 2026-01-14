@@ -131,17 +131,21 @@ export default function PageShell({
   }, [onBack, fallbackHref]);
 
   // ===========
-  // ✅ 設定反映（暗幕/ぼかし/情報板）
+  // ✅ 設定反映（暗幕/ぼかし/情報板/ガラス）
   // ===========
   const effectiveBgDim = settings.bgDim ?? bgDim;
   const effectiveBgBlur = settings.bgBlur ?? bgBlur;
   const infoPanelAlpha = clamp(settings.infoPanelAlpha ?? 0, 0, 1);
 
+  // ✅ すりガラス（スライダーが効くように CSS 変数で渡す）
+  // （appSettings に入ってない環境でも壊れないようにフォールバック）
+  const glassAlpha = clamp((settings as any).glassAlpha ?? 0.22, 0, 1);
+  const glassBlur = clamp((settings as any).glassBlur ?? 10, 0, 24);
+
   // ===========
   // ✅ キャラ（固定/ランダム） + チラつき対策
   // ===========
-  // ❗重要: 「ランダムID」を render 中に毎回引くと setState→再render→…で無限ループになり得る。
-  // ここでは「この PageShell のライフタイムで 1 回だけ」ランダムIDを決める。
+  // ❗重要: render 中に random を引かない（#185 対策）
   const [randomCharacterId] = useState<string | null>(() => {
     if (!settings.characterEnabled) return null;
     if (settings.characterMode !== "random") return null;
@@ -159,33 +163,41 @@ export default function PageShell({
     randomCharacterId,
   ]);
 
+  // ✅ 画像上書き（characterImageOverrides）が効くように渡す
   const requestedCharacterSrc = useMemo(() => {
     if (!requestedCharacterId) return null;
-    return resolveCharacterSrc(requestedCharacterId);
-  }, [requestedCharacterId]);
+    const overrides = (settings as any).characterImageOverrides as
+      | Record<string, string>
+      | undefined
+      | null;
+    return resolveCharacterSrc(requestedCharacterId, overrides ?? null);
+  }, [requestedCharacterId, (settings as any).characterImageOverrides]);
 
-  // 「画面遷移の瞬間に一瞬消える」を防ぐため、
-  // 新しい src を先読みしてから差し替える（旧表示は残す）
+  // ✅ displaySrc は「requestedCharacterSrc が変わったら必ず更新」する
   const [displaySrc, setDisplaySrc] = useState<string | null>(() => {
-    if (!requestedCharacterSrc) return testCharacterSrc;
-    return requestedCharacterSrc;
+    return (requestedCharacterSrc ?? testCharacterSrc) || null;
   });
   const [fadeIn, setFadeIn] = useState(true);
   const lastSrcRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const next = requestedCharacterSrc ?? testCharacterSrc;
+    const next = (requestedCharacterSrc ?? testCharacterSrc) || null;
     if (!next) return;
 
+    // 次が同じなら何もしない
     if (lastSrcRef.current === next) return;
     lastSrcRef.current = next;
 
-    // 先読みしてから差し替え
+    // まず即時に差し替え（“変わらない”体感を消す）
+    setDisplaySrc(next);
+
+    // そのうえで先読み完了したらフェードを綺麗に
     const img = new Image();
     img.decoding = "async";
     img.src = next;
 
     let cancelled = false;
+
     const onLoad = () => {
       if (cancelled) return;
       setFadeIn(false);
@@ -194,9 +206,11 @@ export default function PageShell({
         requestAnimationFrame(() => setFadeIn(true));
       });
     };
+
     const onError = () => {
       if (cancelled) return;
-      // エラー時は無理に変えない（表示継続）
+      // 読めないパスなら警告だけ（表示は維持）
+      console.warn("character image load failed:", next);
     };
 
     img.addEventListener("load", onLoad);
@@ -226,6 +240,10 @@ export default function PageShell({
 
     ["--bg-dim" as any]: String(effectiveBgDim),
     ["--bg-blur" as any]: `${effectiveBgBlur}px`,
+
+    // ✅ すりガラス用（CSSで参照）
+    ["--glass-alpha" as any]: String(glassAlpha),
+    ["--glass-blur" as any]: `${glassBlur}px`,
   };
   if (bgImage) shellStyle["--bg-image" as any] = `url(${bgImage})`;
 
@@ -234,6 +252,23 @@ export default function PageShell({
 
   return (
     <div className="page-shell" style={shellStyle}>
+      {/* ✅ すりガラス定義：CSSが変数を参照してなかった問題をここで確実に解決 */}
+      <style>{`
+        .page-shell .glass,
+        .page-shell .glass-strong{
+          backdrop-filter: blur(var(--glass-blur, 10px));
+          -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
+          border: 1px solid rgba(255,255,255,0.18);
+          box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+        }
+        .page-shell .glass{
+          background: rgba(0,0,0,var(--glass-alpha, 0.22));
+        }
+        .page-shell .glass-strong{
+          background: rgba(0,0,0, calc(var(--glass-alpha, 0.22) * 1.2));
+        }
+      `}</style>
+
       {/* ✅ キャラレイヤ（固定） */}
       {shouldShowCharacter && (
         <div
