@@ -12,8 +12,8 @@ import {
 import type { TideCacheEntry } from "../db";
 import PageShell from "../components/PageShell";
 import {
-  CHARACTER_OPTIONS,
   DEFAULT_SETTINGS,
+  getCharacterOptions,
   useAppSettings,
 } from "../lib/appSettings";
 
@@ -32,23 +32,6 @@ function fmtIso(iso: string | null) {
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
-}
-
-type CharacterOption = { id: string; label: string };
-
-// AppSettings 側の CHARACTER_OPTIONS から label だけ抜く
-function safeCharacterOptions(): CharacterOption[] {
-  const raw = CHARACTER_OPTIONS;
-  const ok = raw
-    .filter((x) => x && typeof x.id === "string" && typeof x.label === "string")
-    .map((x) => ({ id: x.id, label: x.label }));
-  if (ok.length > 0) return ok;
-
-  return [
-    { id: "tsuduri", label: "つづり" },
-    { id: "kokoro", label: "こころ" },
-    { id: "matsuri", label: "まつり" },
-  ];
 }
 
 function useIsNarrow(breakpointPx = 720) {
@@ -74,11 +57,20 @@ function useIsNarrow(breakpointPx = 720) {
 }
 
 export default function Settings({ back }: Props) {
-  // ✅ Hooks は必ずトップレベルで呼ぶ（try/catch禁止）
   const { settings, set, reset } = useAppSettings();
 
   const isNarrow = useIsNarrow(720);
-  const characterOptions = useMemo(() => safeCharacterOptions(), []);
+
+  // ✅ 作成キャラが増えてもここが追従する（localStorageから都度取得）
+  const characterOptions = useMemo(() => {
+    try {
+      return getCharacterOptions();
+    } catch {
+      return [
+        { id: "tsuduri", label: "つづり", src: "/assets/character-test.png" },
+      ];
+    }
+  }, [settings.version]); // settings更新で再計算（軽い）
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -114,7 +106,6 @@ export default function Settings({ back }: Props) {
     gap: 12,
   };
 
-  // ✅ スマホは1カラム、PCは2カラム
   const row: CSSProperties = isNarrow
     ? { display: "grid", gap: 8, alignItems: "start" }
     : {
@@ -207,33 +198,50 @@ export default function Settings({ back }: Props) {
     return Math.round((kb / 1024) * 100) / 100;
   }, [stats]);
 
-  // ✅ settings は常に存在する前提（useAppSettings が保証）
+  // settings は常に存在する前提（useAppSettings が保証）
   const characterEnabled =
     settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
   const characterMode =
     settings.characterMode ?? DEFAULT_SETTINGS.characterMode;
+
   const fixedCharacterId =
     settings.fixedCharacterId ??
     characterOptions[0]?.id ??
     DEFAULT_SETTINGS.fixedCharacterId;
+
   const characterScale = Number.isFinite(settings.characterScale)
     ? settings.characterScale
     : DEFAULT_SETTINGS.characterScale;
+
   const characterOpacity = Number.isFinite(settings.characterOpacity)
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
+
   const bgDim = Number.isFinite(settings.bgDim)
     ? settings.bgDim
     : DEFAULT_SETTINGS.bgDim;
   const bgBlur = Number.isFinite(settings.bgBlur)
     ? settings.bgBlur
     : DEFAULT_SETTINGS.bgBlur;
+
   const infoPanelAlpha = Number.isFinite(settings.infoPanelAlpha)
     ? settings.infoPanelAlpha
     : DEFAULT_SETTINGS.infoPanelAlpha;
 
+  const glassAlpha = Number.isFinite(settings.glassAlpha)
+    ? settings.glassAlpha
+    : DEFAULT_SETTINGS.glassAlpha;
+
+  const glassBlur = Number.isFinite(settings.glassBlur)
+    ? settings.glassBlur
+    : DEFAULT_SETTINGS.glassBlur;
+
   const isCharControlsDisabled = !characterEnabled;
   const isFixedDisabled = !characterEnabled || characterMode !== "fixed";
+
+  // ✅ キャラ画像上書き
+  const overrides = settings.characterImageOverrides ?? {};
+  const currentOverride = (overrides[fixedCharacterId] ?? "").trim();
 
   return (
     <PageShell
@@ -250,7 +258,6 @@ export default function Settings({ back }: Props) {
       maxWidth={980}
       showBack
       onBack={back}
-      // ✅ スマホではキャラがフォームを邪魔しやすいので非表示（必要なら後でON/OFF設定化も可）
       showTestCharacter={!isNarrow}
     >
       <div style={{ display: "grid", gap: 16 }}>
@@ -340,6 +347,87 @@ export default function Settings({ back }: Props) {
                   ))}
                 </select>
                 <div style={help}>「固定」を選んだときだけ有効だよ。</div>
+              </div>
+            </div>
+
+            {/* ✅ キャラ画像（固定キャラの上書き） */}
+            <div style={row}>
+              <div style={label}>キャラ画像</div>
+              <div style={rowStack}>
+                <input
+                  type="text"
+                  value={currentOverride}
+                  disabled={isFixedDisabled}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    const next = {
+                      ...(settings.characterImageOverrides ?? {}),
+                    };
+                    if (!v.trim()) delete next[fixedCharacterId];
+                    else next[fixedCharacterId] = v.trim();
+                    set({ characterImageOverrides: next });
+                  }}
+                  placeholder='例: "/assets/tsuduri.png"'
+                  style={fullWidthControl}
+                />
+                <div style={help}>
+                  ここに「public
+                  配下の画像パス」を入れると、そのキャラの表示画像を上書きできるよ。
+                  空にするとデフォルトへ戻る。
+                </div>
+
+                {!isFixedDisabled && (
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      style={pillBase}
+                      onClick={() => {
+                        const next = {
+                          ...(settings.characterImageOverrides ?? {}),
+                        };
+                        delete next[fixedCharacterId];
+                        set({ characterImageOverrides: next });
+                      }}
+                    >
+                      ↩ デフォルトに戻す
+                    </button>
+
+                    {/* プレビュー（パスが有効なら見える） */}
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 10 }}
+                    >
+                      <span style={help}>プレビュー:</span>
+                      <img
+                        src={
+                          (currentOverride ||
+                            characterOptions.find(
+                              (c) => c.id === fixedCharacterId
+                            )?.src) ??
+                          "/assets/character-test.png"
+                        }
+                        alt=""
+                        style={{
+                          height: 56,
+                          width: "auto",
+                          borderRadius: 10,
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          background: "rgba(0,0,0,0.2)",
+                        }}
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.opacity =
+                            "0.35";
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -460,6 +548,49 @@ export default function Settings({ back }: Props) {
                   value={infoPanelAlpha}
                   onChange={(e) =>
                     set({ infoPanelAlpha: clamp(Number(e.target.value), 0, 1) })
+                  }
+                  style={fullWidthControl}
+                />
+              </div>
+            </div>
+
+            {/* ✅ 擦りガラス度（復活） */}
+            <div style={row}>
+              <div style={label}>擦りガラスの濃さ</div>
+              <div style={rowStack}>
+                <div style={controlLine}>
+                  <span style={help}>カード背景の透過度</span>
+                  <span style={help}>{Math.round(glassAlpha * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={0.6}
+                  step={0.02}
+                  value={glassAlpha}
+                  onChange={(e) =>
+                    set({ glassAlpha: clamp(Number(e.target.value), 0, 1) })
+                  }
+                  style={fullWidthControl}
+                />
+              </div>
+            </div>
+
+            <div style={row}>
+              <div style={label}>擦りガラスのぼかし</div>
+              <div style={rowStack}>
+                <div style={controlLine}>
+                  <span style={help}>カードの blur</span>
+                  <span style={help}>{glassBlur}px</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={24}
+                  step={1}
+                  value={glassBlur}
+                  onChange={(e) =>
+                    set({ glassBlur: clamp(Number(e.target.value), 0, 24) })
                   }
                   style={fullWidthControl}
                 />

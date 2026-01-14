@@ -4,7 +4,7 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 export type CharacterMode = "fixed" | "random";
 
 export type AppSettings = {
-  version: 1;
+  version: 2;
 
   // ===== キャラ =====
   characterEnabled: boolean;
@@ -15,20 +15,35 @@ export type AppSettings = {
   /** 0〜1 */
   characterOpacity: number;
 
+  /** ✅ キャラ画像の上書き（id -> src） */
+  characterImageOverrides: Record<string, string>;
+
   // ===== 表示 =====
   /** 背景暗幕 0〜1 */
   bgDim: number;
   /** 背景ぼかし(px) */
   bgBlur: number;
-  /** 情報レイヤー背面の「板」不透明度 0〜1（文字は薄くしない） */
+
+  /** ✅ 情報レイヤー背面の「板」不透明度 0〜1（文字は薄くしない） */
   infoPanelAlpha: number;
+
+  /** ✅ 擦りガラス（カード）透過度 0〜1 */
+  glassAlpha: number;
+  /** ✅ 擦りガラス（カード）ぼかし(px) */
+  glassBlur: number;
 };
 
-const KEY = "tsuduri_app_settings_v1";
+const KEY = "tsuduri_app_settings_v2";
 
-// ここは「最初の気持ちよさ」重視の初期値
+/**
+ * ✅ キャラ一覧は「作成したキャラ」を拾うため localStorage から読む
+ * CharacterSettings 側の保存キー（プロジェクト既存）
+ */
+const CHARACTERS_KEY_V2 = "tsuduri_characters_v2";
+
+// 初期値（気持ちよさ重視）
 export const DEFAULT_SETTINGS: AppSettings = {
-  version: 1,
+  version: 2,
 
   characterEnabled: true,
   characterMode: "fixed",
@@ -36,24 +51,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
   characterScale: 1.15,
   characterOpacity: 1,
 
+  characterImageOverrides: {},
+
   bgDim: 0.55,
   bgBlur: 0,
   infoPanelAlpha: 0,
+
+  // ✅ 以前の「擦りガラス度」相当の初期値（お好みで）
+  glassAlpha: 0.22,
+  glassBlur: 10,
 };
 
-// キャラ候補（ここ増やせばUIに出る）
-// ※ この src は「表示用の画像パス」。
-// 　将来 characterStore と統合して管理するなら、ここを動的に置き換える
-export type CharacterOption = { id: string; label: string; src: string };
-export const CHARACTER_OPTIONS: CharacterOption[] = [
-  {
-    id: "tsuduri",
-    label: "つづり（テスト）",
-    src: "/assets/character-test.png",
-  },
-  // { id: 'kokoro', label: 'こころ', src: '/assets/kokoro.png' },
-  // { id: 'matsuri', label: 'まつり', src: '/assets/matsuri.png' },
-];
+export type CharacterOption = { id: string; label: string; src?: string };
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -68,8 +77,83 @@ function safeParse(raw: string | null): unknown {
   }
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+function normalizeOverrides(v: unknown): Record<string, string> {
+  if (!isRecord(v)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v)) {
+    if (typeof k === "string" && typeof val === "string" && val.trim()) {
+      out[k] = val.trim();
+    }
+  }
+  return out;
+}
+
+/** ✅ 作成キャラ（CharacterSettings）を localStorage から拾って選択肢にする */
+export function getCharacterOptions(): CharacterOption[] {
+  const fallback: CharacterOption[] = [
+    { id: "tsuduri", label: "つづり", src: "/assets/character-test.png" },
+  ];
+
+  try {
+    const raw = localStorage.getItem(CHARACTERS_KEY_V2);
+    const parsed = safeParse(raw);
+
+    if (!Array.isArray(parsed)) return fallback;
+
+    const list: CharacterOption[] = parsed
+      .map((x) => (isRecord(x) ? x : null))
+      .filter(Boolean)
+      .map((x) => {
+        const id =
+          typeof x!.id === "string" && x!.id.trim() ? x!.id.trim() : "";
+        const label =
+          typeof x!.name === "string" && x!.name.trim()
+            ? x!.name.trim()
+            : typeof x!.label === "string" && x!.label.trim()
+            ? x!.label.trim()
+            : id;
+
+        // 画像は profile 側に src を持ってる場合もあるので拾う（なければ undefined）
+        const src =
+          typeof x!.src === "string" && x!.src.trim()
+            ? x!.src.trim()
+            : typeof x!.imageSrc === "string" && x!.imageSrc.trim()
+            ? x!.imageSrc.trim()
+            : undefined;
+
+        return id ? { id, label, src } : null;
+      })
+      .filter(Boolean) as CharacterOption[];
+
+    // 最低1件は欲しい
+    if (list.length === 0) return fallback;
+
+    // tsuduri が無い場合は先頭に差し込む（壊れにくくする）
+    const hasTsuduri = list.some((c) => c.id === "tsuduri");
+    if (!hasTsuduri) return [...fallback, ...list];
+
+    return list;
+  } catch {
+    return fallback;
+  }
+}
+
 function normalize(input: unknown): AppSettings {
-  const x = (input ?? {}) as Partial<AppSettings>;
+  const x = (input ?? {}) as Partial<AppSettings> & { version?: number };
+
+  const opts = (() => {
+    try {
+      return getCharacterOptions();
+    } catch {
+      return [
+        { id: "tsuduri", label: "つづり", src: "/assets/character-test.png" },
+      ];
+    }
+  })();
 
   const fixedId =
     typeof x.fixedCharacterId === "string" && x.fixedCharacterId.trim()
@@ -77,16 +161,17 @@ function normalize(input: unknown): AppSettings {
       : DEFAULT_SETTINGS.fixedCharacterId;
 
   const normalized: AppSettings = {
-    version: 1,
+    version: 2,
 
     characterEnabled:
       typeof x.characterEnabled === "boolean"
         ? x.characterEnabled
         : DEFAULT_SETTINGS.characterEnabled,
+
     characterMode: x.characterMode === "random" ? "random" : "fixed",
+
     fixedCharacterId: fixedId,
 
-    // ✅ 上限 5.0
     characterScale: clamp(
       Number.isFinite(x.characterScale as number)
         ? (x.characterScale as number)
@@ -94,12 +179,17 @@ function normalize(input: unknown): AppSettings {
       0.7,
       5.0
     ),
+
     characterOpacity: clamp(
       Number.isFinite(x.characterOpacity as number)
         ? (x.characterOpacity as number)
         : DEFAULT_SETTINGS.characterOpacity,
       0,
       1
+    ),
+
+    characterImageOverrides: normalizeOverrides(
+      (x as any).characterImageOverrides
     ),
 
     bgDim: clamp(
@@ -109,6 +199,7 @@ function normalize(input: unknown): AppSettings {
       0,
       1
     ),
+
     bgBlur: clamp(
       Number.isFinite(x.bgBlur as number)
         ? (x.bgBlur as number)
@@ -116,6 +207,7 @@ function normalize(input: unknown): AppSettings {
       0,
       24
     ),
+
     infoPanelAlpha: clamp(
       Number.isFinite(x.infoPanelAlpha as number)
         ? (x.infoPanelAlpha as number)
@@ -123,24 +215,35 @@ function normalize(input: unknown): AppSettings {
       0,
       1
     ),
+
+    glassAlpha: clamp(
+      Number.isFinite((x as any).glassAlpha as number)
+        ? ((x as any).glassAlpha as number)
+        : DEFAULT_SETTINGS.glassAlpha,
+      0,
+      1
+    ),
+
+    glassBlur: clamp(
+      Number.isFinite((x as any).glassBlur as number)
+        ? ((x as any).glassBlur as number)
+        : DEFAULT_SETTINGS.glassBlur,
+      0,
+      24
+    ),
   };
 
-  // fixedCharacterId が候補に無い時は先頭に寄せる（壊れないように）
-  const exists = CHARACTER_OPTIONS.some(
-    (c) => c.id === normalized.fixedCharacterId
-  );
-  if (!exists) {
+  // fixedCharacterId が候補に無い時は先頭に寄せる
+  const exists = opts.some((c) => c.id === normalized.fixedCharacterId);
+  if (!exists)
     normalized.fixedCharacterId =
-      CHARACTER_OPTIONS[0]?.id ?? DEFAULT_SETTINGS.fixedCharacterId;
-  }
+      opts[0]?.id ?? DEFAULT_SETTINGS.fixedCharacterId;
 
   return normalized;
 }
 
 /**
- * ✅ useSyncExternalStore の getSnapshot は
- * 「中身が変わってないなら同じ参照」を返さないと無限再レンダーの原因になる。
- * なので localStorage の raw をキーにしてスナップショットをキャッシュする。
+ * ✅ useSyncExternalStore の getSnapshot は「同じ値なら同じ参照」
  */
 let cachedRaw: string | null = null;
 let cachedSettings: AppSettings = DEFAULT_SETTINGS;
@@ -148,8 +251,6 @@ let cachedSettings: AppSettings = DEFAULT_SETTINGS;
 function readSnapshot(): AppSettings {
   try {
     const raw = localStorage.getItem(KEY);
-
-    // raw が同じなら「同じ参照」を返す（ここが超重要）
     if (raw === cachedRaw && cachedSettings) return cachedSettings;
 
     const next = normalize(safeParse(raw));
@@ -167,15 +268,11 @@ function writeSnapshot(next: AppSettings) {
   try {
     const raw = JSON.stringify(next);
     localStorage.setItem(KEY, raw);
-
-    // キャッシュも更新して「同じ参照」を返せるように
     cachedRaw = raw;
     cachedSettings = next;
   } catch {
     // ignore
   }
-
-  // 同一タブ内へ通知
   window.dispatchEvent(new Event("tsuduri-settings"));
 }
 
@@ -187,12 +284,10 @@ export function setAppSettings(
   patch: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)
 ) {
   const prev = readSnapshot();
-
   const next =
     typeof patch === "function"
       ? normalize(patch(prev))
       : normalize({ ...prev, ...patch });
-
   writeSnapshot(next);
 }
 
@@ -211,7 +306,6 @@ function subscribe(cb: () => void) {
 
 /** 設定を購読して UI に反映するための hook */
 export function useAppSettings() {
-  // ✅ getSnapshot は readSnapshot（参照安定）
   const settings = useSyncExternalStore(subscribe, readSnapshot, readSnapshot);
 
   const api = useMemo(
@@ -222,7 +316,6 @@ export function useAppSettings() {
     []
   );
 
-  // iOS Safari などで「戻る/復帰」で storage が遅れて見える時の保険
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState === "visible") {
@@ -236,15 +329,22 @@ export function useAppSettings() {
   return { settings, ...api };
 }
 
-/** id→src を解決（見つからなければ先頭） */
-export function resolveCharacterSrc(id: string) {
-  const hit = CHARACTER_OPTIONS.find((c) => c.id === id);
-  return hit?.src ?? CHARACTER_OPTIONS[0]?.src ?? "/assets/character-test.png";
+/** ✅ id→src を解決（override → キャラデータsrc → フォールバック） */
+export function resolveCharacterSrc(
+  id: string,
+  overrides?: Record<string, string> | null
+) {
+  const ov = overrides?.[id];
+  if (typeof ov === "string" && ov.trim()) return ov.trim();
+
+  const list = getCharacterOptions();
+  const hit = list.find((c) => c.id === id);
+  return hit?.src ?? list[0]?.src ?? "/assets/character-test.png";
 }
 
 /** ランダム選出（同じ候補が続きにくい程度のゆるい乱数） */
 export function pickRandomCharacterId(excludeId?: string) {
-  const list = CHARACTER_OPTIONS.map((c) => c.id);
+  const list = getCharacterOptions().map((c) => c.id);
   if (list.length <= 1) return list[0] ?? "tsuduri";
 
   const filtered = excludeId ? list.filter((x) => x !== excludeId) : list;
