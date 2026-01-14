@@ -12,7 +12,6 @@ import {
 import type { TideCacheEntry } from "../db";
 import PageShell from "../components/PageShell";
 import {
-  CHARACTER_OPTIONS,
   DEFAULT_SETTINGS,
   useAppSettings,
   normalizePublicPath,
@@ -38,20 +37,6 @@ function clamp(n: number, min: number, max: number) {
 
 type CharacterOption = { id: string; label: string };
 
-function safeCharacterOptions(): CharacterOption[] {
-  const raw = CHARACTER_OPTIONS;
-  const ok = raw
-    .filter((x) => x && typeof x.id === "string" && typeof x.label === "string")
-    .map((x) => ({ id: x.id, label: x.label }));
-  if (ok.length > 0) return ok;
-
-  return [
-    { id: "tsuduri", label: "つづり" },
-    { id: "kokoro", label: "こころ" },
-    { id: "matsuri", label: "まつり" },
-  ];
-}
-
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
   try {
     if (!raw) return fallback;
@@ -60,32 +45,6 @@ function safeJsonParse<T>(raw: string | null, fallback: T): T {
     return fallback;
   }
 }
-
-function useIsNarrow(breakpointPx = 720) {
-  const [isNarrow, setIsNarrow] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia(`(max-width: ${breakpointPx}px)`).matches;
-  });
-
-  useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${breakpointPx}px)`);
-    const onChange = () => setIsNarrow(mql.matches);
-    onChange();
-    if ("addEventListener" in mql) mql.addEventListener("change", onChange);
-    else (mql as any).addListener(onChange);
-    return () => {
-      if ("removeEventListener" in mql)
-        mql.removeEventListener("change", onChange);
-      else (mql as any).removeListener(onChange);
-    };
-  }, [breakpointPx]);
-
-  return isNarrow;
-}
-
-/** キャラID -> 画像パス を保存するキー（この画面の割り当て用） */
-const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
-type CharacterImageMap = Record<string, string>;
 
 /** CharacterSettings 側の作成キャラを読む（v2/v1混在想定でゆるく） */
 type StoredCharacterLike = {
@@ -122,6 +81,10 @@ function loadCreatedCharacters(): CharacterOption[] {
   return uniq;
 }
 
+/** キャラID -> 画像パス を保存するキー（割り当て用） */
+const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
+type CharacterImageMap = Record<string, string>;
+
 function loadCharacterImageMap(): CharacterImageMap {
   if (typeof window === "undefined") return {};
   const raw = localStorage.getItem(CHARACTER_IMAGE_MAP_KEY);
@@ -133,11 +96,32 @@ function saveCharacterImageMap(map: CharacterImageMap) {
   localStorage.setItem(CHARACTER_IMAGE_MAP_KEY, JSON.stringify(map));
 }
 
+function useIsNarrow(breakpointPx = 720) {
+  const [isNarrow, setIsNarrow] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(`(max-width: ${breakpointPx}px)`).matches;
+  });
+
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${breakpointPx}px)`);
+    const onChange = () => setIsNarrow(mql.matches);
+    onChange();
+    if ("addEventListener" in mql) mql.addEventListener("change", onChange);
+    else (mql as any).addListener(onChange);
+    return () => {
+      if ("removeEventListener" in mql)
+        mql.removeEventListener("change", onChange);
+      else (mql as any).removeListener(onChange);
+    };
+  }, [breakpointPx]);
+
+  return isNarrow;
+}
+
 export default function Settings({ back }: Props) {
   const { settings, set, reset } = useAppSettings();
 
   const isNarrow = useIsNarrow(720);
-  const characterOptions = useMemo(() => safeCharacterOptions(), []);
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -152,7 +136,7 @@ export default function Settings({ back }: Props) {
   const [entries, setEntries] = useState<TideCacheEntry[]>([]);
   const [days, setDays] = useState<30 | 60 | 90 | 180>(30);
 
-  // ✅ キャラ管理で作成したキャラ一覧 & 画像割り当て
+  // ✅ 作成キャラ一覧 & 画像割り当て
   const [createdCharacters, setCreatedCharacters] = useState<CharacterOption[]>(
     []
   );
@@ -267,9 +251,16 @@ export default function Settings({ back }: Props) {
     setCreatedCharacters(chars);
 
     const map = loadCharacterImageMap();
-    // いま存在するキャラ以外のキーは残してOK（将来復帰するかも）だけど、
-    // UIは現存キャラのみ表示する
     setCharImageMapState(map);
+
+    // ✅ fixedCharacterId が作成キャラに存在しないなら先頭へ寄せる
+    if (chars.length > 0) {
+      const ids = new Set(chars.map((c) => c.id));
+      const current = settings.fixedCharacterId ?? "";
+      if (!ids.has(current)) {
+        set({ fixedCharacterId: chars[0].id });
+      }
+    }
   }
 
   function setCharImageMap(next: CharacterImageMap) {
@@ -280,6 +271,7 @@ export default function Settings({ back }: Props) {
   useEffect(() => {
     refresh();
     refreshCreatedCharactersAndMap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const approxMB = useMemo(() => {
@@ -292,10 +284,17 @@ export default function Settings({ back }: Props) {
     settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
   const characterMode =
     settings.characterMode ?? DEFAULT_SETTINGS.characterMode;
-  const fixedCharacterId =
-    settings.fixedCharacterId ??
-    characterOptions[0]?.id ??
-    DEFAULT_SETTINGS.fixedCharacterId;
+
+  const createdIds = useMemo(
+    () => new Set(createdCharacters.map((c) => c.id)),
+    [createdCharacters]
+  );
+
+  const fixedCharacterId = useMemo(() => {
+    const candidate = settings.fixedCharacterId ?? "";
+    if (candidate && createdIds.has(candidate)) return candidate;
+    return createdCharacters[0]?.id ?? "";
+  }, [settings.fixedCharacterId, createdIds, createdCharacters]);
 
   const characterScale = Number.isFinite(settings.characterScale)
     ? settings.characterScale
@@ -304,9 +303,6 @@ export default function Settings({ back }: Props) {
   const characterOpacity = Number.isFinite(settings.characterOpacity)
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
-
-  const characterOverrideSrc =
-    settings.characterOverrideSrc ?? DEFAULT_SETTINGS.characterOverrideSrc;
 
   const bgDim = Number.isFinite(settings.bgDim)
     ? settings.bgDim
@@ -323,12 +319,10 @@ export default function Settings({ back }: Props) {
     : DEFAULT_SETTINGS.glassBlur;
 
   const isCharControlsDisabled = !characterEnabled;
-  const isFixedDisabled = !characterEnabled || characterMode !== "fixed";
-
-  const previewSrc = useMemo(() => {
-    const p = normalizePublicPath(characterOverrideSrc);
-    return p || "";
-  }, [characterOverrideSrc]);
+  const isFixedDisabled =
+    !characterEnabled ||
+    characterMode !== "fixed" ||
+    createdCharacters.length === 0;
 
   return (
     <PageShell
@@ -418,41 +412,10 @@ export default function Settings({ back }: Props) {
               </div>
             </div>
 
+            {/* ✅ 固定キャラ：作成キャラからのみ選択 */}
             <div style={row}>
               <div style={label}>固定キャラ</div>
               <div style={rowStack}>
-                <select
-                  value={fixedCharacterId}
-                  disabled={isFixedDisabled}
-                  onChange={(e) => set({ fixedCharacterId: e.target.value })}
-                  style={fullWidthControl}
-                >
-                  {characterOptions.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-                <div style={help}>「固定」を選んだときだけ有効だよ。</div>
-              </div>
-            </div>
-
-            <div style={row}>
-              <div style={label}>キャラ画像（上書き）</div>
-              <div style={rowStack}>
-                <input
-                  value={characterOverrideSrc}
-                  disabled={isCharControlsDisabled}
-                  onChange={(e) =>
-                    set({ characterOverrideSrc: e.target.value })
-                  }
-                  placeholder="例: /assets/k1.png  または assets/k1.png"
-                />
-                <div style={help}>
-                  ここに <b>public</b>{" "}
-                  配下の画像パスを入れると、固定/ランダムよりも優先して表示するよ。空にすると戻る。
-                </div>
-
                 <div
                   style={{
                     display: "flex",
@@ -464,51 +427,42 @@ export default function Settings({ back }: Props) {
                   <button
                     type="button"
                     style={pillBase}
-                    disabled={isCharControlsDisabled}
-                    onClick={() => set({ characterOverrideSrc: "" })}
-                  >
-                    ↩ デフォルトに戻す
-                  </button>
-
-                  {previewSrc && (
-                    <div
-                      style={{ display: "flex", gap: 10, alignItems: "center" }}
-                    >
-                      <span style={help}>プレビュー:</span>
-                      <img
-                        src={previewSrc}
-                        alt=""
-                        style={{
-                          height: 64,
-                          width: "auto",
-                          borderRadius: 12,
-                          border: "1px solid rgba(255,255,255,0.18)",
-                          background: "rgba(0,0,0,0.2)",
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* ✅ 追加：キャラ管理で作成したキャラに画像を割り当て */}
-            <div style={row}>
-              <div style={label}>作成キャラ画像</div>
-              <div style={rowStack}>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    style={pillBase}
                     onClick={() => refreshCreatedCharactersAndMap()}
                   >
                     ↻ キャラ管理と同期
                   </button>
                   <span style={help}>
-                    CharacterSettings で作ったキャラに、画像パスを割り当てるよ。
+                    キャラ管理で作成したキャラがここに出るよ（固定は作成キャラのみ）。
                   </span>
                 </div>
 
+                <select
+                  value={fixedCharacterId}
+                  disabled={isFixedDisabled}
+                  onChange={(e) => set({ fixedCharacterId: e.target.value })}
+                  style={fullWidthControl}
+                >
+                  {createdCharacters.length === 0 ? (
+                    <option value="">（作成キャラがありません）</option>
+                  ) : (
+                    createdCharacters.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label}
+                      </option>
+                    ))
+                  )}
+                </select>
+
+                <div style={help}>
+                  「固定」を選んだときだけ有効。作成キャラが無い場合はキャラ管理で追加してね。
+                </div>
+              </div>
+            </div>
+
+            {/* ✅ 作成キャラ画像（割り当て） */}
+            <div style={row}>
+              <div style={label}>作成キャラ画像</div>
+              <div style={rowStack}>
                 {createdCharacters.length === 0 ? (
                   <div style={help}>
                     まだ作成キャラが見つからないよ（キャラ管理で追加してから同期してね）。
@@ -578,10 +532,9 @@ export default function Settings({ back }: Props) {
                           />
 
                           <div style={help}>
-                            public 配下のパスを指定してね（例:{" "}
+                            public 配下のパスを指定（例:{" "}
                             <code>/assets/characters/tsuduri.png</code>
-                            ）。この割り当ては
-                            “上書き”より下の優先度で使う想定だよ。
+                            ）。固定/ランダム時にこの割り当てが使われるよ。
                           </div>
 
                           {p ? (
@@ -719,6 +672,7 @@ export default function Settings({ back }: Props) {
               </div>
             </div>
 
+            {/* ✅ ここが効かない問題は PageShell 側でCSSを強制反映するのでOK */}
             <div style={row}>
               <div style={label}>すりガラス濃さ</div>
               <div style={rowStack}>
@@ -1006,7 +960,6 @@ export default function Settings({ back }: Props) {
             type="button"
             style={pillBase}
             onClick={() => {
-              // 保存し直し（正規化が走る）
               set({ ...DEFAULT_SETTINGS, ...settings });
               alert("設定を保存し直したよ");
             }}

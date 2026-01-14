@@ -2,7 +2,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  pickRandomCharacterId,
   resolveCharacterSrc,
   useAppSettings,
   normalizePublicPath,
@@ -35,6 +34,9 @@ type Props = {
 };
 
 const STACK_KEY = "tsuduri_nav_stack_v1";
+
+// ✅ CharacterSettings 側の作成キャラを読むキー（直接文字列で参照）
+const CHARACTERS_STORAGE_KEY = "tsuduri_characters_v2";
 
 // ✅ Settings.tsx で保存してる「キャラID → 画像パス」割り当てキー
 const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
@@ -77,12 +79,42 @@ function safeJsonParse<T>(raw: string | null, fallback: T): T {
   }
 }
 
+type StoredCharacterLike = {
+  id?: unknown;
+  name?: unknown; // v2
+  label?: unknown; // v1
+};
+
+function loadCreatedCharacterIds(): string[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(CHARACTERS_STORAGE_KEY);
+  const list = safeJsonParse<StoredCharacterLike[]>(raw, []);
+  const ids = list
+    .map((c) => (typeof c?.id === "string" ? c.id : ""))
+    .filter((x) => !!x);
+
+  const seen = new Set<string>();
+  const uniq: string[] = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    uniq.push(id);
+  }
+  return uniq;
+}
+
 function loadCharacterImageMap(): CharacterImageMap {
   if (typeof window === "undefined") return {};
   const raw = localStorage.getItem(CHARACTER_IMAGE_MAP_KEY);
   const map = safeJsonParse<CharacterImageMap>(raw, {});
   if (!map || typeof map !== "object") return {};
   return map;
+}
+
+function pickRandomFrom<T>(arr: T[]): T | null {
+  if (!arr.length) return null;
+  const i = Math.floor(Math.random() * arr.length);
+  return arr[i] ?? null;
 }
 
 export default function PageShell({
@@ -147,45 +179,61 @@ export default function PageShell({
   // ==========
   const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
   const glassBlur = clamp(settings.glassBlur ?? 10, 0, 24);
+  // 強め（glass-strong用に少し濃く）
+  const glassAlphaStrong = clamp(glassAlpha + 0.08, 0, 0.6);
 
   // ==========
-  // キャラ（固定/ランダム）
+  // 作成キャラの再読込トリガー（同一タブ変更でも追従させる）
   // ==========
+  const [storageTick, setStorageTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setStorageTick((v) => v + 1);
+
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key) return;
+      if (e.key === CHARACTERS_STORAGE_KEY || e.key === CHARACTER_IMAGE_MAP_KEY)
+        bump();
+    };
+
+    const onVis = () => {
+      if (document.visibilityState === "visible") bump();
+    };
+
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", bump);
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", bump);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
+
+  // ==========
+  // キャラ（固定/ランダム）※作成キャラから選ぶ
+  // ==========
+  const createdIds = useMemo(() => loadCreatedCharacterIds(), [storageTick]);
+
   const requestedCharacterId = useMemo(() => {
     if (!settings.characterEnabled) return null;
-    if (settings.characterMode === "random") return pickRandomCharacterId();
-    return settings.fixedCharacterId;
+    if (createdIds.length === 0) return null;
+
+    if (settings.characterMode === "random") {
+      return pickRandomFrom(createdIds);
+    }
+
+    const fixed = settings.fixedCharacterId ?? "";
+    if (fixed && createdIds.includes(fixed)) return fixed;
+    return createdIds[0] ?? null;
   }, [
     settings.characterEnabled,
     settings.characterMode,
     settings.fixedCharacterId,
+    createdIds,
   ]);
 
-  // ✅ override が入ってたら最優先
-  const overrideSrc = useMemo(() => {
-    const p = normalizePublicPath(settings.characterOverrideSrc ?? "");
-    return p || null;
-  }, [settings.characterOverrideSrc]);
-
   // ✅ 作成キャラ割り当て（localStorage）を反映
-  // 同一タブで Settings をいじると storage イベントが飛ばないことがあるので、
-  // フォーカス復帰/表示復帰で再読込するためのトリガーを用意
-  const [imageMapTick, setImageMapTick] = useState(0);
-  useEffect(() => {
-    const bump = () => setImageMapTick((v) => v + 1);
-
-    window.addEventListener("focus", bump);
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") bump();
-    });
-
-    return () => {
-      window.removeEventListener("focus", bump);
-      // visibilitychange は匿名関数なので remove できないが、実害は小さい
-      // 気になるなら関数を外に出して remove する形にする
-    };
-  }, []);
-
   const mappedCharacterSrc = useMemo(() => {
     if (!requestedCharacterId) return null;
 
@@ -195,19 +243,15 @@ export default function PageShell({
 
     const p = normalizePublicPath(raw);
     return p || null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestedCharacterId, imageMapTick]);
+  }, [requestedCharacterId, storageTick]);
 
-  const baseCharacterSrc = useMemo(() => {
+  const requestedCharacterSrc = useMemo(() => {
     if (!requestedCharacterId) return null;
-    // 2) 割り当てがあればそれ
+    // 1) 割り当てがあればそれ
     if (mappedCharacterSrc) return mappedCharacterSrc;
-    // 3) なければ従来のデフォルト解決
+    // 2) なければ従来のデフォルト解決（必要なら後で「未設定は出さない」にもできる）
     return resolveCharacterSrc(requestedCharacterId);
   }, [requestedCharacterId, mappedCharacterSrc]);
-
-  // 1) override が最優先
-  const requestedCharacterSrc = overrideSrc ?? baseCharacterSrc;
 
   // チラつき対策：先読み→差し替え
   const [displaySrc, setDisplaySrc] = useState<string | null>(() => {
@@ -267,6 +311,7 @@ export default function PageShell({
     ["--bg-blur" as any]: `${effectiveBgBlur}px`,
 
     ["--glass-alpha" as any]: String(glassAlpha),
+    ["--glass-alpha-strong" as any]: String(glassAlphaStrong),
     ["--glass-blur" as any]: `${glassBlur}px`,
   };
   if (bgImage) shellStyle["--bg-image" as any] = `url(${bgImage})`;
@@ -276,6 +321,21 @@ export default function PageShell({
 
   return (
     <div className="page-shell" style={shellStyle}>
+      {/* ✅ すりガラスが効かない環境でも確実に反映させる保険CSS */}
+      <style>
+        {`
+          .glass{
+            background: rgba(0,0,0,var(--glass-alpha,0.22));
+            border: 1px solid rgba(255,255,255,0.14);
+            backdrop-filter: blur(var(--glass-blur,10px));
+            -webkit-backdrop-filter: blur(var(--glass-blur,10px));
+          }
+          .glass.glass-strong{
+            background: rgba(0,0,0,var(--glass-alpha-strong,0.30));
+          }
+        `}
+      </style>
+
       {/* キャラレイヤ */}
       {shouldShowCharacter && (
         <div
