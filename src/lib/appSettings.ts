@@ -32,6 +32,9 @@ export type AppSettings = {
 
 const KEY = "tsuduri_app_settings_v1";
 
+/** ✅ 作成キャラ（CharacterSettings）保存キー（appSettings側でも読む） */
+const CHARACTERS_STORAGE_KEY = "tsuduri_characters_v2";
+
 /** 初期値 */
 export const DEFAULT_SETTINGS: AppSettings = {
   version: 1,
@@ -82,6 +85,62 @@ export function normalizePublicPath(p: string) {
   if (!s) return "";
   if (s.startsWith("/")) return s;
   return `/${s}`;
+}
+
+type StoredCharacterLike = {
+  id?: unknown;
+};
+
+function safeJsonParse<T>(raw: string | null, fallback: T): T {
+  try {
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+/** ✅ 作成キャラID一覧を取得（appSettings単体で参照できるようにここで読む） */
+function loadCreatedCharacterIds(): string[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(CHARACTERS_STORAGE_KEY);
+  const list = safeJsonParse<StoredCharacterLike[]>(raw, []);
+  const ids = Array.isArray(list)
+    ? list
+        .map((c) => (typeof c?.id === "string" ? c.id : ""))
+        .filter((x) => !!x)
+    : [];
+
+  const seen = new Set<string>();
+  const uniq: string[] = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    uniq.push(id);
+  }
+  return uniq;
+}
+
+/** ✅ 固定キャラIDとして「許可」するID集合を作る */
+function getAllowedCharacterIds(): string[] {
+  const base = CHARACTER_OPTIONS.map((c) => c.id).filter(Boolean);
+  const created = loadCreatedCharacterIds();
+  // 併合（順序：created → base）
+  const seen = new Set<string>();
+  const merged: string[] = [];
+
+  for (const id of created) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    merged.push(id);
+  }
+  for (const id of base) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    merged.push(id);
+  }
+
+  return merged;
 }
 
 function normalize(input: unknown): AppSettings {
@@ -151,13 +210,15 @@ function normalize(input: unknown): AppSettings {
     ),
   };
 
-  // fixedCharacterId が候補に無い時は先頭に寄せる（壊れないように）
-  const exists = CHARACTER_OPTIONS.some(
-    (c) => c.id === normalized.fixedCharacterId
-  );
-  if (!exists)
+  // ✅ fixedCharacterId を「CHARACTER_OPTIONS限定」で潰さない
+  // 作成キャラ + 既定キャラ のどちらにも存在しない場合だけフォールバック
+  const allowed = getAllowedCharacterIds();
+  if (!allowed.includes(normalized.fixedCharacterId)) {
     normalized.fixedCharacterId =
-      CHARACTER_OPTIONS[0]?.id ?? DEFAULT_SETTINGS.fixedCharacterId;
+      allowed[0] ??
+      CHARACTER_OPTIONS[0]?.id ??
+      DEFAULT_SETTINGS.fixedCharacterId;
+  }
 
   // パスの正規化（UIは assets/k1.png でもOKにする）
   normalized.characterOverrideSrc = normalizePublicPath(
@@ -265,7 +326,7 @@ export function resolveCharacterSrc(id: string) {
   return hit?.src ?? CHARACTER_OPTIONS[0]?.src ?? "/assets/character-test.png";
 }
 
-/** ランダム選出 */
+/** ランダム選出（互換用：既定キャラから） */
 export function pickRandomCharacterId(excludeId?: string) {
   const list = CHARACTER_OPTIONS.map((c) => c.id);
   if (list.length <= 1) return list[0] ?? "tsuduri";
