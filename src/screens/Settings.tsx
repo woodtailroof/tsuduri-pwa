@@ -15,6 +15,7 @@ import {
   CHARACTER_OPTIONS,
   DEFAULT_SETTINGS,
   useAppSettings,
+  normalizePublicPath,
 } from "../lib/appSettings";
 
 type Props = {
@@ -36,7 +37,6 @@ function clamp(n: number, min: number, max: number) {
 
 type CharacterOption = { id: string; label: string };
 
-// AppSettings 側の CHARACTER_OPTIONS から label だけ抜く
 function safeCharacterOptions(): CharacterOption[] {
   const raw = CHARACTER_OPTIONS;
   const ok = raw
@@ -113,7 +113,6 @@ export default function Settings({ back }: Props) {
     gap: 12,
   };
 
-  // ✅ スマホは1カラム、PCは2カラム
   const row: CSSProperties = isNarrow
     ? { display: "grid", gap: 8, alignItems: "start" }
     : {
@@ -206,6 +205,7 @@ export default function Settings({ back }: Props) {
     return Math.round((kb / 1024) * 100) / 100;
   }, [stats]);
 
+  // settings（安全なデフォルト）
   const characterEnabled =
     settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
   const characterMode =
@@ -223,6 +223,9 @@ export default function Settings({ back }: Props) {
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
 
+  const characterOverrideSrc =
+    settings.characterOverrideSrc ?? DEFAULT_SETTINGS.characterOverrideSrc;
+
   const bgDim = Number.isFinite(settings.bgDim)
     ? settings.bgDim
     : DEFAULT_SETTINGS.bgDim;
@@ -233,13 +236,17 @@ export default function Settings({ back }: Props) {
   const glassAlpha = Number.isFinite(settings.glassAlpha)
     ? settings.glassAlpha
     : DEFAULT_SETTINGS.glassAlpha;
-
   const glassBlur = Number.isFinite(settings.glassBlur)
     ? settings.glassBlur
     : DEFAULT_SETTINGS.glassBlur;
 
   const isCharControlsDisabled = !characterEnabled;
   const isFixedDisabled = !characterEnabled || characterMode !== "fixed";
+
+  const previewSrc = useMemo(() => {
+    const p = normalizePublicPath(characterOverrideSrc);
+    return p || "";
+  }, [characterOverrideSrc]);
 
   return (
     <PageShell
@@ -352,28 +359,53 @@ export default function Settings({ back }: Props) {
               <div style={label}>キャラ画像（上書き）</div>
               <div style={rowStack}>
                 <input
-                  type="text"
-                  placeholder="/assets/t1.png"
-                  value={
-                    settings.characterImageOverrides?.[fixedCharacterId] ?? ""
+                  value={characterOverrideSrc}
+                  disabled={isCharControlsDisabled}
+                  onChange={(e) =>
+                    set({ characterOverrideSrc: e.target.value })
                   }
-                  disabled={isFixedDisabled}
-                  onChange={(e) => {
-                    const v = e.target.value.trim();
-                    const prev = settings.characterImageOverrides ?? {};
-                    const next = { ...prev };
-                    if (!v) delete next[fixedCharacterId];
-                    else next[fixedCharacterId] = v;
-                    set({
-                      characterImageOverrides: Object.keys(next).length
-                        ? next
-                        : null,
-                    });
-                  }}
+                  placeholder="例: /assets/k1.png  または assets/k1.png"
                 />
                 <div style={help}>
-                  public配下のパスを入れてね（例：<code>/assets/k1.png</code>
-                  ）。空にするとデフォルトへ戻るよ。
+                  ここに <b>public</b>{" "}
+                  配下の画像パスを入れると、固定/ランダムよりも優先して表示するよ。空にすると戻る。
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <button
+                    type="button"
+                    style={pillBase}
+                    disabled={isCharControlsDisabled}
+                    onClick={() => set({ characterOverrideSrc: "" })}
+                  >
+                    ↩ デフォルトに戻す
+                  </button>
+
+                  {previewSrc && (
+                    <div
+                      style={{ display: "flex", gap: 10, alignItems: "center" }}
+                    >
+                      <span style={help}>プレビュー:</span>
+                      <img
+                        src={previewSrc}
+                        alt=""
+                        style={{
+                          height: 64,
+                          width: "auto",
+                          borderRadius: 12,
+                          border: "1px solid rgba(255,255,255,0.18)",
+                          background: "rgba(0,0,0,0.2)",
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -481,20 +513,20 @@ export default function Settings({ back }: Props) {
             </div>
 
             <div style={row}>
-              <div style={label}>すりガラス透明度</div>
+              <div style={label}>すりガラス濃さ</div>
               <div style={rowStack}>
                 <div style={controlLine}>
-                  <span style={help}>UIの透け具合（濃いほど“ガラス感”）</span>
+                  <span style={help}>UIの黒さ（薄いほど透明）</span>
                   <span style={help}>{Math.round(glassAlpha * 100)}%</span>
                 </div>
                 <input
                   type="range"
                   min={0}
-                  max={0.9}
+                  max={0.6}
                   step={0.01}
                   value={glassAlpha}
                   onChange={(e) =>
-                    set({ glassAlpha: clamp(Number(e.target.value), 0, 0.9) })
+                    set({ glassAlpha: clamp(Number(e.target.value), 0, 0.6) })
                   }
                   style={fullWidthControl}
                 />
@@ -505,7 +537,7 @@ export default function Settings({ back }: Props) {
               <div style={label}>すりガラスぼかし</div>
               <div style={rowStack}>
                 <div style={controlLine}>
-                  <span style={help}>0pxで完全にボケ無し</span>
+                  <span style={help}>ガラス越しのぼかし</span>
                   <span style={help}>{glassBlur}px</span>
                 </div>
                 <input
@@ -519,6 +551,10 @@ export default function Settings({ back }: Props) {
                   }
                   style={fullWidthControl}
                 />
+                <div style={help}>
+                  0px で完全に無し（※端末によっては微差が出るので、気になるなら
+                  0〜1 で調整）
+                </div>
               </div>
             </div>
           </div>
@@ -639,7 +675,7 @@ export default function Settings({ back }: Props) {
             <div style={{ display: "grid", gap: 10 }}>
               {entries.slice(0, 80).map((e) => (
                 <div
-                  key={e.key}
+                  key={(e as any).key}
                   style={{
                     borderRadius: 14,
                     border: "1px solid rgba(255,255,255,0.14)",
@@ -676,16 +712,16 @@ export default function Settings({ back }: Props) {
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <button
                       type="button"
-                      style={busy === e.key ? pillDisabled : pillBase}
-                      disabled={busy === e.key}
+                      style={busy === (e as any).key ? pillDisabled : pillBase}
+                      disabled={busy === (e as any).key}
                       onClick={async () => {
                         const ok = confirm(
-                          `このキャッシュを削除する？\n${e.key}`
+                          `このキャッシュを削除する？\n${(e as any).key}`
                         );
                         if (!ok) return;
-                        setBusy(e.key);
+                        setBusy((e as any).key);
                         try {
-                          await deleteTideCacheByKey(e.key);
+                          await deleteTideCacheByKey((e as any).key);
                           await refresh();
                         } finally {
                           setBusy(null);
@@ -698,9 +734,11 @@ export default function Settings({ back }: Props) {
                     <button
                       type="button"
                       style={
-                        busy === `force:${e.key}` ? pillDisabled : pillBase
+                        busy === `force:${(e as any).key}`
+                          ? pillDisabled
+                          : pillBase
                       }
-                      disabled={busy === `force:${e.key}`}
+                      disabled={busy === `force:${(e as any).key}`}
                       onClick={async () => {
                         const ok = confirm(
                           `この日を強制再取得する？（オンライン必須）\n${
@@ -708,7 +746,7 @@ export default function Settings({ back }: Props) {
                           }`
                         );
                         if (!ok) return;
-                        setBusy(`force:${e.key}`);
+                        setBusy(`force:${(e as any).key}`);
                         try {
                           await forceRefreshTide736Day(
                             (e as any).pc,
@@ -761,7 +799,8 @@ export default function Settings({ back }: Props) {
             type="button"
             style={pillBase}
             onClick={() => {
-              set(DEFAULT_SETTINGS);
+              // 保存し直し（正規化が走る）
+              set({ ...DEFAULT_SETTINGS, ...settings });
               alert("設定を保存し直したよ");
             }}
           >
