@@ -11,7 +11,11 @@ import {
 } from "../lib/tide736Cache";
 import type { TideCacheEntry } from "../db";
 import PageShell from "../components/PageShell";
-import { CHARACTER_OPTIONS, DEFAULT_SETTINGS, useAppSettings } from "../lib/appSettings";
+import {
+  CHARACTER_OPTIONS,
+  DEFAULT_SETTINGS,
+  useAppSettings,
+} from "../lib/appSettings";
 
 type Props = {
   back: () => void;
@@ -60,7 +64,8 @@ function useIsNarrow(breakpointPx = 720) {
     if ("addEventListener" in mql) mql.addEventListener("change", onChange);
     else (mql as any).addListener(onChange);
     return () => {
-      if ("removeEventListener" in mql) mql.removeEventListener("change", onChange);
+      if ("removeEventListener" in mql)
+        mql.removeEventListener("change", onChange);
       else (mql as any).removeListener(onChange);
     };
   }, [breakpointPx]);
@@ -201,8 +206,10 @@ export default function Settings({ back }: Props) {
     return Math.round((kb / 1024) * 100) / 100;
   }, [stats]);
 
-  const characterEnabled = settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
-  const characterMode = settings.characterMode ?? DEFAULT_SETTINGS.characterMode;
+  const characterEnabled =
+    settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
+  const characterMode =
+    settings.characterMode ?? DEFAULT_SETTINGS.characterMode;
   const fixedCharacterId =
     settings.fixedCharacterId ??
     characterOptions[0]?.id ??
@@ -216,8 +223,12 @@ export default function Settings({ back }: Props) {
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
 
-  const bgDim = Number.isFinite(settings.bgDim) ? settings.bgDim : DEFAULT_SETTINGS.bgDim;
-  const bgBlur = Number.isFinite(settings.bgBlur) ? settings.bgBlur : DEFAULT_SETTINGS.bgBlur;
+  const bgDim = Number.isFinite(settings.bgDim)
+    ? settings.bgDim
+    : DEFAULT_SETTINGS.bgDim;
+  const bgBlur = Number.isFinite(settings.bgBlur)
+    ? settings.bgBlur
+    : DEFAULT_SETTINGS.bgBlur;
 
   const glassAlpha = Number.isFinite(settings.glassAlpha)
     ? settings.glassAlpha
@@ -277,7 +288,9 @@ export default function Settings({ back }: Props) {
 
             <div style={row}>
               <div style={label}>切替</div>
-              <div style={{ ...radioLine, opacity: characterEnabled ? 1 : 0.5 }}>
+              <div
+                style={{ ...radioLine, opacity: characterEnabled ? 1 : 0.5 }}
+              >
                 <label
                   style={{
                     display: "inline-flex",
@@ -341,7 +354,9 @@ export default function Settings({ back }: Props) {
                 <input
                   type="text"
                   placeholder="/assets/t1.png"
-                  value={settings.characterImageOverrides?.[fixedCharacterId] ?? ""}
+                  value={
+                    settings.characterImageOverrides?.[fixedCharacterId] ?? ""
+                  }
                   disabled={isFixedDisabled}
                   onChange={(e) => {
                     const v = e.target.value.trim();
@@ -349,11 +364,16 @@ export default function Settings({ back }: Props) {
                     const next = { ...prev };
                     if (!v) delete next[fixedCharacterId];
                     else next[fixedCharacterId] = v;
-                    set({ characterImageOverrides: Object.keys(next).length ? next : null });
+                    set({
+                      characterImageOverrides: Object.keys(next).length
+                        ? next
+                        : null,
+                    });
                   }}
                 />
                 <div style={help}>
-                  public配下のパスを入れてね（例：<code>/assets/k1.png</code>）。空にするとデフォルトへ戻るよ。
+                  public配下のパスを入れてね（例：<code>/assets/k1.png</code>
+                  ）。空にするとデフォルトへ戻るよ。
                 </div>
               </div>
             </div>
@@ -379,7 +399,9 @@ export default function Settings({ back }: Props) {
                   }
                   style={fullWidthControl}
                 />
-                <div style={help}>※ 上げすぎるとボタンが隠れやすいので注意だよ。</div>
+                <div style={help}>
+                  ※ 上げすぎるとボタンが隠れやすいので注意だよ。
+                </div>
               </div>
             </div>
 
@@ -388,7 +410,9 @@ export default function Settings({ back }: Props) {
               <div style={rowStack}>
                 <div style={controlLine}>
                   <span style={help}>透け具合</span>
-                  <span style={help}>{Math.round(characterOpacity * 100)}%</span>
+                  <span style={help}>
+                    {Math.round(characterOpacity * 100)}%
+                  </span>
                 </div>
                 <input
                   type="range"
@@ -427,7 +451,9 @@ export default function Settings({ back }: Props) {
                   max={1}
                   step={0.02}
                   value={bgDim}
-                  onChange={(e) => set({ bgDim: clamp(Number(e.target.value), 0, 1) })}
+                  onChange={(e) =>
+                    set({ bgDim: clamp(Number(e.target.value), 0, 1) })
+                  }
                   style={fullWidthControl}
                 />
               </div>
@@ -446,7 +472,9 @@ export default function Settings({ back }: Props) {
                   max={24}
                   step={1}
                   value={bgBlur}
-                  onChange={(e) => set({ bgBlur: clamp(Number(e.target.value), 0, 24) })}
+                  onChange={(e) =>
+                    set({ bgBlur: clamp(Number(e.target.value), 0, 24) })
+                  }
                   style={fullWidthControl}
                 />
               </div>
@@ -465,7 +493,9 @@ export default function Settings({ back }: Props) {
                   max={0.9}
                   step={0.01}
                   value={glassAlpha}
-                  onChange={(e) => set({ glassAlpha: clamp(Number(e.target.value), 0, 0.9) })}
+                  onChange={(e) =>
+                    set({ glassAlpha: clamp(Number(e.target.value), 0, 0.9) })
+                  }
                   style={fullWidthControl}
                 />
               </div>
@@ -484,7 +514,9 @@ export default function Settings({ back }: Props) {
                   max={24}
                   step={1}
                   value={glassBlur}
-                  onChange={(e) => set({ glassBlur: clamp(Number(e.target.value), 0, 24) })}
+                  onChange={(e) =>
+                    set({ glassBlur: clamp(Number(e.target.value), 0, 24) })
+                  }
                   style={fullWidthControl}
                 />
               </div>
@@ -500,7 +532,14 @@ export default function Settings({ back }: Props) {
             基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
             <button
               type="button"
               style={loading || !!busy ? pillDisabled : pillBase}
@@ -515,7 +554,9 @@ export default function Settings({ back }: Props) {
               style={busy ? pillDisabled : pillBase}
               disabled={!!busy}
               onClick={async () => {
-                const ok = confirm("tide736 キャッシュをすべて削除する？（戻せない）");
+                const ok = confirm(
+                  "tide736 キャッシュをすべて削除する？（戻せない）"
+                );
                 if (!ok) return;
                 setBusy("deleteAll");
                 try {
@@ -544,7 +585,9 @@ export default function Settings({ back }: Props) {
               </span>
               <select
                 value={days}
-                onChange={(e) => setDays(Number(e.target.value) as 30 | 60 | 90 | 180)}
+                onChange={(e) =>
+                  setDays(Number(e.target.value) as 30 | 60 | 90 | 180)
+                }
               >
                 <option value={30}>30日</option>
                 <option value={60}>60日</option>
@@ -621,9 +664,11 @@ export default function Settings({ back }: Props) {
                         overflowWrap: "anywhere",
                       }}
                     >
-                      {(e as any).day（{(e as any).pc}:{(e as any).hc}）}
+                      {(e as any).day}（{(e as any).pc}:{(e as any).hc}）
                     </div>
-                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
+                    <div
+                      style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}
+                    >
                       fetched: {fmtIso((e as any).fetchedAt ?? null)}
                     </div>
                   </div>
@@ -634,7 +679,9 @@ export default function Settings({ back }: Props) {
                       style={busy === e.key ? pillDisabled : pillBase}
                       disabled={busy === e.key}
                       onClick={async () => {
-                        const ok = confirm(`このキャッシュを削除する？\n${e.key}`);
+                        const ok = confirm(
+                          `このキャッシュを削除する？\n${e.key}`
+                        );
                         if (!ok) return;
                         setBusy(e.key);
                         try {
@@ -650,11 +697,15 @@ export default function Settings({ back }: Props) {
 
                     <button
                       type="button"
-                      style={busy === `force:${e.key}` ? pillDisabled : pillBase}
+                      style={
+                        busy === `force:${e.key}` ? pillDisabled : pillBase
+                      }
                       disabled={busy === `force:${e.key}`}
                       onClick={async () => {
                         const ok = confirm(
-                          `この日を強制再取得する？（オンライン必須）\n${(e as any).day}`
+                          `この日を強制再取得する？（オンライン必須）\n${
+                            (e as any).day
+                          }`
                         );
                         if (!ok) return;
                         setBusy(`force:${e.key}`);
@@ -683,12 +734,21 @@ export default function Settings({ back }: Props) {
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
           <button
             type="button"
             style={pillBase}
             onClick={() => {
-              const ok = confirm("表示/キャラ設定を初期値に戻す？（キャッシュは触らない）");
+              const ok = confirm(
+                "表示/キャラ設定を初期値に戻す？（キャッシュは触らない）"
+              );
               if (!ok) return;
               reset();
               alert("初期値に戻したよ");
