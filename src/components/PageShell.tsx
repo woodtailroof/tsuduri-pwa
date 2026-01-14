@@ -11,24 +11,39 @@ type Props = {
   title?: ReactNode;
   subtitle?: ReactNode;
   children: ReactNode;
+  /** 画面ごとに幅を変えたい時用（チャットだけ広め…とか） */
   maxWidth?: number;
 
+  /** 戻るボタンを表示するか（デフォルト: true） */
   showBack?: boolean;
+  /** 戻るボタン押下時の挙動を上書きしたい場合 */
   onBack?: () => void;
+  /** 戻るボタンのラベル */
   backLabel?: ReactNode;
+  /** 戻れない場合の遷移先（デフォルト: "/"） */
   fallbackHref?: string;
+  /** この画面を履歴に積まない（ホームなど） */
   disableStackPush?: boolean;
 
+  /** ✅ 背景画像（ページ単位で差し替えたい時）例: "/bg/home.webp" */
   bgImage?: string;
+  /** ✅ 背景の暗幕の濃さ（0〜1）デフォルト: 0.55（※設定があれば設定を優先） */
   bgDim?: number;
+  /** ✅ 背景のぼかし(px) デフォルト: 0（※設定があれば設定を優先） */
   bgBlur?: number;
 
+  /** ✅ テスト用キャラを表示するか（デフォルト: true） */
   showTestCharacter?: boolean;
+  /** ✅ テスト用キャラ画像パス（例: "/assets/character-test.png"） */
   testCharacterSrc?: string;
+  /** ✅ テスト用キャラの高さ(px)をclampで制御（デフォルト: "clamp(140px, 18vw, 220px)"） */
   testCharacterHeight?: string;
+  /** ✅ キャラの位置微調整（px） */
   testCharacterOffset?: { right?: number; bottom?: number };
+  /** ✅ キャラの不透明度（0〜1） */
   testCharacterOpacity?: number;
 
+  /** ✅ スクロールバーを非表示にしたい場合（デフォルト: true） */
   hideScrollbar?: boolean;
 };
 
@@ -67,13 +82,11 @@ export default function PageShell({
   subtitle,
   children,
   maxWidth = 980,
-
   showBack = true,
   onBack,
   backLabel = "← 戻る",
   fallbackHref = "/",
   disableStackPush = false,
-
   bgImage,
   bgDim = 0.55,
   bgBlur = 0,
@@ -106,9 +119,11 @@ export default function PageShell({
     if (onBack) return onBack();
 
     const stack = readStack();
+
     if (stack.length && stack[stack.length - 1] === getPath()) {
       stack.pop();
     }
+
     const prev = stack.pop();
     writeStack(stack);
 
@@ -116,30 +131,19 @@ export default function PageShell({
   }, [onBack, fallbackHref]);
 
   // ===========
-  // ✅ 設定反映（暗幕/ぼかし/情報板）
+  // ✅ 設定反映（暗幕/ぼかし）
   // ===========
   const effectiveBgDim = settings.bgDim ?? bgDim;
   const effectiveBgBlur = settings.bgBlur ?? bgBlur;
-  const infoPanelAlpha = clamp(settings.infoPanelAlpha ?? 0, 0, 1);
 
   // ===========
-  // ✅ ガラス設定（ここが全画面共通の鍵）
-  // settings側のキーが多少違っても落ちないように拾う
+  // ✅ ガラス（0pxで完全にボケ無しにしたい）
   // ===========
-  const s: any = settings as any;
-  const glassAlpha = clamp(
-    Number.isFinite(s.glassAlpha) ? s.glassAlpha : 0.22,
-    0,
-    0.9
-  );
-  const glassBlurPx = clamp(
-    Number.isFinite(s.glassBlur) ? s.glassBlur : 10,
-    0,
-    24
-  );
+  const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.9);
+  const glassBlurPx = clamp(settings.glassBlur ?? 10, 0, 24);
 
   // ===========
-  // ✅ キャラ（固定/ランダム）
+  // ✅ キャラ（固定/ランダム） + チラつき対策
   // ===========
   const requestedCharacterId = useMemo(() => {
     if (!settings.characterEnabled) return null;
@@ -153,13 +157,13 @@ export default function PageShell({
 
   const requestedCharacterSrc = useMemo(() => {
     if (!requestedCharacterId) return null;
-    const overrides = (settings as any).characterImageOverrides as
-      | Record<string, string>
-      | undefined
-      | null;
-    return resolveCharacterSrc(requestedCharacterId, overrides ?? null);
-  }, [requestedCharacterId, (settings as any).characterImageOverrides]);
+    return resolveCharacterSrc(
+      requestedCharacterId,
+      settings.characterImageOverrides ?? null
+    );
+  }, [requestedCharacterId, settings.characterImageOverrides]);
 
+  // 先読みしてから差し替える（旧表示は残す）
   const [displaySrc, setDisplaySrc] = useState<string | null>(() => {
     if (!requestedCharacterSrc) return testCharacterSrc;
     return requestedCharacterSrc;
@@ -189,6 +193,7 @@ export default function PageShell({
     };
     const onError = () => {
       if (cancelled) return;
+      // エラー時は無理に変えない（表示継続）
       console.warn("character image load failed:", next);
     };
 
@@ -202,6 +207,7 @@ export default function PageShell({
     };
   }, [requestedCharacterSrc, testCharacterSrc]);
 
+  // ✅ 上限 5.0 まで許可
   const characterScale = clamp(settings.characterScale ?? 1, 0.7, 5.0);
   const characterOpacity = clamp(
     settings.characterOpacity ?? testCharacterOpacity,
@@ -219,7 +225,6 @@ export default function PageShell({
     ["--bg-dim" as any]: String(effectiveBgDim),
     ["--bg-blur" as any]: `${effectiveBgBlur}px`,
 
-    // ✅ ガラス（全画面で参照）
     ["--glass-alpha" as any]: String(glassAlpha),
     ["--glass-blur" as any]: `${glassBlurPx}px`,
   };
@@ -230,7 +235,7 @@ export default function PageShell({
 
   return (
     <div className="page-shell" style={shellStyle}>
-      {/* ✅ キャラレイヤ */}
+      {/* ✅ キャラレイヤ（固定） */}
       {shouldShowCharacter && (
         <div
           aria-hidden="true"
@@ -267,7 +272,7 @@ export default function PageShell({
         </div>
       )}
 
-      {/* ✅ 戻るボタン */}
+      {/* ✅ 戻るボタン（最前面） */}
       {showBack && (
         <button
           type="button"
@@ -280,7 +285,7 @@ export default function PageShell({
         </button>
       )}
 
-      {/* ✅ 情報レイヤ */}
+      {/* ✅ 情報レイヤ：全幅スクロール */}
       <div
         className={[
           "page-shell-scroll",
@@ -310,24 +315,6 @@ export default function PageShell({
             position: "relative",
           }}
         >
-          {/* ✅ 情報板（文字は薄くしない） */}
-          {infoPanelAlpha > 0 && (
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                inset: 0,
-                borderRadius: 18,
-                background: `rgba(0,0,0,${infoPanelAlpha})`,
-                backdropFilter: "blur(8px)",
-                WebkitBackdropFilter: "blur(8px)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
-                pointerEvents: "none",
-              }}
-            />
-          )}
-
           <div style={{ position: "relative" }}>
             {(title || subtitle) && (
               <div style={{ marginBottom: 16 }}>

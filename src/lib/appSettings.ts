@@ -4,7 +4,7 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 export type CharacterMode = "fixed" | "random";
 
 export type AppSettings = {
-  version: 2;
+  version: 1;
 
   // ===== キャラ =====
   characterEnabled: boolean;
@@ -15,8 +15,11 @@ export type AppSettings = {
   /** 0〜1 */
   characterOpacity: number;
 
-  /** ✅ キャラ画像の上書き（id -> src） */
-  characterImageOverrides: Record<string, string>;
+  /**
+   * ✅ キャラ画像の上書き
+   * 例: { tsuduri: "/assets/t1.png", kokoro: "/assets/k1.png" }
+   */
+  characterImageOverrides: Record<string, string> | null;
 
   // ===== 表示 =====
   /** 背景暗幕 0〜1 */
@@ -24,45 +27,43 @@ export type AppSettings = {
   /** 背景ぼかし(px) */
   bgBlur: number;
 
-  /** ✅ 情報レイヤー背面の「板」不透明度 0〜1（文字は薄くしない） */
-  infoPanelAlpha: number;
-
-  /** ✅ 擦りガラス（カード）透過度 0〜1 */
+  /** ✅ ガラス：透過の濃さ 0〜0.9 */
   glassAlpha: number;
-  /** ✅ 擦りガラス（カード）ぼかし(px) */
+  /** ✅ ガラス：ぼかし(px) 0〜24 */
   glassBlur: number;
 };
 
-const KEY = "tsuduri_app_settings_v2";
-
-/**
- * ✅ キャラ一覧は「作成したキャラ」を拾うため localStorage から読む
- * CharacterSettings 側の保存キー（プロジェクト既存）
- */
-const CHARACTERS_KEY_V2 = "tsuduri_characters_v2";
+const KEY = "tsuduri_app_settings_v1";
 
 // 初期値（気持ちよさ重視）
 export const DEFAULT_SETTINGS: AppSettings = {
-  version: 2,
+  version: 1,
 
   characterEnabled: true,
   characterMode: "fixed",
   fixedCharacterId: "tsuduri",
   characterScale: 1.15,
   characterOpacity: 1,
-
-  characterImageOverrides: {},
+  characterImageOverrides: null,
 
   bgDim: 0.55,
   bgBlur: 0,
-  infoPanelAlpha: 0,
 
-  // ✅ 以前の「擦りガラス度」相当の初期値（お好みで）
   glassAlpha: 0.22,
   glassBlur: 10,
 };
 
-export type CharacterOption = { id: string; label: string; src?: string };
+// キャラ候補（ここ増やせばUIに出る）
+export type CharacterOption = { id: string; label: string; src: string };
+export const CHARACTER_OPTIONS: CharacterOption[] = [
+  {
+    id: "tsuduri",
+    label: "つづり（テスト）",
+    src: "/assets/character-test.png",
+  },
+  // { id: 'kokoro', label: 'こころ', src: '/assets/kokoro.png' },
+  // { id: 'matsuri', label: 'まつり', src: '/assets/matsuri.png' },
+];
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -77,91 +78,31 @@ function safeParse(raw: string | null): unknown {
   }
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return !!v && typeof v === "object" && !Array.isArray(v);
-}
-
-function normalizeOverrides(v: unknown): Record<string, string> {
-  if (!isRecord(v)) return {};
-  const out: Record<string, string> = {};
-  for (const [k, val] of Object.entries(v)) {
-    if (typeof k === "string" && typeof val === "string" && val.trim()) {
-      out[k] = val.trim();
-    }
-  }
-  return out;
-}
-
-/** ✅ 作成キャラ（CharacterSettings）を localStorage から拾って選択肢にする */
-export function getCharacterOptions(): CharacterOption[] {
-  const fallback: CharacterOption[] = [
-    { id: "tsuduri", label: "つづり", src: "/assets/character-test.png" },
-  ];
-
-  try {
-    const raw = localStorage.getItem(CHARACTERS_KEY_V2);
-    const parsed = safeParse(raw);
-
-    if (!Array.isArray(parsed)) return fallback;
-
-    const list: CharacterOption[] = parsed
-      .map((x) => (isRecord(x) ? x : null))
-      .filter(Boolean)
-      .map((x) => {
-        const id =
-          typeof x!.id === "string" && x!.id.trim() ? x!.id.trim() : "";
-        const label =
-          typeof x!.name === "string" && x!.name.trim()
-            ? x!.name.trim()
-            : typeof x!.label === "string" && x!.label.trim()
-            ? x!.label.trim()
-            : id;
-
-        // 画像は profile 側に src を持ってる場合もあるので拾う（なければ undefined）
-        const src =
-          typeof x!.src === "string" && x!.src.trim()
-            ? x!.src.trim()
-            : typeof x!.imageSrc === "string" && x!.imageSrc.trim()
-            ? x!.imageSrc.trim()
-            : undefined;
-
-        return id ? { id, label, src } : null;
-      })
-      .filter(Boolean) as CharacterOption[];
-
-    // 最低1件は欲しい
-    if (list.length === 0) return fallback;
-
-    // tsuduri が無い場合は先頭に差し込む（壊れにくくする）
-    const hasTsuduri = list.some((c) => c.id === "tsuduri");
-    if (!hasTsuduri) return [...fallback, ...list];
-
-    return list;
-  } catch {
-    return fallback;
-  }
-}
-
 function normalize(input: unknown): AppSettings {
-  const x = (input ?? {}) as Partial<AppSettings> & { version?: number };
-
-  const opts = (() => {
-    try {
-      return getCharacterOptions();
-    } catch {
-      return [
-        { id: "tsuduri", label: "つづり", src: "/assets/character-test.png" },
-      ];
-    }
-  })();
+  const x = (input ?? {}) as Partial<AppSettings> & Record<string, any>;
 
   const fixedId =
     typeof x.fixedCharacterId === "string" && x.fixedCharacterId.trim()
       ? x.fixedCharacterId.trim()
       : DEFAULT_SETTINGS.fixedCharacterId;
 
+  const overrides =
+    x.characterImageOverrides &&
+    typeof x.characterImageOverrides === "object" &&
+    !Array.isArray(x.characterImageOverrides)
+      ? (x.characterImageOverrides as Record<string, unknown>)
+      : null;
+
+  const normalizedOverrides: Record<string, string> | null = overrides
+    ? Object.fromEntries(
+        Object.entries(overrides)
+          .filter(([k, v]) => typeof k === "string" && typeof v === "string")
+          .map(([k, v]) => [k, String(v)])
+      )
+    : null;
+
   const normalized: AppSettings = {
-    version: 2,
+    version: 1,
 
     characterEnabled:
       typeof x.characterEnabled === "boolean"
@@ -169,7 +110,6 @@ function normalize(input: unknown): AppSettings {
         : DEFAULT_SETTINGS.characterEnabled,
 
     characterMode: x.characterMode === "random" ? "random" : "fixed",
-
     fixedCharacterId: fixedId,
 
     characterScale: clamp(
@@ -188,9 +128,7 @@ function normalize(input: unknown): AppSettings {
       1
     ),
 
-    characterImageOverrides: normalizeOverrides(
-      (x as any).characterImageOverrides
-    ),
+    characterImageOverrides: normalizedOverrides,
 
     bgDim: clamp(
       Number.isFinite(x.bgDim as number)
@@ -208,68 +146,46 @@ function normalize(input: unknown): AppSettings {
       24
     ),
 
-    infoPanelAlpha: clamp(
-      Number.isFinite(x.infoPanelAlpha as number)
-        ? (x.infoPanelAlpha as number)
-        : DEFAULT_SETTINGS.infoPanelAlpha,
-      0,
-      1
-    ),
-
     glassAlpha: clamp(
-      Number.isFinite((x as any).glassAlpha as number)
-        ? ((x as any).glassAlpha as number)
+      Number.isFinite(x.glassAlpha as number)
+        ? (x.glassAlpha as number)
         : DEFAULT_SETTINGS.glassAlpha,
       0,
-      1
+      0.9
     ),
 
     glassBlur: clamp(
-      Number.isFinite((x as any).glassBlur as number)
-        ? ((x as any).glassBlur as number)
+      Number.isFinite(x.glassBlur as number)
+        ? (x.glassBlur as number)
         : DEFAULT_SETTINGS.glassBlur,
       0,
       24
     ),
   };
 
-  // fixedCharacterId が候補に無い時は先頭に寄せる
-  const exists = opts.some((c) => c.id === normalized.fixedCharacterId);
+  // fixedCharacterId が候補に無い時は先頭に寄せる（壊れないように）
+  const exists = CHARACTER_OPTIONS.some(
+    (c) => c.id === normalized.fixedCharacterId
+  );
   if (!exists)
     normalized.fixedCharacterId =
-      opts[0]?.id ?? DEFAULT_SETTINGS.fixedCharacterId;
+      CHARACTER_OPTIONS[0]?.id ?? DEFAULT_SETTINGS.fixedCharacterId;
 
   return normalized;
 }
 
-/**
- * ✅ useSyncExternalStore の getSnapshot は「同じ値なら同じ参照」
- */
-let cachedRaw: string | null = null;
-let cachedSettings: AppSettings = DEFAULT_SETTINGS;
-
-function readSnapshot(): AppSettings {
+function read(): AppSettings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw === cachedRaw && cachedSettings) return cachedSettings;
-
-    const next = normalize(safeParse(raw));
-    cachedRaw = raw;
-    cachedSettings = next;
-    return next;
+    return normalize(safeParse(raw));
   } catch {
-    cachedRaw = null;
-    cachedSettings = DEFAULT_SETTINGS;
     return DEFAULT_SETTINGS;
   }
 }
 
-function writeSnapshot(next: AppSettings) {
+function write(next: AppSettings) {
   try {
-    const raw = JSON.stringify(next);
-    localStorage.setItem(KEY, raw);
-    cachedRaw = raw;
-    cachedSettings = next;
+    localStorage.setItem(KEY, JSON.stringify(next));
   } catch {
     // ignore
   }
@@ -277,18 +193,18 @@ function writeSnapshot(next: AppSettings) {
 }
 
 export function getAppSettings(): AppSettings {
-  return readSnapshot();
+  return read();
 }
 
 export function setAppSettings(
   patch: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)
 ) {
-  const prev = readSnapshot();
+  const prev = read();
   const next =
     typeof patch === "function"
-      ? normalize(patch(prev))
+      ? patch(prev)
       : normalize({ ...prev, ...patch });
-  writeSnapshot(next);
+  write(next);
 }
 
 function subscribe(cb: () => void) {
@@ -306,7 +222,7 @@ function subscribe(cb: () => void) {
 
 /** 設定を購読して UI に反映するための hook */
 export function useAppSettings() {
-  const settings = useSyncExternalStore(subscribe, readSnapshot, readSnapshot);
+  const settings = useSyncExternalStore(subscribe, read, read);
 
   const api = useMemo(
     () => ({
@@ -318,9 +234,8 @@ export function useAppSettings() {
 
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState === "visible")
         window.dispatchEvent(new Event("tsuduri-settings"));
-      }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
@@ -329,22 +244,26 @@ export function useAppSettings() {
   return { settings, ...api };
 }
 
-/** ✅ id→src を解決（override → キャラデータsrc → フォールバック） */
+/**
+ * ✅ id→src を解決
+ * - overrides があればそれを優先
+ * - なければ CHARACTER_OPTIONS
+ */
 export function resolveCharacterSrc(
   id: string,
-  overrides?: Record<string, string> | null
+  overrides: Record<string, string> | null
 ) {
-  const ov = overrides?.[id];
-  if (typeof ov === "string" && ov.trim()) return ov.trim();
+  const overridden = overrides?.[id];
+  if (typeof overridden === "string" && overridden.trim())
+    return overridden.trim();
 
-  const list = getCharacterOptions();
-  const hit = list.find((c) => c.id === id);
-  return hit?.src ?? list[0]?.src ?? "/assets/character-test.png";
+  const hit = CHARACTER_OPTIONS.find((c) => c.id === id);
+  return hit?.src ?? CHARACTER_OPTIONS[0]?.src ?? "/assets/character-test.png";
 }
 
 /** ランダム選出（同じ候補が続きにくい程度のゆるい乱数） */
 export function pickRandomCharacterId(excludeId?: string) {
-  const list = getCharacterOptions().map((c) => c.id);
+  const list = CHARACTER_OPTIONS.map((c) => c.id);
   if (list.length <= 1) return list[0] ?? "tsuduri";
 
   const filtered = excludeId ? list.filter((x) => x !== excludeId) : list;

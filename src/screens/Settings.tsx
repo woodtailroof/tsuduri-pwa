@@ -11,11 +11,7 @@ import {
 } from "../lib/tide736Cache";
 import type { TideCacheEntry } from "../db";
 import PageShell from "../components/PageShell";
-import {
-  DEFAULT_SETTINGS,
-  getCharacterOptions,
-  useAppSettings,
-} from "../lib/appSettings";
+import { CHARACTER_OPTIONS, DEFAULT_SETTINGS, useAppSettings } from "../lib/appSettings";
 
 type Props = {
   back: () => void;
@@ -34,6 +30,23 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+type CharacterOption = { id: string; label: string };
+
+// AppSettings 側の CHARACTER_OPTIONS から label だけ抜く
+function safeCharacterOptions(): CharacterOption[] {
+  const raw = CHARACTER_OPTIONS;
+  const ok = raw
+    .filter((x) => x && typeof x.id === "string" && typeof x.label === "string")
+    .map((x) => ({ id: x.id, label: x.label }));
+  if (ok.length > 0) return ok;
+
+  return [
+    { id: "tsuduri", label: "つづり" },
+    { id: "kokoro", label: "こころ" },
+    { id: "matsuri", label: "まつり" },
+  ];
+}
+
 function useIsNarrow(breakpointPx = 720) {
   const [isNarrow, setIsNarrow] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -47,8 +60,7 @@ function useIsNarrow(breakpointPx = 720) {
     if ("addEventListener" in mql) mql.addEventListener("change", onChange);
     else (mql as any).addListener(onChange);
     return () => {
-      if ("removeEventListener" in mql)
-        mql.removeEventListener("change", onChange);
+      if ("removeEventListener" in mql) mql.removeEventListener("change", onChange);
       else (mql as any).removeListener(onChange);
     };
   }, [breakpointPx]);
@@ -60,17 +72,7 @@ export default function Settings({ back }: Props) {
   const { settings, set, reset } = useAppSettings();
 
   const isNarrow = useIsNarrow(720);
-
-  // ✅ 作成キャラが増えてもここが追従する（localStorageから都度取得）
-  const characterOptions = useMemo(() => {
-    try {
-      return getCharacterOptions();
-    } catch {
-      return [
-        { id: "tsuduri", label: "つづり", src: "/assets/character-test.png" },
-      ];
-    }
-  }, [settings.version]); // settings更新で再計算（軽い）
+  const characterOptions = useMemo(() => safeCharacterOptions(), []);
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -106,6 +108,7 @@ export default function Settings({ back }: Props) {
     gap: 12,
   };
 
+  // ✅ スマホは1カラム、PCは2カラム
   const row: CSSProperties = isNarrow
     ? { display: "grid", gap: 8, alignItems: "start" }
     : {
@@ -198,12 +201,8 @@ export default function Settings({ back }: Props) {
     return Math.round((kb / 1024) * 100) / 100;
   }, [stats]);
 
-  // settings は常に存在する前提（useAppSettings が保証）
-  const characterEnabled =
-    settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
-  const characterMode =
-    settings.characterMode ?? DEFAULT_SETTINGS.characterMode;
-
+  const characterEnabled = settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
+  const characterMode = settings.characterMode ?? DEFAULT_SETTINGS.characterMode;
   const fixedCharacterId =
     settings.fixedCharacterId ??
     characterOptions[0]?.id ??
@@ -217,16 +216,8 @@ export default function Settings({ back }: Props) {
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
 
-  const bgDim = Number.isFinite(settings.bgDim)
-    ? settings.bgDim
-    : DEFAULT_SETTINGS.bgDim;
-  const bgBlur = Number.isFinite(settings.bgBlur)
-    ? settings.bgBlur
-    : DEFAULT_SETTINGS.bgBlur;
-
-  const infoPanelAlpha = Number.isFinite(settings.infoPanelAlpha)
-    ? settings.infoPanelAlpha
-    : DEFAULT_SETTINGS.infoPanelAlpha;
+  const bgDim = Number.isFinite(settings.bgDim) ? settings.bgDim : DEFAULT_SETTINGS.bgDim;
+  const bgBlur = Number.isFinite(settings.bgBlur) ? settings.bgBlur : DEFAULT_SETTINGS.bgBlur;
 
   const glassAlpha = Number.isFinite(settings.glassAlpha)
     ? settings.glassAlpha
@@ -238,10 +229,6 @@ export default function Settings({ back }: Props) {
 
   const isCharControlsDisabled = !characterEnabled;
   const isFixedDisabled = !characterEnabled || characterMode !== "fixed";
-
-  // ✅ キャラ画像上書き
-  const overrides = settings.characterImageOverrides ?? {};
-  const currentOverride = (overrides[fixedCharacterId] ?? "").trim();
 
   return (
     <PageShell
@@ -290,9 +277,7 @@ export default function Settings({ back }: Props) {
 
             <div style={row}>
               <div style={label}>切替</div>
-              <div
-                style={{ ...radioLine, opacity: characterEnabled ? 1 : 0.5 }}
-              >
+              <div style={{ ...radioLine, opacity: characterEnabled ? 1 : 0.5 }}>
                 <label
                   style={{
                     display: "inline-flex",
@@ -350,84 +335,26 @@ export default function Settings({ back }: Props) {
               </div>
             </div>
 
-            {/* ✅ キャラ画像（固定キャラの上書き） */}
             <div style={row}>
-              <div style={label}>キャラ画像</div>
+              <div style={label}>キャラ画像（上書き）</div>
               <div style={rowStack}>
                 <input
                   type="text"
-                  value={currentOverride}
+                  placeholder="/assets/t1.png"
+                  value={settings.characterImageOverrides?.[fixedCharacterId] ?? ""}
                   disabled={isFixedDisabled}
                   onChange={(e) => {
-                    const v = e.target.value;
-                    const next = {
-                      ...(settings.characterImageOverrides ?? {}),
-                    };
-                    if (!v.trim()) delete next[fixedCharacterId];
-                    else next[fixedCharacterId] = v.trim();
-                    set({ characterImageOverrides: next });
+                    const v = e.target.value.trim();
+                    const prev = settings.characterImageOverrides ?? {};
+                    const next = { ...prev };
+                    if (!v) delete next[fixedCharacterId];
+                    else next[fixedCharacterId] = v;
+                    set({ characterImageOverrides: Object.keys(next).length ? next : null });
                   }}
-                  placeholder='例: "/assets/tsuduri.png"'
-                  style={fullWidthControl}
                 />
                 <div style={help}>
-                  ここに「public
-                  配下の画像パス」を入れると、そのキャラの表示画像を上書きできるよ。
-                  空にするとデフォルトへ戻る。
+                  public配下のパスを入れてね（例：<code>/assets/k1.png</code>）。空にするとデフォルトへ戻るよ。
                 </div>
-
-                {!isFixedDisabled && (
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      style={pillBase}
-                      onClick={() => {
-                        const next = {
-                          ...(settings.characterImageOverrides ?? {}),
-                        };
-                        delete next[fixedCharacterId];
-                        set({ characterImageOverrides: next });
-                      }}
-                    >
-                      ↩ デフォルトに戻す
-                    </button>
-
-                    {/* プレビュー（パスが有効なら見える） */}
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 10 }}
-                    >
-                      <span style={help}>プレビュー:</span>
-                      <img
-                        src={
-                          (currentOverride ||
-                            characterOptions.find(
-                              (c) => c.id === fixedCharacterId
-                            )?.src) ??
-                          "/assets/character-test.png"
-                        }
-                        alt=""
-                        style={{
-                          height: 56,
-                          width: "auto",
-                          borderRadius: 10,
-                          border: "1px solid rgba(255,255,255,0.14)",
-                          background: "rgba(0,0,0,0.2)",
-                        }}
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).style.opacity =
-                            "0.35";
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -452,9 +379,7 @@ export default function Settings({ back }: Props) {
                   }
                   style={fullWidthControl}
                 />
-                <div style={help}>
-                  ※ 上げすぎるとボタンが隠れやすいので注意だよ。
-                </div>
+                <div style={help}>※ 上げすぎるとボタンが隠れやすいので注意だよ。</div>
               </div>
             </div>
 
@@ -463,9 +388,7 @@ export default function Settings({ back }: Props) {
               <div style={rowStack}>
                 <div style={controlLine}>
                   <span style={help}>透け具合</span>
-                  <span style={help}>
-                    {Math.round(characterOpacity * 100)}%
-                  </span>
+                  <span style={help}>{Math.round(characterOpacity * 100)}%</span>
                 </div>
                 <input
                   type="range"
@@ -504,9 +427,7 @@ export default function Settings({ back }: Props) {
                   max={1}
                   step={0.02}
                   value={bgDim}
-                  onChange={(e) =>
-                    set({ bgDim: clamp(Number(e.target.value), 0, 1) })
-                  }
+                  onChange={(e) => set({ bgDim: clamp(Number(e.target.value), 0, 1) })}
                   style={fullWidthControl}
                 />
               </div>
@@ -525,62 +446,36 @@ export default function Settings({ back }: Props) {
                   max={24}
                   step={1}
                   value={bgBlur}
-                  onChange={(e) =>
-                    set({ bgBlur: clamp(Number(e.target.value), 0, 24) })
-                  }
+                  onChange={(e) => set({ bgBlur: clamp(Number(e.target.value), 0, 24) })}
                   style={fullWidthControl}
                 />
               </div>
             </div>
 
             <div style={row}>
-              <div style={label}>情報レイヤーの板</div>
+              <div style={label}>すりガラス透明度</div>
               <div style={rowStack}>
                 <div style={controlLine}>
-                  <span style={help}>板だけ透過（文字は薄くしない）</span>
-                  <span style={help}>{Math.round(infoPanelAlpha * 100)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={0.85}
-                  step={0.05}
-                  value={infoPanelAlpha}
-                  onChange={(e) =>
-                    set({ infoPanelAlpha: clamp(Number(e.target.value), 0, 1) })
-                  }
-                  style={fullWidthControl}
-                />
-              </div>
-            </div>
-
-            {/* ✅ 擦りガラス度（復活） */}
-            <div style={row}>
-              <div style={label}>擦りガラスの濃さ</div>
-              <div style={rowStack}>
-                <div style={controlLine}>
-                  <span style={help}>カード背景の透過度</span>
+                  <span style={help}>UIの透け具合（濃いほど“ガラス感”）</span>
                   <span style={help}>{Math.round(glassAlpha * 100)}%</span>
                 </div>
                 <input
                   type="range"
                   min={0}
-                  max={0.6}
-                  step={0.02}
+                  max={0.9}
+                  step={0.01}
                   value={glassAlpha}
-                  onChange={(e) =>
-                    set({ glassAlpha: clamp(Number(e.target.value), 0, 1) })
-                  }
+                  onChange={(e) => set({ glassAlpha: clamp(Number(e.target.value), 0, 0.9) })}
                   style={fullWidthControl}
                 />
               </div>
             </div>
 
             <div style={row}>
-              <div style={label}>擦りガラスのぼかし</div>
+              <div style={label}>すりガラスぼかし</div>
               <div style={rowStack}>
                 <div style={controlLine}>
-                  <span style={help}>カードの blur</span>
+                  <span style={help}>0pxで完全にボケ無し</span>
                   <span style={help}>{glassBlur}px</span>
                 </div>
                 <input
@@ -589,9 +484,7 @@ export default function Settings({ back }: Props) {
                   max={24}
                   step={1}
                   value={glassBlur}
-                  onChange={(e) =>
-                    set({ glassBlur: clamp(Number(e.target.value), 0, 24) })
-                  }
+                  onChange={(e) => set({ glassBlur: clamp(Number(e.target.value), 0, 24) })}
                   style={fullWidthControl}
                 />
               </div>
@@ -607,14 +500,7 @@ export default function Settings({ back }: Props) {
             基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              flexWrap: "wrap",
-              alignItems: "center",
-            }}
-          >
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <button
               type="button"
               style={loading || !!busy ? pillDisabled : pillBase}
@@ -629,9 +515,7 @@ export default function Settings({ back }: Props) {
               style={busy ? pillDisabled : pillBase}
               disabled={!!busy}
               onClick={async () => {
-                const ok = confirm(
-                  "tide736 キャッシュをすべて削除する？（戻せない）"
-                );
+                const ok = confirm("tide736 キャッシュをすべて削除する？（戻せない）");
                 if (!ok) return;
                 setBusy("deleteAll");
                 try {
@@ -660,9 +544,7 @@ export default function Settings({ back }: Props) {
               </span>
               <select
                 value={days}
-                onChange={(e) =>
-                  setDays(Number(e.target.value) as 30 | 60 | 90 | 180)
-                }
+                onChange={(e) => setDays(Number(e.target.value) as 30 | 60 | 90 | 180)}
               >
                 <option value={30}>30日</option>
                 <option value={60}>60日</option>
@@ -739,11 +621,9 @@ export default function Settings({ back }: Props) {
                         overflowWrap: "anywhere",
                       }}
                     >
-                      {(e as any).day}（{(e as any).pc}:{(e as any).hc}）
+                      {(e as any).day（{(e as any).pc}:{(e as any).hc}）}
                     </div>
-                    <div
-                      style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}
-                    >
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
                       fetched: {fmtIso((e as any).fetchedAt ?? null)}
                     </div>
                   </div>
@@ -754,9 +634,7 @@ export default function Settings({ back }: Props) {
                       style={busy === e.key ? pillDisabled : pillBase}
                       disabled={busy === e.key}
                       onClick={async () => {
-                        const ok = confirm(
-                          `このキャッシュを削除する？\n${e.key}`
-                        );
+                        const ok = confirm(`このキャッシュを削除する？\n${e.key}`);
                         if (!ok) return;
                         setBusy(e.key);
                         try {
@@ -772,15 +650,11 @@ export default function Settings({ back }: Props) {
 
                     <button
                       type="button"
-                      style={
-                        busy === `force:${e.key}` ? pillDisabled : pillBase
-                      }
+                      style={busy === `force:${e.key}` ? pillDisabled : pillBase}
                       disabled={busy === `force:${e.key}`}
                       onClick={async () => {
                         const ok = confirm(
-                          `この日を強制再取得する？（オンライン必須）\n${
-                            (e as any).day
-                          }`
+                          `この日を強制再取得する？（オンライン必須）\n${(e as any).day}`
                         );
                         if (!ok) return;
                         setBusy(`force:${e.key}`);
@@ -809,21 +683,12 @@ export default function Settings({ back }: Props) {
           )}
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            flexWrap: "wrap",
-            alignItems: "center",
-          }}
-        >
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button
             type="button"
             style={pillBase}
             onClick={() => {
-              const ok = confirm(
-                "表示/キャラ設定を初期値に戻す？（キャッシュは触らない）"
-              );
+              const ok = confirm("表示/キャラ設定を初期値に戻す？（キャッシュは触らない）");
               if (!ok) return;
               reset();
               alert("初期値に戻したよ");
