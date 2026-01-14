@@ -53,6 +53,10 @@ body {
   --bg-image: url("/assets/bg/ui-check.png");
   --bg-blur: 0px;
   --bg-dim: 0.25;
+
+  /* ✅ ガラス（PageShell で上書きされる想定。無い環境でも壊れない初期値） */
+  --glass-alpha: 0.22;
+  --glass-blur: 10px;
 }
 
 body {
@@ -313,6 +317,42 @@ input:focus,
 textarea:focus,
 select:focus {
   border-color: rgba(255, 77, 109, 0.55);
+}
+
+/* =========================================================
+   ✅ Glass（擦りガラス）: スライダー値と連動させる本体
+   Settings の className="glass glass-strong" がここに刺さる
+   ========================================================= */
+.glass {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+
+  /* ここがスライダー連動の肝 */
+  background: rgba(0, 0, 0, var(--glass-alpha, 0.22));
+  backdrop-filter: blur(var(--glass-blur, 10px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
+
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+
+.glass-strong {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 16px;
+
+  background: rgba(0, 0, 0, calc(var(--glass-alpha, 0.22) * 1.2));
+  backdrop-filter: blur(calc(var(--glass-blur, 10px) + 2px));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur, 10px) + 2px));
+
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.2);
+}
+
+/* （任意）カード内の hr を少し馴染ませる */
+.glass hr,
+.glass-strong hr {
+  border: 0;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.14);
+  opacity: 0.35;
 }
 
 /* 以下は元のまま（使ってないなら消してOK） */
