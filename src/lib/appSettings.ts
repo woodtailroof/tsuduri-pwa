@@ -129,45 +129,71 @@ function normalize(input: unknown): AppSettings {
   const exists = CHARACTER_OPTIONS.some(
     (c) => c.id === normalized.fixedCharacterId
   );
-  if (!exists)
+  if (!exists) {
     normalized.fixedCharacterId =
       CHARACTER_OPTIONS[0]?.id ?? DEFAULT_SETTINGS.fixedCharacterId;
+  }
 
   return normalized;
 }
 
-function read(): AppSettings {
+/**
+ * ✅ useSyncExternalStore の getSnapshot は
+ * 「中身が変わってないなら同じ参照」を返さないと無限再レンダーの原因になる。
+ * なので localStorage の raw をキーにしてスナップショットをキャッシュする。
+ */
+let cachedRaw: string | null = null;
+let cachedSettings: AppSettings = DEFAULT_SETTINGS;
+
+function readSnapshot(): AppSettings {
   try {
     const raw = localStorage.getItem(KEY);
-    return normalize(safeParse(raw));
+
+    // raw が同じなら「同じ参照」を返す（ここが超重要）
+    if (raw === cachedRaw && cachedSettings) return cachedSettings;
+
+    const next = normalize(safeParse(raw));
+    cachedRaw = raw;
+    cachedSettings = next;
+    return next;
   } catch {
+    cachedRaw = null;
+    cachedSettings = DEFAULT_SETTINGS;
     return DEFAULT_SETTINGS;
   }
 }
 
-function write(next: AppSettings) {
+function writeSnapshot(next: AppSettings) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(next));
+    const raw = JSON.stringify(next);
+    localStorage.setItem(KEY, raw);
+
+    // キャッシュも更新して「同じ参照」を返せるように
+    cachedRaw = raw;
+    cachedSettings = next;
   } catch {
     // ignore
   }
+
   // 同一タブ内へ通知
   window.dispatchEvent(new Event("tsuduri-settings"));
 }
 
 export function getAppSettings(): AppSettings {
-  return read();
+  return readSnapshot();
 }
 
 export function setAppSettings(
   patch: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)
 ) {
-  const prev = read();
+  const prev = readSnapshot();
+
   const next =
     typeof patch === "function"
-      ? patch(prev)
+      ? normalize(patch(prev))
       : normalize({ ...prev, ...patch });
-  write(next);
+
+  writeSnapshot(next);
 }
 
 function subscribe(cb: () => void) {
@@ -185,8 +211,8 @@ function subscribe(cb: () => void) {
 
 /** 設定を購読して UI に反映するための hook */
 export function useAppSettings() {
-  // ✅ 例外を投げない / undefined を返さない（黒画面防止）
-  const settings = useSyncExternalStore(subscribe, read, read);
+  // ✅ getSnapshot は readSnapshot（参照安定）
+  const settings = useSyncExternalStore(subscribe, readSnapshot, readSnapshot);
 
   const api = useMemo(
     () => ({
@@ -199,8 +225,9 @@ export function useAppSettings() {
   // iOS Safari などで「戻る/復帰」で storage が遅れて見える時の保険
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === "visible")
+      if (document.visibilityState === "visible") {
         window.dispatchEvent(new Event("tsuduri-settings"));
+      }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
