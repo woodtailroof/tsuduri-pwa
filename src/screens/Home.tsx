@@ -166,7 +166,7 @@ export default function Home({ go }: Props) {
       >
         <button onClick={() => go("record")}>📸 釣果を記録する</button>
         <button onClick={() => go("archive")}>🧾 全履歴を見る</button>
-        <button onClick={() => go("weather")}>🌊 天気・潮を見る</button>
+        <button onClick={() => go("weather")}>☀️ 天気・潮を見る</button>
         <button onClick={() => go("chat")}>💬 話す</button>
 
         <hr style={{ margin: "12px 0", opacity: 0.3 }} />
