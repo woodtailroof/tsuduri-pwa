@@ -15,27 +15,22 @@ export type AppSettings = {
   /** 0〜1 */
   characterOpacity: number;
 
-  /**
-   * ✅ キャラ画像の上書き
-   * 例: { tsuduri: "/assets/t1.png", kokoro: "/assets/k1.png" }
-   */
-  characterImageOverrides: Record<string, string> | null;
-
   // ===== 表示 =====
   /** 背景暗幕 0〜1 */
   bgDim: number;
   /** 背景ぼかし(px) */
   bgBlur: number;
+  /** 情報レイヤー背面の「板」不透明度 0〜1（文字は薄くしない） */
+  infoPanelAlpha: number;
 
-  /** ✅ ガラス：透過の濃さ 0〜0.9 */
-  glassAlpha: number;
-  /** ✅ ガラス：ぼかし(px) 0〜24 */
-  glassBlur: number;
+  // ===== 追加: 任意の画像パスで上書き =====
+  /** public 配下の画像パス（例: "/assets/k1.png" や "assets/k1.png"） 空ならデフォルト */
+  characterOverrideSrc?: string;
 };
 
 const KEY = "tsuduri_app_settings_v1";
 
-// 初期値（気持ちよさ重視）
+// ここは「最初の気持ちよさ」重視の初期値
 export const DEFAULT_SETTINGS: AppSettings = {
   version: 1,
 
@@ -44,13 +39,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fixedCharacterId: "tsuduri",
   characterScale: 1.15,
   characterOpacity: 1,
-  characterImageOverrides: null,
 
   bgDim: 0.55,
   bgBlur: 0,
+  infoPanelAlpha: 0,
 
-  glassAlpha: 0.22,
-  glassBlur: 10,
+  characterOverrideSrc: "",
 };
 
 // キャラ候補（ここ増やせばUIに出る）
@@ -61,8 +55,9 @@ export const CHARACTER_OPTIONS: CharacterOption[] = [
     label: "つづり（テスト）",
     src: "/assets/character-test.png",
   },
-  // { id: 'kokoro', label: 'こころ', src: '/assets/kokoro.png' },
-  // { id: 'matsuri', label: 'まつり', src: '/assets/matsuri.png' },
+  // 例:
+  // { id: "kokoro", label: "日波こころ", src: "/assets/k1.png" },
+  // { id: "matsuri", label: "潮風まつり", src: "/assets/m1.png" },
 ];
 
 function clamp(n: number, min: number, max: number) {
@@ -79,27 +74,12 @@ function safeParse(raw: string | null): unknown {
 }
 
 function normalize(input: unknown): AppSettings {
-  const x = (input ?? {}) as Partial<AppSettings> & Record<string, any>;
+  const x = (input ?? {}) as Partial<AppSettings>;
 
   const fixedId =
     typeof x.fixedCharacterId === "string" && x.fixedCharacterId.trim()
       ? x.fixedCharacterId.trim()
       : DEFAULT_SETTINGS.fixedCharacterId;
-
-  const overrides =
-    x.characterImageOverrides &&
-    typeof x.characterImageOverrides === "object" &&
-    !Array.isArray(x.characterImageOverrides)
-      ? (x.characterImageOverrides as Record<string, unknown>)
-      : null;
-
-  const normalizedOverrides: Record<string, string> | null = overrides
-    ? Object.fromEntries(
-        Object.entries(overrides)
-          .filter(([k, v]) => typeof k === "string" && typeof v === "string")
-          .map(([k, v]) => [k, String(v)])
-      )
-    : null;
 
   const normalized: AppSettings = {
     version: 1,
@@ -108,7 +88,6 @@ function normalize(input: unknown): AppSettings {
       typeof x.characterEnabled === "boolean"
         ? x.characterEnabled
         : DEFAULT_SETTINGS.characterEnabled,
-
     characterMode: x.characterMode === "random" ? "random" : "fixed",
     fixedCharacterId: fixedId,
 
@@ -119,7 +98,6 @@ function normalize(input: unknown): AppSettings {
       0.7,
       5.0
     ),
-
     characterOpacity: clamp(
       Number.isFinite(x.characterOpacity as number)
         ? (x.characterOpacity as number)
@@ -128,8 +106,6 @@ function normalize(input: unknown): AppSettings {
       1
     ),
 
-    characterImageOverrides: normalizedOverrides,
-
     bgDim: clamp(
       Number.isFinite(x.bgDim as number)
         ? (x.bgDim as number)
@@ -137,7 +113,6 @@ function normalize(input: unknown): AppSettings {
       0,
       1
     ),
-
     bgBlur: clamp(
       Number.isFinite(x.bgBlur as number)
         ? (x.bgBlur as number)
@@ -145,22 +120,16 @@ function normalize(input: unknown): AppSettings {
       0,
       24
     ),
-
-    glassAlpha: clamp(
-      Number.isFinite(x.glassAlpha as number)
-        ? (x.glassAlpha as number)
-        : DEFAULT_SETTINGS.glassAlpha,
+    infoPanelAlpha: clamp(
+      Number.isFinite(x.infoPanelAlpha as number)
+        ? (x.infoPanelAlpha as number)
+        : DEFAULT_SETTINGS.infoPanelAlpha,
       0,
-      0.9
+      1
     ),
 
-    glassBlur: clamp(
-      Number.isFinite(x.glassBlur as number)
-        ? (x.glassBlur as number)
-        : DEFAULT_SETTINGS.glassBlur,
-      0,
-      24
-    ),
+    characterOverrideSrc:
+      typeof x.characterOverrideSrc === "string" ? x.characterOverrideSrc : "",
   };
 
   // fixedCharacterId が候補に無い時は先頭に寄せる（壊れないように）
@@ -174,32 +143,60 @@ function normalize(input: unknown): AppSettings {
   return normalized;
 }
 
-function read(): AppSettings {
+/**
+ * ✅ useSyncExternalStore 対策：
+ * getSnapshot が「同じ状態のとき同じ参照」を返さないと無限更新になる。
+ * localStorage の raw が変わらない限り、同じ settings オブジェクトを返す。
+ */
+let cachedRaw: string | null = null;
+let cachedSettings: AppSettings = DEFAULT_SETTINGS;
+
+function readSnapshot(): AppSettings {
+  // SSR/ビルド環境対策
+  if (typeof window === "undefined") return DEFAULT_SETTINGS;
+
   try {
     const raw = localStorage.getItem(KEY);
-    return normalize(safeParse(raw));
+
+    // ✅ raw が同じなら「同じ参照」を返す（これが重要）
+    if (raw === cachedRaw) return cachedSettings;
+
+    const next = normalize(safeParse(raw));
+
+    cachedRaw = raw;
+    cachedSettings = next;
+    return next;
   } catch {
-    return DEFAULT_SETTINGS;
+    // ここで毎回 DEFAULT_SETTINGS を返すと参照が安定しないケースがあるので、
+    // 直近キャッシュを返す（空なら初期値）
+    return cachedSettings ?? DEFAULT_SETTINGS;
   }
 }
 
 function write(next: AppSettings) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(next));
+    const raw = JSON.stringify(next);
+    localStorage.setItem(KEY, raw);
+
+    // ✅ 書いた内容でキャッシュも更新（同一タブの readSnapshot 安定化）
+    cachedRaw = raw;
+    cachedSettings = next;
   } catch {
     // ignore
   }
+
+  // 同一タブ内へ通知
   window.dispatchEvent(new Event("tsuduri-settings"));
 }
 
 export function getAppSettings(): AppSettings {
-  return read();
+  return readSnapshot();
 }
 
 export function setAppSettings(
   patch: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)
 ) {
-  const prev = read();
+  const prev = readSnapshot();
   const next =
     typeof patch === "function"
       ? patch(prev)
@@ -212,8 +209,10 @@ function subscribe(cb: () => void) {
   const onStorage = (e: StorageEvent) => {
     if (e.key === KEY) cb();
   };
+
   window.addEventListener("tsuduri-settings", onLocal);
   window.addEventListener("storage", onStorage);
+
   return () => {
     window.removeEventListener("tsuduri-settings", onLocal);
     window.removeEventListener("storage", onStorage);
@@ -222,7 +221,8 @@ function subscribe(cb: () => void) {
 
 /** 設定を購読して UI に反映するための hook */
 export function useAppSettings() {
-  const settings = useSyncExternalStore(subscribe, read, read);
+  // ✅ getSnapshot が安定参照を返すので #185 を回避できる
+  const settings = useSyncExternalStore(subscribe, readSnapshot, readSnapshot);
 
   const api = useMemo(
     () => ({
@@ -232,10 +232,12 @@ export function useAppSettings() {
     []
   );
 
+  // iOS Safari などで「戻る/復帰」で storage が遅れて見える時の保険
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === "visible")
+      if (document.visibilityState === "visible") {
         window.dispatchEvent(new Event("tsuduri-settings"));
+      }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
@@ -244,19 +246,8 @@ export function useAppSettings() {
   return { settings, ...api };
 }
 
-/**
- * ✅ id→src を解決
- * - overrides があればそれを優先
- * - なければ CHARACTER_OPTIONS
- */
-export function resolveCharacterSrc(
-  id: string,
-  overrides: Record<string, string> | null
-) {
-  const overridden = overrides?.[id];
-  if (typeof overridden === "string" && overridden.trim())
-    return overridden.trim();
-
+/** id→src を解決（見つからなければ先頭） */
+export function resolveCharacterSrc(id: string) {
   const hit = CHARACTER_OPTIONS.find((c) => c.id === id);
   return hit?.src ?? CHARACTER_OPTIONS[0]?.src ?? "/assets/character-test.png";
 }
@@ -269,4 +260,12 @@ export function pickRandomCharacterId(excludeId?: string) {
   const filtered = excludeId ? list.filter((x) => x !== excludeId) : list;
   const idx = Math.floor(Math.random() * filtered.length);
   return filtered[idx] ?? list[0] ?? "tsuduri";
+}
+
+/** ✅ パスを正規化（"assets/xxx.png" → "/assets/xxx.png"） */
+export function normalizePublicPath(p: string) {
+  const s = (p ?? "").trim();
+  if (!s) return "";
+  if (s.startsWith("/")) return s;
+  return `/${s}`;
 }
