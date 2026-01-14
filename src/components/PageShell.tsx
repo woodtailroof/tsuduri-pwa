@@ -140,14 +140,23 @@ export default function PageShell({
   // ===========
   // ✅ キャラ（固定/ランダム） + チラつき対策
   // ===========
+  // ❗重要: 「ランダムID」を render 中に毎回引くと setState→再render→…で無限ループになり得る。
+  // ここでは「この PageShell のライフタイムで 1 回だけ」ランダムIDを決める。
+  const [randomCharacterId] = useState<string | null>(() => {
+    if (!settings.characterEnabled) return null;
+    if (settings.characterMode !== "random") return null;
+    return pickRandomCharacterId();
+  });
+
   const requestedCharacterId = useMemo(() => {
     if (!settings.characterEnabled) return null;
-    if (settings.characterMode === "random") return pickRandomCharacterId();
+    if (settings.characterMode === "random") return randomCharacterId;
     return settings.fixedCharacterId;
   }, [
     settings.characterEnabled,
     settings.characterMode,
     settings.fixedCharacterId,
+    randomCharacterId,
   ]);
 
   const requestedCharacterSrc = useMemo(() => {
