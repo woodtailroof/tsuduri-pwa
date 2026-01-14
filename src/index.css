@@ -54,7 +54,7 @@ body {
   --bg-blur: 0px;
   --bg-dim: 0.25;
 
-  /* ✅ ガラス（PageShell で上書きされる想定。無い環境でも壊れない初期値） */
+  /* ✅ ガラス（PageShellで上書きされる） */
   --glass-alpha: 0.22;
   --glass-blur: 10px;
 }
@@ -190,17 +190,16 @@ h3 {
    ========================================================= */
 .page-shell {
   position: relative;
-  isolation: isolate; /* 背景をこの要素内で完結 */
+  isolation: isolate;
 }
 
-/* ✅ 画像を“最前面の背景レイヤー”にする（これで見える） */
+/* ✅ 背景画像レイヤー */
 .page-shell::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -2;
 
-  /* 先頭ほど上に描画されるので、画像を先頭に置く */
   background: var(--bg-image, none),
     radial-gradient(
       1000px 700px at 20% -10%,
@@ -247,13 +246,13 @@ h3 {
 }
 
 /* =========================================================
-   ✅ 戻るボタン（右上固定に統一）
+   ✅ 戻るボタン（右上固定）
+   ✅ ここもガラス設定にリンクさせる
    ========================================================= */
 .back-button {
   position: fixed;
   z-index: 50;
 
-  /* iOSノッチ回避 */
   top: max(10px, env(safe-area-inset-top));
   right: max(10px, env(safe-area-inset-right));
   left: auto;
@@ -269,9 +268,9 @@ h3 {
   white-space: nowrap;
 
   color: rgba(255, 255, 255, 0.92);
-  background: rgba(10, 10, 12, 0.55);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(10, 10, 12, calc(var(--glass-alpha, 0.22) + 0.18));
+  backdrop-filter: blur(var(--glass-blur, 10px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
 
   cursor: pointer;
 }
@@ -287,13 +286,17 @@ h3 {
 
 /* =========================================================
    ✅ 透過UIの“質感”ベース
+   ✅ button/inputもガラス設定にリンク
    ========================================================= */
 button {
   border: 1px solid var(--line);
   color: rgba(255, 255, 255, 0.9);
-  background: rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+
+  /* ここを固定から変数へ */
+  background: rgba(255, 255, 255, calc(var(--glass-alpha, 0.22) * 0.28));
+  backdrop-filter: blur(var(--glass-blur, 10px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
+
   border-radius: 14px;
   padding: 10px 14px;
 }
@@ -307,7 +310,12 @@ textarea,
 select {
   border: 1px solid var(--line);
   color: rgba(255, 255, 255, 0.92);
-  background: rgba(0, 0, 0, 0.28);
+
+  /* ここも変数へ */
+  background: rgba(0, 0, 0, calc(var(--glass-alpha, 0.22) + 0.06));
+  backdrop-filter: blur(var(--glass-blur, 10px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
+
   border-radius: 12px;
   padding: 10px 12px;
   outline: none;
@@ -320,14 +328,12 @@ select:focus {
 }
 
 /* =========================================================
-   ✅ Glass（擦りガラス）: スライダー値と連動させる本体
-   Settings の className="glass glass-strong" がここに刺さる
+   ✅ Glass（className="glass glass-strong"用）
    ========================================================= */
 .glass {
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 16px;
 
-  /* ここがスライダー連動の肝 */
   background: rgba(0, 0, 0, var(--glass-alpha, 0.22));
   backdrop-filter: blur(var(--glass-blur, 10px));
   -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
@@ -344,15 +350,6 @@ select:focus {
   -webkit-backdrop-filter: blur(calc(var(--glass-blur, 10px) + 2px));
 
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.2);
-}
-
-/* （任意）カード内の hr を少し馴染ませる */
-.glass hr,
-.glass-strong hr {
-  border: 0;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.14);
-  opacity: 0.35;
 }
 
 /* 以下は元のまま（使ってないなら消してOK） */
