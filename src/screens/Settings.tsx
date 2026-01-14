@@ -17,6 +17,7 @@ import {
   useAppSettings,
   normalizePublicPath,
 } from "../lib/appSettings";
+import { CHARACTERS_STORAGE_KEY } from "./CharacterSettings";
 
 type Props = {
   back: () => void;
@@ -51,6 +52,15 @@ function safeCharacterOptions(): CharacterOption[] {
   ];
 }
 
+function safeJsonParse<T>(raw: string | null, fallback: T): T {
+  try {
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 function useIsNarrow(breakpointPx = 720) {
   const [isNarrow, setIsNarrow] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -73,6 +83,56 @@ function useIsNarrow(breakpointPx = 720) {
   return isNarrow;
 }
 
+/** キャラID -> 画像パス を保存するキー（この画面の割り当て用） */
+const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
+type CharacterImageMap = Record<string, string>;
+
+/** CharacterSettings 側の作成キャラを読む（v2/v1混在想定でゆるく） */
+type StoredCharacterLike = {
+  id?: unknown;
+  name?: unknown; // v2
+  label?: unknown; // v1
+};
+
+function loadCreatedCharacters(): CharacterOption[] {
+  if (typeof window === "undefined") return [];
+  const raw = localStorage.getItem(CHARACTERS_STORAGE_KEY);
+  const list = safeJsonParse<StoredCharacterLike[]>(raw, []);
+  const normalized = list
+    .map((c) => {
+      const id = typeof c?.id === "string" ? c.id : "";
+      const label =
+        typeof c?.name === "string"
+          ? c.name
+          : typeof c?.label === "string"
+          ? c.label
+          : "";
+      return { id, label };
+    })
+    .filter((x) => !!x.id && !!x.label);
+
+  // id 重複排除
+  const seen = new Set<string>();
+  const uniq: CharacterOption[] = [];
+  for (const c of normalized) {
+    if (seen.has(c.id)) continue;
+    seen.add(c.id);
+    uniq.push(c);
+  }
+  return uniq;
+}
+
+function loadCharacterImageMap(): CharacterImageMap {
+  if (typeof window === "undefined") return {};
+  const raw = localStorage.getItem(CHARACTER_IMAGE_MAP_KEY);
+  return safeJsonParse<CharacterImageMap>(raw, {});
+}
+
+function saveCharacterImageMap(map: CharacterImageMap) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(CHARACTER_IMAGE_MAP_KEY, JSON.stringify(map));
+}
+
 export default function Settings({ back }: Props) {
   const { settings, set, reset } = useAppSettings();
 
@@ -91,6 +151,12 @@ export default function Settings({ back }: Props) {
 
   const [entries, setEntries] = useState<TideCacheEntry[]>([]);
   const [days, setDays] = useState<30 | 60 | 90 | 180>(30);
+
+  // ✅ キャラ管理で作成したキャラ一覧 & 画像割り当て
+  const [createdCharacters, setCreatedCharacters] = useState<CharacterOption[]>(
+    []
+  );
+  const [charImageMap, setCharImageMapState] = useState<CharacterImageMap>({});
 
   const sectionTitle: CSSProperties = {
     margin: 0,
@@ -196,8 +262,24 @@ export default function Settings({ back }: Props) {
     }
   }
 
+  function refreshCreatedCharactersAndMap() {
+    const chars = loadCreatedCharacters();
+    setCreatedCharacters(chars);
+
+    const map = loadCharacterImageMap();
+    // いま存在するキャラ以外のキーは残してOK（将来復帰するかも）だけど、
+    // UIは現存キャラのみ表示する
+    setCharImageMapState(map);
+  }
+
+  function setCharImageMap(next: CharacterImageMap) {
+    setCharImageMapState(next);
+    saveCharacterImageMap(next);
+  }
+
   useEffect(() => {
     refresh();
+    refreshCreatedCharactersAndMap();
   }, []);
 
   const approxMB = useMemo(() => {
@@ -407,6 +489,131 @@ export default function Settings({ back }: Props) {
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+
+            {/* ✅ 追加：キャラ管理で作成したキャラに画像を割り当て */}
+            <div style={row}>
+              <div style={label}>作成キャラ画像</div>
+              <div style={rowStack}>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    style={pillBase}
+                    onClick={() => refreshCreatedCharactersAndMap()}
+                  >
+                    ↻ キャラ管理と同期
+                  </button>
+                  <span style={help}>
+                    CharacterSettings で作ったキャラに、画像パスを割り当てるよ。
+                  </span>
+                </div>
+
+                {createdCharacters.length === 0 ? (
+                  <div style={help}>
+                    まだ作成キャラが見つからないよ（キャラ管理で追加してから同期してね）。
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {createdCharacters.map((c) => {
+                      const raw = charImageMap[c.id] ?? "";
+                      const p = normalizePublicPath(raw);
+                      return (
+                        <div
+                          key={c.id}
+                          style={{
+                            borderRadius: 14,
+                            border: "1px solid rgba(255,255,255,0.14)",
+                            background: "rgba(255,255,255,0.06)",
+                            padding: 10,
+                            display: "grid",
+                            gap: 8,
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: 10,
+                              flexWrap: "wrap",
+                              alignItems: "center",
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: "rgba(255,255,255,0.85)",
+                                overflowWrap: "anywhere",
+                              }}
+                            >
+                              {c.label}{" "}
+                              <span style={{ color: "rgba(255,255,255,0.55)" }}>
+                                （id: {c.id}）
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              style={pillBase}
+                              onClick={() => {
+                                const next = { ...charImageMap };
+                                delete next[c.id];
+                                setCharImageMap(next);
+                              }}
+                            >
+                              ↩ 未設定に戻す
+                            </button>
+                          </div>
+
+                          <input
+                            value={raw}
+                            onChange={(e) => {
+                              const next = {
+                                ...charImageMap,
+                                [c.id]: e.target.value,
+                              };
+                              setCharImageMap(next);
+                            }}
+                            placeholder="例: /assets/characters/tsuduri.png"
+                          />
+
+                          <div style={help}>
+                            public 配下のパスを指定してね（例:{" "}
+                            <code>/assets/characters/tsuduri.png</code>
+                            ）。この割り当ては
+                            “上書き”より下の優先度で使う想定だよ。
+                          </div>
+
+                          {p ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 10,
+                                alignItems: "center",
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <span style={help}>プレビュー:</span>
+                              <img
+                                src={p}
+                                alt=""
+                                style={{
+                                  height: 64,
+                                  width: "auto",
+                                  borderRadius: 12,
+                                  border: "1px solid rgba(255,255,255,0.18)",
+                                  background: "rgba(0,0,0,0.2)",
+                                }}
+                              />
+                            </div>
+                          ) : (
+                            <div style={help}>（未設定）</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
