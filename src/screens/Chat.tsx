@@ -28,10 +28,6 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
 /** ===== 指名検出ユーティリティ ===== */
 function shuffle<T>(arr: T[]) {
   const a = [...arr];
