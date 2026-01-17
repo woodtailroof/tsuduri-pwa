@@ -32,10 +32,9 @@ type Props = {
 
   hideScrollbar?: boolean;
 
-  /** ✅ 追加：スクロールを許可するか（Homeなどで false にする） */
-  scrollable?: boolean;
-
-  /** ✅ 追加：内側のpadding（Homeだけ縦を詰めたい時用） */
+  /** ✅ 追加：縦スクロール制御（Homeで1画面固定したいとき用） */
+  scrollY?: "auto" | "hidden";
+  /** ✅ 追加：内側paddingを画面ごとに調整したいとき用 */
   contentPadding?: string;
 };
 
@@ -147,8 +146,9 @@ export default function PageShell({
 
   hideScrollbar = true,
 
-  scrollable = true,
-  contentPadding = "clamp(16px, 3vw, 24px)",
+  // ✅ 追加
+  scrollY = "auto",
+  contentPadding,
 }: Props) {
   const { settings } = useAppSettings();
 
@@ -188,7 +188,6 @@ export default function PageShell({
   // ==========
   const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
   const glassBlur = clamp(settings.glassBlur ?? 10, 0, 24);
-  // 強め（glass-strong用に少し濃く）
   const glassAlphaStrong = clamp(glassAlpha + 0.08, 0, 0.6);
 
   // ==========
@@ -242,7 +241,6 @@ export default function PageShell({
     createdIds,
   ]);
 
-  // ✅ 作成キャラ割り当て（localStorage）を反映
   const mappedCharacterSrc = useMemo(() => {
     if (!requestedCharacterId) return null;
 
@@ -256,9 +254,7 @@ export default function PageShell({
 
   const requestedCharacterSrc = useMemo(() => {
     if (!requestedCharacterId) return null;
-    // 1) 割り当てがあればそれ
     if (mappedCharacterSrc) return mappedCharacterSrc;
-    // 2) なければ従来のデフォルト解決
     return resolveCharacterSrc(requestedCharacterId);
   }, [requestedCharacterId, mappedCharacterSrc]);
 
@@ -289,17 +285,14 @@ export default function PageShell({
         requestAnimationFrame(() => setFadeIn(true));
       });
     };
-    const onError = () => {
-      // 読み込み失敗時は現状維持
-    };
 
     img.addEventListener("load", onLoad);
-    img.addEventListener("error", onError);
+    img.addEventListener("error", () => {});
 
     return () => {
       cancelled = true;
       img.removeEventListener("load", onLoad);
-      img.removeEventListener("error", onError);
+      img.removeEventListener("error", () => {});
     };
   }, [requestedCharacterSrc, testCharacterSrc]);
 
@@ -328,9 +321,23 @@ export default function PageShell({
   const shouldShowCharacter =
     showTestCharacter && settings.characterEnabled && !!displaySrc;
 
+  const scrollStyle: CSSProperties = {
+    position: "relative",
+    zIndex: 10,
+    width: "100vw",
+    height: "100svh",
+    overflowY: scrollY,
+    overflowX: "hidden",
+    WebkitOverflowScrolling: "touch",
+    overscrollBehavior: "contain",
+  };
+
+  const innerPadding =
+    contentPadding ?? "clamp(16px, 3vw, 24px)";
+
   return (
     <div className="page-shell" style={shellStyle}>
-      {/* ✅ すりガラスが効かない環境でも確実に反映させる保険CSS */}
+      {/* ✅ すりガラス保険CSS */}
       <style>
         {`
           .glass{
@@ -401,27 +408,17 @@ export default function PageShell({
           "page-shell-scroll",
           hideScrollbar ? "scrollbar-hidden" : "",
           showBack ? "with-back-button" : "",
-          scrollable ? "" : "no-scroll",
         ]
           .filter(Boolean)
           .join(" ")}
-        style={{
-          position: "relative",
-          zIndex: 10,
-          width: "100vw",
-          height: "100svh",
-          overflowY: scrollable ? "auto" : "hidden",
-          overflowX: "hidden",
-          WebkitOverflowScrolling: scrollable ? "touch" : undefined,
-          overscrollBehavior: "contain",
-        }}
+        style={scrollStyle}
       >
         <div
           className="page-shell-inner"
           style={{
             maxWidth,
             margin: "0 auto",
-            padding: contentPadding,
+            padding: innerPadding,
             boxSizing: "border-box",
             position: "relative",
           }}
