@@ -34,6 +34,77 @@ function setUnlocked(pass: string) {
   }
 }
 
+function ImageButton({
+  src,
+  alt,
+  onClick,
+  width = 220,
+}: {
+  src: string;
+  alt: string;
+  onClick: () => void;
+  width?: number;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={alt}
+      style={{
+        background: "none",
+        border: "none",
+        padding: 0,
+        cursor: "pointer",
+        lineHeight: 0,
+        userSelect: "none",
+        WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      <img
+        src={src}
+        alt={alt}
+        draggable={false}
+        style={{
+          width,
+          height: "auto",
+          display: "block",
+          transition: "transform 0.15s ease, filter 0.15s ease",
+        }}
+        onMouseDown={(e) => {
+          const el = e.currentTarget as HTMLImageElement;
+          el.style.transform = "scale(0.96)";
+          el.style.filter = "brightness(0.95)";
+        }}
+        onMouseUp={(e) => {
+          const el = e.currentTarget as HTMLImageElement;
+          el.style.transform = "scale(1)";
+          el.style.filter = "none";
+        }}
+        onMouseLeave={(e) => {
+          const el = e.currentTarget as HTMLImageElement;
+          el.style.transform = "scale(1)";
+          el.style.filter = "none";
+        }}
+        onTouchStart={(e) => {
+          const el = e.currentTarget as HTMLImageElement;
+          el.style.transform = "scale(0.96)";
+          el.style.filter = "brightness(0.95)";
+        }}
+        onTouchEnd={(e) => {
+          const el = e.currentTarget as HTMLImageElement;
+          el.style.transform = "scale(1)";
+          el.style.filter = "none";
+        }}
+        onTouchCancel={(e) => {
+          const el = e.currentTarget as HTMLImageElement;
+          el.style.transform = "scale(1)";
+          el.style.filter = "none";
+        }}
+      />
+    </button>
+  );
+}
+
 export default function Home({ go }: Props) {
   const [unlocked, setUnlockedState] = useState<boolean>(() => isUnlocked());
   const [pass, setPass] = useState<string>(() => loadSavedPass());
@@ -58,12 +129,28 @@ export default function Home({ go }: Props) {
 
   return (
     <PageShell
-      title={<h1 style={{ margin: 0 }}>🎣 釣嫁つづり</h1>}
+      title={
+        <div style={{ display: "grid", placeItems: "center" }}>
+          <img
+            src="/assets/logo/logo-title.png"
+            alt="釣嫁ぷろじぇくと"
+            style={{
+              width: "min(760px, 96%)",
+              maxWidth: 760,
+              height: "auto",
+              display: "block",
+            }}
+          />
+        </div>
+      }
       subtitle={
-        <p style={{ marginTop: 8 }}>ひろっちの釣りライフ、今日も一投いこ？</p>
+        <p style={{ marginTop: 8, textAlign: "center" }}>
+          ひろっちの釣りライフ、今日も一投いこ？
+        </p>
       }
       maxWidth={760}
     >
+      {/* 🔒 ロックオーバーレイ（既存仕様そのまま） */}
       {!canUse && (
         <div
           style={{
@@ -155,23 +242,54 @@ export default function Home({ go }: Props) {
         </div>
       )}
 
+      {/* 🎣 ホームボタンエリア */}
       <div
         style={{
-          marginTop: 24,
+          marginTop: 18,
           display: "grid",
-          gap: 12,
+          gap: 18,
           opacity: canUse ? 1 : 0.25,
           pointerEvents: canUse ? "auto" : "none",
         }}
       >
-        <button onClick={() => go("record")}>📸 釣果を記録する</button>
-        <button onClick={() => go("archive")}>🧾 全履歴を見る</button>
-        <button onClick={() => go("weather")}>☀️ 天気・潮を見る</button>
-        <button onClick={() => go("chat")}>💬 話す</button>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: 16,
+            justifyItems: "center",
+          }}
+        >
+          <ImageButton
+            src="/assets/buttons/btn-record.png"
+            alt="記録する"
+            onClick={() => go("record")}
+          />
+          <ImageButton
+            src="/assets/buttons/btn-archive.png"
+            alt="履歴をみる"
+            onClick={() => go("archive")}
+          />
+          <ImageButton
+            src="/assets/buttons/btn-weather.png"
+            alt="天気・潮をみる"
+            onClick={() => go("weather")}
+          />
+          <ImageButton
+            src="/assets/buttons/btn-chat.png"
+            alt="話す"
+            onClick={() => go("chat")}
+          />
+        </div>
 
-        <hr style={{ margin: "12px 0", opacity: 0.3 }} />
-
-        <button onClick={() => go("settings")}>⚙ 設定</button>
+        <div style={{ display: "grid", placeItems: "center", marginTop: 4 }}>
+          <ImageButton
+            src="/assets/buttons/btn-settings.png"
+            alt="設定"
+            onClick={() => go("settings")}
+            width={280}
+          />
+        </div>
       </div>
     </PageShell>
   );
