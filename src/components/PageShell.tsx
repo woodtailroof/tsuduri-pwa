@@ -31,6 +31,12 @@ type Props = {
   testCharacterOpacity?: number;
 
   hideScrollbar?: boolean;
+
+  /** ✅ 追加：スクロールを許可するか（Homeなどで false にする） */
+  scrollable?: boolean;
+
+  /** ✅ 追加：内側のpadding（Homeだけ縦を詰めたい時用） */
+  contentPadding?: string;
 };
 
 const STACK_KEY = "tsuduri_nav_stack_v1";
@@ -140,6 +146,9 @@ export default function PageShell({
   testCharacterOpacity = 1,
 
   hideScrollbar = true,
+
+  scrollable = true,
+  contentPadding = "clamp(16px, 3vw, 24px)",
 }: Props) {
   const { settings } = useAppSettings();
 
@@ -249,7 +258,7 @@ export default function PageShell({
     if (!requestedCharacterId) return null;
     // 1) 割り当てがあればそれ
     if (mappedCharacterSrc) return mappedCharacterSrc;
-    // 2) なければ従来のデフォルト解決（必要なら後で「未設定は出さない」にもできる）
+    // 2) なければ従来のデフォルト解決
     return resolveCharacterSrc(requestedCharacterId);
   }, [requestedCharacterId, mappedCharacterSrc]);
 
@@ -392,6 +401,7 @@ export default function PageShell({
           "page-shell-scroll",
           hideScrollbar ? "scrollbar-hidden" : "",
           showBack ? "with-back-button" : "",
+          scrollable ? "" : "no-scroll",
         ]
           .filter(Boolean)
           .join(" ")}
@@ -400,9 +410,9 @@ export default function PageShell({
           zIndex: 10,
           width: "100vw",
           height: "100svh",
-          overflowY: "auto",
+          overflowY: scrollable ? "auto" : "hidden",
           overflowX: "hidden",
-          WebkitOverflowScrolling: "touch",
+          WebkitOverflowScrolling: scrollable ? "touch" : undefined,
           overscrollBehavior: "contain",
         }}
       >
@@ -411,7 +421,7 @@ export default function PageShell({
           style={{
             maxWidth,
             margin: "0 auto",
-            padding: "clamp(16px, 3vw, 24px)",
+            padding: contentPadding,
             boxSizing: "border-box",
             position: "relative",
           }}
