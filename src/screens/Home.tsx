@@ -91,16 +91,20 @@ export default function Home({ go }: Props) {
   const btnSettings = "/assets/buttons/btn-settings.png";
 
   return (
-    <PageShell
-      // Homeはタイトル/サブタイトルは自前で描画（ひと言は消す）
-      title={null}
-      subtitle={null}
-      maxWidth={1400}
-    >
-      {/* Home専用CSS（当たり判定を画像に寄せる・レイアウト固定） */}
+    <PageShell title={null} subtitle={null} maxWidth={1600}>
       <style>
         {`
-          /* 画像ボタン：当たり判定 = 画像サイズ（余計なpadding等を完全排除） */
+          /* ✅ Homeだけ「絶対スクロールさせない」 */
+          .page-shell-scroll{
+            overflow: hidden !important;
+            height: 100svh !important;
+          }
+          /* PageShellの内側paddingが効きすぎると超えやすいのでHomeだけ少し圧縮 */
+          .page-shell-inner{
+            padding: clamp(10px, 2vw, 18px) !important;
+          }
+
+          /* ===== 画像ボタン：当たり判定を画像に寄せる ===== */
           .home-img-btn{
             appearance: none;
             -webkit-appearance: none;
@@ -109,83 +113,92 @@ export default function Home({ go }: Props) {
             padding: 0;
             margin: 0;
             display: inline-block;
-            line-height: 0;               /* ← これ重要：行ボックスの余白を消す */
+            line-height: 0;               /* 行ボックス由来の余白を消す */
             width: fit-content;
             height: fit-content;
             cursor: pointer;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
           }
-          .home-img-btn:focus{
-            outline: none;
-          }
+          .home-img-btn:focus{ outline: none; }
           .home-img-btn__img{
-            display: block;               /* ← これ重要：img下の謎余白を消す */
+            display: block;               /* img下の謎余白を消す */
             width: var(--home-btn-w);
             max-width: 100%;
             height: auto;
           }
 
-          /* 画面内に収めるための基準幅（PC/スマホで可変） */
+          /* ===== サイズスケール（高さが低い環境ほど縮む） ===== */
           :root{
-            --home-btn-w: clamp(210px, 26vw, 320px);
+            --home-btn-w: clamp(190px, 22vw, 300px);
+            --home-gap-y: clamp(10px, 2.2vh, 18px);
+            --home-gap-x: clamp(14px, 2.6vw, 30px);
+            --home-logo-w: min(92vw, 1040px);
+            --home-logo-maxh: 34svh; /* 高さがキツい端末でここが効く */
           }
-          @media (max-width: 480px){
+
+          @media (max-width: 720px){
             :root{
               --home-btn-w: clamp(170px, 44vw, 240px);
+              --home-logo-w: min(92vw, 560px);
+              --home-logo-maxh: 28svh;
             }
           }
 
-          /* ロゴを“映える”サイズに（高さじゃなく横幅基準に寄せる） */
-          .home-logo{
-            width: min(86vw, 980px);
-            max-width: 980px;
-            height: auto;
-            display: block;
-            margin: 0 auto;
-            filter: drop-shadow(0 10px 28px rgba(0,0,0,0.25));
-          }
-          @media (max-width: 480px){
-            .home-logo{
-              width: min(92vw, 520px);
+          /* “高さが低い”環境（PC横長・ズーム・スマホ横向き）対策 */
+          @media (max-height: 760px){
+            :root{
+              --home-btn-w: clamp(165px, 20vw, 260px);
+              --home-gap-y: clamp(8px, 1.6vh, 14px);
+              --home-logo-maxh: 26svh;
             }
           }
 
-          /* Home全体：1画面固定 */
           .home-wrap{
-            min-height: calc(100svh - 48px); /* PageShell padding分のざっくり調整 */
+            height: 100svh;
+            width: 100%;
             display: grid;
-            place-items: center;
+            align-items: center;
           }
 
-          /* 右下キャラと喧嘩しないように、右側に“安全余白”を確保（PCだけ強め） */
+          /* PCは右下キャラと喧嘩しないように右側に安全余白を確保 */
           .home-stage{
             width: 100%;
             display: grid;
             justify-items: start;
-            gap: clamp(10px, 1.8vh, 18px);
+            gap: var(--home-gap-y);
             padding-right: clamp(0px, 18vw, 420px);
           }
           @media (max-width: 720px){
             .home-stage{
-              padding-right: 0px;
               justify-items: center;
+              padding-right: 0px;
             }
           }
 
-          /* ボタン配置：2x2 + 設定（中央寄せ） */
+          .home-logo{
+            width: var(--home-logo-w);
+            height: auto;
+            max-height: var(--home-logo-maxh);
+            display: block;
+            margin: 0;
+            filter: drop-shadow(0 10px 28px rgba(0,0,0,0.25));
+          }
+          @media (max-width: 720px){
+            .home-logo{ margin: 0 auto; }
+          }
+
+          /* ボタン：2x2 + 設定（中央寄せ） */
           .home-grid{
             width: 100%;
             display: grid;
             grid-template-columns: repeat(2, max-content);
             justify-content: start;
-            gap: clamp(12px, 2.4vh, 22px) clamp(14px, 2.6vw, 30px);
             align-items: center;
+            gap: var(--home-gap-y) var(--home-gap-x);
           }
           @media (max-width: 720px){
-            .home-grid{
-              justify-content: center;
-            }
+            .home-grid{ justify-content: center; }
           }
 
           .home-settings{
@@ -193,9 +206,7 @@ export default function Home({ go }: Props) {
             justify-self: start;
           }
           @media (max-width: 720px){
-            .home-settings{
-              justify-self: center;
-            }
+            .home-settings{ justify-self: center; }
           }
         `}
       </style>
@@ -226,17 +237,12 @@ export default function Home({ go }: Props) {
             <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>
               🔒 合言葉を入力
             </div>
-            <div style={{ fontSize: 12, color: "#aaa", lineHeight: 1.6 }}>
-              ※ これは「自分だけプレ運用」用の簡易ロックだよ。
-              <br />
-              チャットAPI側でもチェックするから、合言葉がないと会話は動かないようにしてある。
-            </div>
 
             <div
               style={{
                 display: "flex",
                 gap: 8,
-                marginTop: 12,
+                marginTop: 10,
                 alignItems: "center",
               }}
             >
@@ -283,10 +289,6 @@ export default function Home({ go }: Props) {
                 {error}
               </div>
             )}
-
-            <div style={{ marginTop: 10, fontSize: 11, color: "#777" }}>
-              ヒント：合言葉は端末内に保存されるよ（localStorage）
-            </div>
           </div>
         </div>
       )}
@@ -299,10 +301,8 @@ export default function Home({ go }: Props) {
         }}
       >
         <div className="home-stage">
-          {/* ロゴ */}
           <img className="home-logo" src={logoSrc} alt="釣嫁ぷろじぇくと" />
 
-          {/* ボタン群 */}
           <div className="home-grid">
             <ImgButton
               src={btnRecord}
@@ -321,7 +321,6 @@ export default function Home({ go }: Props) {
             />
             <ImgButton src={btnChat} alt="話す" onClick={() => go("chat")} />
 
-            {/* 設定 */}
             <div className="home-settings">
               <ImgButton
                 src={btnSettings}
