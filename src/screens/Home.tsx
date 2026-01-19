@@ -151,34 +151,38 @@ export default function Home({ go }: Props) {
   }
 
   const ui = useMemo(() => {
-    // ✅ タイトルは大きく（見栄え優先）ただし “高さ上限” を設けてボタンを押し出さない
-    const logoW = isWide ? "min(920px, 64vw)" : "min(980px, 92vw)";
-    const logoMaxH = isWide ? "26svh" : "22svh";
-
-    // ✅ ボタンは「画面に収まる幅」を優先して少し控えめに（ここがスクロール防止の肝）
-    const btnW = isWide
-      ? "clamp(220px, 18vw, 320px)"
-      : "clamp(170px, 42vw, 250px)";
-
-    // 縦間隔は “高さ依存” で詰める（スマホ縦は特に重要）
-    const gapY = isWide
-      ? "clamp(10px, 1.8svh, 18px)"
-      : "clamp(8px, 1.6svh, 14px)";
-
-    const gapX = isWide ? "clamp(18px, 2.2vw, 34px)" : "clamp(14px, 4vw, 26px)";
-
-    // タイトルとボタンの間も詰める
+    // ===== ロゴ（見栄え優先 / ただし高さ上限で押し出し防止） =====
+    const logoW = isWide ? "min(920px, 56vw)" : "min(980px, 92vw)";
+    const logoMaxH = isWide ? "28svh" : "22svh";
     const titleBottom = isWide
       ? "clamp(6px, 1.2svh, 14px)"
       : "clamp(6px, 1.0svh, 12px)";
 
-    // スマホ縦はキャラ右下と被りやすいので、右側に安全余白を足す
-    const safeRightPad = isPhonePortrait ? "min(42vw, 230px)" : "0px";
+    // ===== ボタンサイズ（画面内に収める） =====
+    const btnW = isWide
+      ? "clamp(220px, 18vw, 320px)"
+      : "clamp(170px, 42vw, 250px)";
 
-    // Homeは右下ピッタリ
+    const gapY = isWide
+      ? "clamp(10px, 1.8svh, 18px)"
+      : "clamp(8px, 1.6svh, 14px)";
+    const gapX = isWide ? "clamp(18px, 2.2vw, 34px)" : "clamp(14px, 4vw, 26px)";
+
+    // ===== “キャラの居場所”を確保する安全余白 =====
+    // PC：右側にしっかり領域確保（巨大キャラでも壊れない）
+    const safeRightPad = isWide
+      ? "min(42vw, 620px)"
+      : isPhonePortrait
+        ? "min(42vw, 230px)"
+        : "0px";
+
+    // スマホ縦：キャラの胴体に被りやすいので、ボタンを上へ逃がす
+    const liftButtonsY = isPhonePortrait ? "-10svh" : "0svh";
+
+    // キャラ高さ（Homeでの見た目）※キャラが巨大でも“右側に逃がす”ので壊れにくい
     const characterHeight = isWide
-      ? "clamp(420px, 72svh, 780px)"
-      : "clamp(320px, 54svh, 560px)";
+      ? "clamp(420px, 74svh, 860px)"
+      : "clamp(320px, 56svh, 620px)";
 
     return {
       logoW,
@@ -188,47 +192,17 @@ export default function Home({ go }: Props) {
       gapX,
       titleBottom,
       safeRightPad,
+      liftButtonsY,
       characterHeight,
     };
   }, [isWide, isPhonePortrait]);
-
-  const btns = useMemo(
-    () => [
-      {
-        src: "/assets/buttons/btn-record.png",
-        alt: "記録する",
-        onClick: () => go("record"),
-      },
-      {
-        src: "/assets/buttons/btn-history.png",
-        alt: "履歴をみる",
-        onClick: () => go("archive"),
-      },
-      {
-        src: "/assets/buttons/btn-weather.png",
-        alt: "天気・潮をみる",
-        onClick: () => go("weather"),
-      },
-      {
-        src: "/assets/buttons/btn-chat.png",
-        alt: "話す",
-        onClick: () => go("chat"),
-      },
-      {
-        src: "/assets/buttons/btn-settings.png",
-        alt: "設定",
-        onClick: () => go("settings"),
-      },
-    ],
-    [go],
-  );
 
   return (
     <PageShell
       showBack={false}
       title={null}
       subtitle={null}
-      maxWidth={1400}
+      maxWidth={1600}
       testCharacterHeight={ui.characterHeight}
       testCharacterOffset={{ right: 0, bottom: 0 }}
     >
@@ -323,27 +297,28 @@ export default function Home({ go }: Props) {
         </div>
       )}
 
-      {/* ✅ ここが「スクロールさせない」ための土台：100svh内でレイアウト完結 */}
+      {/* ✅ Homeはスクロール不要：100svh内で完結 */}
       <div
         style={{
-          height: "calc(100svh - 1px)",
+          height: "100svh",
           display: "grid",
           gridTemplateRows: "auto 1fr",
-          alignItems: "start",
           overflow: "hidden",
           opacity: canUse ? 1 : 0.25,
           pointerEvents: canUse ? "auto" : "none",
           paddingBottom: `max(8px, env(safe-area-inset-bottom))`,
         }}
       >
-        {/* タイトル（大きいが高さ上限あり） */}
+        {/* タイトル */}
         <div
           style={{
             display: "grid",
-            justifyItems: "center",
+            justifyItems: isWide ? "start" : "center",
+            alignItems: "center",
             marginTop: "clamp(6px, 1.6svh, 16px)",
             marginBottom: ui.titleBottom,
-            paddingRight: ui.safeRightPad, // スマホ縦でキャラと被りにくくする
+            paddingRight: ui.safeRightPad,
+            paddingLeft: isWide ? "clamp(18px, 3vw, 56px)" : 0,
           }}
         >
           <img
@@ -361,13 +336,15 @@ export default function Home({ go }: Props) {
           />
         </div>
 
-        {/* ボタン（残り高さに必ず収める、中央に凝縮） */}
+        {/* ボタン（PCは左寄せ寄り / スマホ縦は上へ持ち上げ） */}
         <div
           style={{
             display: "grid",
-            placeItems: "center",
+            alignItems: "center",
             overflow: "hidden",
-            paddingRight: ui.safeRightPad, // スマホ縦で右下キャラと干渉しにくい
+            paddingRight: ui.safeRightPad,
+            paddingLeft: isWide ? "clamp(18px, 3vw, 56px)" : 0,
+            transform: `translateY(${ui.liftButtonsY})`,
           }}
         >
           <div
@@ -376,47 +353,46 @@ export default function Home({ go }: Props) {
               gridTemplateColumns: "repeat(2, max-content)",
               columnGap: ui.gapX,
               rowGap: ui.gapY,
-              justifyContent: "center",
+              justifyContent: isWide ? "start" : "center",
               alignContent: "center",
             }}
           >
             <ImgButton
-              src={btns[0].src}
-              alt={btns[0].alt}
-              onClick={btns[0].onClick}
+              src="/assets/buttons/btn-record.png"
+              alt="記録する"
+              onClick={() => go("record")}
               width={ui.btnW}
             />
             <ImgButton
-              src={btns[1].src}
-              alt={btns[1].alt}
-              onClick={btns[1].onClick}
+              src="/assets/buttons/btn-history.png"
+              alt="履歴をみる"
+              onClick={() => go("archive")}
               width={ui.btnW}
             />
             <ImgButton
-              src={btns[2].src}
-              alt={btns[2].alt}
-              onClick={btns[2].onClick}
+              src="/assets/buttons/btn-weather.png"
+              alt="天気・潮をみる"
+              onClick={() => go("weather")}
               width={ui.btnW}
             />
             <ImgButton
-              src={btns[3].src}
-              alt={btns[3].alt}
-              onClick={btns[3].onClick}
+              src="/assets/buttons/btn-chat.png"
+              alt="話す"
+              onClick={() => go("chat")}
               width={ui.btnW}
             />
 
-            {/* 設定も同じサイズで統一 */}
             <div
               style={{
                 gridColumn: "1 / span 2",
                 display: "grid",
-                placeItems: "center",
+                placeItems: isWide ? "start" : "center",
               }}
             >
               <ImgButton
-                src={btns[4].src}
-                alt={btns[4].alt}
-                onClick={btns[4].onClick}
+                src="/assets/buttons/btn-settings.png"
+                alt="設定"
+                onClick={() => go("settings")}
                 width={ui.btnW}
               />
             </div>
