@@ -1,5 +1,5 @@
 // src/screens/Home.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import PageShell from "../components/PageShell";
 
 type Props = {
@@ -34,20 +34,30 @@ function setUnlocked(pass: string) {
   }
 }
 
-function useViewport() {
-  const [vp, setVp] = useState(() => ({
-    w: typeof window !== "undefined" ? window.innerWidth : 0,
-    h: typeof window !== "undefined" ? window.innerHeight : 0,
-  }));
+type ImgBtnProps = {
+  src: string;
+  alt: string;
+  onClick: () => void;
+  style?: CSSProperties;
+};
 
-  useEffect(() => {
-    const onResize = () =>
-      setVp({ w: window.innerWidth, h: window.innerHeight });
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  return vp;
+function ImgButton({ src, alt, onClick, style }: ImgBtnProps) {
+  return (
+    <button
+      type="button"
+      className="home-img-btn"
+      onClick={onClick}
+      aria-label={alt}
+      style={style}
+    >
+      <img
+        className="home-img-btn__img"
+        src={src}
+        alt={alt}
+        draggable={false}
+      />
+    </button>
+  );
 }
 
 export default function Home({ go }: Props) {
@@ -72,214 +82,124 @@ export default function Home({ go }: Props) {
     setError("");
   }
 
-  const { w, h } = useViewport();
-
-  // ざっくり端末判定（Home専用のレイアウト最適化用）
-  const isNarrow = w <= 820;
-  const isShort = h <= 700;
-
-  // タイトル（ロゴ）を「もっと大きく映える」方向へ
-  // - PC: 大きめ
-  // - スマホ縦: 上を食いすぎない範囲で最大化
-  const logoHeight = isNarrow
-    ? "clamp(96px, 16svh, 150px)"
-    : "clamp(120px, 18svh, 220px)";
-
-  // ボタンサイズ：画像に合わせて押し判定もぴったりにする
-  // ※「ボタンが1画面に収まる」最優先で、高さが短い時は少しだけ小さく
-  const btnW = isNarrow
-    ? isShort
-      ? "clamp(140px, 36vw, 220px)"
-      : "clamp(150px, 38vw, 240px)"
-    : isShort
-      ? "clamp(190px, 18vw, 260px)"
-      : "clamp(210px, 20vw, 300px)";
-
-  const gap = isNarrow
-    ? "clamp(10px, 2.4svh, 18px)"
-    : "clamp(12px, 2.2svh, 22px)";
-
-  // アセット（必要ならパスだけ合わせてね）
+  // ===== assets =====
   const logoSrc = "/assets/logo/logo-title.png";
-
   const btnRecord = "/assets/buttons/btn-record.png";
   const btnHistory = "/assets/buttons/btn-history.png";
   const btnWeather = "/assets/buttons/btn-weather.png";
   const btnChat = "/assets/buttons/btn-chat.png";
   const btnSettings = "/assets/buttons/btn-settings.png";
 
-  // “画像ぴったり”のクリック範囲にするための共通スタイル
-  const imageButtonStyle: React.CSSProperties = {
-    appearance: "none",
-    border: "none",
-    padding: 0, // ✅ 余白クリックを消す
-    margin: 0,
-    background: "transparent",
-    cursor: "pointer",
-    lineHeight: 0, // ✅ 画像下の謎の余白対策
-    display: "inline-block",
-    width: btnW,
-    WebkitTapHighlightColor: "transparent",
-    touchAction: "manipulation",
-    userSelect: "none",
-  };
-
-  const imageStyle: React.CSSProperties = {
-    width: "100%",
-    height: "auto",
-    display: "block", // ✅ 画像の下に余白が出るのを防止
-    filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.22))",
-  };
-
   return (
     <PageShell
-      // Homeは戻るボタン不要なら false に（必要なら消してOK）
-      showBack={false}
-      maxWidth={1400}
-      // title/subtitleのテキストは使わず、Home内で“1画面設計”を完結させる
+      // Homeはタイトル/サブタイトルは自前で描画（ひと言は消す）
       title={null}
       subtitle={null}
+      maxWidth={1400}
     >
-      {/* 画面スクロールを出さないため、Home内で1画面レイアウトを組む */}
-      <div
-        style={{
-          // PageShell内側のpadding分を見込んで、余裕を持たせつつ「1画面」に収める
-          minHeight: "calc(100svh - 48px)",
-          display: "grid",
-          gridTemplateColumns: isNarrow
-            ? "1fr"
-            : "minmax(520px, 1fr) minmax(320px, 1fr)",
-          alignItems: "center",
-          columnGap: isNarrow ? 0 : "clamp(18px, 3vw, 36px)",
-          rowGap: "clamp(10px, 2svh, 18px)",
-          opacity: canUse ? 1 : 0.25,
-          pointerEvents: canUse ? "auto" : "none",
-        }}
-      >
-        {/* 左：ロゴ＋ボタン群 */}
-        <div
-          style={{
-            display: "grid",
-            justifyItems: isNarrow ? "center" : "start",
-            alignContent: "center",
-            gap,
-            minWidth: 0,
-          }}
-        >
-          {/* ロゴ（大きく映える） */}
-          <div
-            style={{
-              width: isNarrow ? "min(92vw, 760px)" : "min(58vw, 820px)",
-              maxWidth: "100%",
-            }}
-          >
-            <img
-              src={logoSrc}
-              alt="釣嫁つづり"
-              style={{
-                height: logoHeight,
-                width: "100%",
-                objectFit: "contain",
-                display: "block",
-                filter: "drop-shadow(0 16px 30px rgba(0,0,0,0.25))",
-              }}
-            />
-          </div>
+      {/* Home専用CSS（当たり判定を画像に寄せる・レイアウト固定） */}
+      <style>
+        {`
+          /* 画像ボタン：当たり判定 = 画像サイズ（余計なpadding等を完全排除） */
+          .home-img-btn{
+            appearance: none;
+            -webkit-appearance: none;
+            border: 0;
+            background: transparent;
+            padding: 0;
+            margin: 0;
+            display: inline-block;
+            line-height: 0;               /* ← これ重要：行ボックスの余白を消す */
+            width: fit-content;
+            height: fit-content;
+            cursor: pointer;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+          }
+          .home-img-btn:focus{
+            outline: none;
+          }
+          .home-img-btn__img{
+            display: block;               /* ← これ重要：img下の謎余白を消す */
+            width: var(--home-btn-w);
+            max-width: 100%;
+            height: auto;
+          }
 
-          {/* ボタン：2×2 + 設定（1画面に収める） */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-              gap,
-              justifyItems: "center",
-              alignItems: "center",
-              width: isNarrow ? "min(92vw, 520px)" : "min(52vw, 720px)",
-              maxWidth: "100%",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => go("record")}
-              style={imageButtonStyle}
-              aria-label="釣果を記録する"
-            >
-              <img
-                src={btnRecord}
-                alt=""
-                style={imageStyle}
-                draggable={false}
-              />
-            </button>
+          /* 画面内に収めるための基準幅（PC/スマホで可変） */
+          :root{
+            --home-btn-w: clamp(210px, 26vw, 320px);
+          }
+          @media (max-width: 480px){
+            :root{
+              --home-btn-w: clamp(170px, 44vw, 240px);
+            }
+          }
 
-            <button
-              type="button"
-              onClick={() => go("archive")}
-              style={imageButtonStyle}
-              aria-label="全履歴を見る"
-            >
-              <img
-                src={btnHistory}
-                alt=""
-                style={imageStyle}
-                draggable={false}
-              />
-            </button>
+          /* ロゴを“映える”サイズに（高さじゃなく横幅基準に寄せる） */
+          .home-logo{
+            width: min(86vw, 980px);
+            max-width: 980px;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+            filter: drop-shadow(0 10px 28px rgba(0,0,0,0.25));
+          }
+          @media (max-width: 480px){
+            .home-logo{
+              width: min(92vw, 520px);
+            }
+          }
 
-            <button
-              type="button"
-              onClick={() => go("weather")}
-              style={imageButtonStyle}
-              aria-label="天気・潮を見る"
-            >
-              <img
-                src={btnWeather}
-                alt=""
-                style={imageStyle}
-                draggable={false}
-              />
-            </button>
+          /* Home全体：1画面固定 */
+          .home-wrap{
+            min-height: calc(100svh - 48px); /* PageShell padding分のざっくり調整 */
+            display: grid;
+            place-items: center;
+          }
 
-            <button
-              type="button"
-              onClick={() => go("chat")}
-              style={imageButtonStyle}
-              aria-label="話す"
-            >
-              <img src={btnChat} alt="" style={imageStyle} draggable={false} />
-            </button>
+          /* 右下キャラと喧嘩しないように、右側に“安全余白”を確保（PCだけ強め） */
+          .home-stage{
+            width: 100%;
+            display: grid;
+            justify-items: start;
+            gap: clamp(10px, 1.8vh, 18px);
+            padding-right: clamp(0px, 18vw, 420px);
+          }
+          @media (max-width: 720px){
+            .home-stage{
+              padding-right: 0px;
+              justify-items: center;
+            }
+          }
 
-            {/* 設定：幅を他と揃えて“押し判定も画像ぴったり” */}
-            <div
-              style={{
-                gridColumn: "1 / -1",
-                display: "grid",
-                justifyItems: "center",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => go("settings")}
-                style={imageButtonStyle}
-                aria-label="設定"
-              >
-                <img
-                  src={btnSettings}
-                  alt=""
-                  style={imageStyle}
-                  draggable={false}
-                />
-              </button>
-            </div>
-          </div>
-        </div>
+          /* ボタン配置：2x2 + 設定（中央寄せ） */
+          .home-grid{
+            width: 100%;
+            display: grid;
+            grid-template-columns: repeat(2, max-content);
+            justify-content: start;
+            gap: clamp(12px, 2.4vh, 22px) clamp(14px, 2.6vw, 30px);
+            align-items: center;
+          }
+          @media (max-width: 720px){
+            .home-grid{
+              justify-content: center;
+            }
+          }
 
-        {/* 右：空き（PC時はキャラが右下なので、ここは余白として生かす）
-            スマホ時は1カラムなので表示されない */}
-        {!isNarrow && <div aria-hidden="true" style={{ minHeight: 1 }} />}
-      </div>
+          .home-settings{
+            grid-column: 1 / -1;
+            justify-self: start;
+          }
+          @media (max-width: 720px){
+            .home-settings{
+              justify-self: center;
+            }
+          }
+        `}
+      </style>
 
-      {/* ロックUI（最前面。Home設計を崩さないように最後に置く） */}
       {!canUse && (
         <div
           style={{
@@ -370,6 +290,48 @@ export default function Home({ go }: Props) {
           </div>
         </div>
       )}
+
+      <div
+        className="home-wrap"
+        style={{
+          opacity: canUse ? 1 : 0.25,
+          pointerEvents: canUse ? "auto" : "none",
+        }}
+      >
+        <div className="home-stage">
+          {/* ロゴ */}
+          <img className="home-logo" src={logoSrc} alt="釣嫁ぷろじぇくと" />
+
+          {/* ボタン群 */}
+          <div className="home-grid">
+            <ImgButton
+              src={btnRecord}
+              alt="記録する"
+              onClick={() => go("record")}
+            />
+            <ImgButton
+              src={btnHistory}
+              alt="履歴をみる"
+              onClick={() => go("archive")}
+            />
+            <ImgButton
+              src={btnWeather}
+              alt="天気・潮をみる"
+              onClick={() => go("weather")}
+            />
+            <ImgButton src={btnChat} alt="話す" onClick={() => go("chat")} />
+
+            {/* 設定 */}
+            <div className="home-settings">
+              <ImgButton
+                src={btnSettings}
+                alt="設定"
+                onClick={() => go("settings")}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
     </PageShell>
   );
 }
