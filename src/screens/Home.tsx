@@ -3,7 +3,9 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import PageShell from "../components/PageShell";
 
 type Props = {
-  go: (screen: "record" | "archive" | "weather" | "chat" | "settings") => void;
+  go: (
+    screen: "record" | "recordHistory" | "weather" | "chat" | "settings",
+  ) => void;
 };
 
 const APP_LOCK_PASS_KEY = "tsuduri_app_pass_v1";
@@ -91,20 +93,20 @@ export default function Home({ go }: Props) {
   const btnSettings = "/assets/buttons/btn-settings.png";
 
   return (
-    <PageShell title={null} subtitle={null} maxWidth={1600}>
+    <PageShell title={null} subtitle={null} maxWidth={1700}>
       <style>
         {`
-          /* ✅ Homeだけ「絶対スクロールさせない」 */
+          /* ✅ Homeだけは絶対スクロールさせない */
           .page-shell-scroll{
             overflow: hidden !important;
             height: 100svh !important;
           }
-          /* PageShellの内側paddingが効きすぎると超えやすいのでHomeだけ少し圧縮 */
+          /* Homeは余白が増えるとすぐ溢れるので控えめに */
           .page-shell-inner{
-            padding: clamp(10px, 2vw, 18px) !important;
+            padding: clamp(10px, 1.8vw, 16px) !important;
           }
 
-          /* ===== 画像ボタン：当たり判定を画像に寄せる ===== */
+          /* ===== 画像ボタン：CSS由来の当たり判定ズレを潰す ===== */
           .home-img-btn{
             appearance: none;
             -webkit-appearance: none;
@@ -113,7 +115,7 @@ export default function Home({ go }: Props) {
             padding: 0;
             margin: 0;
             display: inline-block;
-            line-height: 0;               /* 行ボックス由来の余白を消す */
+            line-height: 0;
             width: fit-content;
             height: fit-content;
             cursor: pointer;
@@ -122,91 +124,118 @@ export default function Home({ go }: Props) {
           }
           .home-img-btn:focus{ outline: none; }
           .home-img-btn__img{
-            display: block;               /* img下の謎余白を消す */
-            width: var(--home-btn-w);
-            max-width: 100%;
+            display: block;        /* img下の余白を消す */
+            width: 100%;
             height: auto;
           }
 
-          /* ===== サイズスケール（高さが低い環境ほど縮む） ===== */
-          :root{
-            --home-btn-w: clamp(190px, 22vw, 300px);
-            --home-gap-y: clamp(10px, 2.2vh, 18px);
-            --home-gap-x: clamp(14px, 2.6vw, 30px);
-            --home-logo-w: min(92vw, 1040px);
-            --home-logo-maxh: 34svh; /* 高さがキツい端末でここが効く */
-          }
-
-          @media (max-width: 720px){
-            :root{
-              --home-btn-w: clamp(170px, 44vw, 240px);
-              --home-logo-w: min(92vw, 560px);
-              --home-logo-maxh: 28svh;
-            }
-          }
-
-          /* “高さが低い”環境（PC横長・ズーム・スマホ横向き）対策 */
-          @media (max-height: 760px){
-            :root{
-              --home-btn-w: clamp(165px, 20vw, 260px);
-              --home-gap-y: clamp(8px, 1.6vh, 14px);
-              --home-logo-maxh: 26svh;
-            }
-          }
-
-          .home-wrap{
+          /* ===== レイアウト方針 =====
+             - 縦2段：上がロゴ、下がボタン
+             - 下段は「残り高さ」に合わせて自動で縮める
+          */
+          .home-root{
             height: 100svh;
             width: 100%;
             display: grid;
-            align-items: center;
+            grid-template-rows: auto minmax(0, 1fr);
+            gap: clamp(8px, 1.6vh, 14px);
+            align-items: start;
           }
 
-          /* PCは右下キャラと喧嘩しないように右側に安全余白を確保 */
-          .home-stage{
+          /* PCは右下キャラと喧嘩しないよう右側に安全余白 */
+          .home-safe{
             width: 100%;
-            display: grid;
-            justify-items: start;
-            gap: var(--home-gap-y);
-            padding-right: clamp(0px, 18vw, 420px);
+            padding-right: clamp(0px, 18vw, 430px);
           }
           @media (max-width: 720px){
-            .home-stage{
-              justify-items: center;
-              padding-right: 0px;
+            .home-safe{ padding-right: 0px; }
+          }
+
+          /* ===== ロゴ：絶対に潰れない（contain強制） ===== */
+          .home-logo-box{
+            width: min(94vw, 1180px);
+            height: clamp(92px, 22svh, 210px);  /* ロゴの“入れ物”の高さ */
+            margin: 0;
+          }
+          @media (max-width: 720px){
+            .home-logo-box{
+              width: min(94vw, 620px);
+              height: clamp(84px, 18svh, 170px);
+              margin: 0 auto;
             }
           }
 
           .home-logo{
-            width: var(--home-logo-w);
-            height: auto;
-            max-height: var(--home-logo-maxh);
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: contain !important;     /* ✅ これで潰れない */
             display: block;
-            margin: 0;
             filter: drop-shadow(0 10px 28px rgba(0,0,0,0.25));
-          }
-          @media (max-width: 720px){
-            .home-logo{ margin: 0 auto; }
+            pointer-events: none;
+            user-select: none;
           }
 
-          /* ボタン：2x2 + 設定（中央寄せ） */
-          .home-grid{
+          /* ===== ボタン段：残り高さに合わせて縮む ===== */
+          .home-actions{
+            min-height: 0;
+            display: grid;
+            align-items: center;                 /* 残り領域の中央に寄せる */
+          }
+
+          /* “残り高さ”に応じてボタンをスケール（超重要） */
+          .home-actions-scale{
+            --btnw: clamp(180px, 22vw, 300px);
+            --gapx: clamp(12px, 2.6vw, 30px);
+            --gapy: clamp(10px, 2.2vh, 18px);
+
             width: 100%;
             display: grid;
-            grid-template-columns: repeat(2, max-content);
             justify-content: start;
-            align-items: center;
-            gap: var(--home-gap-y) var(--home-gap-x);
-          }
-          @media (max-width: 720px){
-            .home-grid{ justify-content: center; }
+            gap: var(--gapy);
+            transform-origin: left center;
           }
 
-          .home-settings{
-            grid-column: 1 / -1;
-            justify-self: start;
+          /* PC */
+          .home-grid{
+            display: grid;
+            grid-template-columns: repeat(2, max-content);
+            gap: var(--gapy) var(--gapx);
+            align-items: center;
           }
+          .home-settings{
+            display: grid;
+            justify-content: start;
+          }
+
+          /* ボタンの実寸 */
+          .home-btn{
+            width: var(--btnw);
+          }
+
+          /* スマホは中央寄せ */
           @media (max-width: 720px){
-            .home-settings{ justify-self: center; }
+            .home-actions-scale{
+              justify-content: center;
+              transform-origin: center center;
+              --btnw: clamp(170px, 44vw, 250px);
+            }
+            .home-grid{
+              justify-content: center;
+            }
+            .home-settings{
+              justify-content: center;
+            }
+          }
+
+          /* 高さが低い時は自動で縮める（スクロールさせないための保険） */
+          @media (max-height: 760px){
+            .home-actions-scale{ transform: scale(0.92); }
+          }
+          @media (max-height: 690px){
+            .home-actions-scale{ transform: scale(0.86); }
+          }
+          @media (max-height: 620px){
+            .home-actions-scale{ transform: scale(0.80); }
           }
         `}
       </style>
@@ -294,39 +323,56 @@ export default function Home({ go }: Props) {
       )}
 
       <div
-        className="home-wrap"
+        className="home-root"
         style={{
           opacity: canUse ? 1 : 0.25,
           pointerEvents: canUse ? "auto" : "none",
         }}
       >
-        <div className="home-stage">
-          <img className="home-logo" src={logoSrc} alt="釣嫁ぷろじぇくと" />
+        <div className="home-safe">
+          <div className="home-logo-box">
+            <img className="home-logo" src={logoSrc} alt="釣嫁ぷろじぇくと" />
+          </div>
+        </div>
 
-          <div className="home-grid">
-            <ImgButton
-              src={btnRecord}
-              alt="記録する"
-              onClick={() => go("record")}
-            />
-            <ImgButton
-              src={btnHistory}
-              alt="履歴をみる"
-              onClick={() => go("archive")}
-            />
-            <ImgButton
-              src={btnWeather}
-              alt="天気・潮をみる"
-              onClick={() => go("weather")}
-            />
-            <ImgButton src={btnChat} alt="話す" onClick={() => go("chat")} />
+        <div className="home-actions">
+          <div className="home-safe">
+            <div className="home-actions-scale">
+              <div className="home-grid">
+                <ImgButton
+                  src={btnRecord}
+                  alt="記録する"
+                  onClick={() => go("record")}
+                  style={{ width: "var(--btnw)" } as CSSProperties}
+                />
+                <ImgButton
+                  src={btnHistory}
+                  alt="履歴をみる"
+                  onClick={() => go("recordHistory")}
+                  style={{ width: "var(--btnw)" } as CSSProperties}
+                />
+                <ImgButton
+                  src={btnWeather}
+                  alt="天気・潮をみる"
+                  onClick={() => go("weather")}
+                  style={{ width: "var(--btnw)" } as CSSProperties}
+                />
+                <ImgButton
+                  src={btnChat}
+                  alt="話す"
+                  onClick={() => go("chat")}
+                  style={{ width: "var(--btnw)" } as CSSProperties}
+                />
+              </div>
 
-            <div className="home-settings">
-              <ImgButton
-                src={btnSettings}
-                alt="設定"
-                onClick={() => go("settings")}
-              />
+              <div className="home-settings">
+                <ImgButton
+                  src={btnSettings}
+                  alt="設定"
+                  onClick={() => go("settings")}
+                  style={{ width: "var(--btnw)" } as CSSProperties}
+                />
+              </div>
             </div>
           </div>
         </div>
