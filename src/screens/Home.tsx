@@ -34,98 +34,23 @@ function setUnlocked(pass: string) {
   }
 }
 
-function useMatchMedia(query: string) {
-  const [matches, setMatches] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia?.(query)?.matches ?? false;
-  });
+function useViewport() {
+  const [vp, setVp] = useState(() => ({
+    w: typeof window !== "undefined" ? window.innerWidth : 0,
+    h: typeof window !== "undefined" ? window.innerHeight : 0,
+  }));
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mq = window.matchMedia(query);
-    const update = () => setMatches(mq.matches);
-    update();
+    const onResize = () =>
+      setVp({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
-    mq.addEventListener?.("change", update);
-    window.addEventListener("resize", update);
-    return () => {
-      mq.removeEventListener?.("change", update);
-      window.removeEventListener("resize", update);
-    };
-  }, [query]);
-
-  return matches;
-}
-
-function ImgButton({
-  src,
-  alt,
-  onClick,
-  width,
-}: {
-  src: string;
-  alt: string;
-  onClick: () => void;
-  width: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={alt}
-      style={{
-        appearance: "none",
-        border: "none",
-        background: "transparent",
-        padding: 0,
-        margin: 0,
-        cursor: "pointer",
-        WebkitTapHighlightColor: "transparent",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        userSelect: "none",
-        touchAction: "manipulation",
-      }}
-    >
-      <img
-        src={src}
-        alt=""
-        draggable={false}
-        style={{
-          width,
-          height: "auto",
-          display: "block",
-          filter: "drop-shadow(0 10px 22px rgba(0,0,0,0.16))",
-          transition: "transform 120ms ease, filter 120ms ease",
-        }}
-        onPointerDown={(e) => {
-          const el = e.currentTarget as HTMLImageElement;
-          el.style.transform = "scale(0.97)";
-          el.style.filter = "brightness(0.96)";
-        }}
-        onPointerUp={(e) => {
-          const el = e.currentTarget as HTMLImageElement;
-          el.style.transform = "scale(1)";
-          el.style.filter = "none";
-        }}
-        onPointerLeave={(e) => {
-          const el = e.currentTarget as HTMLImageElement;
-          el.style.transform = "scale(1)";
-          el.style.filter = "none";
-        }}
-        onPointerCancel={(e) => {
-          const el = e.currentTarget as HTMLImageElement;
-          el.style.transform = "scale(1)";
-          el.style.filter = "none";
-        }}
-      />
-    </button>
-  );
+  return vp;
 }
 
 export default function Home({ go }: Props) {
-  const isWide = useMatchMedia("(min-width: 900px)");
   const [unlocked, setUnlockedState] = useState<boolean>(() => isUnlocked());
   const [pass, setPass] = useState<string>(() => loadSavedPass());
   const [error, setError] = useState<string>("");
@@ -147,37 +72,214 @@ export default function Home({ go }: Props) {
     setError("");
   }
 
-  const ui = useMemo(() => {
-    // タイトルは大きく（ただし高さ上限で押し出し防止）
-    const logoW = isWide ? "min(980px, 58vw)" : "min(980px, 92vw)";
-    const logoMaxH = isWide ? "30svh" : "22svh";
+  const { w, h } = useViewport();
 
-    // ボタンは1画面に収めるため、幅と余白をclampで制御
-    const btnW = isWide
-      ? "clamp(220px, 18vw, 320px)"
-      : "clamp(170px, 42vw, 250px)";
-    const gapX = isWide ? "clamp(18px, 2.2vw, 34px)" : "clamp(14px, 4vw, 26px)";
-    const gapY = isWide
-      ? "clamp(10px, 1.8svh, 18px)"
-      : "clamp(8px, 1.6svh, 14px)";
+  // ざっくり端末判定（Home専用のレイアウト最適化用）
+  const isNarrow = w <= 820;
+  const isShort = h <= 700;
 
-    // PCは横が広いので少し左寄せ（中央ド真ん中固定をやめる）
-    const leftPad = isWide ? "clamp(18px, 3vw, 56px)" : "0px";
+  // タイトル（ロゴ）を「もっと大きく映える」方向へ
+  // - PC: 大きめ
+  // - スマホ縦: 上を食いすぎない範囲で最大化
+  const logoHeight = isNarrow
+    ? "clamp(96px, 16svh, 150px)"
+    : "clamp(120px, 18svh, 220px)";
 
-    return { logoW, logoMaxH, btnW, gapX, gapY, leftPad };
-  }, [isWide]);
+  // ボタンサイズ：画像に合わせて押し判定もぴったりにする
+  // ※「ボタンが1画面に収まる」最優先で、高さが短い時は少しだけ小さく
+  const btnW = isNarrow
+    ? isShort
+      ? "clamp(140px, 36vw, 220px)"
+      : "clamp(150px, 38vw, 240px)"
+    : isShort
+      ? "clamp(190px, 18vw, 260px)"
+      : "clamp(210px, 20vw, 300px)";
+
+  const gap = isNarrow
+    ? "clamp(10px, 2.4svh, 18px)"
+    : "clamp(12px, 2.2svh, 22px)";
+
+  // アセット（必要ならパスだけ合わせてね）
+  const logoSrc = "/assets/logo/logo-title.png";
+
+  const btnRecord = "/assets/buttons/btn-record.png";
+  const btnHistory = "/assets/buttons/btn-history.png";
+  const btnWeather = "/assets/buttons/btn-weather.png";
+  const btnChat = "/assets/buttons/btn-chat.png";
+  const btnSettings = "/assets/buttons/btn-settings.png";
+
+  // “画像ぴったり”のクリック範囲にするための共通スタイル
+  const imageButtonStyle: React.CSSProperties = {
+    appearance: "none",
+    border: "none",
+    padding: 0, // ✅ 余白クリックを消す
+    margin: 0,
+    background: "transparent",
+    cursor: "pointer",
+    lineHeight: 0, // ✅ 画像下の謎の余白対策
+    display: "inline-block",
+    width: btnW,
+    WebkitTapHighlightColor: "transparent",
+    touchAction: "manipulation",
+    userSelect: "none",
+  };
+
+  const imageStyle: React.CSSProperties = {
+    width: "100%",
+    height: "auto",
+    display: "block", // ✅ 画像の下に余白が出るのを防止
+    filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.22))",
+  };
 
   return (
     <PageShell
+      // Homeは戻るボタン不要なら false に（必要なら消してOK）
       showBack={false}
+      maxWidth={1400}
+      // title/subtitleのテキストは使わず、Home内で“1画面設計”を完結させる
       title={null}
       subtitle={null}
-      maxWidth={1600}
-      // ✅ 右下ピッタリ（数px浮く問題を潰す）
-      testCharacterOffset={{ right: 0, bottom: 0 }}
-      // ✅ Homeではキャラサイズを上書きしない（巨大化の原因を排除）
-      // testCharacterHeight は渡さない！
     >
+      {/* 画面スクロールを出さないため、Home内で1画面レイアウトを組む */}
+      <div
+        style={{
+          // PageShell内側のpadding分を見込んで、余裕を持たせつつ「1画面」に収める
+          minHeight: "calc(100svh - 48px)",
+          display: "grid",
+          gridTemplateColumns: isNarrow
+            ? "1fr"
+            : "minmax(520px, 1fr) minmax(320px, 1fr)",
+          alignItems: "center",
+          columnGap: isNarrow ? 0 : "clamp(18px, 3vw, 36px)",
+          rowGap: "clamp(10px, 2svh, 18px)",
+          opacity: canUse ? 1 : 0.25,
+          pointerEvents: canUse ? "auto" : "none",
+        }}
+      >
+        {/* 左：ロゴ＋ボタン群 */}
+        <div
+          style={{
+            display: "grid",
+            justifyItems: isNarrow ? "center" : "start",
+            alignContent: "center",
+            gap,
+            minWidth: 0,
+          }}
+        >
+          {/* ロゴ（大きく映える） */}
+          <div
+            style={{
+              width: isNarrow ? "min(92vw, 760px)" : "min(58vw, 820px)",
+              maxWidth: "100%",
+            }}
+          >
+            <img
+              src={logoSrc}
+              alt="釣嫁つづり"
+              style={{
+                height: logoHeight,
+                width: "100%",
+                objectFit: "contain",
+                display: "block",
+                filter: "drop-shadow(0 16px 30px rgba(0,0,0,0.25))",
+              }}
+            />
+          </div>
+
+          {/* ボタン：2×2 + 設定（1画面に収める） */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap,
+              justifyItems: "center",
+              alignItems: "center",
+              width: isNarrow ? "min(92vw, 520px)" : "min(52vw, 720px)",
+              maxWidth: "100%",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => go("record")}
+              style={imageButtonStyle}
+              aria-label="釣果を記録する"
+            >
+              <img
+                src={btnRecord}
+                alt=""
+                style={imageStyle}
+                draggable={false}
+              />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => go("archive")}
+              style={imageButtonStyle}
+              aria-label="全履歴を見る"
+            >
+              <img
+                src={btnHistory}
+                alt=""
+                style={imageStyle}
+                draggable={false}
+              />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => go("weather")}
+              style={imageButtonStyle}
+              aria-label="天気・潮を見る"
+            >
+              <img
+                src={btnWeather}
+                alt=""
+                style={imageStyle}
+                draggable={false}
+              />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => go("chat")}
+              style={imageButtonStyle}
+              aria-label="話す"
+            >
+              <img src={btnChat} alt="" style={imageStyle} draggable={false} />
+            </button>
+
+            {/* 設定：幅を他と揃えて“押し判定も画像ぴったり” */}
+            <div
+              style={{
+                gridColumn: "1 / -1",
+                display: "grid",
+                justifyItems: "center",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => go("settings")}
+                style={imageButtonStyle}
+                aria-label="設定"
+              >
+                <img
+                  src={btnSettings}
+                  alt=""
+                  style={imageStyle}
+                  draggable={false}
+                />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 右：空き（PC時はキャラが右下なので、ここは余白として生かす）
+            スマホ時は1カラムなので表示されない */}
+        {!isNarrow && <div aria-hidden="true" style={{ minHeight: 1 }} />}
+      </div>
+
+      {/* ロックUI（最前面。Home設計を崩さないように最後に置く） */}
       {!canUse && (
         <div
           style={{
@@ -268,106 +370,6 @@ export default function Home({ go }: Props) {
           </div>
         </div>
       )}
-
-      {/* ✅ Homeはスクロール不要：1画面に収める */}
-      <div
-        style={{
-          height: "100svh",
-          display: "grid",
-          gridTemplateRows: "auto 1fr",
-          overflow: "hidden",
-          opacity: canUse ? 1 : 0.25,
-          pointerEvents: canUse ? "auto" : "none",
-          paddingBottom: `max(8px, env(safe-area-inset-bottom))`,
-        }}
-      >
-        {/* タイトル（大きく） */}
-        <div
-          style={{
-            display: "grid",
-            justifyItems: isWide ? "start" : "center",
-            alignItems: "center",
-            marginTop: "clamp(6px, 1.6svh, 16px)",
-            marginBottom: "clamp(6px, 1.2svh, 14px)",
-            paddingLeft: ui.leftPad,
-          }}
-        >
-          <img
-            src="/assets/logo/logo-title.png"
-            alt="釣嫁ぷろじぇくと"
-            draggable={false}
-            style={{
-              width: ui.logoW,
-              maxHeight: ui.logoMaxH,
-              height: "auto",
-              display: "block",
-              objectFit: "contain",
-              filter: "drop-shadow(0 12px 28px rgba(0,0,0,0.20))",
-            }}
-          />
-        </div>
-
-        {/* ボタン（中央寄せだけど押し出し防止の寸法にしてる） */}
-        <div
-          style={{
-            display: "grid",
-            alignItems: "center",
-            overflow: "hidden",
-            paddingLeft: ui.leftPad,
-          }}
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, max-content)",
-              columnGap: ui.gapX,
-              rowGap: ui.gapY,
-              justifyContent: isWide ? "start" : "center",
-              alignContent: "center",
-            }}
-          >
-            <ImgButton
-              src="/assets/buttons/btn-record.png"
-              alt="記録する"
-              onClick={() => go("record")}
-              width={ui.btnW}
-            />
-            <ImgButton
-              src="/assets/buttons/btn-history.png"
-              alt="履歴をみる"
-              onClick={() => go("archive")}
-              width={ui.btnW}
-            />
-            <ImgButton
-              src="/assets/buttons/btn-weather.png"
-              alt="天気・潮をみる"
-              onClick={() => go("weather")}
-              width={ui.btnW}
-            />
-            <ImgButton
-              src="/assets/buttons/btn-chat.png"
-              alt="話す"
-              onClick={() => go("chat")}
-              width={ui.btnW}
-            />
-
-            <div
-              style={{
-                gridColumn: "1 / span 2",
-                display: "grid",
-                placeItems: isWide ? "start" : "center",
-              }}
-            >
-              <ImgButton
-                src="/assets/buttons/btn-settings.png"
-                alt="設定"
-                onClick={() => go("settings")}
-                width={ui.btnW}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
     </PageShell>
   );
 }
