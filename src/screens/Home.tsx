@@ -126,9 +126,6 @@ function ImgButton({
 
 export default function Home({ go }: Props) {
   const isWide = useMatchMedia("(min-width: 900px)");
-  const isLandscape = useMatchMedia("(orientation: landscape)");
-  const isPhonePortrait = !isWide && !isLandscape;
-
   const [unlocked, setUnlockedState] = useState<boolean>(() => isUnlocked());
   const [pass, setPass] = useState<string>(() => loadSavedPass());
   const [error, setError] = useState<string>("");
@@ -151,51 +148,24 @@ export default function Home({ go }: Props) {
   }
 
   const ui = useMemo(() => {
-    // ===== ロゴ（見栄え優先 / ただし高さ上限で押し出し防止） =====
-    const logoW = isWide ? "min(920px, 56vw)" : "min(980px, 92vw)";
-    const logoMaxH = isWide ? "28svh" : "22svh";
-    const titleBottom = isWide
-      ? "clamp(6px, 1.2svh, 14px)"
-      : "clamp(6px, 1.0svh, 12px)";
+    // タイトルは大きく（ただし高さ上限で押し出し防止）
+    const logoW = isWide ? "min(980px, 58vw)" : "min(980px, 92vw)";
+    const logoMaxH = isWide ? "30svh" : "22svh";
 
-    // ===== ボタンサイズ（画面内に収める） =====
+    // ボタンは1画面に収めるため、幅と余白をclampで制御
     const btnW = isWide
       ? "clamp(220px, 18vw, 320px)"
       : "clamp(170px, 42vw, 250px)";
-
+    const gapX = isWide ? "clamp(18px, 2.2vw, 34px)" : "clamp(14px, 4vw, 26px)";
     const gapY = isWide
       ? "clamp(10px, 1.8svh, 18px)"
       : "clamp(8px, 1.6svh, 14px)";
-    const gapX = isWide ? "clamp(18px, 2.2vw, 34px)" : "clamp(14px, 4vw, 26px)";
 
-    // ===== “キャラの居場所”を確保する安全余白 =====
-    // PC：右側にしっかり領域確保（巨大キャラでも壊れない）
-    const safeRightPad = isWide
-      ? "min(42vw, 620px)"
-      : isPhonePortrait
-        ? "min(42vw, 230px)"
-        : "0px";
+    // PCは横が広いので少し左寄せ（中央ド真ん中固定をやめる）
+    const leftPad = isWide ? "clamp(18px, 3vw, 56px)" : "0px";
 
-    // スマホ縦：キャラの胴体に被りやすいので、ボタンを上へ逃がす
-    const liftButtonsY = isPhonePortrait ? "-10svh" : "0svh";
-
-    // キャラ高さ（Homeでの見た目）※キャラが巨大でも“右側に逃がす”ので壊れにくい
-    const characterHeight = isWide
-      ? "clamp(420px, 74svh, 860px)"
-      : "clamp(320px, 56svh, 620px)";
-
-    return {
-      logoW,
-      logoMaxH,
-      btnW,
-      gapY,
-      gapX,
-      titleBottom,
-      safeRightPad,
-      liftButtonsY,
-      characterHeight,
-    };
-  }, [isWide, isPhonePortrait]);
+    return { logoW, logoMaxH, btnW, gapX, gapY, leftPad };
+  }, [isWide]);
 
   return (
     <PageShell
@@ -203,8 +173,10 @@ export default function Home({ go }: Props) {
       title={null}
       subtitle={null}
       maxWidth={1600}
-      testCharacterHeight={ui.characterHeight}
+      // ✅ 右下ピッタリ（数px浮く問題を潰す）
       testCharacterOffset={{ right: 0, bottom: 0 }}
+      // ✅ Homeではキャラサイズを上書きしない（巨大化の原因を排除）
+      // testCharacterHeight は渡さない！
     >
       {!canUse && (
         <div
@@ -297,7 +269,7 @@ export default function Home({ go }: Props) {
         </div>
       )}
 
-      {/* ✅ Homeはスクロール不要：100svh内で完結 */}
+      {/* ✅ Homeはスクロール不要：1画面に収める */}
       <div
         style={{
           height: "100svh",
@@ -309,16 +281,15 @@ export default function Home({ go }: Props) {
           paddingBottom: `max(8px, env(safe-area-inset-bottom))`,
         }}
       >
-        {/* タイトル */}
+        {/* タイトル（大きく） */}
         <div
           style={{
             display: "grid",
             justifyItems: isWide ? "start" : "center",
             alignItems: "center",
             marginTop: "clamp(6px, 1.6svh, 16px)",
-            marginBottom: ui.titleBottom,
-            paddingRight: ui.safeRightPad,
-            paddingLeft: isWide ? "clamp(18px, 3vw, 56px)" : 0,
+            marginBottom: "clamp(6px, 1.2svh, 14px)",
+            paddingLeft: ui.leftPad,
           }}
         >
           <img
@@ -336,15 +307,13 @@ export default function Home({ go }: Props) {
           />
         </div>
 
-        {/* ボタン（PCは左寄せ寄り / スマホ縦は上へ持ち上げ） */}
+        {/* ボタン（中央寄せだけど押し出し防止の寸法にしてる） */}
         <div
           style={{
             display: "grid",
             alignItems: "center",
             overflow: "hidden",
-            paddingRight: ui.safeRightPad,
-            paddingLeft: isWide ? "clamp(18px, 3vw, 56px)" : 0,
-            transform: `translateY(${ui.liftButtonsY})`,
+            paddingLeft: ui.leftPad,
           }}
         >
           <div
