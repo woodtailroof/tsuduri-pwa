@@ -93,20 +93,17 @@ export default function Home({ go }: Props) {
   const btnSettings = "/assets/buttons/btn-settings.png";
 
   return (
-    <PageShell title={null} subtitle={null} maxWidth={1700}>
+    <PageShell
+      title={null}
+      subtitle={null}
+      maxWidth={1700}
+      showBack={false}
+      scrollY="hidden"
+      contentPadding={"clamp(10px, 1.8vw, 16px)"}
+    >
       <style>
         {`
-          /* ✅ Homeだけは絶対スクロールさせない */
-          .page-shell-scroll{
-            overflow: hidden !important;
-            height: 100svh !important;
-          }
-          /* Homeは余白が増えるとすぐ溢れるので控えめに */
-          .page-shell-inner{
-            padding: clamp(10px, 1.8vw, 16px) !important;
-          }
-
-          /* ===== 画像ボタン：CSS由来の当たり判定ズレを潰す ===== */
+          /* ===== 画像ボタン：当たり判定ズレを潰す ===== */
           .home-img-btn{
             appearance: none;
             -webkit-appearance: none;
@@ -124,7 +121,7 @@ export default function Home({ go }: Props) {
           }
           .home-img-btn:focus{ outline: none; }
           .home-img-btn__img{
-            display: block;        /* img下の余白を消す */
+            display: block;
             width: 100%;
             height: auto;
           }
@@ -151,24 +148,23 @@ export default function Home({ go }: Props) {
             .home-safe{ padding-right: 0px; }
           }
 
-          /* ===== ロゴ：絶対に潰れない（contain強制） ===== */
+          /* ===== ロゴ：主役サイズへ（箱を大きくする） ===== */
           .home-logo-box{
-            width: min(94vw, 1180px);
-            height: clamp(92px, 22svh, 210px);  /* ロゴの“入れ物”の高さ */
+            width: min(96vw, 1320px);
+            height: clamp(120px, 26svh, 260px);
             margin: 0;
           }
           @media (max-width: 720px){
             .home-logo-box{
-              width: min(94vw, 620px);
-              height: clamp(84px, 18svh, 170px);
+              width: min(96vw, 760px);
+              height: clamp(120px, 22svh, 220px);
               margin: 0 auto;
             }
           }
-
           .home-logo{
             width: 100% !important;
             height: 100% !important;
-            object-fit: contain !important;     /* ✅ これで潰れない */
+            object-fit: contain !important;
             display: block;
             filter: drop-shadow(0 10px 28px rgba(0,0,0,0.25));
             pointer-events: none;
@@ -179,10 +175,9 @@ export default function Home({ go }: Props) {
           .home-actions{
             min-height: 0;
             display: grid;
-            align-items: center;                 /* 残り領域の中央に寄せる */
+            align-items: center;
           }
 
-          /* “残り高さ”に応じてボタンをスケール（超重要） */
           .home-actions-scale{
             --btnw: clamp(180px, 22vw, 300px);
             --gapx: clamp(12px, 2.6vw, 30px);
@@ -195,7 +190,7 @@ export default function Home({ go }: Props) {
             transform-origin: left center;
           }
 
-          /* PC */
+          /* PC：2列 */
           .home-grid{
             display: grid;
             grid-template-columns: repeat(2, max-content);
@@ -207,27 +202,26 @@ export default function Home({ go }: Props) {
             justify-content: start;
           }
 
-          /* ボタンの実寸 */
-          .home-btn{
-            width: var(--btnw);
-          }
-
-          /* スマホは中央寄せ */
+          /* スマホ：左寄せ縦1列（キャラ回避優先） */
           @media (max-width: 720px){
             .home-actions-scale{
-              justify-content: center;
-              transform-origin: center center;
-              --btnw: clamp(170px, 44vw, 250px);
+              justify-content: start;
+              transform-origin: left center;
+              padding-left: max(12px, env(safe-area-inset-left));
+              --btnw: clamp(210px, 62vw, 320px);
+              --gapy: clamp(12px, 2.2vh, 18px);
             }
             .home-grid{
-              justify-content: center;
+              grid-template-columns: 1fr;
+              justify-content: start;
+              gap: var(--gapy);
             }
             .home-settings{
-              justify-content: center;
+              justify-content: start;
             }
           }
 
-          /* 高さが低い時は自動で縮める（スクロールさせないための保険） */
+          /* 低い画面は縮める（Homeはスクロール禁止なので保険必須） */
           @media (max-height: 760px){
             .home-actions-scale{ transform: scale(0.92); }
           }
