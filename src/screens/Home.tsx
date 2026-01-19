@@ -34,96 +34,7 @@ function setUnlocked(pass: string) {
   }
 }
 
-function useMatchMedia(query: string) {
-  const [matches, setMatches] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia?.(query)?.matches ?? false;
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mq = window.matchMedia(query);
-    const update = () => setMatches(mq.matches);
-    update();
-
-    mq.addEventListener?.("change", update);
-    window.addEventListener("resize", update);
-    return () => {
-      mq.removeEventListener?.("change", update);
-      window.removeEventListener("resize", update);
-    };
-  }, [query]);
-
-  return matches;
-}
-
-function ImageButton({
-  src,
-  alt,
-  onClick,
-  width,
-}: {
-  src: string;
-  alt: string;
-  onClick: () => void;
-  width: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={alt}
-      style={{
-        background: "none",
-        border: "none",
-        padding: 0,
-        cursor: "pointer",
-        lineHeight: 0,
-        userSelect: "none",
-        WebkitTapHighlightColor: "transparent",
-        touchAction: "manipulation",
-      }}
-    >
-      <img
-        src={src}
-        alt={alt}
-        draggable={false}
-        style={{
-          width,
-          height: "auto",
-          display: "block",
-          transition: "transform 0.15s ease, filter 0.15s ease",
-        }}
-        onPointerDown={(e) => {
-          const el = e.currentTarget as HTMLImageElement;
-          el.style.transform = "scale(0.965)";
-          el.style.filter = "brightness(0.95)";
-        }}
-        onPointerUp={(e) => {
-          const el = e.currentTarget as HTMLImageElement;
-          el.style.transform = "scale(1)";
-          el.style.filter = "none";
-        }}
-        onPointerLeave={(e) => {
-          const el = e.currentTarget as HTMLImageElement;
-          el.style.transform = "scale(1)";
-          el.style.filter = "none";
-        }}
-        onPointerCancel={(e) => {
-          const el = e.currentTarget as HTMLImageElement;
-          el.style.transform = "scale(1)";
-          el.style.filter = "none";
-        }}
-      />
-    </button>
-  );
-}
-
 export default function Home({ go }: Props) {
-  const isWide = useMatchMedia("(min-width: 900px)");
-  const isLandscape = useMatchMedia("(orientation: landscape)");
-  const isMobileLike = !isWide && !isLandscape;
-
   const [unlocked, setUnlockedState] = useState<boolean>(() => isUnlocked());
   const [pass, setPass] = useState<string>(() => loadSavedPass());
   const [error, setError] = useState<string>("");
@@ -145,85 +56,60 @@ export default function Home({ go }: Props) {
     setError("");
   }
 
-  const ui = useMemo(() => {
-    // ボタン：そのまま
-    const btnW = isWide
-      ? "clamp(220px, 18vw, 300px)"
-      : "clamp(160px, 44vw, 240px)";
+  const btnBase: React.CSSProperties = {
+    appearance: "none",
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    margin: 0,
+    cursor: "pointer",
+    WebkitTapHighlightColor: "transparent",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    userSelect: "none",
+  };
 
-    // ✅ タイトル：見栄え優先で大きく
-    // スマホは横幅を優先してドンと見せる / PCは左パネル内で存在感アップ
-    const logoW = isWide ? "min(780px, 56vw)" : "min(980px, 92vw)";
-    const logoMaxH = isWide ? "22svh" : "20svh";
-
-    const leftPanelW = isWide ? "clamp(380px, 44vw, 700px)" : "100%";
-
-    // スマホ：右下キャラに被らない安全地帯（ボタンはそのまま活かす）
-    const safeRightPad = isMobileLike ? "min(40vw, 210px)" : "0px";
-
-    const topGap = "clamp(8px, 1.8svh, 16px)";
-    const gridGap = isWide
-      ? "clamp(10px, 2svh, 16px)"
-      : "clamp(10px, 2svh, 14px)";
-
-    // キャラ：Homeでは右下ピッタリ（0,0）
-    const characterHeight = isWide
-      ? "clamp(420px, 72svh, 760px)"
-      : "clamp(320px, 52svh, 520px)";
-
-    return {
-      btnW,
-      logoW,
-      logoMaxH,
-      leftPanelW,
-      safeRightPad,
-      topGap,
-      gridGap,
-      characterHeight,
-    };
-  }, [isWide, isMobileLike]);
-
-  const btns = useMemo(
-    () => [
-      {
-        src: "/assets/buttons/btn-record.png",
-        alt: "記録する",
-        onClick: () => go("record"),
-      },
-      {
-        src: "/assets/buttons/btn-history.png",
-        alt: "履歴をみる",
-        onClick: () => go("archive"),
-      },
-      {
-        src: "/assets/buttons/btn-weather.png",
-        alt: "天気・潮をみる",
-        onClick: () => go("weather"),
-      },
-      {
-        src: "/assets/buttons/btn-chat.png",
-        alt: "話す",
-        onClick: () => go("chat"),
-      },
-      {
-        src: "/assets/buttons/btn-settings.png",
-        alt: "設定",
-        onClick: () => go("settings"),
-      },
-    ],
-    [go],
-  );
+  const btnImg: React.CSSProperties = {
+    width: "clamp(220px, 36vw, 360px)",
+    height: "auto",
+    display: "block",
+    filter: "drop-shadow(0 10px 22px rgba(0,0,0,0.18))",
+    transition: "transform 120ms ease, filter 120ms ease",
+  };
 
   return (
     <PageShell
       showBack={false}
-      maxWidth={1400}
-      title={null}
+      // ✅ タイトルは“画像で大きく”
+      title={
+        <div
+          style={{
+            display: "grid",
+            placeItems: "center",
+            marginTop: "clamp(6px, 1.6vh, 16px)",
+            marginBottom: "clamp(10px, 2.2vh, 22px)",
+          }}
+        >
+          <img
+            src="/assets/logo/logo-title.png"
+            alt="釣嫁ぷろじぇくと"
+            draggable={false}
+            style={{
+              width: "min(860px, 92vw)", // ← PCでも存在感が出るように拡大
+              maxWidth: "100%",
+              height: "auto",
+              display: "block",
+              filter: "drop-shadow(0 12px 28px rgba(0,0,0,0.22))",
+            }}
+          />
+        </div>
+      }
+      // ✅ 一言は消す（subtitle無し）
       subtitle={null}
-      testCharacterHeight={ui.characterHeight}
-      // ✅ 右下ぴったり
+      maxWidth={1200}
+      // ✅ キャラ右下を“ピッタリ”合わせ（Homeだけで調整）
       testCharacterOffset={{ right: 0, bottom: 0 }}
-      testCharacterOpacity={1}
     >
       {!canUse && (
         <div
@@ -316,110 +202,81 @@ export default function Home({ go }: Props) {
         </div>
       )}
 
+      {/* ✅ ボタンは現状のまま（画像ボタン） */}
       <div
         style={{
-          minHeight: "calc(100svh - 16px)",
           display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          gap: "clamp(14px, 3.2vh, 26px) clamp(16px, 3vw, 34px)",
           alignItems: "center",
+          justifyItems: "center",
           opacity: canUse ? 1 : 0.25,
           pointerEvents: canUse ? "auto" : "none",
-          paddingBottom: `max(10px, env(safe-area-inset-bottom))`,
         }}
       >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isWide ? `${ui.leftPanelW} 1fr` : "1fr",
-            alignItems: "center",
-            columnGap: isWide ? "clamp(16px, 3vw, 40px)" : 0,
-            width: "100%",
-          }}
+        <button
+          type="button"
+          onClick={() => go("record")}
+          style={btnBase}
+          aria-label="釣果を記録する"
+          onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
+          onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
         >
-          <div
-            style={{
-              width: "100%",
-              paddingTop: ui.topGap,
-              paddingBottom: ui.topGap,
-              paddingRight: ui.safeRightPad,
-            }}
+          <img src="/assets/buttons/btn-record.png" alt="" style={btnImg} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => go("archive")}
+          style={btnBase}
+          aria-label="全履歴を見る"
+          onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
+          onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+        >
+          <img src="/assets/buttons/btn-history.png" alt="" style={btnImg} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => go("weather")}
+          style={btnBase}
+          aria-label="天気・潮を見る"
+          onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
+          onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+        >
+          <img src="/assets/buttons/btn-weather.png" alt="" style={btnImg} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => go("chat")}
+          style={btnBase}
+          aria-label="話す"
+          onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
+          onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+        >
+          <img src="/assets/buttons/btn-chat.png" alt="" style={btnImg} />
+        </button>
+
+        {/* 設定（下段左に置いてるならそのまま） */}
+        <div style={{ gridColumn: "1 / span 2", display: "grid", placeItems: "center" }}>
+          <button
+            type="button"
+            onClick={() => go("settings")}
+            style={btnBase}
+            aria-label="設定"
+            onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.98)")}
+            onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
           >
-            {/* ✅ タイトル大きく */}
-            <div
+            <img
+              src="/assets/buttons/btn-settings.png"
+              alt=""
               style={{
-                display: "grid",
-                justifyItems: isWide ? "start" : "center",
-                marginBottom: "clamp(10px, 2.4svh, 18px)",
+                ...btnImg,
+                width: "clamp(240px, 40vw, 380px)", // 画像が元から大きめなら少しだけ抑える
               }}
-            >
-              <img
-                src="/assets/logo/logo-title.png"
-                alt="釣嫁ぷろじぇくと"
-                style={{
-                  width: ui.logoW,
-                  maxHeight: ui.logoMaxH,
-                  height: "auto",
-                  display: "block",
-                  objectFit: "contain",
-                }}
-              />
-            </div>
-
-            {/* ✅ 一言は削除 */}
-
-            {/* ボタンはそのまま */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, max-content))",
-                justifyContent: isWide ? "start" : "center",
-                justifyItems: "center",
-                gap: ui.gridGap,
-                rowGap: ui.gridGap,
-              }}
-            >
-              <ImageButton
-                src={btns[0].src}
-                alt={btns[0].alt}
-                onClick={btns[0].onClick}
-                width={ui.btnW}
-              />
-              <ImageButton
-                src={btns[1].src}
-                alt={btns[1].alt}
-                onClick={btns[1].onClick}
-                width={ui.btnW}
-              />
-              <ImageButton
-                src={btns[2].src}
-                alt={btns[2].alt}
-                onClick={btns[2].onClick}
-                width={ui.btnW}
-              />
-              <ImageButton
-                src={btns[3].src}
-                alt={btns[3].alt}
-                onClick={btns[3].onClick}
-                width={ui.btnW}
-              />
-
-              <div
-                style={{
-                  gridColumn: "1 / span 2",
-                  display: "grid",
-                  placeItems: "center",
-                }}
-              >
-                <ImageButton
-                  src={btns[4].src}
-                  alt={btns[4].alt}
-                  onClick={btns[4].onClick}
-                  width={ui.btnW}
-                />
-              </div>
-            </div>
-          </div>
-
-          {isWide && <div aria-hidden="true" style={{ minHeight: "1px" }} />}
+            />
+          </button>
         </div>
       </div>
     </PageShell>
