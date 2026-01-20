@@ -133,36 +133,46 @@ export default function Home({ go }: Props) {
             width: 100%;
             display: grid;
             grid-template-rows: auto minmax(0, 1fr);
-            gap: clamp(8px, 1.4vh, 14px);
+            gap: clamp(4px, 1.0vh, 10px); /* ✅ 全体の縦間隔を詰める */
             align-items: start;
           }
 
-          /* PCは右下キャラと喧嘩しないよう右側に安全余白 */
-          .home-safe{
+          /* ===== ロゴ領域（スマホでも全幅を使う） ===== */
+          .home-safe-logo{
             width: 100%;
-            padding-right: clamp(0px, 18vw, 430px);
+            padding-right: clamp(0px, 18vw, 430px); /* PCは右キャラと喧嘩しない余白 */
           }
-
-          /* ✅ スマホは“右半分＝キャラ領域”を確保 */
           @media (max-width: 720px){
-            .home-safe{
-              padding-right: 50vw;
+            .home-safe-logo{
+              padding-right: 0px; /* ✅ スマホはロゴを全幅に戻す */
             }
           }
 
-          /* ===== ロゴ：小さくしない（ここが最重要） ===== */
+          /* ===== ボタン領域（スマホだけ右半分を空ける） ===== */
+          .home-safe-actions{
+            width: 100%;
+            padding-right: clamp(0px, 18vw, 430px); /* PC */
+          }
+          @media (max-width: 720px){
+            .home-safe-actions{
+              padding-right: 50vw; /* ✅ スマホは右半分をキャラ領域に */
+            }
+          }
+
+          /* ===== ロゴ：スマホでも小さくしない ===== */
           .home-logo-box{
             width: min(96vw, 1320px);
-            height: clamp(130px, 28svh, 280px);
+            height: clamp(120px, 26svh, 260px);
             margin: 0;
           }
           @media (max-width: 720px){
             .home-logo-box{
-              width: min(96vw, 720px);
-              height: clamp(130px, 24svh, 240px); /* ✅ スマホでも主役サイズ */
+              width: min(96vw, 760px);
+              height: clamp(120px, 24svh, 240px); /* ✅ 主役サイズ維持 */
               margin: 0 auto;
             }
           }
+
           .home-logo{
             width: 100% !important;
             height: 100% !important;
@@ -173,28 +183,29 @@ export default function Home({ go }: Props) {
             user-select: none;
           }
 
-          /* ===== ボタン段：PCは中央、スマホは左カラム ===== */
+          /* ===== ボタン段 ===== */
           .home-actions{
             min-height: 0;
             display: grid;
-            align-items: center;  /* PCは中央で気持ちいい */
+            align-items: center; /* PCは中央が綺麗 */
           }
           @media (max-width: 720px){
             .home-actions{
-              align-items: start;  /* スマホは上詰め（落下防止） */
-              padding-top: clamp(6px, 1.2vh, 10px);
+              align-items: start; /* スマホは上詰めで落下防止 */
+              padding-top: clamp(2px, 0.8vh, 8px);
             }
           }
 
           .home-actions-scale{
-            --gapy: clamp(8px, 1.5vh, 14px);
             width: 100%;
             display: grid;
             gap: var(--gapy);
           }
 
-          /* ✅ PC：縦1列、中央揃え */
+          /* ✅ PC：中央に縦1列 */
           .home-actions-scale{
+            --btnw: clamp(210px, 22vw, 320px);
+            --gapy: clamp(6px, 1.2vh, 12px);
             justify-content: center;
             transform-origin: center center;
           }
@@ -207,27 +218,19 @@ export default function Home({ go }: Props) {
           .home-settings{
             display: grid;
             justify-items: center;
-            margin-top: clamp(2px, 0.8vh, 8px);
+            margin-top: clamp(2px, 0.5vh, 6px);
           }
 
-          /* ✅ ボタン幅（PC） */
-          .home-actions-scale{
-            --btnw: clamp(210px, 22vw, 320px);
-          }
-          .home-btn{ width: var(--btnw); }
-
-          /* ===== スマホ：左寄せ＆左半分カラム固定＆縦1列で必ず収める ===== */
+          /* ✅ スマホ：左半分カラム固定＆縦1列で必ず収める */
           @media (max-width: 720px){
             .home-actions-scale{
-              /* 左カラムを固定化：この箱の中でボタンが完結する */
               width: min(48vw, 320px);
               justify-content: start;
               transform-origin: left top;
 
-              /* ここで確実に間隔を詰める */
-              --gapy: clamp(4px, 0.9vh, 10px);
+              /* ✅ 隙間をさらに詰める */
+              --gapy: clamp(2px, 0.55vh, 8px);
 
-              /* ボタン自体は箱いっぱいを使う（= 箱幅 = 左半分） */
               --btnw: 100%;
               padding-left: max(12px, env(safe-area-inset-left));
             }
@@ -237,26 +240,21 @@ export default function Home({ go }: Props) {
             }
             .home-settings{
               justify-items: start;
-              margin-top: clamp(2px, 0.5vh, 6px);
+              margin-top: clamp(1px, 0.4vh, 5px);
             }
           }
 
-          /* ===== スクロール禁止のための“収める保険”
-             スマホは高さが普通でも発動させて、設定ボタン落下を根絶する
-          */
+          /* ===== 収める保険（スマホは常時ちょい縮めて“落下”を根絶） ===== */
           @media (max-width: 720px){
-            .home-actions-scale{ transform: scale(0.96); }
-          }
-          @media (max-width: 720px) and (max-height: 820px){
             .home-actions-scale{ transform: scale(0.92); }
           }
-          @media (max-width: 720px) and (max-height: 760px){
+          @media (max-width: 720px) and (max-height: 820px){
             .home-actions-scale{ transform: scale(0.88); }
           }
-          @media (max-width: 720px) and (max-height: 700px){
+          @media (max-width: 720px) and (max-height: 740px){
             .home-actions-scale{ transform: scale(0.84); }
           }
-          @media (max-width: 720px) and (max-height: 640px){
+          @media (max-width: 720px) and (max-height: 660px){
             .home-actions-scale{ transform: scale(0.80); }
           }
 
@@ -362,14 +360,16 @@ export default function Home({ go }: Props) {
           pointerEvents: canUse ? "auto" : "none",
         }}
       >
-        <div className="home-safe">
+        {/* ✅ ロゴは全幅 */}
+        <div className="home-safe-logo">
           <div className="home-logo-box">
             <img className="home-logo" src={logoSrc} alt="釣嫁ぷろじぇくと" />
           </div>
         </div>
 
+        {/* ✅ ボタンはPC/スマホで領域を分ける */}
         <div className="home-actions">
-          <div className="home-safe">
+          <div className="home-safe-actions">
             <div className="home-actions-scale">
               <div className="home-grid">
                 <ImgButton
