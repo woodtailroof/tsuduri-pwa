@@ -104,7 +104,6 @@ export default function Home({ go }: Props) {
     >
       <style>
         {`
-          /* ===== 画像ボタン：当たり判定ズレを潰す ===== */
           .home-img-btn{
             appearance: none;
             -webkit-appearance: none;
@@ -127,52 +126,46 @@ export default function Home({ go }: Props) {
             height: auto;
           }
 
-          /* ===== Home全体：ロゴ + ボタン ===== */
           .home-root{
             height: 100svh;
             width: 100%;
             display: grid;
             grid-template-rows: auto minmax(0, 1fr);
-            gap: clamp(4px, 1.0vh, 10px); /* ✅ 全体の縦間隔を詰める */
+            gap: clamp(2px, 0.8vh, 8px); /* ✅ もっと詰める */
             align-items: start;
           }
 
-          /* ===== ロゴ領域（スマホでも全幅を使う） ===== */
+          /* ===== ロゴ領域（スマホでも全幅） ===== */
           .home-safe-logo{
             width: 100%;
             padding-right: clamp(0px, 18vw, 430px); /* PCは右キャラと喧嘩しない余白 */
           }
           @media (max-width: 720px){
-            .home-safe-logo{
-              padding-right: 0px; /* ✅ スマホはロゴを全幅に戻す */
-            }
+            .home-safe-logo{ padding-right: 0px; }
           }
 
           /* ===== ボタン領域（スマホだけ右半分を空ける） ===== */
           .home-safe-actions{
             width: 100%;
-            padding-right: clamp(0px, 18vw, 430px); /* PC */
+            padding-right: clamp(0px, 18vw, 430px);
           }
           @media (max-width: 720px){
-            .home-safe-actions{
-              padding-right: 50vw; /* ✅ スマホは右半分をキャラ領域に */
-            }
+            .home-safe-actions{ padding-right: 50vw; }
           }
 
-          /* ===== ロゴ：スマホでも小さくしない ===== */
+          /* ✅ ロゴ：スマホで確実にデカくする */
           .home-logo-box{
             width: min(96vw, 1320px);
-            height: clamp(120px, 26svh, 260px);
+            height: clamp(140px, 30svh, 300px);
             margin: 0;
           }
           @media (max-width: 720px){
             .home-logo-box{
-              width: min(96vw, 760px);
-              height: clamp(120px, 24svh, 240px); /* ✅ 主役サイズ維持 */
+              width: min(96vw, 820px);
+              height: clamp(170px, 32svh, 340px); /* ✅ ここが主役 */
               margin: 0 auto;
             }
           }
-
           .home-logo{
             width: 100% !important;
             height: 100% !important;
@@ -187,12 +180,12 @@ export default function Home({ go }: Props) {
           .home-actions{
             min-height: 0;
             display: grid;
-            align-items: center; /* PCは中央が綺麗 */
+            align-items: center; /* PC */
           }
           @media (max-width: 720px){
             .home-actions{
-              align-items: start; /* スマホは上詰めで落下防止 */
-              padding-top: clamp(2px, 0.8vh, 8px);
+              align-items: start; /* スマホ */
+              padding-top: 2px;
             }
           }
 
@@ -202,10 +195,10 @@ export default function Home({ go }: Props) {
             gap: var(--gapy);
           }
 
-          /* ✅ PC：中央に縦1列 */
+          /* PC：中央縦1列 */
           .home-actions-scale{
             --btnw: clamp(210px, 22vw, 320px);
-            --gapy: clamp(6px, 1.2vh, 12px);
+            --gapy: clamp(6px, 1.1vh, 12px);
             justify-content: center;
             transform-origin: center center;
           }
@@ -218,55 +211,37 @@ export default function Home({ go }: Props) {
           .home-settings{
             display: grid;
             justify-items: center;
-            margin-top: clamp(2px, 0.5vh, 6px);
+            margin-top: 2px;
           }
 
-          /* ✅ スマホ：左半分カラム固定＆縦1列で必ず収める */
+          /* スマホ：左半分カラム固定＆隙間をさらに詰める */
           @media (max-width: 720px){
             .home-actions-scale{
               width: min(48vw, 320px);
               justify-content: start;
               transform-origin: left top;
 
-              /* ✅ 隙間をさらに詰める */
-              --gapy: clamp(2px, 0.55vh, 8px);
+              --gapy: clamp(2px, 0.45vh, 7px); /* ✅ 隙間詰め */
 
               --btnw: 100%;
               padding-left: max(12px, env(safe-area-inset-left));
             }
-
-            .home-grid{
-              justify-items: start;
-            }
+            .home-grid{ justify-items: start; }
             .home-settings{
               justify-items: start;
-              margin-top: clamp(1px, 0.4vh, 5px);
+              margin-top: 1px;
             }
           }
 
-          /* ===== 収める保険（スマホは常時ちょい縮めて“落下”を根絶） ===== */
+          /* 収める保険（スマホは常時ちょい縮め） */
           @media (max-width: 720px){
             .home-actions-scale{ transform: scale(0.92); }
           }
-          @media (max-width: 720px) and (max-height: 820px){
+          @media (max-width: 720px) and (max-height: 760px){
             .home-actions-scale{ transform: scale(0.88); }
           }
-          @media (max-width: 720px) and (max-height: 740px){
+          @media (max-width: 720px) and (max-height: 680px){
             .home-actions-scale{ transform: scale(0.84); }
-          }
-          @media (max-width: 720px) and (max-height: 660px){
-            .home-actions-scale{ transform: scale(0.80); }
-          }
-
-          /* PC側も低い画面は少し縮める（保険） */
-          @media (min-width: 721px) and (max-height: 760px){
-            .home-actions-scale{ transform: scale(0.92); transform-origin: center center; }
-          }
-          @media (min-width: 721px) and (max-height: 690px){
-            .home-actions-scale{ transform: scale(0.86); transform-origin: center center; }
-          }
-          @media (min-width: 721px) and (max-height: 620px){
-            .home-actions-scale{ transform: scale(0.80); transform-origin: center center; }
           }
         `}
       </style>
@@ -360,14 +335,12 @@ export default function Home({ go }: Props) {
           pointerEvents: canUse ? "auto" : "none",
         }}
       >
-        {/* ✅ ロゴは全幅 */}
         <div className="home-safe-logo">
           <div className="home-logo-box">
             <img className="home-logo" src={logoSrc} alt="釣嫁ぷろじぇくと" />
           </div>
         </div>
 
-        {/* ✅ ボタンはPC/スマホで領域を分ける */}
         <div className="home-actions">
           <div className="home-safe-actions">
             <div className="home-actions-scale">
