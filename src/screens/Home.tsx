@@ -100,8 +100,8 @@ export default function Home({ go }: Props) {
       showBack={false}
       scrollY="hidden"
       contentPadding={"clamp(10px, 1.8vw, 16px)"}
-      // ✅ スマホで「右半分にキャラ」を成立させるための保険（必要なら数値だけ微調整）
-      testCharacterHeight="62vh"
+      // ✅ 重要：Homeでは testCharacterHeight をいじらない
+      // これで「設定の100%」が全画面で同じ基準になる
       testCharacterOffset={{ right: 0, bottom: 0 }}
     >
       <style>
@@ -142,13 +142,18 @@ export default function Home({ go }: Props) {
             align-items: start;
           }
 
-          /* PCは右下キャラと喧嘩しないよう右側に安全余白 */
+          /* ===== 左UI / 右キャラ の“聖域”を確保 =====
+             - PC：右に安全余白
+             - スマホ：右半分をキャラ領域として確保（UIは左半分）
+          */
           .home-safe{
             width: 100%;
             padding-right: clamp(0px, 18vw, 430px);
           }
           @media (max-width: 720px){
-            .home-safe{ padding-right: 0px; }
+            .home-safe{
+              padding-right: 50vw; /* ✅ 右半分はキャラ用に空ける */
+            }
           }
 
           /* ===== ロゴ：余白トリム済み素材を活かして主役サイズ ===== */
@@ -192,7 +197,7 @@ export default function Home({ go }: Props) {
             transform-origin: left center;
           }
 
-          /* ✅ PCも“縦1列”に統一（余白トリム済み素材で成立） */
+          /* ✅ PCも縦1列に統一 */
           .home-grid{
             display: grid;
             grid-template-columns: 1fr;
@@ -214,22 +219,13 @@ export default function Home({ go }: Props) {
               transform-origin: left center;
               padding-left: max(12px, env(safe-area-inset-left));
 
-              /* ✅ 左エリアに収める：最大で画面の約半分 */
+              /* ✅ 左エリアに収める：最大で画面の半分 */
               --btnw: min(48vw, 300px);
               --gapy: clamp(10px, 2.0vh, 16px);
             }
-
-            .home-grid{
-              grid-template-columns: 1fr;
-              justify-content: start;
-            }
-
-            .home-settings{
-              justify-content: start;
-            }
           }
 
-          /* 低い画面は縮める（Homeはスクロール禁止なので保険必須） */
+          /* 低い画面は縮める（Homeはスクロール禁止なので保険） */
           @media (max-height: 760px){
             .home-actions-scale{ transform: scale(0.92); }
           }
