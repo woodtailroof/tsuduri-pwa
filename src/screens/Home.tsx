@@ -127,45 +127,42 @@ export default function Home({ go }: Props) {
             height: auto;
           }
 
-          /* ===== レイアウト方針 =====
-             - 縦2段：上がロゴ、下がボタン
-             - Homeはスクロールさせない（PageShell scrollY="hidden"）
-          */
+          /* ===== Home全体：ロゴ + ボタン ===== */
           .home-root{
             height: 100svh;
             width: 100%;
             display: grid;
             grid-template-rows: auto minmax(0, 1fr);
-            gap: clamp(6px, 1.2vh, 12px);
+            gap: clamp(8px, 1.4vh, 14px);
             align-items: start;
           }
 
-          /* ✅ 左UI / 右キャラ の“聖域”確保 */
+          /* PCは右下キャラと喧嘩しないよう右側に安全余白 */
           .home-safe{
             width: 100%;
             padding-right: clamp(0px, 18vw, 430px);
           }
+
+          /* ✅ スマホは“右半分＝キャラ領域”を確保 */
           @media (max-width: 720px){
             .home-safe{
               padding-right: 50vw;
             }
           }
 
-          /* ===== ロゴ：余白トリム済み素材を活かして主役サイズ ===== */
+          /* ===== ロゴ：小さくしない（ここが最重要） ===== */
           .home-logo-box{
             width: min(96vw, 1320px);
-            height: clamp(120px, 26svh, 260px);
+            height: clamp(130px, 28svh, 280px);
             margin: 0;
           }
-          /* ✅ スマホはロゴ箱を少し控えめにして下にスペースを作る */
           @media (max-width: 720px){
             .home-logo-box{
-              width: min(96vw, 760px);
-              height: clamp(100px, 20svh, 200px);
+              width: min(96vw, 720px);
+              height: clamp(130px, 24svh, 240px); /* ✅ スマホでも主役サイズ */
               margin: 0 auto;
             }
           }
-
           .home-logo{
             width: 100% !important;
             height: 100% !important;
@@ -176,94 +173,102 @@ export default function Home({ go }: Props) {
             user-select: none;
           }
 
-          /* ===== ボタン段：残り高さを最大限使う ===== */
+          /* ===== ボタン段：PCは中央、スマホは左カラム ===== */
           .home-actions{
             min-height: 0;
             display: grid;
-            align-items: center; /* PCは中央寄せで綺麗 */
+            align-items: center;  /* PCは中央で気持ちいい */
           }
-          /* ✅ スマホは中央寄せをやめて上詰め（設定ボタンが落ちないように） */
           @media (max-width: 720px){
             .home-actions{
-              align-items: start;
+              align-items: start;  /* スマホは上詰め（落下防止） */
+              padding-top: clamp(6px, 1.2vh, 10px);
             }
           }
 
           .home-actions-scale{
-            --btnw: clamp(180px, 22vw, 300px);
-            --gapy: clamp(10px, 2.0vh, 16px);
-
+            --gapy: clamp(8px, 1.5vh, 14px);
             width: 100%;
             display: grid;
-            /* ✅ PCは中央に縦1列で揃える */
-            justify-content: center;
             gap: var(--gapy);
-            transform-origin: center center;
           }
 
-          /* ✅ 縦1列 */
+          /* ✅ PC：縦1列、中央揃え */
+          .home-actions-scale{
+            justify-content: center;
+            transform-origin: center center;
+          }
           .home-grid{
             display: grid;
             grid-template-columns: 1fr;
             gap: var(--gapy);
-            align-items: center;
-            justify-content: center;
+            justify-items: center;
           }
-
           .home-settings{
             display: grid;
-            justify-content: center;
-            margin-top: clamp(4px, 0.8vh, 8px);
+            justify-items: center;
+            margin-top: clamp(2px, 0.8vh, 8px);
           }
 
-          /* ===== スマホ：左寄せ＆画面半分まで＆縦1列＆間隔詰め ===== */
+          /* ✅ ボタン幅（PC） */
+          .home-actions-scale{
+            --btnw: clamp(210px, 22vw, 320px);
+          }
+          .home-btn{ width: var(--btnw); }
+
+          /* ===== スマホ：左寄せ＆左半分カラム固定＆縦1列で必ず収める ===== */
           @media (max-width: 720px){
             .home-actions-scale{
+              /* 左カラムを固定化：この箱の中でボタンが完結する */
+              width: min(48vw, 320px);
               justify-content: start;
               transform-origin: left top;
+
+              /* ここで確実に間隔を詰める */
+              --gapy: clamp(4px, 0.9vh, 10px);
+
+              /* ボタン自体は箱いっぱいを使う（= 箱幅 = 左半分） */
+              --btnw: 100%;
               padding-left: max(12px, env(safe-area-inset-left));
-
-              /* ✅ 左半分に収める */
-              --btnw: min(48vw, 300px);
-
-              /* ✅ 間隔を詰めて1画面内に収める */
-              --gapy: clamp(6px, 1.2vh, 12px);
             }
 
             .home-grid{
-              justify-content: start;
+              justify-items: start;
             }
             .home-settings{
-              justify-content: start;
-              margin-top: clamp(2px, 0.6vh, 6px);
+              justify-items: start;
+              margin-top: clamp(2px, 0.5vh, 6px);
             }
           }
 
-          /* ===== ボタン幅 ===== */
-          .home-btn{
-            width: var(--btnw);
+          /* ===== スクロール禁止のための“収める保険”
+             スマホは高さが普通でも発動させて、設定ボタン落下を根絶する
+          */
+          @media (max-width: 720px){
+            .home-actions-scale{ transform: scale(0.96); }
           }
-
-          /* 低い画面は縮める（Homeはスクロール禁止なので保険） */
-          @media (max-height: 760px){
+          @media (max-width: 720px) and (max-height: 820px){
             .home-actions-scale{ transform: scale(0.92); }
           }
-          @media (max-height: 690px){
-            .home-actions-scale{ transform: scale(0.86); }
+          @media (max-width: 720px) and (max-height: 760px){
+            .home-actions-scale{ transform: scale(0.88); }
           }
-          @media (max-height: 620px){
+          @media (max-width: 720px) and (max-height: 700px){
+            .home-actions-scale{ transform: scale(0.84); }
+          }
+          @media (max-width: 720px) and (max-height: 640px){
             .home-actions-scale{ transform: scale(0.80); }
           }
 
-          /* ✅ スマホで特に低い場合はさらに縮める（設定ボタン救済） */
-          @media (max-width: 720px) and (max-height: 720px){
-            .home-actions-scale{ transform: scale(0.90); }
+          /* PC側も低い画面は少し縮める（保険） */
+          @media (min-width: 721px) and (max-height: 760px){
+            .home-actions-scale{ transform: scale(0.92); transform-origin: center center; }
           }
-          @media (max-width: 720px) and (max-height: 660px){
-            .home-actions-scale{ transform: scale(0.84); }
+          @media (min-width: 721px) and (max-height: 690px){
+            .home-actions-scale{ transform: scale(0.86); transform-origin: center center; }
           }
-          @media (max-width: 720px) and (max-height: 600px){
-            .home-actions-scale{ transform: scale(0.78); }
+          @media (min-width: 721px) and (max-height: 620px){
+            .home-actions-scale{ transform: scale(0.80); transform-origin: center center; }
           }
         `}
       </style>
