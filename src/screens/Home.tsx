@@ -31,9 +31,7 @@ function setUnlocked(pass: string) {
   try {
     localStorage.setItem(APP_LOCK_PASS_KEY, pass);
     localStorage.setItem(APP_LOCK_UNLOCKED_KEY, "1");
-  } catch {
-    // ignore
-  }
+  } catch {}
 }
 
 type ImgBtnProps = {
@@ -100,149 +98,113 @@ export default function Home({ go }: Props) {
       showBack={false}
       scrollY="hidden"
       contentPadding={"clamp(10px, 1.8vw, 16px)"}
-      testCharacterOffset={{ right: 0, bottom: 0 }}
     >
       <style>
         {`
-          .home-img-btn{
-            appearance: none;
-            -webkit-appearance: none;
-            border: 0;
-            background: transparent;
-            padding: 0;
-            margin: 0;
-            display: inline-block;
-            line-height: 0;
-            width: fit-content;
-            height: fit-content;
-            cursor: pointer;
-            user-select: none;
-            -webkit-tap-highlight-color: transparent;
-          }
-          .home-img-btn:focus{ outline: none; }
-          .home-img-btn__img{
-            display: block;
-            width: 100%;
-            height: auto;
-          }
+        .home-img-btn{
+          appearance:none;
+          border:0;
+          background:transparent;
+          padding:0;
+          margin:0;
+          display:inline-block;
+          line-height:0;
+          cursor:pointer;
+        }
+        .home-img-btn__img{
+          display:block;
+          width:100%;
+          height:auto;
+        }
 
-          .home-root{
-            height: 100svh;
-            width: 100%;
-            display: grid;
-            grid-template-rows: auto minmax(0, 1fr);
-            gap: clamp(2px, 0.8vh, 8px); /* ✅ もっと詰める */
-            align-items: start;
-          }
+        .home-root{
+          height:100svh;
+          display:grid;
+          grid-template-rows:auto minmax(0,1fr);
+          gap:clamp(2px,0.8vh,8px);
+        }
 
-          /* ===== ロゴ領域（スマホでも全幅） ===== */
-          .home-safe-logo{
-            width: 100%;
-            padding-right: clamp(0px, 18vw, 430px); /* PCは右キャラと喧嘩しない余白 */
-          }
-          @media (max-width: 720px){
-            .home-safe-logo{ padding-right: 0px; }
-          }
+        /* ===== ロゴ ===== */
+        .home-safe-logo{
+          width:100%;
+          padding-right:clamp(0px,18vw,430px);
+        }
+        @media (max-width:720px){
+          .home-safe-logo{ padding-right:0; }
+        }
 
-          /* ===== ボタン領域（スマホだけ右半分を空ける） ===== */
-          .home-safe-actions{
-            width: 100%;
-            padding-right: clamp(0px, 18vw, 430px);
-          }
-          @media (max-width: 720px){
-            .home-safe-actions{ padding-right: 50vw; }
-          }
-
-          /* ✅ ロゴ：スマホで確実にデカくする */
+        .home-logo-box{
+          width:min(96vw,1320px);
+          height:clamp(140px,30svh,300px);
+        }
+        @media (max-width:720px){
           .home-logo-box{
-            width: min(96vw, 1320px);
-            height: clamp(140px, 30svh, 300px);
-            margin: 0;
+            width:min(96vw,820px);
+            height:clamp(170px,32svh,340px);
+            margin:0 auto;
           }
-          @media (max-width: 720px){
-            .home-logo-box{
-              width: min(96vw, 820px);
-              height: clamp(170px, 32svh, 340px); /* ✅ ここが主役 */
-              margin: 0 auto;
-            }
-          }
-          .home-logo{
-            width: 100% !important;
-            height: 100% !important;
-            object-fit: contain !important;
-            display: block;
-            filter: drop-shadow(0 10px 28px rgba(0,0,0,0.25));
-            pointer-events: none;
-            user-select: none;
-          }
+        }
+        .home-logo{
+          width:100%;
+          height:100%;
+          object-fit:contain;
+          display:block;
+        }
 
-          /* ===== ボタン段 ===== */
+        /* ===== ボタン ===== */
+        .home-actions{
+          display:grid;
+          align-items:center;
+        }
+        @media (max-width:720px){
           .home-actions{
-            min-height: 0;
-            display: grid;
-            align-items: center; /* PC */
+            align-items:start;
           }
-          @media (max-width: 720px){
-            .home-actions{
-              align-items: start; /* スマホ */
-              padding-top: 2px;
-            }
-          }
+        }
 
+        .home-safe-actions{
+          width:100%;
+          padding-right:clamp(0px,18vw,430px);
+        }
+        @media (max-width:720px){
+          .home-safe-actions{ padding-right:50vw; }
+        }
+
+        .home-actions-scale{
+          --btnw:clamp(210px,22vw,320px);
+          --gapy:clamp(6px,1.1vh,12px);
+          display:grid;
+          gap:var(--gapy);
+          justify-content:center;
+        }
+
+        .home-grid{
+          display:grid;
+          grid-template-columns:1fr;
+          gap:var(--gapy);
+          justify-items:center;
+        }
+
+        .home-settings{
+          display:grid;
+          justify-items:center;
+          margin-top:2px;
+        }
+
+        /* ===== スマホ：左半分カラム内で中央揃え ===== */
+        @media (max-width:720px){
           .home-actions-scale{
-            width: 100%;
-            display: grid;
-            gap: var(--gapy);
+            width:min(48vw,320px);
+            justify-content:center;      /* ★ここが今回の修正点 */
+            padding-left:max(8px,env(safe-area-inset-left));
+            padding-right:8px;
+            transform:scale(0.92);
+            --gapy:clamp(2px,0.45vh,7px);
+            --btnw:100%;
           }
-
-          /* PC：中央縦1列 */
-          .home-actions-scale{
-            --btnw: clamp(210px, 22vw, 320px);
-            --gapy: clamp(6px, 1.1vh, 12px);
-            justify-content: center;
-            transform-origin: center center;
-          }
-          .home-grid{
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: var(--gapy);
-            justify-items: center;
-          }
-          .home-settings{
-            display: grid;
-            justify-items: center;
-            margin-top: 2px;
-          }
-
-          /* スマホ：左半分カラム固定＆隙間をさらに詰める */
-          @media (max-width: 720px){
-            .home-actions-scale{
-              width: min(48vw, 320px);
-              justify-content: start;
-              transform-origin: left top;
-
-              --gapy: clamp(2px, 0.45vh, 7px); /* ✅ 隙間詰め */
-
-              --btnw: 100%;
-              padding-left: max(12px, env(safe-area-inset-left));
-            }
-            .home-grid{ justify-items: start; }
-            .home-settings{
-              justify-items: start;
-              margin-top: 1px;
-            }
-          }
-
-          /* 収める保険（スマホは常時ちょい縮め） */
-          @media (max-width: 720px){
-            .home-actions-scale{ transform: scale(0.92); }
-          }
-          @media (max-width: 720px) and (max-height: 760px){
-            .home-actions-scale{ transform: scale(0.88); }
-          }
-          @media (max-width: 720px) and (max-height: 680px){
-            .home-actions-scale{ transform: scale(0.84); }
-          }
+          .home-grid{ justify-items:center; }
+          .home-settings{ justify-items:center; }
+        }
         `}
       </style>
 
@@ -260,27 +222,17 @@ export default function Home({ go }: Props) {
         >
           <div
             style={{
-              width: "min(520px, 96vw)",
+              width: "min(520px,96vw)",
               borderRadius: 14,
-              border: "1px solid #333",
               background: "#0f0f0f",
               color: "#ddd",
               padding: 14,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
             }}
           >
-            <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>
               🔒 合言葉を入力
             </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                marginTop: 10,
-                alignItems: "center",
-              }}
-            >
+            <div style={{ display: "flex", gap: 8 }}>
               <input
                 value={pass}
                 onChange={(e) => {
@@ -288,42 +240,12 @@ export default function Home({ go }: Props) {
                   setError("");
                 }}
                 type="password"
-                placeholder="合言葉"
-                style={{
-                  flex: 1,
-                  padding: 10,
-                  borderRadius: 10,
-                  border: "1px solid #333",
-                  background: "#111",
-                  color: "#fff",
-                  minWidth: 0,
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") unlockNow();
-                }}
+                style={{ flex: 1 }}
+                onKeyDown={(e) => e.key === "Enter" && unlockNow()}
               />
-              <button
-                type="button"
-                onClick={unlockNow}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #333",
-                  background: "#1b1b1b",
-                  color: "#fff",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                解錠
-              </button>
+              <button onClick={unlockNow}>解錠</button>
             </div>
-
-            {!!error && (
-              <div style={{ marginTop: 10, color: "#ffb3c1", fontSize: 12 }}>
-                {error}
-              </div>
-            )}
+            {error && <div style={{ color: "#ffb3c1" }}>{error}</div>}
           </div>
         </div>
       )}
@@ -349,34 +271,33 @@ export default function Home({ go }: Props) {
                   src={btnRecord}
                   alt="記録する"
                   onClick={() => go("record")}
-                  style={{ width: "var(--btnw)" } as CSSProperties}
+                  style={{ width: "var(--btnw)" }}
                 />
                 <ImgButton
                   src={btnHistory}
                   alt="履歴をみる"
                   onClick={() => go("recordHistory")}
-                  style={{ width: "var(--btnw)" } as CSSProperties}
+                  style={{ width: "var(--btnw)" }}
                 />
                 <ImgButton
                   src={btnWeather}
                   alt="天気・潮をみる"
                   onClick={() => go("weather")}
-                  style={{ width: "var(--btnw)" } as CSSProperties}
+                  style={{ width: "var(--btnw)" }}
                 />
                 <ImgButton
                   src={btnChat}
                   alt="話す"
                   onClick={() => go("chat")}
-                  style={{ width: "var(--btnw)" } as CSSProperties}
+                  style={{ width: "var(--btnw)" }}
                 />
               </div>
-
               <div className="home-settings">
                 <ImgButton
                   src={btnSettings}
                   alt="設定"
                   onClick={() => go("settings")}
-                  style={{ width: "var(--btnw)" } as CSSProperties}
+                  style={{ width: "var(--btnw)" }}
                 />
               </div>
             </div>
