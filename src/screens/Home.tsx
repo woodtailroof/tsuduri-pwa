@@ -100,8 +100,6 @@ export default function Home({ go }: Props) {
       showBack={false}
       scrollY="hidden"
       contentPadding={"clamp(10px, 1.8vw, 16px)"}
-      // ✅ 重要：Homeでは testCharacterHeight をいじらない
-      // これで「設定の100%」が全画面で同じ基準になる
       testCharacterOffset={{ right: 0, bottom: 0 }}
     >
       <style>
@@ -131,28 +129,25 @@ export default function Home({ go }: Props) {
 
           /* ===== レイアウト方針 =====
              - 縦2段：上がロゴ、下がボタン
-             - 下段は「残り高さ」に合わせて自動で縮める
+             - Homeはスクロールさせない（PageShell scrollY="hidden"）
           */
           .home-root{
             height: 100svh;
             width: 100%;
             display: grid;
             grid-template-rows: auto minmax(0, 1fr);
-            gap: clamp(8px, 1.6vh, 14px);
+            gap: clamp(6px, 1.2vh, 12px);
             align-items: start;
           }
 
-          /* ===== 左UI / 右キャラ の“聖域”を確保 =====
-             - PC：右に安全余白
-             - スマホ：右半分をキャラ領域として確保（UIは左半分）
-          */
+          /* ✅ 左UI / 右キャラ の“聖域”確保 */
           .home-safe{
             width: 100%;
             padding-right: clamp(0px, 18vw, 430px);
           }
           @media (max-width: 720px){
             .home-safe{
-              padding-right: 50vw; /* ✅ 右半分はキャラ用に空ける */
+              padding-right: 50vw;
             }
           }
 
@@ -162,13 +157,15 @@ export default function Home({ go }: Props) {
             height: clamp(120px, 26svh, 260px);
             margin: 0;
           }
+          /* ✅ スマホはロゴ箱を少し控えめにして下にスペースを作る */
           @media (max-width: 720px){
             .home-logo-box{
               width: min(96vw, 760px);
-              height: clamp(120px, 22svh, 220px);
+              height: clamp(100px, 20svh, 200px);
               margin: 0 auto;
             }
           }
+
           .home-logo{
             width: 100% !important;
             height: 100% !important;
@@ -179,50 +176,72 @@ export default function Home({ go }: Props) {
             user-select: none;
           }
 
-          /* ===== ボタン段：残り高さに合わせて縮む ===== */
+          /* ===== ボタン段：残り高さを最大限使う ===== */
           .home-actions{
             min-height: 0;
             display: grid;
-            align-items: center;
+            align-items: center; /* PCは中央寄せで綺麗 */
+          }
+          /* ✅ スマホは中央寄せをやめて上詰め（設定ボタンが落ちないように） */
+          @media (max-width: 720px){
+            .home-actions{
+              align-items: start;
+            }
           }
 
           .home-actions-scale{
             --btnw: clamp(180px, 22vw, 300px);
-            --gapy: clamp(10px, 2.2vh, 18px);
+            --gapy: clamp(10px, 2.0vh, 16px);
 
             width: 100%;
             display: grid;
-            justify-content: start;
+            /* ✅ PCは中央に縦1列で揃える */
+            justify-content: center;
             gap: var(--gapy);
-            transform-origin: left center;
+            transform-origin: center center;
           }
 
-          /* ✅ PCも縦1列に統一 */
+          /* ✅ 縦1列 */
           .home-grid{
             display: grid;
             grid-template-columns: 1fr;
             gap: var(--gapy);
             align-items: center;
-            justify-content: start;
+            justify-content: center;
           }
 
           .home-settings{
             display: grid;
-            justify-content: start;
-            margin-top: clamp(6px, 1.2vh, 10px);
+            justify-content: center;
+            margin-top: clamp(4px, 0.8vh, 8px);
           }
 
-          /* ===== スマホ：左寄せ＆画面半分まで＆縦1列 ===== */
+          /* ===== スマホ：左寄せ＆画面半分まで＆縦1列＆間隔詰め ===== */
           @media (max-width: 720px){
             .home-actions-scale{
               justify-content: start;
-              transform-origin: left center;
+              transform-origin: left top;
               padding-left: max(12px, env(safe-area-inset-left));
 
-              /* ✅ 左エリアに収める：最大で画面の半分 */
+              /* ✅ 左半分に収める */
               --btnw: min(48vw, 300px);
-              --gapy: clamp(10px, 2.0vh, 16px);
+
+              /* ✅ 間隔を詰めて1画面内に収める */
+              --gapy: clamp(6px, 1.2vh, 12px);
             }
+
+            .home-grid{
+              justify-content: start;
+            }
+            .home-settings{
+              justify-content: start;
+              margin-top: clamp(2px, 0.6vh, 6px);
+            }
+          }
+
+          /* ===== ボタン幅 ===== */
+          .home-btn{
+            width: var(--btnw);
           }
 
           /* 低い画面は縮める（Homeはスクロール禁止なので保険） */
@@ -234,6 +253,17 @@ export default function Home({ go }: Props) {
           }
           @media (max-height: 620px){
             .home-actions-scale{ transform: scale(0.80); }
+          }
+
+          /* ✅ スマホで特に低い場合はさらに縮める（設定ボタン救済） */
+          @media (max-width: 720px) and (max-height: 720px){
+            .home-actions-scale{ transform: scale(0.90); }
+          }
+          @media (max-width: 720px) and (max-height: 660px){
+            .home-actions-scale{ transform: scale(0.84); }
+          }
+          @media (max-width: 720px) and (max-height: 600px){
+            .home-actions-scale{ transform: scale(0.78); }
           }
         `}
       </style>
