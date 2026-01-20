@@ -100,6 +100,9 @@ export default function Home({ go }: Props) {
       showBack={false}
       scrollY="hidden"
       contentPadding={"clamp(10px, 1.8vw, 16px)"}
+      // ✅ スマホで「右半分にキャラ」を成立させるための保険（必要なら数値だけ微調整）
+      testCharacterHeight="62vh"
+      testCharacterOffset={{ right: 0, bottom: 0 }}
     >
       <style>
         {`
@@ -148,7 +151,7 @@ export default function Home({ go }: Props) {
             .home-safe{ padding-right: 0px; }
           }
 
-          /* ===== ロゴ：主役サイズへ（箱を大きくする） ===== */
+          /* ===== ロゴ：余白トリム済み素材を活かして主役サイズ ===== */
           .home-logo-box{
             width: min(96vw, 1320px);
             height: clamp(120px, 26svh, 260px);
@@ -180,7 +183,6 @@ export default function Home({ go }: Props) {
 
           .home-actions-scale{
             --btnw: clamp(180px, 22vw, 300px);
-            --gapx: clamp(12px, 2.6vw, 30px);
             --gapy: clamp(10px, 2.2vh, 18px);
 
             width: 100%;
@@ -190,32 +192,38 @@ export default function Home({ go }: Props) {
             transform-origin: left center;
           }
 
-          /* PC：2列 */
+          /* ✅ PCも“縦1列”に統一（余白トリム済み素材で成立） */
           .home-grid{
             display: grid;
-            grid-template-columns: repeat(2, max-content);
-            gap: var(--gapy) var(--gapx);
+            grid-template-columns: 1fr;
+            gap: var(--gapy);
             align-items: center;
-          }
-          .home-settings{
-            display: grid;
             justify-content: start;
           }
 
-          /* スマホ：左寄せ縦1列（キャラ回避優先） */
+          .home-settings{
+            display: grid;
+            justify-content: start;
+            margin-top: clamp(6px, 1.2vh, 10px);
+          }
+
+          /* ===== スマホ：左寄せ＆画面半分まで＆縦1列 ===== */
           @media (max-width: 720px){
             .home-actions-scale{
               justify-content: start;
               transform-origin: left center;
               padding-left: max(12px, env(safe-area-inset-left));
-              --btnw: clamp(210px, 62vw, 320px);
-              --gapy: clamp(12px, 2.2vh, 18px);
+
+              /* ✅ 左エリアに収める：最大で画面の約半分 */
+              --btnw: min(48vw, 300px);
+              --gapy: clamp(10px, 2.0vh, 16px);
             }
+
             .home-grid{
               grid-template-columns: 1fr;
               justify-content: start;
-              gap: var(--gapy);
             }
+
             .home-settings{
               justify-content: start;
             }
