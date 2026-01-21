@@ -7,13 +7,11 @@ import Weather from "./screens/Weather";
 import Chat from "./screens/Chat";
 import Settings from "./screens/Settings";
 import CharacterSettings from "./screens/CharacterSettings";
-import Archive from "./screens/Archive";
 
 type Screen =
   | "home"
   | "record"
   | "recordHistory"
-  | "archive"
   | "weather"
   | "chat"
   | "settings"
@@ -24,9 +22,8 @@ export default function App() {
 
   const backHome = () => setScreen("home");
 
-  // ✅ Home から呼べる遷移先に recordHistory を追加（これが今回のエラーの核心）
   const goFromHome = (
-    s: "record" | "recordHistory" | "archive" | "weather" | "chat" | "settings",
+    s: "record" | "recordHistory" | "weather" | "chat" | "settings",
   ) => setScreen(s);
 
   let content: ReactNode;
@@ -34,7 +31,6 @@ export default function App() {
   if (screen === "record") content = <Record back={backHome} />;
   else if (screen === "recordHistory")
     content = <RecordHistory back={backHome} />;
-  else if (screen === "archive") content = <Archive back={backHome} />;
   else if (screen === "weather") content = <Weather back={backHome} />;
   else if (screen === "settings") content = <Settings back={backHome} />;
   else if (screen === "chat") {
