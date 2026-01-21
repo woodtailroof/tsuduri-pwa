@@ -2,6 +2,7 @@
 import { useState, type ReactNode } from "react";
 import Home from "./screens/Home";
 import Record from "./screens/Record";
+import RecordHistory from "./screens/RecordHistory";
 import Weather from "./screens/Weather";
 import Chat from "./screens/Chat";
 import Settings from "./screens/Settings";
@@ -11,6 +12,7 @@ import Archive from "./screens/Archive";
 type Screen =
   | "home"
   | "record"
+  | "recordHistory"
   | "archive"
   | "weather"
   | "chat"
@@ -21,12 +23,17 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
 
   const backHome = () => setScreen("home");
+
+  // ✅ Home から呼べる遷移先に recordHistory を追加（これが今回のエラーの核心）
   const goFromHome = (
-    s: "record" | "archive" | "weather" | "chat" | "settings"
+    s: "record" | "recordHistory" | "archive" | "weather" | "chat" | "settings",
   ) => setScreen(s);
 
   let content: ReactNode;
+
   if (screen === "record") content = <Record back={backHome} />;
+  else if (screen === "recordHistory")
+    content = <RecordHistory back={backHome} />;
   else if (screen === "archive") content = <Archive back={backHome} />;
   else if (screen === "weather") content = <Weather back={backHome} />;
   else if (screen === "settings") content = <Settings back={backHome} />;

@@ -141,7 +141,7 @@ export default function PageShell({
   showTestCharacter = true,
   testCharacterSrc = "/assets/character-test.png",
   testCharacterHeight = "clamp(140px, 18vw, 220px)",
-  testCharacterOffset = { right: 16, bottom: 16 },
+  testCharacterOffset = { right: 0, bottom: 0 },
   testCharacterOpacity = 1,
 
   hideScrollbar = true,
@@ -300,7 +300,7 @@ export default function PageShell({
   const characterOpacity = clamp(
     settings.characterOpacity ?? testCharacterOpacity,
     0,
-    1
+    1,
   );
 
   const shellStyle: CSSProperties & Record<string, string> = {
@@ -332,8 +332,7 @@ export default function PageShell({
     overscrollBehavior: "contain",
   };
 
-  const innerPadding =
-    contentPadding ?? "clamp(16px, 3vw, 24px)";
+  const innerPadding = contentPadding ?? "clamp(16px, 3vw, 24px)";
 
   return (
     <div className="page-shell" style={shellStyle}>
@@ -358,8 +357,8 @@ export default function PageShell({
           aria-hidden="true"
           style={{
             position: "fixed",
-            right: testCharacterOffset.right ?? 16,
-            bottom: testCharacterOffset.bottom ?? 16,
+            right: testCharacterOffset.right ?? 0,
+            bottom: testCharacterOffset.bottom ?? 0,
             zIndex: 5,
             pointerEvents: "none",
             userSelect: "none",
