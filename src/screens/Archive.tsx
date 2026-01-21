@@ -1,6 +1,7 @@
 // src/screens/Archive.tsx
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { db, type CatchRecord } from '../db'
 import { exportCatches, importCatches } from '../lib/catchTransfer'
 import { getTimeBand } from '../lib/timeband'
@@ -94,10 +95,8 @@ function prefersReducedMotion() {
 }
 
 /**
- * ✅ BottomSheet（修正版）
- * - mount直後は overlayActive=false / sheetActive=false（透明＆下）
- * - rAFで overlayActive=true（暗転フェード）
- * - 次のrAFで sheetActive=true（スーッ）
+ * ✅ BottomSheet（Portal版）
+ * 目的：PageShell/背景/ガラス等が作る transform / overflow / stacking context の影響を受けずに確実に表示する
  */
 function BottomSheet({
   open,
@@ -117,25 +116,47 @@ function BottomSheet({
   const [sheetActive, setSheetActive] = useState(false)
   const reduce = prefersReducedMotion()
 
+  const raf1Ref = useRef<number | null>(null)
+  const raf2Ref = useRef<number | null>(null)
+
+  // ✅ bodyスクロールロック（開いてる間だけ）
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    if (!open) return
+
+    const prevOverflow = document.body.style.overflow
+    const prevTouch = (document.body.style as any).touchAction as string | undefined
+
+    document.body.style.overflow = 'hidden'
+    ;(document.body.style as any).touchAction = 'none'
+
+    return () => {
+      document.body.style.overflow = prevOverflow
+      ;(document.body.style as any).touchAction = prevTouch ?? ''
+    }
+  }, [open])
+
   useEffect(() => {
     if (open) {
       setMounted(true)
-      // ✅ 初期は「透明＆下」に固定（差分を必ず作る）
+
+      // ✅ 初期は「透明＆下」
       setOverlayActive(false)
       setSheetActive(false)
 
-      // ✅ 2段階で確実に走らせる
-      const raf1 = requestAnimationFrame(() => {
+      // ✅ 2段階 rAF で確実に差分を作る
+      raf1Ref.current = requestAnimationFrame(() => {
         setOverlayActive(true)
-        const raf2 = requestAnimationFrame(() => {
+        raf2Ref.current = requestAnimationFrame(() => {
           setSheetActive(true)
         })
-        ;(window as any).__tsuduri_sheet_raf2__ = raf2
       })
-      ;(window as any).__tsuduri_sheet_raf1__ = raf1
 
       return () => {
-        cancelAnimationFrame(raf1)
+        if (raf1Ref.current != null) cancelAnimationFrame(raf1Ref.current)
+        if (raf2Ref.current != null) cancelAnimationFrame(raf2Ref.current)
+        raf1Ref.current = null
+        raf2Ref.current = null
       }
     }
 
@@ -173,13 +194,14 @@ function BottomSheet({
   const overlayStyle: CSSProperties = {
     position: 'fixed',
     inset: 0,
-    zIndex: 9999,
+    zIndex: 99999, // ✅ 強め（背景・ヘッダより上）
     background: overlayActive ? 'rgba(0,0,0,0.62)' : 'rgba(0,0,0,0)',
     backdropFilter: overlayActive ? 'blur(6px)' : 'blur(0px)',
     WebkitBackdropFilter: overlayActive ? 'blur(6px)' : 'blur(0px)',
     display: 'grid',
     alignItems: 'end',
     transition: `background ${overlayMs}ms ease, backdrop-filter ${overlayMs}ms ease`,
+    WebkitTapHighlightColor: 'transparent',
   }
 
   const sheetStyle: CSSProperties = {
@@ -191,7 +213,6 @@ function BottomSheet({
     boxShadow: '0 -14px 40px rgba(0,0,0,0.35)',
     overflow: 'hidden',
 
-    // ✅ 画面外→0（差分がデカいほど“スーッ”が出る）
     transform: sheetActive ? 'translate3d(0, 0, 0)' : 'translate3d(0, 100%, 0)',
     opacity: sheetActive ? 1 : 0.001,
 
@@ -208,8 +229,8 @@ function BottomSheet({
     margin: '0 auto 10px',
   }
 
-  return (
-    <div style={overlayStyle} onClick={onClose}>
+  const node = (
+    <div style={overlayStyle} onClick={onClose} role="dialog" aria-modal="true">
       <div className="glass glass-strong" style={sheetStyle} onClick={(e) => e.stopPropagation()}>
         <div style={grabberStyle} />
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
@@ -224,6 +245,9 @@ function BottomSheet({
       </div>
     </div>
   )
+
+  if (typeof document === 'undefined') return null
+  return createPortal(node, document.body)
 }
 
 export default function Archive({ back }: Props) {
