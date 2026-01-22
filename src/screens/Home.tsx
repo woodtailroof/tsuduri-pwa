@@ -1,5 +1,5 @@
 // src/screens/Home.tsx
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import PageShell from "../components/PageShell";
 
 type Props = {
@@ -31,7 +31,9 @@ function setUnlocked(pass: string) {
   try {
     localStorage.setItem(APP_LOCK_PASS_KEY, pass);
     localStorage.setItem(APP_LOCK_UNLOCKED_KEY, "1");
-  } catch {}
+  } catch {
+    /* ignore */
+  }
 }
 
 type ImgBtnProps = {
@@ -61,13 +63,10 @@ function ImgButton({ src, alt, onClick, style }: ImgBtnProps) {
 }
 
 export default function Home({ go }: Props) {
+  // ✅ 初期値で確定できるので、effectでのsetState不要
   const [unlocked, setUnlockedState] = useState<boolean>(() => isUnlocked());
   const [pass, setPass] = useState<string>(() => loadSavedPass());
   const [error, setError] = useState<string>("");
-
-  useEffect(() => {
-    setUnlockedState(isUnlocked());
-  }, []);
 
   const canUse = useMemo(() => unlocked, [unlocked]);
 
@@ -195,7 +194,7 @@ export default function Home({ go }: Props) {
         @media (max-width:720px){
           .home-actions-scale{
             width:min(48vw,320px);
-            justify-content:center;      /* ★ここが今回の修正点 */
+            justify-content:center;
             padding-left:max(8px,env(safe-area-inset-left));
             padding-right:8px;
             transform:scale(0.92);
@@ -243,7 +242,9 @@ export default function Home({ go }: Props) {
                 style={{ flex: 1 }}
                 onKeyDown={(e) => e.key === "Enter" && unlockNow()}
               />
-              <button onClick={unlockNow}>解錠</button>
+              <button type="button" onClick={unlockNow}>
+                解錠
+              </button>
             </div>
             {error && <div style={{ color: "#ffb3c1" }}>{error}</div>}
           </div>

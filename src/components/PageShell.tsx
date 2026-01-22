@@ -47,6 +47,8 @@ const CHARACTERS_STORAGE_KEY = "tsuduri_characters_v2";
 const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
 type CharacterImageMap = Record<string, string>;
 
+type CSSVars = Record<`--${string}`, string>;
+
 function getPath() {
   return (
     window.location.pathname + window.location.search + window.location.hash
@@ -191,9 +193,10 @@ export default function PageShell({
   const glassAlphaStrong = clamp(glassAlpha + 0.08, 0, 0.6);
 
   // ==========
-  // 作成キャラの再読込トリガー（同一タブ変更でも追従させる）
+  // ✅ ストレージ変更検知（tick）
   // ==========
   const [storageTick, setStorageTick] = useState(0);
+
   useEffect(() => {
     const bump = () => setStorageTick((v) => v + 1);
 
@@ -219,10 +222,24 @@ export default function PageShell({
   }, []);
 
   // ==========
+  // ✅ ここが肝：useMemoで「tickだけ依存」すると lint が怒るので
+  // stateにして tick で更新する（正攻法）
+  // ==========
+  const [createdIds, setCreatedIds] = useState<string[]>(() =>
+    loadCreatedCharacterIds(),
+  );
+  const [characterImageMap, setCharacterImageMap] = useState<CharacterImageMap>(
+    () => loadCharacterImageMap(),
+  );
+
+  useEffect(() => {
+    setCreatedIds(loadCreatedCharacterIds());
+    setCharacterImageMap(loadCharacterImageMap());
+  }, [storageTick]);
+
+  // ==========
   // キャラ（固定/ランダム）※作成キャラから選ぶ
   // ==========
-  const createdIds = useMemo(() => loadCreatedCharacterIds(), [storageTick]);
-
   const requestedCharacterId = useMemo(() => {
     if (!settings.characterEnabled) return null;
     if (createdIds.length === 0) return null;
@@ -244,13 +261,12 @@ export default function PageShell({
   const mappedCharacterSrc = useMemo(() => {
     if (!requestedCharacterId) return null;
 
-    const map = loadCharacterImageMap();
-    const raw = map[requestedCharacterId];
+    const raw = characterImageMap[requestedCharacterId];
     if (typeof raw !== "string") return null;
 
     const p = normalizePublicPath(raw);
     return p || null;
-  }, [requestedCharacterId, storageTick]);
+  }, [requestedCharacterId, characterImageMap]);
 
   const requestedCharacterSrc = useMemo(() => {
     if (!requestedCharacterId) return null;
@@ -296,6 +312,7 @@ export default function PageShell({
     };
   }, [requestedCharacterSrc, testCharacterSrc]);
 
+  // ✅ transform scaleを使わず、サイズで倍率をかける
   const characterScale = clamp(settings.characterScale ?? 1, 0.7, 5.0);
   const characterOpacity = clamp(
     settings.characterOpacity ?? testCharacterOpacity,
@@ -303,20 +320,21 @@ export default function PageShell({
     1,
   );
 
-  const shellStyle: CSSProperties & Record<string, string> = {
+  const shellStyle: CSSProperties & CSSVars = {
     width: "100vw",
     height: "100svh",
     overflow: "hidden",
     position: "relative",
 
-    ["--bg-dim" as any]: String(effectiveBgDim),
-    ["--bg-blur" as any]: `${effectiveBgBlur}px`,
+    "--bg-dim": String(effectiveBgDim),
+    "--bg-blur": `${effectiveBgBlur}px`,
 
-    ["--glass-alpha" as any]: String(glassAlpha),
-    ["--glass-alpha-strong" as any]: String(glassAlphaStrong),
-    ["--glass-blur" as any]: `${glassBlur}px`,
+    "--glass-alpha": String(glassAlpha),
+    "--glass-alpha-strong": String(glassAlphaStrong),
+    "--glass-blur": `${glassBlur}px`,
   };
-  if (bgImage) shellStyle["--bg-image" as any] = `url(${bgImage})`;
+
+  if (bgImage) shellStyle["--bg-image"] = `url(${bgImage})`;
 
   const shouldShowCharacter =
     showTestCharacter && settings.characterEnabled && !!displaySrc;
@@ -333,6 +351,9 @@ export default function PageShell({
   };
 
   const innerPadding = contentPadding ?? "clamp(16px, 3vw, 24px)";
+
+  // ✅ CSS calcで “clamp(...) * scale” を作る（transformよりボケにくい）
+  const scaledHeightCss = `calc(${testCharacterHeight} * ${characterScale})`;
 
   return (
     <div className="page-shell" style={shellStyle}>
@@ -363,11 +384,15 @@ export default function PageShell({
             pointerEvents: "none",
             userSelect: "none",
             opacity: characterOpacity,
-            transform: `scale(${characterScale})`,
-            transformOrigin: "right bottom",
+
+            // ✅ transformスケール撤去（これがボケを誘発しやすい）
+            transform: "translateZ(0)",
+            backfaceVisibility: "hidden",
+            WebkitBackfaceVisibility: "hidden",
+            willChange: "opacity",
+
             filter: "drop-shadow(0 10px 28px rgba(0,0,0,0.28))",
-            transition: "opacity 220ms ease, transform 220ms ease",
-            willChange: "opacity, transform",
+            transition: "opacity 220ms ease",
           }}
         >
           <img
@@ -377,12 +402,18 @@ export default function PageShell({
             loading="eager"
             decoding="async"
             style={{
-              height: testCharacterHeight,
+              // ✅ “高さ”で倍率をかける（transformより滲みにくい）
+              height: scaledHeightCss,
               width: "auto",
               display: "block",
+
+              transform: "translateZ(0)",
+              backfaceVisibility: "hidden",
+              WebkitBackfaceVisibility: "hidden",
+              willChange: "opacity",
+
               opacity: fadeIn ? 1 : 0,
               transition: "opacity 260ms ease",
-              willChange: "opacity",
             }}
           />
         </div>
