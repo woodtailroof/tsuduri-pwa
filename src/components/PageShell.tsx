@@ -180,10 +180,24 @@ export default function PageShell({
   }, [onBack, fallbackHref]);
 
   // ==========
-  // 背景（PageShell→CSS var）
+  // 背景（Settings優先で決める）
   // ==========
   const effectiveBgDim = settings.bgDim ?? bgDim;
   const effectiveBgBlur = settings.bgBlur ?? bgBlur;
+
+  const resolvedBgImage = useMemo(() => {
+    const mode = settings.bgMode ?? "auto";
+
+    if (mode === "off") return "";
+
+    if (mode === "fixed") {
+      const p = normalizePublicPath(settings.fixedBgSrc ?? "");
+      return p;
+    }
+
+    // auto
+    return normalizePublicPath(bgImage ?? "");
+  }, [settings.bgMode, settings.fixedBgSrc, bgImage]);
 
   // ==========
   // ガラス（PageShell→CSS var）
@@ -222,8 +236,7 @@ export default function PageShell({
   }, []);
 
   // ==========
-  // ✅ ここが肝：useMemoで「tickだけ依存」すると lint が怒るので
-  // stateにして tick で更新する（正攻法）
+  // ✅ 作成キャラ/割当マップを tick で更新
   // ==========
   const [createdIds, setCreatedIds] = useState<string[]>(() =>
     loadCreatedCharacterIds(),
@@ -334,7 +347,7 @@ export default function PageShell({
     "--glass-blur": `${glassBlur}px`,
   };
 
-  if (bgImage) shellStyle["--bg-image"] = `url(${bgImage})`;
+  if (resolvedBgImage) shellStyle["--bg-image"] = `url(${resolvedBgImage})`;
 
   const shouldShowCharacter =
     showTestCharacter && settings.characterEnabled && !!displaySrc;
@@ -355,8 +368,41 @@ export default function PageShell({
   // ✅ CSS calcで “clamp(...) * scale” を作る（transformよりボケにくい）
   const scaledHeightCss = `calc(${testCharacterHeight} * ${characterScale})`;
 
+  const hasBg = !!resolvedBgImage;
+
   return (
     <div className="page-shell" style={shellStyle}>
+      {/* ✅ 背景レイヤー（CSS未確認でも確実に描く） */}
+      {hasBg && (
+        <>
+          <div
+            aria-hidden="true"
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 0,
+              backgroundImage: "var(--bg-image)",
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              backgroundRepeat: "no-repeat",
+              filter:
+                effectiveBgBlur > 0 ? `blur(${effectiveBgBlur}px)` : "none",
+              transform: "translateZ(0)",
+            }}
+          />
+          <div
+            aria-hidden="true"
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 1,
+              background: `rgba(0,0,0,${effectiveBgDim})`,
+              pointerEvents: "none",
+            }}
+          />
+        </>
+      )}
+
       {/* ✅ すりガラス保険CSS */}
       <style>
         {`
@@ -451,6 +497,7 @@ export default function PageShell({
             padding: innerPadding,
             boxSizing: "border-box",
             position: "relative",
+            zIndex: 10,
           }}
         >
           <div style={{ position: "relative" }}>

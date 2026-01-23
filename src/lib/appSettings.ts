@@ -3,6 +3,9 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 export type CharacterMode = "fixed" | "random";
 
+/** ✅ 背景モード */
+export type BackgroundMode = "auto" | "fixed" | "off";
+
 export type AppSettings = {
   version: 1;
 
@@ -17,6 +20,12 @@ export type AppSettings = {
 
   /** ✅ public 配下の画像パスでキャラ画像を上書き（例: "/assets/k1.png" or "assets/k1.png"）空ならデフォルト */
   characterOverrideSrc: string;
+
+  // ===== 背景 =====
+  /** ✅ "auto": 画面側(bgImage prop)に従う / "fixed": fixedBgSrc を強制 / "off": 背景画像なし */
+  bgMode: BackgroundMode;
+  /** ✅ 固定背景の画像パス（public配下）例: "/assets/bg/home/day.webp" */
+  fixedBgSrc: string;
 
   // ===== 表示 =====
   /** 背景暗幕 0〜1 */
@@ -46,6 +55,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   characterOpacity: 1,
   characterOverrideSrc: "",
 
+  // ✅ 背景
+  bgMode: "auto",
+  fixedBgSrc: "",
+
   bgDim: 0.55,
   bgBlur: 0,
 
@@ -65,6 +78,14 @@ export const CHARACTER_OPTIONS: CharacterOption[] = [
   // 例:
   // { id: "kokoro", label: "日波こころ", src: "/assets/k1.png" },
   // { id: "matsuri", label: "潮風まつり", src: "/assets/m1.png" },
+];
+
+/** ✅ 背景候補（Settings UIに出す用） */
+export type BackgroundOption = { id: string; label: string; src: string };
+export const BACKGROUND_OPTIONS: BackgroundOption[] = [
+  // 例：あとでここを増やしていけばUIが育つ
+  // { id: "home_day", label: "ホーム：昼", src: "/assets/bg/home/day.webp" },
+  // { id: "home_night", label: "ホーム：夜", src: "/assets/bg/home/night.webp" },
 ];
 
 function clamp(n: number, min: number, max: number) {
@@ -151,6 +172,9 @@ function normalize(input: unknown): AppSettings {
       ? x.fixedCharacterId.trim()
       : DEFAULT_SETTINGS.fixedCharacterId;
 
+  const bgMode: BackgroundMode =
+    x.bgMode === "fixed" || x.bgMode === "off" ? x.bgMode : "auto";
+
   const normalized: AppSettings = {
     version: 1,
 
@@ -166,32 +190,36 @@ function normalize(input: unknown): AppSettings {
         ? (x.characterScale as number)
         : DEFAULT_SETTINGS.characterScale,
       0.7,
-      5.0
+      5.0,
     ),
     characterOpacity: clamp(
       Number.isFinite(x.characterOpacity as number)
         ? (x.characterOpacity as number)
         : DEFAULT_SETTINGS.characterOpacity,
       0,
-      1
+      1,
     ),
 
     characterOverrideSrc:
       typeof x.characterOverrideSrc === "string" ? x.characterOverrideSrc : "",
+
+    // ✅ 背景
+    bgMode,
+    fixedBgSrc: typeof x.fixedBgSrc === "string" ? x.fixedBgSrc : "",
 
     bgDim: clamp(
       Number.isFinite(x.bgDim as number)
         ? (x.bgDim as number)
         : DEFAULT_SETTINGS.bgDim,
       0,
-      1
+      1,
     ),
     bgBlur: clamp(
       Number.isFinite(x.bgBlur as number)
         ? (x.bgBlur as number)
         : DEFAULT_SETTINGS.bgBlur,
       0,
-      24
+      24,
     ),
 
     glassAlpha: clamp(
@@ -199,14 +227,14 @@ function normalize(input: unknown): AppSettings {
         ? (x.glassAlpha as number)
         : DEFAULT_SETTINGS.glassAlpha,
       0,
-      0.6
+      0.6,
     ),
     glassBlur: clamp(
       Number.isFinite(x.glassBlur as number)
         ? (x.glassBlur as number)
         : DEFAULT_SETTINGS.glassBlur,
       0,
-      24
+      24,
     ),
   };
 
@@ -222,8 +250,11 @@ function normalize(input: unknown): AppSettings {
 
   // パスの正規化（UIは assets/k1.png でもOKにする）
   normalized.characterOverrideSrc = normalizePublicPath(
-    normalized.characterOverrideSrc
+    normalized.characterOverrideSrc,
   );
+
+  // ✅ 背景パスの正規化
+  normalized.fixedBgSrc = normalizePublicPath(normalized.fixedBgSrc);
 
   return normalized;
 }
@@ -270,7 +301,7 @@ export function getAppSettings(): AppSettings {
 }
 
 export function setAppSettings(
-  patch: Partial<AppSettings> | ((prev: AppSettings) => AppSettings)
+  patch: Partial<AppSettings> | ((prev: AppSettings) => AppSettings),
 ) {
   const prev = readSnapshot();
   const next =
@@ -304,7 +335,7 @@ export function useAppSettings() {
       set: (patch: Partial<AppSettings>) => setAppSettings(patch),
       reset: () => setAppSettings(DEFAULT_SETTINGS),
     }),
-    []
+    [],
   );
 
   useEffect(() => {
