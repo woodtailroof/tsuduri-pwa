@@ -2,12 +2,13 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  normalizePublicPath,
-  resolveAutoBackgroundSrc,
   resolveCharacterSrc,
   useAppSettings,
+  normalizePublicPath,
   getTimeBand,
-  type TimeBand,
+  resolveAutoBackgroundSrc,
+  DEFAULT_SETTINGS,
+  type BgMode,
 } from "../lib/appSettings";
 
 type Props = {
@@ -22,10 +23,7 @@ type Props = {
   fallbackHref?: string;
   disableStackPush?: boolean;
 
-  /**
-   * ✅ 画面個別で背景を上書きしたい時だけ使う
-   * （普段は Settings の bgMode/autoBgSet/fixedBgSrc を全画面共通で反映）
-   */
+  /** ✅ 画面個別で背景を上書きしたい時（通常は未指定でOK） */
   bgImage?: string;
   bgDim?: number;
   bgBlur?: number;
@@ -131,29 +129,75 @@ function pickRandomFrom<T>(arr: T[]): T | null {
   return arr[i] ?? null;
 }
 
-/** ✅ 時刻連動のための安全なtick（1分） */
+/**
+ * ✅ 毎分だけ tick を進める（時間帯の切替検知用）
+ * 1) マウント直後に1回
+ * 2) 次の「分」に揃えてから 60秒ごと
+ */
 function useMinuteTick() {
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    let intervalId: number | null = null;
+    let timeoutId: number | null = null;
+
     const bump = () => setTick((v) => v + 1);
 
-    const id = window.setInterval(bump, 60 * 1000);
-    const onVis = () => {
-      if (document.visibilityState === "visible") bump();
+    // 初回
+    bump();
+
+    const schedule = () => {
+      const now = new Date();
+      const msToNextMinute =
+        (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
+
+      timeoutId = window.setTimeout(
+        () => {
+          bump();
+          intervalId = window.setInterval(bump, 60_000);
+        },
+        Math.max(200, msToNextMinute),
+      );
     };
 
-    document.addEventListener("visibilitychange", onVis);
-    window.addEventListener("focus", bump);
+    schedule();
 
     return () => {
-      window.clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
-      window.removeEventListener("focus", bump);
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      if (intervalId !== null) window.clearInterval(intervalId);
     };
   }, []);
 
   return tick;
+}
+
+/**
+ * ✅ 背景の CSS 文字列を作る
+ * - 404 等でも真っ黒にならないように「多重urlフォールバック」を入れる
+ * - 1枚目がダメでも、2枚目以降の背景レイヤが描画される
+ */
+function makeBgCssValue(
+  mode: BgMode,
+  setId: string,
+  fixedSrc: string,
+  band: ReturnType<typeof getTimeBand>,
+) {
+  const sid = (setId ?? "").trim() || DEFAULT_SETTINGS.autoBgSet;
+
+  if (mode === "off") {
+    return "none";
+  }
+
+  if (mode === "fixed") {
+    const pFixed = normalizePublicPath(fixedSrc) || "/assets/bg/ui-check.png";
+    // fixed が死んでも ui-check に落ちる
+    return `url(${pFixed}), url(/assets/bg/ui-check.png)`;
+  }
+
+  // auto
+  const pAuto = resolveAutoBackgroundSrc(sid, band); // /assets/bg/{sid}-{band}.png
+  const pSetFallback = normalizePublicPath(`/assets/bg/${sid}.png`); // /assets/bg/surf.png（旧1枚運用の救済）
+  return `url(${pAuto}), url(${pSetFallback}), url(/assets/bg/ui-check.png)`;
 }
 
 export default function PageShell({
@@ -224,46 +268,26 @@ export default function PageShell({
   const glassAlphaStrong = clamp(glassAlpha + 0.08, 0, 0.6);
 
   // ==========
-  // ✅ 背景画像（全画面共通）
-  // - bgImage が指定されていれば “画面個別上書き”
-  // - それ以外は settings.bgMode を使う
+  // ✅ 背景画像（auto/fixed/off + 毎分更新）
   // ==========
   const minuteTick = useMinuteTick();
 
-  const timeBand: TimeBand = useMemo(() => {
-    // tickにより1分単位で更新
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    minuteTick;
-    return getTimeBand(new Date());
-  }, [minuteTick]);
+  const bgMode = (settings.bgMode ?? DEFAULT_SETTINGS.bgMode) as BgMode;
+  const autoBgSet = (settings.autoBgSet ??
+    DEFAULT_SETTINGS.autoBgSet) as string;
+  const fixedBgSrc = (settings.fixedBgSrc ??
+    DEFAULT_SETTINGS.fixedBgSrc) as string;
 
-  const settingsBgMode =
-    settings.bgMode === "fixed" || settings.bgMode === "off"
-      ? settings.bgMode
-      : "auto";
+  const timeBand = useMemo(() => getTimeBand(new Date()), [minuteTick]);
 
-  const settingsAutoSet =
-    typeof settings.autoBgSet === "string" ? settings.autoBgSet : "surf";
-
-  const settingsFixedSrc = normalizePublicPath(
-    typeof settings.fixedBgSrc === "string" ? settings.fixedBgSrc : "",
-  );
-
-  const resolvedBgImage = useMemo(() => {
-    // 画面個別の上書きが最優先
-    if (typeof bgImage === "string" && bgImage.trim()) {
-      return normalizePublicPath(bgImage.trim());
+  // 画面個別 bgImage が指定されたらそれを最優先（ただしフォールバックも付ける）
+  const resolvedBgCss = useMemo(() => {
+    if (bgImage && bgImage.trim()) {
+      const p = normalizePublicPath(bgImage);
+      return `url(${p}), url(/assets/bg/ui-check.png)`;
     }
-
-    if (settingsBgMode === "off") return "";
-
-    if (settingsBgMode === "fixed") {
-      return settingsFixedSrc;
-    }
-
-    // auto
-    return resolveAutoBackgroundSrc(settingsAutoSet, timeBand);
-  }, [bgImage, settingsBgMode, settingsFixedSrc, settingsAutoSet, timeBand]);
+    return makeBgCssValue(bgMode, autoBgSet, fixedBgSrc, timeBand);
+  }, [bgImage, bgMode, autoBgSet, fixedBgSrc, timeBand]);
 
   // ==========
   // ✅ ストレージ変更検知（tick）
@@ -294,6 +318,9 @@ export default function PageShell({
     };
   }, []);
 
+  // ==========
+  // ✅ tick で更新
+  // ==========
   const [createdIds, setCreatedIds] = useState<string[]>(() =>
     loadCreatedCharacterIds(),
   );
@@ -372,12 +399,10 @@ export default function PageShell({
     };
 
     img.addEventListener("load", onLoad);
-    img.addEventListener("error", () => {});
 
     return () => {
       cancelled = true;
       img.removeEventListener("load", onLoad);
-      img.removeEventListener("error", () => {});
     };
   }, [requestedCharacterSrc, testCharacterSrc]);
 
@@ -401,11 +426,10 @@ export default function PageShell({
     "--glass-alpha": String(glassAlpha),
     "--glass-alpha-strong": String(glassAlphaStrong),
     "--glass-blur": `${glassBlur}px`,
-  };
 
-  // ✅ 背景画像CSS var（空なら未設定にする）
-  if (resolvedBgImage) shellStyle["--bg-image"] = `url(${resolvedBgImage})`;
-  else shellStyle["--bg-image"] = "none";
+    // ✅ 背景画像（多重フォールバック込み）
+    "--bg-image": resolvedBgCss,
+  };
 
   const shouldShowCharacter =
     showTestCharacter && settings.characterEnabled && !!displaySrc;
