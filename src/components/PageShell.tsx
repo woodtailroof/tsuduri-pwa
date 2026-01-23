@@ -2,12 +2,11 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  normalizePublicPath,
+  resolveAutoBackgroundSrc,
   resolveCharacterSrc,
   useAppSettings,
-  normalizePublicPath,
   getTimeBand,
-  resolveAutoBackgroundSrc,
-  type BackgroundMode,
   type TimeBand,
 } from "../lib/appSettings";
 
@@ -23,7 +22,10 @@ type Props = {
   fallbackHref?: string;
   disableStackPush?: boolean;
 
-  /** 互換用：設計的には使わない（背景は設定からのみ） */
+  /**
+   * ✅ 画面個別で背景を上書きしたい時だけ使う
+   * （普段は Settings の bgMode/autoBgSet/fixedBgSrc を全画面共通で反映）
+   */
   bgImage?: string;
   bgDim?: number;
   bgBlur?: number;
@@ -129,6 +131,31 @@ function pickRandomFrom<T>(arr: T[]): T | null {
   return arr[i] ?? null;
 }
 
+/** ✅ 時刻連動のための安全なtick（1分） */
+function useMinuteTick() {
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const bump = () => setTick((v) => v + 1);
+
+    const id = window.setInterval(bump, 60 * 1000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") bump();
+    };
+
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", bump);
+
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", bump);
+    };
+  }, []);
+
+  return tick;
+}
+
 export default function PageShell({
   title,
   subtitle,
@@ -141,7 +168,6 @@ export default function PageShell({
   fallbackHref = "/",
   disableStackPush = false,
 
-  // ✅ 互換用：受けるだけ（設定画面だけが背景を決める設計）
   bgImage,
   bgDim = 0.55,
   bgBlur = 0,
@@ -158,9 +184,6 @@ export default function PageShell({
   contentPadding,
 }: Props) {
   const { settings } = useAppSettings();
-
-  // ✅ eslint(no-unused-vars)対策：互換引数を「使用した」扱いにする
-  void bgImage;
 
   const current = useMemo(() => getPath(), []);
 
@@ -188,53 +211,59 @@ export default function PageShell({
   }, [onBack, fallbackHref]);
 
   // ==========
-  // 背景（設定で全画面共通）
+  // 背景（Settings → CSS var）
   // ==========
   const effectiveBgDim = settings.bgDim ?? bgDim;
   const effectiveBgBlur = settings.bgBlur ?? bgBlur;
 
-  const bgMode: BackgroundMode =
-    settings.bgMode === "fixed" || settings.bgMode === "off"
-      ? settings.bgMode
-      : "auto";
-
   // ==========
-  // ガラス（PageShell→CSS var）
+  // ガラス（Settings → CSS var）
   // ==========
   const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
   const glassBlur = clamp(settings.glassBlur ?? 10, 0, 24);
   const glassAlphaStrong = clamp(glassAlpha + 0.08, 0, 0.6);
 
   // ==========
-  // ✅ auto背景：時刻で切替するための tick（1分）
+  // ✅ 背景画像（全画面共通）
+  // - bgImage が指定されていれば “画面個別上書き”
+  // - それ以外は settings.bgMode を使う
   // ==========
-  const [timeTick, setTimeTick] = useState(0);
-  useEffect(() => {
-    if (bgMode !== "auto") return;
-    const id = window.setInterval(() => setTimeTick((v) => v + 1), 60_000);
-    return () => window.clearInterval(id);
-  }, [bgMode]);
+  const minuteTick = useMinuteTick();
 
-  // ==========
-  // ✅ 背景ソース解決：設定のみ
-  // ==========
+  const timeBand: TimeBand = useMemo(() => {
+    // tickにより1分単位で更新
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    minuteTick;
+    return getTimeBand(new Date());
+  }, [minuteTick]);
+
+  const settingsBgMode =
+    settings.bgMode === "fixed" || settings.bgMode === "off"
+      ? settings.bgMode
+      : "auto";
+
+  const settingsAutoSet =
+    typeof settings.autoBgSet === "string" ? settings.autoBgSet : "surf";
+
+  const settingsFixedSrc = normalizePublicPath(
+    typeof settings.fixedBgSrc === "string" ? settings.fixedBgSrc : "",
+  );
+
   const resolvedBgImage = useMemo(() => {
-    if (bgMode === "off") return "";
-
-    if (bgMode === "fixed") {
-      return normalizePublicPath(settings.fixedBgSrc ?? "");
+    // 画面個別の上書きが最優先
+    if (typeof bgImage === "string" && bgImage.trim()) {
+      return normalizePublicPath(bgImage.trim());
     }
 
-    // auto：timeTick を参照して再計算させる（deps警告回避）
-    const now = new Date(Date.now() + timeTick * 0);
-    const setId =
-      typeof settings.autoBgSet === "string" && settings.autoBgSet.trim()
-        ? settings.autoBgSet
-        : "surf";
+    if (settingsBgMode === "off") return "";
 
-    const band: TimeBand = getTimeBand(now);
-    return resolveAutoBackgroundSrc(setId, band);
-  }, [bgMode, settings.fixedBgSrc, settings.autoBgSet, timeTick]);
+    if (settingsBgMode === "fixed") {
+      return settingsFixedSrc;
+    }
+
+    // auto
+    return resolveAutoBackgroundSrc(settingsAutoSet, timeBand);
+  }, [bgImage, settingsBgMode, settingsFixedSrc, settingsAutoSet, timeBand]);
 
   // ==========
   // ✅ ストレージ変更検知（tick）
@@ -352,6 +381,7 @@ export default function PageShell({
     };
   }, [requestedCharacterSrc, testCharacterSrc]);
 
+  // ✅ transform scaleを使わず、サイズで倍率をかける
   const characterScale = clamp(settings.characterScale ?? 1, 0.7, 5.0);
   const characterOpacity = clamp(
     settings.characterOpacity ?? testCharacterOpacity,
@@ -373,7 +403,9 @@ export default function PageShell({
     "--glass-blur": `${glassBlur}px`,
   };
 
+  // ✅ 背景画像CSS var（空なら未設定にする）
   if (resolvedBgImage) shellStyle["--bg-image"] = `url(${resolvedBgImage})`;
+  else shellStyle["--bg-image"] = "none";
 
   const shouldShowCharacter =
     showTestCharacter && settings.characterEnabled && !!displaySrc;
@@ -390,10 +422,13 @@ export default function PageShell({
   };
 
   const innerPadding = contentPadding ?? "clamp(16px, 3vw, 24px)";
+
+  // ✅ CSS calcで “clamp(...) * scale” を作る（transformよりボケにくい）
   const scaledHeightCss = `calc(${testCharacterHeight} * ${characterScale})`;
 
   return (
     <div className="page-shell" style={shellStyle}>
+      {/* ✅ すりガラス保険CSS */}
       <style>
         {`
           .glass{
@@ -408,6 +443,7 @@ export default function PageShell({
         `}
       </style>
 
+      {/* キャラレイヤ */}
       {shouldShowCharacter && (
         <div
           aria-hidden="true"
@@ -452,6 +488,7 @@ export default function PageShell({
         </div>
       )}
 
+      {/* 戻る */}
       {showBack && (
         <button
           type="button"
@@ -464,6 +501,7 @@ export default function PageShell({
         </button>
       )}
 
+      {/* スクロール領域 */}
       <div
         className={[
           "page-shell-scroll",
