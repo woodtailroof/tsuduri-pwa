@@ -133,8 +133,8 @@ function useIsNarrow(breakpointPx = 720) {
 type CacheRow = {
   key: string;
   day: string;
-  pc: number;
-  hc: number;
+  pc: string; // ✅ string扱い（tide736側が string 想定のことがある）
+  hc: string; // ✅ string扱い
   fetchedAt: string | null;
 };
 
@@ -142,17 +142,31 @@ function toCacheRow(e: TideCacheEntry): CacheRow | null {
   const r = e as unknown as Record<string, unknown>;
   const key = typeof r.key === "string" ? r.key : "";
   const day = typeof r.day === "string" ? r.day : "";
-  const pc = typeof r.pc === "number" ? r.pc : NaN;
-  const hc = typeof r.hc === "number" ? r.hc : NaN;
+
+  const pcRaw = r.pc;
+  const hcRaw = r.hc;
+
+  const pc =
+    typeof pcRaw === "string"
+      ? pcRaw
+      : typeof pcRaw === "number"
+        ? String(pcRaw)
+        : "";
+  const hc =
+    typeof hcRaw === "string"
+      ? hcRaw
+      : typeof hcRaw === "number"
+        ? String(hcRaw)
+        : "";
+
   const fetchedAt = typeof r.fetchedAt === "string" ? r.fetchedAt : null;
 
-  if (!key || !day || !Number.isFinite(pc) || !Number.isFinite(hc)) return null;
+  if (!key || !day || !pc || !hc) return null;
   return { key, day, pc, hc, fetchedAt };
 }
 
 export default function Settings({ back }: Props) {
   const { settings, set, reset } = useAppSettings();
-
   const isNarrow = useIsNarrow(720);
 
   const [loading, setLoading] = useState(true);
@@ -174,7 +188,6 @@ export default function Settings({ back }: Props) {
   );
   const [charImageMap, setCharImageMapState] = useState<CharacterImageMap>({});
 
-  // ========== UI style ==========
   const sectionTitle: CSSProperties = {
     margin: 0,
     fontSize: 16,
@@ -374,20 +387,18 @@ export default function Settings({ back }: Props) {
     typeof settings.fixedBgSrc === "string" ? settings.fixedBgSrc : "";
   const fixedBgSrc = normalizePublicPath(fixedBgSrcRaw);
 
-  const nowBand: TimeBand = useMemo(() => getTimeBand(new Date()), []);
-  const autoPreview = useMemo(
-    () => resolveAutoBackgroundSrc(autoBgSet, getTimeBand(new Date())),
-    [autoBgSet],
-  );
+  const autoPreview = useMemo(() => {
+    const band: TimeBand = getTimeBand(new Date());
+    return resolveAutoBackgroundSrc(autoBgSet, band);
+  }, [autoBgSet]);
 
-  // （表示用ラベル）
   const bandLabel = useMemo(() => {
     const b = getTimeBand(new Date());
     if (b === "morning") return "朝";
     if (b === "day") return "昼";
     if (b === "evening") return "夕";
     return "夜";
-  }, [nowBand]);
+  }, []);
 
   const isCharControlsDisabled = !characterEnabled;
   const isFixedDisabled =
@@ -616,8 +627,7 @@ export default function Settings({ back }: Props) {
 
                           <div style={help}>
                             public 配下のパスを指定（例:{" "}
-                            <code>/assets/characters/tsuduri.png</code>
-                            ）。固定/ランダム時にこの割り当てが使われるよ。
+                            <code>/assets/characters/tsuduri.png</code>）
                           </div>
 
                           {p ? (
@@ -674,9 +684,6 @@ export default function Settings({ back }: Props) {
                   }
                   style={fullWidthControl}
                 />
-                <div style={help}>
-                  ※ 上げすぎるとボタンが隠れやすいので注意だよ。
-                </div>
               </div>
             </div>
 
@@ -766,7 +773,6 @@ export default function Settings({ back }: Props) {
               </div>
             </div>
 
-            {/* auto セット */}
             <div style={row}>
               <div style={label}>自動セット</div>
               <div style={rowStack}>
@@ -789,7 +795,6 @@ export default function Settings({ back }: Props) {
 
                 <div style={help}>
                   いまの時間帯: <b>{bandLabel}</b>
-                  （この時間帯の背景が全画面に反映されるよ）
                 </div>
 
                 {autoPreview ? (
@@ -835,7 +840,6 @@ export default function Settings({ back }: Props) {
                     type="button"
                     style={pillBase}
                     onClick={() => {
-                      // 今のautoプレビューを固定へコピー（エモいスナップショット用）
                       if (!autoPreview) return;
                       set({ bgMode: "fixed", fixedBgSrc: autoPreview });
                     }}
@@ -846,7 +850,6 @@ export default function Settings({ back }: Props) {
               </div>
             </div>
 
-            {/* fixed パス */}
             <div style={row}>
               <div style={label}>固定画像</div>
               <div style={rowStack}>
@@ -1197,9 +1200,10 @@ export default function Settings({ back }: Props) {
                         if (!ok) return;
                         setBusy(`force:${e.key}`);
                         try {
+                          // ✅ ここがビルド落ちの主犯：pc/hc を string で渡す
                           await forceRefreshTide736Day(
-                            e.pc,
-                            e.hc,
+                            String(e.pc),
+                            String(e.hc),
                             new Date(e.day),
                           );
                           await refresh();
