@@ -5,6 +5,9 @@ import {
   resolveCharacterSrc,
   useAppSettings,
   normalizePublicPath,
+  getTimeBand,
+  resolveAutoBackgroundSrc,
+  type BackgroundMode,
 } from "../lib/appSettings";
 
 type Props = {
@@ -19,6 +22,10 @@ type Props = {
   fallbackHref?: string;
   disableStackPush?: boolean;
 
+  /**
+   * ⚠ 互換用：以前の設計で画面ごとに背景を渡していた場合に備えて残す。
+   * 今の設計では「設定の背景が全画面に適用」なので、基本的に使わない。
+   */
   bgImage?: string;
   bgDim?: number;
   bgBlur?: number;
@@ -136,7 +143,7 @@ export default function PageShell({
   fallbackHref = "/",
   disableStackPush = false,
 
-  bgImage,
+  bgImage, // 互換用（今は基本使わない）
   bgDim = 0.55,
   bgBlur = 0,
 
@@ -180,31 +187,57 @@ export default function PageShell({
   }, [onBack, fallbackHref]);
 
   // ==========
-  // 背景（Settings優先で決める）
+  // 背景/ガラス
   // ==========
   const effectiveBgDim = settings.bgDim ?? bgDim;
   const effectiveBgBlur = settings.bgBlur ?? bgBlur;
 
-  const resolvedBgImage = useMemo(() => {
-    const mode = settings.bgMode ?? "auto";
-
-    if (mode === "off") return "";
-
-    if (mode === "fixed") {
-      const p = normalizePublicPath(settings.fixedBgSrc ?? "");
-      return p;
-    }
-
-    // auto
-    return normalizePublicPath(bgImage ?? "");
-  }, [settings.bgMode, settings.fixedBgSrc, bgImage]);
-
-  // ==========
-  // ガラス（PageShell→CSS var）
-  // ==========
   const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
   const glassBlur = clamp(settings.glassBlur ?? 10, 0, 24);
   const glassAlphaStrong = clamp(glassAlpha + 0.08, 0, 0.6);
+
+  // ==========
+  // ✅ 時刻連動（auto）: 時刻が変わったら背景も変えたいので tick
+  // ==========
+  const [timeTick, setTimeTick] = useState(0);
+  const bgMode: BackgroundMode = (settings.bgMode as BackgroundMode) ?? "auto";
+
+  useEffect(() => {
+    if (bgMode !== "auto") return;
+
+    const id = window.setInterval(() => {
+      setTimeTick((v) => v + 1);
+    }, 60_000); // 1分ごとで十分（軽い）
+
+    return () => window.clearInterval(id);
+  }, [bgMode]);
+
+  // ==========
+  // ✅ 背景ソースを「設定だけ」で解決（全画面共通）
+  // ==========
+  const resolvedBgImage = useMemo(() => {
+    if (bgMode === "off") return "";
+
+    if (bgMode === "fixed") {
+      return normalizePublicPath(settings.fixedBgSrc ?? "");
+    }
+
+    // auto：画面個別のbgImageは採用しない（全画面共通）
+    // ただし互換として「fixedBgSrcが空で、bgImageだけが渡された」みたいな場合に救済したいなら、
+    // ここで bgImage を fallback にしてもOK（今は設計通り無視）。
+    const band = getTimeBand(new Date());
+    return resolveAutoBackgroundSrc(
+      (settings.autoBgSet as any) ?? "surf",
+      band,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    bgMode,
+    settings.fixedBgSrc,
+    settings.autoBgSet,
+    timeTick,
+    // bgImage, ←設計上見ない（互換救済するなら依存に入れる）
+  ]);
 
   // ==========
   // ✅ ストレージ変更検知（tick）
@@ -235,9 +268,6 @@ export default function PageShell({
     };
   }, []);
 
-  // ==========
-  // ✅ 作成キャラ/割当マップを tick で更新
-  // ==========
   const [createdIds, setCreatedIds] = useState<string[]>(() =>
     loadCreatedCharacterIds(),
   );
@@ -347,6 +377,7 @@ export default function PageShell({
     "--glass-blur": `${glassBlur}px`,
   };
 
+  // ✅ 背景は「設定で解決した結果」を常にCSS変数へ
   if (resolvedBgImage) shellStyle["--bg-image"] = `url(${resolvedBgImage})`;
 
   const shouldShowCharacter =
@@ -368,41 +399,8 @@ export default function PageShell({
   // ✅ CSS calcで “clamp(...) * scale” を作る（transformよりボケにくい）
   const scaledHeightCss = `calc(${testCharacterHeight} * ${characterScale})`;
 
-  const hasBg = !!resolvedBgImage;
-
   return (
     <div className="page-shell" style={shellStyle}>
-      {/* ✅ 背景レイヤー（CSS未確認でも確実に描く） */}
-      {hasBg && (
-        <>
-          <div
-            aria-hidden="true"
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 0,
-              backgroundImage: "var(--bg-image)",
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-              backgroundRepeat: "no-repeat",
-              filter:
-                effectiveBgBlur > 0 ? `blur(${effectiveBgBlur}px)` : "none",
-              transform: "translateZ(0)",
-            }}
-          />
-          <div
-            aria-hidden="true"
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 1,
-              background: `rgba(0,0,0,${effectiveBgDim})`,
-              pointerEvents: "none",
-            }}
-          />
-        </>
-      )}
-
       {/* ✅ すりガラス保険CSS */}
       <style>
         {`
@@ -431,7 +429,6 @@ export default function PageShell({
             userSelect: "none",
             opacity: characterOpacity,
 
-            // ✅ transformスケール撤去（これがボケを誘発しやすい）
             transform: "translateZ(0)",
             backfaceVisibility: "hidden",
             WebkitBackfaceVisibility: "hidden",
@@ -448,7 +445,6 @@ export default function PageShell({
             loading="eager"
             decoding="async"
             style={{
-              // ✅ “高さ”で倍率をかける（transformより滲みにくい）
               height: scaledHeightCss,
               width: "auto",
               display: "block",
@@ -497,7 +493,6 @@ export default function PageShell({
             padding: innerPadding,
             boxSizing: "border-box",
             position: "relative",
-            zIndex: 10,
           }}
         >
           <div style={{ position: "relative" }}>
