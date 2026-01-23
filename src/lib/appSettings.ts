@@ -6,6 +6,9 @@ export type CharacterMode = "fixed" | "random";
 /** ✅ 背景モード */
 export type BackgroundMode = "auto" | "fixed" | "off";
 
+/** ✅ 時間帯（4分割） */
+export type TimeBand = "morning" | "day" | "evening" | "night";
+
 export type AppSettings = {
   version: 1;
 
@@ -18,13 +21,15 @@ export type AppSettings = {
   /** 0〜1 */
   characterOpacity: number;
 
-  /** ✅ public 配下の画像パスでキャラ画像を上書き（例: "/assets/k1.png" or "assets/k1.png"）空ならデフォルト */
+  /** public 配下の画像パスでキャラ画像を上書き（空ならデフォルト） */
   characterOverrideSrc: string;
 
   // ===== 背景 =====
-  /** ✅ "auto": 画面側(bgImage prop)に従う / "fixed": fixedBgSrc を強制 / "off": 背景画像なし */
+  /** ✅ auto: 時刻連動 / fixed: 固定 / off: 無し */
   bgMode: BackgroundMode;
-  /** ✅ 固定背景の画像パス（public配下）例: "/assets/bg/home/day.webp" */
+  /** ✅ auto の背景セットID（例: "surf"） */
+  autoBgSet: string;
+  /** ✅ fixed の背景画像パス（public配下、例: "/assets/bg/surf_day.png"） */
   fixedBgSrc: string;
 
   // ===== 表示 =====
@@ -33,9 +38,9 @@ export type AppSettings = {
   /** 背景ぼかし(px) */
   bgBlur: number;
 
-  /** ✅ すりガラス濃さ（0〜0.6くらい推奨） */
+  /** すりガラス濃さ（0〜0.6くらい推奨） */
   glassAlpha: number;
-  /** ✅ すりガラスぼかし(px) */
+  /** すりガラスぼかし(px) */
   glassBlur: number;
 };
 
@@ -55,8 +60,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   characterOpacity: 1,
   characterOverrideSrc: "",
 
-  // ✅ 背景
+  // ✅ 背景（追加）
   bgMode: "auto",
+  autoBgSet: "surf",
   fixedBgSrc: "",
 
   bgDim: 0.55,
@@ -75,17 +81,37 @@ export const CHARACTER_OPTIONS: CharacterOption[] = [
     label: "つづり（テスト）",
     src: "/assets/character-test.png",
   },
-  // 例:
-  // { id: "kokoro", label: "日波こころ", src: "/assets/k1.png" },
-  // { id: "matsuri", label: "潮風まつり", src: "/assets/m1.png" },
 ];
 
-/** ✅ 背景候補（Settings UIに出す用） */
-export type BackgroundOption = { id: string; label: string; src: string };
-export const BACKGROUND_OPTIONS: BackgroundOption[] = [
-  // 例：あとでここを増やしていけばUIが育つ
-  // { id: "home_day", label: "ホーム：昼", src: "/assets/bg/home/day.webp" },
-  // { id: "home_night", label: "ホーム：夜", src: "/assets/bg/home/night.webp" },
+// ===== 背景セット（4時間帯） =====
+export type AutoBgSet = {
+  id: string;
+  label: string;
+  byTime: Record<TimeBand, string>;
+};
+
+/**
+ * ✅ ひろっちが public/assets/bg に置いた4枚に合わせる
+ * ここは「君がリネームした名前」に合わせる必要があるので
+ * まずは最も標準的な命名で置いてるよ：
+ *  - /assets/bg/surf_morning.png
+ *  - /assets/bg/surf_day.png
+ *  - /assets/bg/surf_evening.png
+ *  - /assets/bg/surf_night.png
+ *
+ * もし実ファイル名が違うなら、ここだけ差し替えればOK。
+ */
+export const AUTO_BG_SETS: AutoBgSet[] = [
+  {
+    id: "surf",
+    label: "サーフ（朝/昼/夕/夜）",
+    byTime: {
+      morning: "/assets/bg/surf_morning.png",
+      day: "/assets/bg/surf_day.png",
+      evening: "/assets/bg/surf_evening.png",
+      night: "/assets/bg/surf_night.png",
+    },
+  },
 ];
 
 function clamp(n: number, min: number, max: number) {
@@ -146,7 +172,7 @@ function loadCreatedCharacterIds(): string[] {
 function getAllowedCharacterIds(): string[] {
   const base = CHARACTER_OPTIONS.map((c) => c.id).filter(Boolean);
   const created = loadCreatedCharacterIds();
-  // 併合（順序：created → base）
+
   const seen = new Set<string>();
   const merged: string[] = [];
 
@@ -164,6 +190,37 @@ function getAllowedCharacterIds(): string[] {
   return merged;
 }
 
+function isBackgroundMode(x: unknown): x is BackgroundMode {
+  return x === "auto" || x === "fixed" || x === "off";
+}
+
+function getDefaultAutoBgSetId(): string {
+  // 必ず "surf" が存在する前提（無ければ先頭、さらに無ければ "surf"）
+  const surf = AUTO_BG_SETS.find((s) => s.id === "surf")?.id;
+  return surf ?? AUTO_BG_SETS[0]?.id ?? "surf";
+}
+
+/** ✅ 現在時刻→時間帯（4分割） */
+export function getTimeBand(d: Date): TimeBand {
+  const h = d.getHours();
+  // ざっくりエモい配分：朝 5-10 / 昼 11-15 / 夕 16-18 / 夜 19-4
+  if (h >= 5 && h <= 10) return "morning";
+  if (h >= 11 && h <= 15) return "day";
+  if (h >= 16 && h <= 18) return "evening";
+  return "night";
+}
+
+/** ✅ auto背景の画像パスを解決 */
+export function resolveAutoBackgroundSrc(
+  setId: string,
+  band: TimeBand,
+): string {
+  const id = (setId ?? "").trim();
+  const hit = AUTO_BG_SETS.find((s) => s.id === id) ?? AUTO_BG_SETS[0];
+  const src = hit?.byTime?.[band] ?? "";
+  return normalizePublicPath(src);
+}
+
 function normalize(input: unknown): AppSettings {
   const x = (input ?? {}) as Partial<AppSettings>;
 
@@ -172,8 +229,15 @@ function normalize(input: unknown): AppSettings {
       ? x.fixedCharacterId.trim()
       : DEFAULT_SETTINGS.fixedCharacterId;
 
-  const bgMode: BackgroundMode =
-    x.bgMode === "fixed" || x.bgMode === "off" ? x.bgMode : "auto";
+  const bgMode: BackgroundMode = isBackgroundMode(x.bgMode)
+    ? x.bgMode
+    : DEFAULT_SETTINGS.bgMode;
+
+  // ✅ autoBgSet：存在するIDだけ許可（無ければ surf）
+  const autoBgSetRaw =
+    typeof x.autoBgSet === "string" ? x.autoBgSet.trim() : "";
+  const autoOk = AUTO_BG_SETS.some((s) => s.id === autoBgSetRaw);
+  const autoBgSet = autoOk ? autoBgSetRaw : getDefaultAutoBgSetId();
 
   const normalized: AppSettings = {
     version: 1,
@@ -182,6 +246,7 @@ function normalize(input: unknown): AppSettings {
       typeof x.characterEnabled === "boolean"
         ? x.characterEnabled
         : DEFAULT_SETTINGS.characterEnabled,
+
     characterMode: x.characterMode === "random" ? "random" : "fixed",
     fixedCharacterId: fixedId,
 
@@ -203,8 +268,9 @@ function normalize(input: unknown): AppSettings {
     characterOverrideSrc:
       typeof x.characterOverrideSrc === "string" ? x.characterOverrideSrc : "",
 
-    // ✅ 背景
+    // ✅ 背景（追加）
     bgMode,
+    autoBgSet,
     fixedBgSrc: typeof x.fixedBgSrc === "string" ? x.fixedBgSrc : "",
 
     bgDim: clamp(
@@ -238,8 +304,7 @@ function normalize(input: unknown): AppSettings {
     ),
   };
 
-  // ✅ fixedCharacterId を「CHARACTER_OPTIONS限定」で潰さない
-  // 作成キャラ + 既定キャラ のどちらにも存在しない場合だけフォールバック
+  // ✅ fixedCharacterId を「作成キャラ + 既定キャラ」に存在しない場合だけフォールバック
   const allowed = getAllowedCharacterIds();
   if (!allowed.includes(normalized.fixedCharacterId)) {
     normalized.fixedCharacterId =
@@ -248,12 +313,10 @@ function normalize(input: unknown): AppSettings {
       DEFAULT_SETTINGS.fixedCharacterId;
   }
 
-  // パスの正規化（UIは assets/k1.png でもOKにする）
+  // パスの正規化
   normalized.characterOverrideSrc = normalizePublicPath(
     normalized.characterOverrideSrc,
   );
-
-  // ✅ 背景パスの正規化
   normalized.fixedBgSrc = normalizePublicPath(normalized.fixedBgSrc);
 
   return normalized;

@@ -49,10 +49,14 @@ body {
   --bg-base-1: #0b0d13;
   --bg-accent: rgba(255, 77, 109, 0.18);
 
-  /* ✅ 背景画像 */
+  /**
+   * ✅ 背景画像（デフォルト）
+   * - PageShell が style で --bg-image を上書きする前提
+   * - 背景OFFのときは PageShell が --bg-image: none を入れる
+   */
   --bg-image: url("/assets/bg/ui-check.png");
 
-  /* ✅ 背景のぼかし＆暗幕（Settingsから操作する想定） */
+  /* ✅ 背景のぼかし＆暗幕（PageShellが毎画面上書き） */
   --bg-blur: 0px;
   --bg-dim: 0.25;
 
@@ -64,7 +68,8 @@ body {
 
 body {
   color: var(--text);
-  background: radial-gradient(
+  background:
+    radial-gradient(
       1000px 700px at 20% -10%,
       var(--bg-accent),
       transparent 55%
@@ -75,8 +80,16 @@ body {
       transparent 60%
     ),
     linear-gradient(180deg, var(--bg-base-0), var(--bg-base-1));
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Noto Sans JP", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Noto Sans JP",
+    "Hiragino Kaku Gothic ProN",
+    Meiryo,
+    sans-serif;
 }
 
 /* Viteテンプレ由来のroot縛りを解除（PageShellに任せる） */
@@ -203,7 +216,13 @@ h3 {
   inset: 0;
   z-index: -2;
 
-  background: var(--bg-image, none),
+  /**
+   * ✅ ここが重要：
+   * - PageShell が --bg-image を更新してくれる
+   * - "off" のときは --bg-image: none; で画像層だけ消える
+   */
+  background:
+    var(--bg-image, none),
     radial-gradient(
       1000px 700px at 20% -10%,
       rgba(255, 77, 109, 0.18),
@@ -220,7 +239,7 @@ h3 {
   background-position: center;
   background-repeat: no-repeat;
 
-  /* ✅ 背景ぼかし（ここは“背景”用のスライダーに紐づく想定） */
+  /* ✅ 背景ぼかし（Settingsのスライダーにリンク） */
   filter: blur(var(--bg-blur, 0px));
   transform: translateZ(0);
 }
@@ -231,7 +250,9 @@ h3 {
   inset: 0;
   z-index: -1;
 
-  background: linear-gradient(
+  /* ✅ 暗幕（Settingsのスライダーにリンク） */
+  background:
+    linear-gradient(
       180deg,
       rgba(0, 0, 0, calc(var(--bg-dim, 0.35) + 0.1)),
       rgba(0, 0, 0, var(--bg-dim, 0.35))
