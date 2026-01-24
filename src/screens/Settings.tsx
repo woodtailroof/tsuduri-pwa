@@ -17,8 +17,8 @@ import {
   getTimeBand,
   normalizePublicPath,
   resolveAutoBackgroundSrc,
-  type BackgroundMode,
-  type TimeBand,
+  type BgMode,
+  type BgTimeBand,
   useAppSettings,
 } from "../lib/appSettings";
 import { CHARACTERS_STORAGE_KEY } from "./CharacterSettings";
@@ -93,7 +93,9 @@ type CharacterImageMap = Record<string, string>;
 function loadCharacterImageMap(): CharacterImageMap {
   if (typeof window === "undefined") return {};
   const raw = localStorage.getItem(CHARACTER_IMAGE_MAP_KEY);
-  return safeJsonParse<CharacterImageMap>(raw, {});
+  const map = safeJsonParse<CharacterImageMap>(raw, {});
+  if (!map || typeof map !== "object") return {};
+  return map;
 }
 
 function saveCharacterImageMap(map: CharacterImageMap) {
@@ -113,7 +115,7 @@ function useIsNarrow(breakpointPx = 720) {
     onChange();
     if ("addEventListener" in mql) mql.addEventListener("change", onChange);
     else
-      (mql as unknown as { addListener: (cb: () => void) => void }).addListener(
+      (mql as unknown as { addListener: (fn: () => void) => void }).addListener(
         onChange,
       );
     return () => {
@@ -121,7 +123,7 @@ function useIsNarrow(breakpointPx = 720) {
         mql.removeEventListener("change", onChange);
       else
         (
-          mql as unknown as { removeListener: (cb: () => void) => void }
+          mql as unknown as { removeListener: (fn: () => void) => void }
         ).removeListener(onChange);
     };
   }, [breakpointPx]);
@@ -129,45 +131,36 @@ function useIsNarrow(breakpointPx = 720) {
   return isNarrow;
 }
 
-/** ✅ TideCacheEntry を安全に表示用へ整形（no-explicit-any 回避） */
-type CacheRow = {
-  key: string;
-  day: string;
-  pc: string; // ✅ string扱い（tide736側が string 想定のことがある）
-  hc: string; // ✅ string扱い
-  fetchedAt: string | null;
-};
+/** ✅ 1分ごとにUIを更新（“自動背景の時間帯”の追従用） */
+function useMinuteTick() {
+  const [tick, setTick] = useState(0);
 
-function toCacheRow(e: TideCacheEntry): CacheRow | null {
-  const r = e as unknown as Record<string, unknown>;
-  const key = typeof r.key === "string" ? r.key : "";
-  const day = typeof r.day === "string" ? r.day : "";
+  useEffect(() => {
+    let timer: number | null = null;
 
-  const pcRaw = r.pc;
-  const hcRaw = r.hc;
+    const arm = () => {
+      const now = Date.now();
+      const msToNextMinute = 60_000 - (now % 60_000) + 5; // ちょい余裕
+      timer = window.setTimeout(() => {
+        setTick((v) => v + 1);
+        arm();
+      }, msToNextMinute);
+    };
 
-  const pc =
-    typeof pcRaw === "string"
-      ? pcRaw
-      : typeof pcRaw === "number"
-        ? String(pcRaw)
-        : "";
-  const hc =
-    typeof hcRaw === "string"
-      ? hcRaw
-      : typeof hcRaw === "number"
-        ? String(hcRaw)
-        : "";
+    arm();
+    return () => {
+      if (timer != null) window.clearTimeout(timer);
+    };
+  }, []);
 
-  const fetchedAt = typeof r.fetchedAt === "string" ? r.fetchedAt : null;
-
-  if (!key || !day || !pc || !hc) return null;
-  return { key, day, pc, hc, fetchedAt };
+  return tick;
 }
 
 export default function Settings({ back }: Props) {
   const { settings, set, reset } = useAppSettings();
+
   const isNarrow = useIsNarrow(720);
+  const minuteTick = useMinuteTick();
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -325,7 +318,7 @@ export default function Settings({ back }: Props) {
     return Math.round((kb / 1024) * 100) / 100;
   }, [stats]);
 
-  // ===== settings（安全なデフォルト） =====
+  // settings（安全なデフォルト）
   const characterEnabled =
     settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
   const characterMode =
@@ -353,7 +346,6 @@ export default function Settings({ back }: Props) {
   const bgDim = Number.isFinite(settings.bgDim)
     ? settings.bgDim
     : DEFAULT_SETTINGS.bgDim;
-
   const bgBlur = Number.isFinite(settings.bgBlur)
     ? settings.bgBlur
     : DEFAULT_SETTINGS.bgBlur;
@@ -361,62 +353,41 @@ export default function Settings({ back }: Props) {
   const glassAlpha = Number.isFinite(settings.glassAlpha)
     ? settings.glassAlpha
     : DEFAULT_SETTINGS.glassAlpha;
-
   const glassBlur = Number.isFinite(settings.glassBlur)
     ? settings.glassBlur
     : DEFAULT_SETTINGS.glassBlur;
 
-  // ✅ 背景（新）
-  const bgMode: BackgroundMode =
-    settings.bgMode === "fixed" || settings.bgMode === "off"
-      ? settings.bgMode
-      : "auto";
+  // ===== ✅ 背景（新） =====
+  const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
+  const autoBgSet =
+    (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
+    DEFAULT_SETTINGS.autoBgSet;
+  const fixedBgSrcRaw = settings.fixedBgSrc ?? DEFAULT_SETTINGS.fixedBgSrc;
+  const fixedBgSrc =
+    normalizePublicPath(fixedBgSrcRaw) || "/assets/bg/ui-check.png";
 
-  const autoBgSet = (() => {
-    const raw =
-      typeof settings.autoBgSet === "string" ? settings.autoBgSet : "";
-    const ok = AUTO_BG_SETS.some((s) => s.id === raw);
-    return ok
-      ? raw
-      : (AUTO_BG_SETS.find((s) => s.id === "surf")?.id ??
-          AUTO_BG_SETS[0]?.id ??
-          "surf");
-  })();
+  const nowBand: BgTimeBand = useMemo(() => {
+    // minuteTick で “今” を更新
+    const now = new Date();
+    return getTimeBand(now);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minuteTick]);
 
-  const fixedBgSrcRaw =
-    typeof settings.fixedBgSrc === "string" ? settings.fixedBgSrc : "";
-  const fixedBgSrc = normalizePublicPath(fixedBgSrcRaw);
+  const autoPreviewSrc = useMemo(() => {
+    return resolveAutoBackgroundSrc(autoBgSet, nowBand);
+  }, [autoBgSet, nowBand]);
 
-  const autoPreview = useMemo(() => {
-    const band: TimeBand = getTimeBand(new Date());
-    return resolveAutoBackgroundSrc(autoBgSet, band);
-  }, [autoBgSet]);
-
-  const bandLabel = useMemo(() => {
-    const b = getTimeBand(new Date());
-    if (b === "morning") return "朝";
-    if (b === "day") return "昼";
-    if (b === "evening") return "夕";
-    return "夜";
-  }, []);
+  const effectivePreviewSrc = useMemo(() => {
+    if (bgMode === "off") return "";
+    if (bgMode === "fixed") return fixedBgSrc;
+    return autoPreviewSrc;
+  }, [bgMode, fixedBgSrc, autoPreviewSrc]);
 
   const isCharControlsDisabled = !characterEnabled;
   const isFixedDisabled =
     !characterEnabled ||
     characterMode !== "fixed" ||
     createdCharacters.length === 0;
-
-  const isAutoBgDisabled = bgMode !== "auto";
-  const isFixedBgDisabled = bgMode !== "fixed";
-
-  const cacheRows = useMemo(() => {
-    const rows: CacheRow[] = [];
-    for (const e of entries) {
-      const r = toCacheRow(e);
-      if (r) rows.push(r);
-    }
-    return rows;
-  }, [entries]);
 
   return (
     <PageShell
@@ -427,7 +398,7 @@ export default function Settings({ back }: Props) {
       }
       subtitle={
         <div style={{ marginTop: 8, color: "rgba(255,255,255,0.72)" }}>
-          ここで「背景」「キャラ」「見た目」「キャッシュ」をまとめて調整できるよ。
+          ここで「キャラ」「背景」「見た目」「キャッシュ」をまとめて調整できるよ。
         </div>
       }
       maxWidth={980}
@@ -627,7 +598,8 @@ export default function Settings({ back }: Props) {
 
                           <div style={help}>
                             public 配下のパスを指定（例:{" "}
-                            <code>/assets/characters/tsuduri.png</code>）
+                            <code>/assets/characters/tsuduri.png</code>
+                            ）。固定/ランダム時にこの割り当てが使われるよ。
                           </div>
 
                           {p ? (
@@ -684,6 +656,9 @@ export default function Settings({ back }: Props) {
                   }
                   style={fullWidthControl}
                 />
+                <div style={help}>
+                  ※ 上げすぎるとボタンが隠れやすいので注意だよ。
+                </div>
               </div>
             </div>
 
@@ -715,7 +690,7 @@ export default function Settings({ back }: Props) {
           </div>
         </div>
 
-        {/* 🖼 背景 */}
+        {/* 🖼 背景（新） */}
         <div className="glass glass-strong" style={card}>
           <h2 style={sectionTitle}>🖼 背景</h2>
 
@@ -728,6 +703,7 @@ export default function Settings({ back }: Props) {
                     display: "inline-flex",
                     gap: 8,
                     alignItems: "center",
+                    cursor: "pointer",
                   }}
                 >
                   <input
@@ -744,6 +720,7 @@ export default function Settings({ back }: Props) {
                     display: "inline-flex",
                     gap: 8,
                     alignItems: "center",
+                    cursor: "pointer",
                   }}
                 >
                   <input
@@ -760,6 +737,7 @@ export default function Settings({ back }: Props) {
                     display: "inline-flex",
                     gap: 8,
                     alignItems: "center",
+                    cursor: "pointer",
                   }}
                 >
                   <input
@@ -778,70 +756,54 @@ export default function Settings({ back }: Props) {
               <div style={rowStack}>
                 <select
                   value={autoBgSet}
-                  disabled={isAutoBgDisabled || AUTO_BG_SETS.length === 0}
+                  disabled={bgMode !== "auto"}
                   onChange={(e) => set({ autoBgSet: e.target.value })}
                   style={fullWidthControl}
                 >
-                  {AUTO_BG_SETS.length === 0 ? (
-                    <option value="">（背景セットが未定義）</option>
-                  ) : (
-                    AUTO_BG_SETS.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.label}
-                      </option>
-                    ))
-                  )}
+                  {AUTO_BG_SETS.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.label}
+                    </option>
+                  ))}
                 </select>
 
                 <div style={help}>
-                  いまの時間帯: <b>{bandLabel}</b>
+                  いまの時間帯:{" "}
+                  <b style={{ color: "rgba(255,255,255,0.88)" }}>
+                    {nowBand === "morning"
+                      ? "朝"
+                      : nowBand === "day"
+                        ? "昼"
+                        : nowBand === "evening"
+                          ? "夕"
+                          : "夜"}
+                  </b>{" "}
+                  / 自動の参照: <code>{autoPreviewSrc}</code>
                 </div>
 
-                {autoPreview ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <span style={help}>プレビュー:</span>
-                    <img
-                      src={autoPreview}
-                      alt=""
-                      style={{
-                        height: 64,
-                        width: "auto",
-                        borderRadius: 12,
-                        border: "1px solid rgba(255,255,255,0.18)",
-                        background: "rgba(0,0,0,0.2)",
-                      }}
-                    />
-                    <code
-                      style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}
-                    >
-                      {autoPreview}
-                    </code>
-                  </div>
-                ) : (
-                  <div style={help}>（プレビュー不可：パス未設定）</div>
-                )}
-
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                  }}
+                >
                   <button
                     type="button"
                     style={pillBase}
                     onClick={() => set({ bgMode: "auto" })}
                   >
-                    🌅 自動にする
+                    🌈 自動にする
                   </button>
+
                   <button
                     type="button"
                     style={pillBase}
                     onClick={() => {
-                      if (!autoPreview) return;
-                      set({ bgMode: "fixed", fixedBgSrc: autoPreview });
+                      const snap = resolveAutoBackgroundSrc(autoBgSet, nowBand);
+                      set({ bgMode: "fixed", fixedBgSrc: snap });
+                      alert(`いまの背景を固定にしたよ\n${snap}`);
                     }}
                   >
                     📌 いまの背景を固定に
@@ -855,68 +817,51 @@ export default function Settings({ back }: Props) {
               <div style={rowStack}>
                 <input
                   value={fixedBgSrcRaw}
-                  disabled={isFixedBgDisabled}
+                  disabled={bgMode !== "fixed"}
                   onChange={(e) => set({ fixedBgSrc: e.target.value })}
-                  placeholder="例: /assets/bg/surf_day.png"
+                  placeholder="例: /assets/bg/surf-evening.png"
                 />
                 <div style={help}>
-                  public 配下のパスを指定（例:{" "}
-                  <code>/assets/bg/surf_day.png</code>）
-                </div>
-
-                {fixedBgSrc ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <span style={help}>プレビュー:</span>
-                    <img
-                      src={fixedBgSrc}
-                      alt=""
-                      style={{
-                        height: 64,
-                        width: "auto",
-                        borderRadius: 12,
-                        border: "1px solid rgba(255,255,255,0.18)",
-                        background: "rgba(0,0,0,0.2)",
-                      }}
-                    />
-                    <code
-                      style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}
-                    >
-                      {fixedBgSrc}
-                    </code>
-                  </div>
-                ) : (
-                  <div style={help}>（未設定）</div>
-                )}
-
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    style={pillBase}
-                    onClick={() => set({ bgMode: "fixed" })}
-                  >
-                    🖼 固定にする
-                  </button>
-                  <button
-                    type="button"
-                    style={pillBase}
-                    onClick={() => set({ fixedBgSrc: "" })}
-                  >
-                    ↩ 未設定に戻す
-                  </button>
+                  public 配下パス（例: <code>/assets/bg/surf-evening.png</code>
+                  ）
                 </div>
               </div>
             </div>
 
-            <div style={help}>
-              ※
-              背景は「設定画面で選んだもの」が全画面に反映される設計だよ（各画面で個別設定しない）。
+            <div style={row}>
+              <div style={label}>プレビュー</div>
+              <div style={rowStack}>
+                {bgMode === "off" ? (
+                  <div style={help}>（背景画像なし）</div>
+                ) : (
+                  <>
+                    <div style={help}>
+                      表示予定: <code>{effectivePreviewSrc}</code>
+                    </div>
+                    {!!effectivePreviewSrc && (
+                      <img
+                        src={effectivePreviewSrc}
+                        alt=""
+                        style={{
+                          width: "100%",
+                          maxWidth: 520,
+                          height: "auto",
+                          borderRadius: 14,
+                          border: "1px solid rgba(255,255,255,0.18)",
+                          background: "rgba(0,0,0,0.18)",
+                        }}
+                      />
+                    )}
+                  </>
+                )}
+
+                <div style={help}>
+                  ルール：<code>{`/assets/bg/${autoBgSet}-morning.png`}</code>{" "}
+                  みたいに、
+                  <code>-morning / -day / -evening / -night</code>{" "}
+                  の4枚を用意すると自動で切り替わるよ。
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1076,15 +1021,15 @@ export default function Settings({ back }: Props) {
                 古いの削除：
               </span>
               <select
-                value={days}
+                value={String(days)}
                 onChange={(e) =>
                   setDays(Number(e.target.value) as 30 | 60 | 90 | 180)
                 }
               >
-                <option value={30}>30日</option>
-                <option value={60}>60日</option>
-                <option value={90}>90日</option>
-                <option value={180}>180日</option>
+                <option value="30">30日</option>
+                <option value="60">60日</option>
+                <option value="90">90日</option>
+                <option value="180">180日</option>
               </select>
 
               <button
@@ -1123,104 +1068,115 @@ export default function Settings({ back }: Props) {
 
           <hr style={{ opacity: 0.2 }} />
 
-          {cacheRows.length === 0 ? (
+          {entries.length === 0 ? (
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
               {loading ? "読み込み中…" : "キャッシュがまだ無いよ"}
             </div>
           ) : (
             <div style={{ display: "grid", gap: 10 }}>
-              {cacheRows.slice(0, 80).map((e) => (
-                <div
-                  key={e.key}
-                  style={{
-                    borderRadius: 14,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.06)",
-                    padding: 10,
-                    display: "grid",
-                    gap: 8,
-                  }}
-                >
+              {entries.slice(0, 80).map((e) => {
+                const v = e as unknown as {
+                  key: string;
+                  day: string;
+                  pc: string;
+                  hc: string;
+                  fetchedAt?: string | null;
+                };
+
+                return (
                   <div
+                    key={v.key}
                     style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 10,
-                      flexWrap: "wrap",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.06)",
+                      padding: 10,
+                      display: "grid",
+                      gap: 8,
                     }}
                   >
                     <div
                       style={{
-                        fontSize: 12,
-                        color: "rgba(255,255,255,0.85)",
-                        overflowWrap: "anywhere",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        flexWrap: "wrap",
                       }}
                     >
-                      {e.day}（{e.pc}:{e.hc}）
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "rgba(255,255,255,0.85)",
+                          overflowWrap: "anywhere",
+                        }}
+                      >
+                        {v.day}（{v.pc}:{v.hc}）
+                      </div>
+                      <div
+                        style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}
+                      >
+                        fetched: {fmtIso(v.fetchedAt ?? null)}
+                      </div>
                     </div>
-                    <div
-                      style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}
-                    >
-                      fetched: {fmtIso(e.fetchedAt)}
-                    </div>
-                  </div>
 
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      style={busy === e.key ? pillDisabled : pillBase}
-                      disabled={busy === e.key}
-                      onClick={async () => {
-                        const ok = confirm(
-                          `このキャッシュを削除する？\n${e.key}`,
-                        );
-                        if (!ok) return;
-                        setBusy(e.key);
-                        try {
-                          await deleteTideCacheByKey(e.key);
-                          await refresh();
-                        } finally {
-                          setBusy(null);
-                        }
-                      }}
-                    >
-                      🗑 削除
-                    </button>
-
-                    <button
-                      type="button"
-                      style={
-                        busy === `force:${e.key}` ? pillDisabled : pillBase
-                      }
-                      disabled={busy === `force:${e.key}`}
-                      onClick={async () => {
-                        const ok = confirm(
-                          `この日を強制再取得する？（オンライン必須）\n${e.day}`,
-                        );
-                        if (!ok) return;
-                        setBusy(`force:${e.key}`);
-                        try {
-                          // ✅ ここがビルド落ちの主犯：pc/hc を string で渡す
-                          await forceRefreshTide736Day(
-                            String(e.pc),
-                            String(e.hc),
-                            new Date(e.day),
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        style={busy === v.key ? pillDisabled : pillBase}
+                        disabled={busy === v.key}
+                        onClick={async () => {
+                          const ok = confirm(
+                            `このキャッシュを削除する？\n${v.key}`,
                           );
-                          await refresh();
-                          alert("再取得したよ");
-                        } catch (err) {
-                          console.error(err);
-                          alert("再取得に失敗…（オフライン or 制限の可能性）");
-                        } finally {
-                          setBusy(null);
+                          if (!ok) return;
+                          setBusy(v.key);
+                          try {
+                            await deleteTideCacheByKey(v.key);
+                            await refresh();
+                          } finally {
+                            setBusy(null);
+                          }
+                        }}
+                      >
+                        🗑 削除
+                      </button>
+
+                      <button
+                        type="button"
+                        style={
+                          busy === `force:${v.key}` ? pillDisabled : pillBase
                         }
-                      }}
-                    >
-                      ↻ 強制再取得
-                    </button>
+                        disabled={busy === `force:${v.key}`}
+                        onClick={async () => {
+                          const ok = confirm(
+                            `この日を強制再取得する？（オンライン必須）\n${v.day}`,
+                          );
+                          if (!ok) return;
+                          setBusy(`force:${v.key}`);
+                          try {
+                            await forceRefreshTide736Day(
+                              v.pc,
+                              v.hc,
+                              new Date(v.day),
+                            );
+                            await refresh();
+                            alert("再取得したよ");
+                          } catch (err) {
+                            console.error(err);
+                            alert(
+                              "再取得に失敗…（オフライン or 制限の可能性）",
+                            );
+                          } finally {
+                            setBusy(null);
+                          }
+                        }}
+                      >
+                        ↻ 強制再取得
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -1238,14 +1194,14 @@ export default function Settings({ back }: Props) {
             style={pillBase}
             onClick={() => {
               const ok = confirm(
-                "表示/キャラ/背景設定を初期値に戻す？（キャッシュは触らない）",
+                "表示/キャラ設定を初期値に戻す？（キャッシュは触らない）",
               );
               if (!ok) return;
               reset();
               alert("初期値に戻したよ");
             }}
           >
-            🔁 表示/キャラ/背景を初期化
+            🔁 表示/キャラを初期化
           </button>
 
           <button

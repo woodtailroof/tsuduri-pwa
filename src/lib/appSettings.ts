@@ -3,22 +3,11 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 export type CharacterMode = "fixed" | "random";
 
-/** ✅ 背景モード（新） */
+/** ✅ 背景モード */
 export type BgMode = "auto" | "fixed" | "off";
 
-/** ✅ 互換：Settings.tsx が期待している型名 */
-export type BackgroundMode = BgMode;
-
-/** ✅ 時間帯（4分割） */
-export type TimeBand = "morning" | "day" | "evening" | "night";
-
-/** ✅ auto背景セット定義（増やせる） */
-export type AutoBgSet = { id: string; label: string };
-
-/** ✅ 互換：Settings.tsx が期待している定数名 */
-export const AUTO_BG_SETS: AutoBgSet[] = [
-  { id: "surf", label: "砂浜（surf）" },
-];
+/** ✅ 自動背景の時間帯（ファイル名 suffix） */
+export type BgTimeBand = "morning" | "day" | "evening" | "night";
 
 export type AppSettings = {
   version: 1;
@@ -46,18 +35,19 @@ export type AppSettings = {
   /** ✅ すりガラスぼかし(px) */
   glassBlur: number;
 
-  // ===== ✅ 背景画像（全画面共通） =====
-  /** auto: 時間帯で自動 / fixed: 固定 / off: 画像無し */
+  // ===== ✅ 背景画像 =====
   bgMode: BgMode;
 
   /**
-   * auto 時に使う「背景セット名」
-   * ✅ 型は string にしておく（将来セット増やしても型修正不要）
-   * 例: "surf"
+   * ✅ 自動背景セットID
+   * 例: "surf" -> /assets/bg/surf-morning.png 等
    */
   autoBgSet: string;
 
-  /** fixed 時に使う背景画像パス（public配下） */
+  /**
+   * ✅ 固定背景（public配下パス）
+   * 例: "/assets/bg/surf-evening.png"
+   */
   fixedBgSrc: string;
 };
 
@@ -83,7 +73,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   glassAlpha: 0.22,
   glassBlur: 10,
 
-  // ✅ 背景（新規）
+  // ✅ 背景
   bgMode: "auto",
   autoBgSet: "surf",
   fixedBgSrc: "/assets/bg/ui-check.png",
@@ -100,6 +90,14 @@ export const CHARACTER_OPTIONS: CharacterOption[] = [
   },
 ];
 
+/** ✅ 背景セット候補（Settingsのプルダウン用） */
+export type AutoBgSetOption = { id: string; label: string };
+export const AUTO_BG_SETS: AutoBgSetOption[] = [
+  { id: "surf", label: "砂浜（surf）" },
+  // 追加したらここに増やせる
+  // { id: "harbor", label: "港（harbor）" },
+];
+
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
@@ -113,7 +111,6 @@ function safeParse(raw: string | null): unknown {
   }
 }
 
-/** public 配下パスを / 始まりに寄せる */
 export function normalizePublicPath(p: string) {
   const s = (p ?? "").trim();
   if (!s) return "";
@@ -159,7 +156,6 @@ function loadCreatedCharacterIds(): string[] {
 function getAllowedCharacterIds(): string[] {
   const base = CHARACTER_OPTIONS.map((c) => c.id).filter(Boolean);
   const created = loadCreatedCharacterIds();
-
   // 併合（順序：created → base）
   const seen = new Set<string>();
   const merged: string[] = [];
@@ -178,30 +174,38 @@ function getAllowedCharacterIds(): string[] {
   return merged;
 }
 
-/** ✅ 時間帯判定（4分割） */
-export function getTimeBand(d: Date): TimeBand {
+/**
+ * ✅ 背景の時間帯判定（ここを“唯一の正解”にする）
+ * - morning: 04:00〜09:59
+ * - day:     10:00〜15:59
+ * - evening: 16:00〜18:59
+ * - night:   19:00〜03:59
+ */
+export function getTimeBand(d: Date): BgTimeBand {
   const h = d.getHours();
-
-  // morning: 5-10, day: 10-16, evening: 16-19, night: 19-5
-  if (h >= 5 && h < 10) return "morning";
-  if (h >= 10 && h < 16) return "day";
-  if (h >= 16 && h < 19) return "evening";
+  if (h >= 4 && h <= 9) return "morning";
+  if (h >= 10 && h <= 15) return "day";
+  if (h >= 16 && h <= 18) return "evening";
   return "night";
 }
 
-/**
- * ✅ auto背景の解決
- * ルール：
- *   /assets/bg/{setId}-{timeBand}.png
- * 例:
- *   /assets/bg/surf-morning.png
- *   /assets/bg/surf-day.png
- *   /assets/bg/surf-evening.png
- *   /assets/bg/surf-night.png
- */
-export function resolveAutoBackgroundSrc(setId: string, band: TimeBand) {
+/** ✅ 自動背景のパス生成（ファイル名規約をここに固定） */
+export function resolveAutoBackgroundSrc(setId: string, band: BgTimeBand) {
   const sid = (setId ?? "").trim() || DEFAULT_SETTINGS.autoBgSet;
-  return normalizePublicPath(`/assets/bg/${sid}-${band}.png`);
+  return `/assets/bg/${sid}-${band}.png`;
+}
+
+/** ✅ 自動背景セットIDの正規化（存在しないIDならデフォルトに） */
+function normalizeAutoBgSetId(id: unknown): string {
+  const s = typeof id === "string" ? id.trim() : "";
+  if (!s) return DEFAULT_SETTINGS.autoBgSet;
+
+  const allowed = new Set(AUTO_BG_SETS.map((x) => x.id));
+  if (allowed.has(s)) return s;
+
+  // ここまで来たら未知ID（将来拡張や手入力の可能性）なので、
+  // “とりあえず保持”ではなく “確実に存在する default に寄せる”
+  return DEFAULT_SETTINGS.autoBgSet;
 }
 
 function normalize(input: unknown): AppSettings {
@@ -213,9 +217,7 @@ function normalize(input: unknown): AppSettings {
       : DEFAULT_SETTINGS.fixedCharacterId;
 
   const bgMode: BgMode =
-    x.bgMode === "fixed" || x.bgMode === "off" || x.bgMode === "auto"
-      ? x.bgMode
-      : DEFAULT_SETTINGS.bgMode;
+    x.bgMode === "fixed" || x.bgMode === "off" ? x.bgMode : "auto";
 
   const normalized: AppSettings = {
     version: 1,
@@ -224,7 +226,6 @@ function normalize(input: unknown): AppSettings {
       typeof x.characterEnabled === "boolean"
         ? x.characterEnabled
         : DEFAULT_SETTINGS.characterEnabled,
-
     characterMode: x.characterMode === "random" ? "random" : "fixed",
     fixedCharacterId: fixedId,
 
@@ -235,7 +236,6 @@ function normalize(input: unknown): AppSettings {
       0.7,
       5.0,
     ),
-
     characterOpacity: clamp(
       Number.isFinite(x.characterOpacity as number)
         ? (x.characterOpacity as number)
@@ -254,7 +254,6 @@ function normalize(input: unknown): AppSettings {
       0,
       1,
     ),
-
     bgBlur: clamp(
       Number.isFinite(x.bgBlur as number)
         ? (x.bgBlur as number)
@@ -270,7 +269,6 @@ function normalize(input: unknown): AppSettings {
       0,
       0.6,
     ),
-
     glassBlur: clamp(
       Number.isFinite(x.glassBlur as number)
         ? (x.glassBlur as number)
@@ -279,12 +277,9 @@ function normalize(input: unknown): AppSettings {
       24,
     ),
 
-    // ✅ 背景（新規）
+    // ✅ 背景
     bgMode,
-    autoBgSet:
-      typeof x.autoBgSet === "string"
-        ? x.autoBgSet
-        : DEFAULT_SETTINGS.autoBgSet,
+    autoBgSet: normalizeAutoBgSetId(x.autoBgSet),
     fixedBgSrc:
       typeof x.fixedBgSrc === "string"
         ? x.fixedBgSrc
@@ -306,8 +301,9 @@ function normalize(input: unknown): AppSettings {
     normalized.characterOverrideSrc,
   );
 
-  // ✅ fixed背景パスも正規化
-  normalized.fixedBgSrc = normalizePublicPath(normalized.fixedBgSrc);
+  // ✅ 固定背景も正規化（空なら ui-check）
+  normalized.fixedBgSrc =
+    normalizePublicPath(normalized.fixedBgSrc) || "/assets/bg/ui-check.png";
 
   return normalized;
 }
