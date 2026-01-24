@@ -75,7 +75,6 @@ function loadCreatedCharacters(): CharacterOption[] {
     })
     .filter((x) => !!x.id && !!x.label);
 
-  // id 重複排除
   const seen = new Set<string>();
   const uniq: CharacterOption[] = [];
   for (const c of normalized) {
@@ -125,7 +124,6 @@ function useIsNarrow(breakpointPx = 720) {
       return () => mql.removeEventListener("change", onChange);
     }
 
-    // 古いSafari向け
     const legacy = mql as unknown as {
       addListener: (fn: () => void) => void;
       removeListener: (fn: () => void) => void;
@@ -139,24 +137,22 @@ function useIsNarrow(breakpointPx = 720) {
 
 /** ✅ 1分ごとにUIを更新（“自動背景の時間帯”の追従用） */
 function useMinuteTick() {
-  const [tick, setTick] = useState(0);
+  // 初回 bump を useEffect 内でやると eslint が怒るので、初期値を 1 にして回避
+  const [tick, setTick] = useState(1);
 
   useEffect(() => {
     let timer: number | null = null;
 
     const arm = () => {
       const now = Date.now();
-      const msToNextMinute = 60_000 - (now % 60_000) + 5; // ちょい余裕
+      const msToNextMinute = 60_000 - (now % 60_000) + 5;
       timer = window.setTimeout(() => {
-        // ✅ setState は「タイマーのコールバック内」で行う（ESLint警告回避）
         setTick((v) => v + 1);
         arm();
       }, msToNextMinute);
     };
 
-    // 初回表示は getTimeBand(new Date()) で正しいので、初回bump不要
     arm();
-
     return () => {
       if (timer != null) window.clearTimeout(timer);
     };
@@ -301,7 +297,6 @@ export default function Settings({ back }: Props) {
     const map = loadCharacterImageMap();
     setCharImageMapState(map);
 
-    // ✅ fixedCharacterId が作成キャラに存在しないなら先頭へ寄せる
     if (chars.length > 0) {
       const ids = new Set(chars.map((c) => c.id));
       const current = settings.fixedCharacterId ?? "";
@@ -347,7 +342,6 @@ export default function Settings({ back }: Props) {
   const characterScale = Number.isFinite(settings.characterScale)
     ? settings.characterScale
     : DEFAULT_SETTINGS.characterScale;
-
   const characterOpacity = Number.isFinite(settings.characterOpacity)
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
@@ -376,13 +370,13 @@ export default function Settings({ back }: Props) {
     normalizePublicPath(fixedBgSrcRaw) || "/assets/bg/ui-check.png";
 
   const nowBand: BgTimeBand = useMemo(() => {
-    // minuteTick で “今” を更新
     return getTimeBand(new Date());
   }, [minuteTick]);
 
-  const autoPreviewSrc = useMemo(() => {
-    return resolveAutoBackgroundSrc(autoBgSet, nowBand);
-  }, [autoBgSet, nowBand]);
+  const autoPreviewSrc = useMemo(
+    () => resolveAutoBackgroundSrc(autoBgSet, nowBand),
+    [autoBgSet, nowBand],
+  );
 
   const effectivePreviewSrc = useMemo(() => {
     if (bgMode === "off") return "";
@@ -413,8 +407,6 @@ export default function Settings({ back }: Props) {
       onBack={back}
       showTestCharacter={!isNarrow}
     >
-      {/* 以降は貼ってくれたままなので省略せずにそのまま… */}
-      {/* ※ここから下は、ひろっちが貼ってくれた内容と完全同一です */}
       <div style={{ display: "grid", gap: 16 }}>
         {/* 👧 キャラ */}
         <div className="glass glass-strong" style={card}>
@@ -486,7 +478,6 @@ export default function Settings({ back }: Props) {
               </div>
             </div>
 
-            {/* ✅ 固定キャラ：作成キャラからのみ選択 */}
             <div style={row}>
               <div style={label}>固定キャラ</div>
               <div style={rowStack}>
@@ -533,7 +524,6 @@ export default function Settings({ back }: Props) {
               </div>
             </div>
 
-            {/* ✅ 作成キャラ画像（割り当て） */}
             <div style={row}>
               <div style={label}>作成キャラ画像</div>
               <div style={rowStack}>
@@ -828,10 +818,10 @@ export default function Settings({ back }: Props) {
                   value={fixedBgSrcRaw}
                   disabled={bgMode !== "fixed"}
                   onChange={(e) => set({ fixedBgSrc: e.target.value })}
-                  placeholder="例: /assets/bg/surf-evening.png"
+                  placeholder="例: /assets/bg/surf_evening.png"
                 />
                 <div style={help}>
-                  public 配下パス（例: <code>/assets/bg/surf-evening.png</code>
+                  public 配下パス（例: <code>/assets/bg/surf_evening.png</code>
                   ）
                 </div>
               </div>
@@ -865,9 +855,9 @@ export default function Settings({ back }: Props) {
                 )}
 
                 <div style={help}>
-                  ルール：<code>{`/assets/bg/${autoBgSet}-morning.png`}</code>{" "}
+                  ルール：<code>{`/assets/bg/${autoBgSet}_morning.png`}</code>{" "}
                   みたいに、
-                  <code>-morning / -day / -evening / -night</code>{" "}
+                  <code>_morning / _day / _evening / _night</code>{" "}
                   の4枚を用意すると自動で切り替わるよ。
                 </div>
               </div>
@@ -1217,7 +1207,6 @@ export default function Settings({ back }: Props) {
             type="button"
             style={pillBase}
             onClick={() => {
-              // いったん normalize を通す目的で set に“現状パッチ”を当てる
               set({ ...settings });
               alert("設定を保存し直したよ");
             }}

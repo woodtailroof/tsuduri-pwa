@@ -40,13 +40,13 @@ export type AppSettings = {
 
   /**
    * ✅ 自動背景セットID
-   * 例: "surf" -> /assets/bg/surf-morning.png 等
+   * 例: "surf" -> /assets/bg/surf_morning.png 等
    */
   autoBgSet: string;
 
   /**
    * ✅ 固定背景（public配下パス）
-   * 例: "/assets/bg/surf-evening.png"
+   * 例: "/assets/bg/surf_evening.png"
    */
   fixedBgSrc: string;
 };
@@ -186,8 +186,20 @@ export function getTimeBand(d: Date): BgTimeBand {
   return "night";
 }
 
-/** ✅ 自動背景のパス生成（ファイル名規約をここに固定） */
+/**
+ * ✅ 自動背景のパス生成（ファイル名規約をここに固定）
+ * 現在の public/assets/bg は surf_morning.png のように "_" なので、こちらに統一
+ */
 export function resolveAutoBackgroundSrc(setId: string, band: BgTimeBand) {
+  const sid = (setId ?? "").trim() || DEFAULT_SETTINGS.autoBgSet;
+  return `/assets/bg/${sid}_${band}.png`;
+}
+
+/** ✅ 旧規約（ハイフン）も必要になったら使えるように残す */
+export function resolveAutoBackgroundSrcHyphen(
+  setId: string,
+  band: BgTimeBand,
+) {
   const sid = (setId ?? "").trim() || DEFAULT_SETTINGS.autoBgSet;
   return `/assets/bg/${sid}-${band}.png`;
 }
