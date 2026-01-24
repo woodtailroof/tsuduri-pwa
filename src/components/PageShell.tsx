@@ -460,10 +460,11 @@ export default function PageShell({
     <div className="page-shell" style={shellStyle} data-timeband={timeBand}>
       {/* ✅ 光エフェクト用レイヤー（背景の上・暗幕の下） */}
       <div className="bg-light" aria-hidden="true">
-        {/* ✅ “局所的にピカッ” をランダム風に複数レイヤで発生させる */}
-        <div className="sea-spark sea-spark-a" aria-hidden="true" />
-        <div className="sea-spark sea-spark-b" aria-hidden="true" />
-        <div className="sea-spark sea-spark-c" aria-hidden="true" />
+        <div className="wisp w1" />
+        <div className="wisp w2" />
+        <div className="wisp w3" />
+        <div className="wisp w4" />
+        <div className="wisp w5" />
       </div>
 
       {/* ✅ すりガラス保険CSS */}
