@@ -7,10 +7,8 @@ import {
   normalizePublicPath,
   getTimeBand,
   resolveAutoBackgroundSrc,
-  resolveAutoBackgroundSrcHyphen,
   DEFAULT_SETTINGS,
   type BgMode,
-  type BgTimeBand,
 } from "../lib/appSettings";
 
 type Props = {
@@ -133,16 +131,20 @@ function pickRandomFrom<T>(arr: T[]): T | null {
 
 /**
  * ✅ 毎分だけ tick を進める（時間帯の切替検知用）
- * 初回更新は useState 初期値で済ませて eslint 警告を回避
+ * 1) マウント直後に1回
+ * 2) 次の「分」に揃えてから 60秒ごと
  */
 function useMinuteTick() {
-  const [tick, setTick] = useState(1);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let intervalId: number | null = null;
     let timeoutId: number | null = null;
 
     const bump = () => setTick((v) => v + 1);
+
+    // 初回
+    bump();
 
     const schedule = () => {
       const now = new Date();
@@ -171,29 +173,31 @@ function useMinuteTick() {
 
 /**
  * ✅ 背景の CSS 文字列を作る
- * - 404 等でも真っ黒にならないように「多重urlフォールバック」
- * - "_" と "-" の両規約に対応（資産が混在しても生きる）
+ * - 404 等でも真っ黒にならないように「多重urlフォールバック」を入れる
+ * - 1枚目がダメでも、2枚目以降の背景レイヤが描画される
  */
 function makeBgCssValue(
   mode: BgMode,
   setId: string,
   fixedSrc: string,
-  band: BgTimeBand,
+  band: ReturnType<typeof getTimeBand>,
 ) {
   const sid = (setId ?? "").trim() || DEFAULT_SETTINGS.autoBgSet;
 
-  if (mode === "off") return "none";
+  if (mode === "off") {
+    return "none";
+  }
 
   if (mode === "fixed") {
     const pFixed = normalizePublicPath(fixedSrc) || "/assets/bg/ui-check.png";
+    // fixed が死んでも ui-check に落ちる
     return `url(${pFixed}), url(/assets/bg/ui-check.png)`;
   }
 
   // auto
-  const pAutoUnderscore = resolveAutoBackgroundSrc(sid, band); // /assets/bg/{sid}_{band}.png
-  const pAutoHyphen = resolveAutoBackgroundSrcHyphen(sid, band); // /assets/bg/{sid}-{band}.png
-  const pSetFallback = normalizePublicPath(`/assets/bg/${sid}.png`); // 旧1枚運用救済（あれば）
-  return `url(${pAutoUnderscore}), url(${pAutoHyphen}), url(${pSetFallback}), url(/assets/bg/ui-check.png)`;
+  const pAuto = resolveAutoBackgroundSrc(sid, band); // /assets/bg/{sid}-{band}.png
+  const pSetFallback = normalizePublicPath(`/assets/bg/${sid}.png`); // /assets/bg/surf.png（旧1枚運用の救済）
+  return `url(${pAuto}), url(${pSetFallback}), url(/assets/bg/ui-check.png)`;
 }
 
 export default function PageShell({
@@ -250,16 +254,22 @@ export default function PageShell({
     window.location.assign(prev ?? fallbackHref);
   }, [onBack, fallbackHref]);
 
+  // ==========
   // 背景（Settings → CSS var）
+  // ==========
   const effectiveBgDim = settings.bgDim ?? bgDim;
   const effectiveBgBlur = settings.bgBlur ?? bgBlur;
 
+  // ==========
   // ガラス（Settings → CSS var）
+  // ==========
   const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
   const glassBlur = clamp(settings.glassBlur ?? 10, 0, 24);
   const glassAlphaStrong = clamp(glassAlpha + 0.08, 0, 0.6);
 
+  // ==========
   // ✅ 背景画像（auto/fixed/off + 毎分更新）
+  // ==========
   const minuteTick = useMinuteTick();
 
   const bgMode = (settings.bgMode ?? DEFAULT_SETTINGS.bgMode) as BgMode;
@@ -270,7 +280,7 @@ export default function PageShell({
 
   const timeBand = useMemo(() => getTimeBand(new Date()), [minuteTick]);
 
-  // 画面個別 bgImage が指定されたら最優先（フォールバック付き）
+  // 画面個別 bgImage が指定されたらそれを最優先（ただしフォールバックも付ける）
   const resolvedBgCss = useMemo(() => {
     if (bgImage && bgImage.trim()) {
       const p = normalizePublicPath(bgImage);
@@ -279,7 +289,9 @@ export default function PageShell({
     return makeBgCssValue(bgMode, autoBgSet, fixedBgSrc, timeBand);
   }, [bgImage, bgMode, autoBgSet, fixedBgSrc, timeBand]);
 
+  // ==========
   // ✅ ストレージ変更検知（tick）
+  // ==========
   const [storageTick, setStorageTick] = useState(0);
 
   useEffect(() => {
@@ -306,7 +318,9 @@ export default function PageShell({
     };
   }, []);
 
+  // ==========
   // ✅ tick で更新
+  // ==========
   const [createdIds, setCreatedIds] = useState<string[]>(() =>
     loadCreatedCharacterIds(),
   );
@@ -319,7 +333,9 @@ export default function PageShell({
     setCharacterImageMap(loadCharacterImageMap());
   }, [storageTick]);
 
+  // ==========
   // キャラ（固定/ランダム）※作成キャラから選ぶ
+  // ==========
   const requestedCharacterId = useMemo(() => {
     if (!settings.characterEnabled) return null;
     if (createdIds.length === 0) return null;
@@ -355,9 +371,9 @@ export default function PageShell({
   }, [requestedCharacterId, mappedCharacterSrc]);
 
   // チラつき対策：先読み→差し替え
-  const [displaySrc, setDisplaySrc] = useState<string | null>(
-    () => requestedCharacterSrc ?? testCharacterSrc,
-  );
+  const [displaySrc, setDisplaySrc] = useState<string | null>(() => {
+    return requestedCharacterSrc ?? testCharacterSrc;
+  });
   const [fadeIn, setFadeIn] = useState(true);
   const lastSrcRef = useRef<string | null>(null);
 
@@ -413,6 +429,12 @@ export default function PageShell({
 
     // ✅ 背景画像（多重フォールバック込み）
     "--bg-image": resolvedBgCss,
+
+    // ✅ セクション境界（この背景に合わせた初期推定値）
+    // 空: 0〜46%、海: 46〜73%、砂: 73〜100%
+    "--sky-bottom": "46%",
+    "--sea-top": "46%",
+    "--sea-bottom": "73%",
   };
 
   const shouldShowCharacter =
@@ -430,14 +452,16 @@ export default function PageShell({
   };
 
   const innerPadding = contentPadding ?? "clamp(16px, 3vw, 24px)";
+
+  // ✅ CSS calcで “clamp(...) * scale” を作る（transformよりボケにくい）
   const scaledHeightCss = `calc(${testCharacterHeight} * ${characterScale})`;
 
   return (
-    <div className="page-shell" style={shellStyle}>
-      {/* ✅ 光エフェクト用レイヤー（背景の上・UIの下） */}
+    <div className="page-shell" style={shellStyle} data-timeband={timeBand}>
+      {/* ✅ 光エフェクト用レイヤー（背景の上・暗幕の下） */}
       <div className="bg-light" aria-hidden="true" />
 
-      {/* すりガラスCSSなど */}
+      {/* ✅ すりガラス保険CSS */}
       <style>
         {`
           .glass{
@@ -452,6 +476,7 @@ export default function PageShell({
         `}
       </style>
 
+      {/* キャラレイヤ */}
       {shouldShowCharacter && (
         <div
           aria-hidden="true"
@@ -496,6 +521,7 @@ export default function PageShell({
         </div>
       )}
 
+      {/* 戻る */}
       {showBack && (
         <button
           type="button"
@@ -508,6 +534,7 @@ export default function PageShell({
         </button>
       )}
 
+      {/* スクロール領域 */}
       <div
         className={[
           "page-shell-scroll",

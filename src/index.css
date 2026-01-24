@@ -209,33 +209,132 @@ h3 {
   isolation: isolate;
 }
 
-/* 背景画像（ここは “画像だけ” を担当。グラデは body が担当） */
+/* 背景画像＋空気 */
 .page-shell::before {
   content: "";
   position: fixed;
   inset: 0;
-  z-index: -2;
-  pointer-events: none;
+  z-index: -3;
 
-  /* ✅ ショートハンド禁止：Safariの変数＋カンマ事故を回避 */
-  background-image: var(--bg-image, none);
+  background:
+    var(--bg-image, none),
+    radial-gradient(
+      1000px 700px at 20% -10%,
+      rgba(255, 77, 109, 0.18),
+      transparent 55%
+    ),
+    radial-gradient(
+      900px 600px at 110% 10%,
+      rgba(110, 207, 255, 0.1),
+      transparent 60%
+    ),
+    linear-gradient(180deg, rgba(7, 8, 11, 0.55), rgba(11, 13, 19, 0.55));
+
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
 
-  /* ✅ 背景ぼかし（Settingsのスライダーにリンク） */
   filter: blur(var(--bg-blur, 0px));
   transform: translateZ(0);
 }
 
+/* ✅ 光エフェクト（背景の上、暗幕の下） */
+.bg-light {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.45;
+
+  /* 端末負荷軽減の基本姿勢 */
+  transform: translateZ(0);
+  will-change: opacity, filter;
+}
+
+/* 空の微粒子と水面キラの2層 */
+.bg-light::before,
+.bg-light::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform: translateZ(0);
+}
+
+/* 空: うっすら漂う光の粒（昼は控えめ、朝夕はちょい幻想） */
+.bg-light::before {
+  top: 0;
+  height: var(--sky-bottom, 46%);
+  opacity: 0.35;
+
+  background:
+    radial-gradient(
+      2px 2px at 12% 18%,
+      rgba(255, 255, 255, 0.45),
+      transparent 60%
+    ),
+    radial-gradient(
+      2px 2px at 30% 35%,
+      rgba(196, 240, 255, 0.35),
+      transparent 60%
+    ),
+    radial-gradient(
+      2px 2px at 55% 22%,
+      rgba(255, 240, 220, 0.33),
+      transparent 60%
+    ),
+    radial-gradient(
+      2px 2px at 72% 40%,
+      rgba(210, 235, 255, 0.3),
+      transparent 60%
+    ),
+    radial-gradient(
+      2px 2px at 88% 26%,
+      rgba(255, 255, 255, 0.35),
+      transparent 60%
+    );
+
+  filter: blur(0.2px);
+  animation: skyTwinkle 5.8s ease-in-out infinite;
+}
+
+/* 海: 水面の反射キラ。昼は強めに出す */
+.bg-light::after {
+  top: var(--sea-top, 46%);
+  height: calc(var(--sea-bottom, 73%) - var(--sea-top, 46%));
+  opacity: 0.55;
+
+  background:
+    radial-gradient(
+      120px 34px at 55% 28%,
+      rgba(255, 255, 255, 0.38),
+      transparent 68%
+    ),
+    radial-gradient(
+      90px 26px at 48% 52%,
+      rgba(210, 245, 255, 0.24),
+      transparent 70%
+    ),
+    radial-gradient(
+      160px 44px at 62% 66%,
+      rgba(255, 255, 255, 0.18),
+      transparent 72%
+    ),
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.07), transparent);
+
+  mix-blend-mode: screen;
+  filter: blur(0.6px);
+  animation: seaGlitter 6.4s linear infinite;
+}
+
+/* ✅ 暗幕（Settingsのスライダーにリンク） */
 .page-shell::after {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
-  pointer-events: none;
 
-  /* ✅ 暗幕（Settingsのスライダーにリンク） */
   background:
     linear-gradient(
       180deg,
@@ -247,11 +346,101 @@ h3 {
       rgba(255, 255, 255, 0.06),
       transparent 65%
     );
+  pointer-events: none;
 }
 
 .page-shell-inner {
   position: relative;
   z-index: 0;
+}
+
+/* =========================================================
+   ✅ 昼だけ強め / 時間帯で微調整
+   ========================================================= */
+
+/* 昼: 海面キラを強める */
+.page-shell[data-timeband="day"] .bg-light {
+  opacity: 0.78;
+  filter: saturate(1.05);
+}
+
+.page-shell[data-timeband="day"] .bg-light::after {
+  opacity: 0.78;
+  filter: blur(0.55px);
+}
+
+/* 朝: 空の粒を少しだけ幻想寄り */
+.page-shell[data-timeband="morning"] .bg-light {
+  opacity: 0.6;
+  filter: saturate(1.06);
+}
+.page-shell[data-timeband="morning"] .bg-light::before {
+  opacity: 0.55;
+}
+
+/* 夕: 反射は控えめで余韻 */
+.page-shell[data-timeband="evening"] .bg-light {
+  opacity: 0.55;
+  filter: saturate(1.02);
+}
+.page-shell[data-timeband="evening"] .bg-light::after {
+  opacity: 0.5;
+}
+
+/* 夜: 星が主体。海キラは弱め */
+.page-shell[data-timeband="night"] .bg-light {
+  opacity: 0.52;
+  filter: saturate(1);
+}
+.page-shell[data-timeband="night"] .bg-light::after {
+  opacity: 0.28;
+}
+.page-shell[data-timeband="night"] .bg-light::before {
+  opacity: 0.7;
+  filter: blur(0.15px);
+}
+
+/* アニメーション（軽量） */
+@keyframes skyTwinkle {
+  0% {
+    opacity: 0.28;
+    filter: blur(0.2px);
+  }
+  50% {
+    opacity: 0.44;
+    filter: blur(0.35px);
+  }
+  100% {
+    opacity: 0.28;
+    filter: blur(0.2px);
+  }
+}
+
+@keyframes seaGlitter {
+  0% {
+    background-position:
+      0% 0%,
+      0% 0%,
+      0% 0%,
+      0% 0%;
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    background-position:
+      8% 0%,
+      -6% 0%,
+      5% 0%,
+      20% 0%;
+    transform: translate3d(0, -0.6%, 0);
+  }
+  100% {
+    background-position:
+      0% 0%,
+      0% 0%,
+      0% 0%,
+      0% 0%;
+    transform: translate3d(0, 0, 0);
+  }
 }
 
 /* =========================================================
@@ -278,7 +467,6 @@ h3 {
   color: rgba(255, 255, 255, 0.92);
   background: rgba(10, 10, 12, 0.55);
 
-  /* ✅ ガラスは全部これに統一 */
   backdrop-filter: blur(var(--glass-blur, 0px));
   -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
 
@@ -381,179 +569,4 @@ select:focus {
 
 .read-the-docs {
   color: #888;
-}
-
-/* =========================================================
-   ✅ 背景 “光エフェクト” レイヤー（軽量）
-   - 背景画像そのものは動かさない
-   - transform / opacity だけで動かして負荷を抑える
-   ========================================================= */
-
-.page-shell .bg-light {
-  position: fixed;
-  inset: 0;
-  z-index: -1; /* ::after(暗幕)より上にしたい場合は調整 */
-  pointer-events: none;
-  opacity: 1;
-  mix-blend-mode: screen; /* 光っぽく。強すぎたら normal に */
-}
-
-/* レイヤーを2枚（太陽光・月光/星・海面きらめき） */
-.page-shell .bg-light::before,
-.page-shell .bg-light::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  will-change: transform, opacity;
-}
-
-/* 朝: 左上からの柔らかいモーニンググロー */
-.page-shell[data-timeband="morning"] .bg-light::before {
-  background:
-    radial-gradient(
-      900px 520px at 18% 14%,
-      rgba(170, 140, 255, 0.22),
-      transparent 60%
-    ),
-    radial-gradient(
-      800px 520px at 30% 20%,
-      rgba(120, 190, 255, 0.18),
-      transparent 62%
-    );
-  opacity: 0.9;
-  animation: bgGlowBreath 18s ease-in-out infinite;
-}
-
-/* 昼: 海面のきらめき帯（画面下寄り） */
-.page-shell[data-timeband="day"] .bg-light::after {
-  background:
-    radial-gradient(
-      900px 280px at 50% 88%,
-      rgba(255, 255, 255, 0.13),
-      transparent 70%
-    ),
-    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.07), transparent);
-  opacity: 0.9;
-  transform: translateZ(0);
-  animation: seaShimmer 22s linear infinite;
-}
-
-/* 夕: 右側からの斜光っぽいグロー */
-.page-shell[data-timeband="evening"] .bg-light::before {
-  background:
-    radial-gradient(
-      1000px 560px at 84% 24%,
-      rgba(255, 160, 120, 0.2),
-      transparent 62%
-    ),
-    radial-gradient(
-      900px 560px at 74% 30%,
-      rgba(255, 120, 160, 0.14),
-      transparent 64%
-    );
-  opacity: 0.95;
-  animation: bgGlowBreath 20s ease-in-out infinite;
-}
-
-/* 夜: 月光のにじみ（右上寄り） */
-.page-shell[data-timeband="night"] .bg-light::before {
-  background:
-    radial-gradient(
-      900px 520px at 78% 20%,
-      rgba(190, 220, 255, 0.16),
-      transparent 62%
-    ),
-    radial-gradient(
-      700px 440px at 74% 18%,
-      rgba(255, 255, 255, 0.06),
-      transparent 65%
-    );
-  opacity: 0.85;
-  animation: bgGlowBreath 24s ease-in-out infinite;
-}
-
-/* 夜: 星の瞬き（粒少なめ、ゆっくり） */
-.page-shell[data-timeband="night"] .bg-light::after {
-  background:
-    radial-gradient(
-      2px 2px at 18% 22%,
-      rgba(255, 255, 255, 0.18),
-      transparent 60%
-    ),
-    radial-gradient(
-      1.6px 1.6px at 38% 14%,
-      rgba(255, 255, 255, 0.14),
-      transparent 60%
-    ),
-    radial-gradient(
-      2.2px 2.2px at 62% 18%,
-      rgba(255, 255, 255, 0.16),
-      transparent 60%
-    ),
-    radial-gradient(
-      1.4px 1.4px at 74% 28%,
-      rgba(255, 255, 255, 0.12),
-      transparent 60%
-    ),
-    radial-gradient(
-      2px 2px at 86% 16%,
-      rgba(255, 255, 255, 0.14),
-      transparent 60%
-    );
-  opacity: 0.65;
-  animation: starTwinkle 9s ease-in-out infinite;
-}
-
-@keyframes bgGlowBreath {
-  0% {
-    opacity: 0.75;
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: translate3d(0, -6px, 0) scale(1.015);
-  }
-  100% {
-    opacity: 0.78;
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-}
-
-@keyframes seaShimmer {
-  0% {
-    opacity: 0.55;
-    transform: translate3d(-6%, 0, 0);
-  }
-  50% {
-    opacity: 0.95;
-    transform: translate3d(6%, 0, 0);
-  }
-  100% {
-    opacity: 0.55;
-    transform: translate3d(-6%, 0, 0);
-  }
-}
-
-@keyframes starTwinkle {
-  0% {
-    opacity: 0.55;
-  }
-  40% {
-    opacity: 0.85;
-  }
-  70% {
-    opacity: 0.6;
-  }
-  100% {
-    opacity: 0.72;
-  }
-}
-
-/* 動きを減らす設定への配慮 */
-@media (prefers-reduced-motion: reduce) {
-  .page-shell .bg-light::before,
-  .page-shell .bg-light::after {
-    animation: none !important;
-  }
 }
