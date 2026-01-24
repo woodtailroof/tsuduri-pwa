@@ -328,6 +328,97 @@ h3 {
   animation: seaGlitter 6.4s linear infinite;
 }
 
+/* ✅ 追加：水面の不規則反射ノイズ（生命感） */
+.bg-light .sea-noise {
+  position: absolute;
+  inset: 0;
+  top: var(--sea-top, 46%);
+  height: calc(var(--sea-bottom, 73%) - var(--sea-top, 46%));
+  pointer-events: none;
+
+  /* 不規則反射：小粒を散らして “生きてる” 海にする */
+  background:
+    radial-gradient(
+      2px 2px at 12% 18%,
+      rgba(255, 255, 255, 0.55),
+      transparent 60%
+    ),
+    radial-gradient(
+      2px 2px at 24% 42%,
+      rgba(210, 245, 255, 0.45),
+      transparent 60%
+    ),
+    radial-gradient(
+      2px 2px at 37% 63%,
+      rgba(255, 255, 255, 0.5),
+      transparent 60%
+    ),
+    radial-gradient(
+      2px 2px at 49% 29%,
+      rgba(185, 225, 255, 0.42),
+      transparent 60%
+    ),
+    radial-gradient(
+      2px 2px at 61% 54%,
+      rgba(255, 255, 255, 0.48),
+      transparent 60%
+    ),
+    radial-gradient(
+      2px 2px at 73% 38%,
+      rgba(210, 245, 255, 0.44),
+      transparent 60%
+    ),
+    radial-gradient(
+      2px 2px at 86% 61%,
+      rgba(255, 255, 255, 0.46),
+      transparent 60%
+    ),
+    /* もう一段小粒（密度を上げて生命感） */
+    radial-gradient(
+        1.6px 1.6px at 18% 58%,
+        rgba(255, 255, 255, 0.38),
+        transparent 60%
+      ),
+    radial-gradient(
+      1.6px 1.6px at 32% 34%,
+      rgba(210, 245, 255, 0.3),
+      transparent 60%
+    ),
+    radial-gradient(
+      1.6px 1.6px at 44% 70%,
+      rgba(255, 255, 255, 0.32),
+      transparent 60%
+    ),
+    radial-gradient(
+      1.6px 1.6px at 58% 44%,
+      rgba(185, 225, 255, 0.28),
+      transparent 60%
+    ),
+    radial-gradient(
+      1.6px 1.6px at 69% 66%,
+      rgba(255, 255, 255, 0.3),
+      transparent 60%
+    ),
+    radial-gradient(
+      1.6px 1.6px at 82% 36%,
+      rgba(210, 245, 255, 0.26),
+      transparent 60%
+    );
+
+  mix-blend-mode: screen;
+  filter: blur(0.25px);
+
+  /* “同期しない” 動き + “不規則に見える” 瞬き */
+  animation:
+    seaNoiseDrift 9.3s linear infinite,
+    seaNoiseTwinkle 2.7s steps(2, end) infinite;
+
+  opacity: 0.45;
+
+  transform: translateZ(0);
+  will-change: opacity, transform, filter;
+}
+
 /* ✅ 暗幕（Settingsのスライダーにリンク） */
 .page-shell::after {
   content: "";
@@ -369,6 +460,11 @@ h3 {
   filter: blur(0.55px);
 }
 
+.page-shell[data-timeband="day"] .bg-light .sea-noise {
+  opacity: 0.62;
+  filter: blur(0.22px);
+}
+
 /* 朝: 空の粒を少しだけ幻想寄り */
 .page-shell[data-timeband="morning"] .bg-light {
   opacity: 0.6;
@@ -376,6 +472,9 @@ h3 {
 }
 .page-shell[data-timeband="morning"] .bg-light::before {
   opacity: 0.55;
+}
+.page-shell[data-timeband="morning"] .bg-light .sea-noise {
+  opacity: 0.52;
 }
 
 /* 夕: 反射は控えめで余韻 */
@@ -386,8 +485,11 @@ h3 {
 .page-shell[data-timeband="evening"] .bg-light::after {
   opacity: 0.5;
 }
+.page-shell[data-timeband="evening"] .bg-light .sea-noise {
+  opacity: 0.46;
+}
 
-/* 夜: 星が主体。海キラは弱め */
+/* 夜: 星が主体。海キラは弱め（ただし sea-noise が “生き物感” を担当） */
 .page-shell[data-timeband="night"] .bg-light {
   opacity: 0.52;
   filter: saturate(1);
@@ -398,6 +500,10 @@ h3 {
 .page-shell[data-timeband="night"] .bg-light::before {
   opacity: 0.7;
   filter: blur(0.15px);
+}
+.page-shell[data-timeband="night"] .bg-light .sea-noise {
+  opacity: 0.58;
+  filter: blur(0.2px);
 }
 
 /* アニメーション（軽量） */
@@ -440,6 +546,41 @@ h3 {
       0% 0%,
       0% 0%;
     transform: translate3d(0, 0, 0);
+  }
+}
+
+/* ✅ 追加：水面ノイズのドリフト（同期を崩す） */
+@keyframes seaNoiseDrift {
+  0% {
+    transform: translate3d(-1.2%, 0, 0);
+  }
+  50% {
+    transform: translate3d(0.8%, -0.6%, 0);
+  }
+  100% {
+    transform: translate3d(-1.2%, 0, 0);
+  }
+}
+
+/* ✅ 追加：不規則に見える瞬き（完全ランダムじゃない、でもランダムっぽい） */
+@keyframes seaNoiseTwinkle {
+  0% {
+    opacity: 0.25;
+  }
+  20% {
+    opacity: 0.55;
+  }
+  40% {
+    opacity: 0.35;
+  }
+  60% {
+    opacity: 0.6;
+  }
+  80% {
+    opacity: 0.3;
+  }
+  100% {
+    opacity: 0.5;
   }
 }
 

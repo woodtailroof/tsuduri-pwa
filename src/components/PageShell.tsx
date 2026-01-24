@@ -195,7 +195,7 @@ function makeBgCssValue(
   }
 
   // auto
-  const pAuto = resolveAutoBackgroundSrc(sid, band); // /assets/bg/{sid}-{band}.png
+  const pAuto = resolveAutoBackgroundSrc(sid, band); // /assets/bg/{sid}_{band}.png
   const pSetFallback = normalizePublicPath(`/assets/bg/${sid}.png`); // /assets/bg/surf.png（旧1枚運用の救済）
   return `url(${pAuto}), url(${pSetFallback}), url(/assets/bg/ui-check.png)`;
 }
@@ -459,7 +459,10 @@ export default function PageShell({
   return (
     <div className="page-shell" style={shellStyle} data-timeband={timeBand}>
       {/* ✅ 光エフェクト用レイヤー（背景の上・暗幕の下） */}
-      <div className="bg-light" aria-hidden="true" />
+      <div className="bg-light" aria-hidden="true">
+        {/* ✅ 追加：水面の不規則反射レイヤー（生命感） */}
+        <div className="sea-noise" aria-hidden="true" />
+      </div>
 
       {/* ✅ すりガラス保険CSS */}
       <style>
