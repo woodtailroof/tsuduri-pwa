@@ -434,6 +434,10 @@ export default function PageShell({
 
   return (
     <div className="page-shell" style={shellStyle}>
+      {/* ✅ 光エフェクト用レイヤー（背景の上・UIの下） */}
+      <div className="bg-light" aria-hidden="true" />
+
+      {/* すりガラスCSSなど */}
       <style>
         {`
           .glass{
