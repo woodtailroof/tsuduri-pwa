@@ -21,7 +21,7 @@ export type AppSettings = {
   /** 0〜1 */
   characterOpacity: number;
 
-  /** ✅ public 配下の画像パスでキャラ画像を上書き（例: "/assets/k1.png" or "assets/k1.png"）空ならデフォルト */
+  /** public 配下の画像パスでキャラ画像を上書き（例: "/assets/k1.png" or "assets/k1.png"）空ならデフォルト */
   characterOverrideSrc: string;
 
   // ===== 表示 =====
@@ -30,9 +30,9 @@ export type AppSettings = {
   /** 背景ぼかし(px) */
   bgBlur: number;
 
-  /** ✅ すりガラス濃さ（0〜0.6くらい推奨） */
+  /** すりガラス濃さ（0〜0.6くらい推奨） */
   glassAlpha: number;
-  /** ✅ すりガラスぼかし(px) */
+  /** すりガラスぼかし(px) */
   glassBlur: number;
 
   // ===== ✅ 背景画像 =====
@@ -94,8 +94,6 @@ export const CHARACTER_OPTIONS: CharacterOption[] = [
 export type AutoBgSetOption = { id: string; label: string };
 export const AUTO_BG_SETS: AutoBgSetOption[] = [
   { id: "surf", label: "砂浜（surf）" },
-  // 追加したらここに増やせる
-  // { id: "harbor", label: "港（harbor）" },
 ];
 
 function clamp(n: number, min: number, max: number) {
@@ -156,7 +154,7 @@ function loadCreatedCharacterIds(): string[] {
 function getAllowedCharacterIds(): string[] {
   const base = CHARACTER_OPTIONS.map((c) => c.id).filter(Boolean);
   const created = loadCreatedCharacterIds();
-  // 併合（順序：created → base）
+
   const seen = new Set<string>();
   const merged: string[] = [];
 
@@ -170,7 +168,6 @@ function getAllowedCharacterIds(): string[] {
     seen.add(id);
     merged.push(id);
   }
-
   return merged;
 }
 
@@ -203,8 +200,6 @@ function normalizeAutoBgSetId(id: unknown): string {
   const allowed = new Set(AUTO_BG_SETS.map((x) => x.id));
   if (allowed.has(s)) return s;
 
-  // ここまで来たら未知ID（将来拡張や手入力の可能性）なので、
-  // “とりあえず保持”ではなく “確実に存在する default に寄せる”
   return DEFAULT_SETTINGS.autoBgSet;
 }
 
@@ -286,8 +281,7 @@ function normalize(input: unknown): AppSettings {
         : DEFAULT_SETTINGS.fixedBgSrc,
   };
 
-  // ✅ fixedCharacterId を「CHARACTER_OPTIONS限定」で潰さない
-  // 作成キャラ + 既定キャラ のどちらにも存在しない場合だけフォールバック
+  // ✅ fixedCharacterId は「作成キャラ + 既定キャラ」に存在しない場合だけフォールバック
   const allowed = getAllowedCharacterIds();
   if (!allowed.includes(normalized.fixedCharacterId)) {
     normalized.fixedCharacterId =
