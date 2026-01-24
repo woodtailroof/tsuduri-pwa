@@ -209,32 +209,16 @@ h3 {
   isolation: isolate;
 }
 
-/* 背景画像＋空気 */
+/* 背景画像（ここは “画像だけ” を担当。グラデは body が担当） */
 .page-shell::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -2;
+  pointer-events: none;
 
-  /**
-   * ✅ ここが重要：
-   * - PageShell が --bg-image を更新してくれる
-   * - "off" のときは --bg-image: none; で画像層だけ消える
-   */
-  background:
-    var(--bg-image, none),
-    radial-gradient(
-      1000px 700px at 20% -10%,
-      rgba(255, 77, 109, 0.18),
-      transparent 55%
-    ),
-    radial-gradient(
-      900px 600px at 110% 10%,
-      rgba(110, 207, 255, 0.1),
-      transparent 60%
-    ),
-    linear-gradient(180deg, rgba(7, 8, 11, 0.55), rgba(11, 13, 19, 0.55));
-
+  /* ✅ ショートハンド禁止：Safariの変数＋カンマ事故を回避 */
+  background-image: var(--bg-image, none);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -249,6 +233,7 @@ h3 {
   position: fixed;
   inset: 0;
   z-index: -1;
+  pointer-events: none;
 
   /* ✅ 暗幕（Settingsのスライダーにリンク） */
   background:
@@ -262,7 +247,6 @@ h3 {
       rgba(255, 255, 255, 0.06),
       transparent 65%
     );
-  pointer-events: none;
 }
 
 .page-shell-inner {

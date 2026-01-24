@@ -172,32 +172,26 @@ function useMinuteTick() {
 }
 
 /**
- * ✅ 背景の CSS 文字列を作る
- * - 404 等でも真っ黒にならないように「多重urlフォールバック」を入れる
- * - 1枚目がダメでも、2枚目以降の背景レイヤが描画される
+ * ✅ 背景CSS変数用の値を作る（安定最優先）
+ * - ここでは「1枚の url(...)」か「none」だけを返す
+ * - 404でも body 側のベースグラデ + 暗幕が残るので真っ黒事故が起きにくい
  */
-function makeBgCssValue(
+function makeBgVarValue(
   mode: BgMode,
   setId: string,
   fixedSrc: string,
   band: ReturnType<typeof getTimeBand>,
 ) {
-  const sid = (setId ?? "").trim() || DEFAULT_SETTINGS.autoBgSet;
-
-  if (mode === "off") {
-    return "none";
-  }
+  if (mode === "off") return "none";
 
   if (mode === "fixed") {
     const pFixed = normalizePublicPath(fixedSrc) || "/assets/bg/ui-check.png";
-    // fixed が死んでも ui-check に落ちる
-    return `url(${pFixed}), url(/assets/bg/ui-check.png)`;
+    return `url("${pFixed}")`;
   }
 
-  // auto
+  const sid = (setId ?? "").trim() || DEFAULT_SETTINGS.autoBgSet;
   const pAuto = resolveAutoBackgroundSrc(sid, band); // /assets/bg/{sid}-{band}.png
-  const pSetFallback = normalizePublicPath(`/assets/bg/${sid}.png`); // /assets/bg/surf.png（旧1枚運用の救済）
-  return `url(${pAuto}), url(${pSetFallback}), url(/assets/bg/ui-check.png)`;
+  return `url("${pAuto}")`;
 }
 
 export default function PageShell({
@@ -280,13 +274,13 @@ export default function PageShell({
 
   const timeBand = useMemo(() => getTimeBand(new Date()), [minuteTick]);
 
-  // 画面個別 bgImage が指定されたらそれを最優先（ただしフォールバックも付ける）
-  const resolvedBgCss = useMemo(() => {
+  // 画面個別 bgImage が指定されたらそれを最優先
+  const resolvedBgVar = useMemo(() => {
     if (bgImage && bgImage.trim()) {
-      const p = normalizePublicPath(bgImage);
-      return `url(${p}), url(/assets/bg/ui-check.png)`;
+      const p = normalizePublicPath(bgImage) || "/assets/bg/ui-check.png";
+      return `url("${p}")`;
     }
-    return makeBgCssValue(bgMode, autoBgSet, fixedBgSrc, timeBand);
+    return makeBgVarValue(bgMode, autoBgSet, fixedBgSrc, timeBand);
   }, [bgImage, bgMode, autoBgSet, fixedBgSrc, timeBand]);
 
   // ==========
@@ -427,8 +421,8 @@ export default function PageShell({
     "--glass-alpha-strong": String(glassAlphaStrong),
     "--glass-blur": `${glassBlur}px`,
 
-    // ✅ 背景画像（多重フォールバック込み）
-    "--bg-image": resolvedBgCss,
+    // ✅ 背景画像（安定化：1枚 or none）
+    "--bg-image": resolvedBgVar,
   };
 
   const shouldShowCharacter =

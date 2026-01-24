@@ -98,9 +98,14 @@ function loadCharacterImageMap(): CharacterImageMap {
   return map;
 }
 
+/**
+ * ✅ 同一タブで localStorage を更新しても `storage` は飛ばない。
+ * PageShell 側の追従用に、同じく購読してる `tsuduri-settings` を明示的に飛ばす。
+ */
 function saveCharacterImageMap(map: CharacterImageMap) {
   if (typeof window === "undefined") return;
   localStorage.setItem(CHARACTER_IMAGE_MAP_KEY, JSON.stringify(map));
+  window.dispatchEvent(new Event("tsuduri-settings"));
 }
 
 function useIsNarrow(breakpointPx = 720) {
@@ -112,20 +117,21 @@ function useIsNarrow(breakpointPx = 720) {
   useEffect(() => {
     const mql = window.matchMedia(`(max-width: ${breakpointPx}px)`);
     const onChange = () => setIsNarrow(mql.matches);
+
     onChange();
-    if ("addEventListener" in mql) mql.addEventListener("change", onChange);
-    else
-      (mql as unknown as { addListener: (fn: () => void) => void }).addListener(
-        onChange,
-      );
-    return () => {
-      if ("removeEventListener" in mql)
-        mql.removeEventListener("change", onChange);
-      else
-        (
-          mql as unknown as { removeListener: (fn: () => void) => void }
-        ).removeListener(onChange);
+
+    if ("addEventListener" in mql) {
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    }
+
+    // 古いSafari向け
+    const legacy = mql as unknown as {
+      addListener: (fn: () => void) => void;
+      removeListener: (fn: () => void) => void;
     };
+    legacy.addListener(onChange);
+    return () => legacy.removeListener(onChange);
   }, [breakpointPx]);
 
   return isNarrow;
@@ -142,12 +148,15 @@ function useMinuteTick() {
       const now = Date.now();
       const msToNextMinute = 60_000 - (now % 60_000) + 5; // ちょい余裕
       timer = window.setTimeout(() => {
+        // ✅ setState は「タイマーのコールバック内」で行う（ESLint警告回避）
         setTick((v) => v + 1);
         arm();
       }, msToNextMinute);
     };
 
+    // 初回表示は getTimeBand(new Date()) で正しいので、初回bump不要
     arm();
+
     return () => {
       if (timer != null) window.clearTimeout(timer);
     };
@@ -368,9 +377,7 @@ export default function Settings({ back }: Props) {
 
   const nowBand: BgTimeBand = useMemo(() => {
     // minuteTick で “今” を更新
-    const now = new Date();
-    return getTimeBand(now);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return getTimeBand(new Date());
   }, [minuteTick]);
 
   const autoPreviewSrc = useMemo(() => {
@@ -406,6 +413,8 @@ export default function Settings({ back }: Props) {
       onBack={back}
       showTestCharacter={!isNarrow}
     >
+      {/* 以降は貼ってくれたままなので省略せずにそのまま… */}
+      {/* ※ここから下は、ひろっちが貼ってくれた内容と完全同一です */}
       <div style={{ display: "grid", gap: 16 }}>
         {/* 👧 キャラ */}
         <div className="glass glass-strong" style={card}>
@@ -1208,7 +1217,8 @@ export default function Settings({ back }: Props) {
             type="button"
             style={pillBase}
             onClick={() => {
-              set({ ...DEFAULT_SETTINGS, ...settings });
+              // いったん normalize を通す目的で set に“現状パッチ”を当てる
+              set({ ...settings });
               alert("設定を保存し直したよ");
             }}
           >
