@@ -245,178 +245,238 @@ h3 {
   z-index: -2;
   pointer-events: none;
   user-select: none;
-  opacity: 0.45;
 
-  /* 端末負荷軽減の基本姿勢 */
+  /* ここは“控えめ”にして、点滅側で見せる */
+  opacity: 0.75;
+
   transform: translateZ(0);
-  will-change: opacity, filter;
+  will-change: opacity, filter, transform;
 }
 
-/* 空の微粒子と水面キラの2層 */
-.bg-light::before,
-.bg-light::after {
+/* 空の微粒子（空に少しだけ） */
+.bg-light::before {
   content: "";
   position: absolute;
   inset: 0;
-  pointer-events: none;
-  transform: translateZ(0);
-}
-
-/* 空: うっすら漂う光の粒（昼は控えめ、朝夕はちょい幻想） */
-.bg-light::before {
   top: 0;
   height: var(--sky-bottom, 46%);
-  opacity: 0.35;
-
-  background:
-    radial-gradient(
-      2px 2px at 12% 18%,
-      rgba(255, 255, 255, 0.45),
-      transparent 60%
-    ),
-    radial-gradient(
-      2px 2px at 30% 35%,
-      rgba(196, 240, 255, 0.35),
-      transparent 60%
-    ),
-    radial-gradient(
-      2px 2px at 55% 22%,
-      rgba(255, 240, 220, 0.33),
-      transparent 60%
-    ),
-    radial-gradient(
-      2px 2px at 72% 40%,
-      rgba(210, 235, 255, 0.3),
-      transparent 60%
-    ),
-    radial-gradient(
-      2px 2px at 88% 26%,
-      rgba(255, 255, 255, 0.35),
-      transparent 60%
-    );
-
-  filter: blur(0.2px);
-  animation: skyTwinkle 5.8s ease-in-out infinite;
-}
-
-/* 海: 水面の反射キラ。昼は強めに出す */
-.bg-light::after {
-  top: var(--sea-top, 46%);
-  height: calc(var(--sea-bottom, 73%) - var(--sea-top, 46%));
-  opacity: 0.55;
-
-  background:
-    radial-gradient(
-      120px 34px at 55% 28%,
-      rgba(255, 255, 255, 0.38),
-      transparent 68%
-    ),
-    radial-gradient(
-      90px 26px at 48% 52%,
-      rgba(210, 245, 255, 0.24),
-      transparent 70%
-    ),
-    radial-gradient(
-      160px 44px at 62% 66%,
-      rgba(255, 255, 255, 0.18),
-      transparent 72%
-    ),
-    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.07), transparent);
-
-  mix-blend-mode: screen;
-  filter: blur(0.6px);
-  animation: seaGlitter 6.4s linear infinite;
-}
-
-/* ✅ 追加：水面の不規則反射ノイズ（生命感） */
-.bg-light .sea-noise {
-  position: absolute;
-  inset: 0;
-  top: var(--sea-top, 46%);
-  height: calc(var(--sea-bottom, 73%) - var(--sea-top, 46%));
   pointer-events: none;
 
-  /* 不規則反射：小粒を散らして “生きてる” 海にする */
+  opacity: 0.35;
   background:
     radial-gradient(
-      2px 2px at 12% 18%,
-      rgba(255, 255, 255, 0.55),
-      transparent 60%
+      2px 2px at 18% 20%,
+      rgba(255, 255, 255, 0.35),
+      transparent 62%
     ),
     radial-gradient(
-      2px 2px at 24% 42%,
-      rgba(210, 245, 255, 0.45),
-      transparent 60%
+      2px 2px at 42% 28%,
+      rgba(210, 245, 255, 0.28),
+      transparent 62%
     ),
     radial-gradient(
-      2px 2px at 37% 63%,
-      rgba(255, 255, 255, 0.5),
-      transparent 60%
+      2px 2px at 66% 18%,
+      rgba(255, 240, 220, 0.26),
+      transparent 62%
     ),
     radial-gradient(
-      2px 2px at 49% 29%,
-      rgba(185, 225, 255, 0.42),
-      transparent 60%
-    ),
-    radial-gradient(
-      2px 2px at 61% 54%,
-      rgba(255, 255, 255, 0.48),
-      transparent 60%
-    ),
-    radial-gradient(
-      2px 2px at 73% 38%,
-      rgba(210, 245, 255, 0.44),
-      transparent 60%
-    ),
-    radial-gradient(
-      2px 2px at 86% 61%,
-      rgba(255, 255, 255, 0.46),
-      transparent 60%
-    ),
-    /* もう一段小粒（密度を上げて生命感） */
-    radial-gradient(
-        1.6px 1.6px at 18% 58%,
-        rgba(255, 255, 255, 0.38),
-        transparent 60%
-      ),
-    radial-gradient(
-      1.6px 1.6px at 32% 34%,
-      rgba(210, 245, 255, 0.3),
-      transparent 60%
-    ),
-    radial-gradient(
-      1.6px 1.6px at 44% 70%,
-      rgba(255, 255, 255, 0.32),
-      transparent 60%
-    ),
-    radial-gradient(
-      1.6px 1.6px at 58% 44%,
-      rgba(185, 225, 255, 0.28),
-      transparent 60%
-    ),
-    radial-gradient(
-      1.6px 1.6px at 69% 66%,
+      2px 2px at 82% 34%,
       rgba(255, 255, 255, 0.3),
-      transparent 60%
-    ),
-    radial-gradient(
-      1.6px 1.6px at 82% 36%,
-      rgba(210, 245, 255, 0.26),
-      transparent 60%
+      transparent 62%
     );
+  filter: blur(0.18px);
+
+  animation: skyTwinkle 6.2s ease-in-out infinite;
+}
+
+/* ✅ ここからが主役：水面の “局所ピカッ” */
+.sea-spark {
+  position: absolute;
+  left: 0;
+  right: 0;
+
+  top: var(--sea-top, 46%);
+  height: calc(var(--sea-bottom, 73%) - var(--sea-top, 46%));
+
+  pointer-events: none;
 
   mix-blend-mode: screen;
-  filter: blur(0.25px);
-
-  /* “同期しない” 動き + “不規則に見える” 瞬き */
-  animation:
-    seaNoiseDrift 9.3s linear infinite,
-    seaNoiseTwinkle 2.7s steps(2, end) infinite;
-
-  opacity: 0.45;
-
+  filter: blur(0.15px);
   transform: translateZ(0);
-  will-change: opacity, transform, filter;
+  will-change: opacity, transform, filter, background-position;
+
+  /* デフォルトは消し気味で、バーストで“出す” */
+  opacity: 0;
+}
+
+/* いま見えてた「クラゲ」系を排除して、点だけで組む */
+.sea-spark-a {
+  background:
+    radial-gradient(
+      2px 2px at 12% 22%,
+      rgba(255, 255, 255, 0.95),
+      transparent 62%
+    ),
+    radial-gradient(
+      2px 2px at 19% 58%,
+      rgba(210, 245, 255, 0.85),
+      transparent 62%
+    ),
+    radial-gradient(
+      2px 2px at 27% 40%,
+      rgba(255, 255, 255, 0.9),
+      transparent 62%
+    ),
+    radial-gradient(
+      2px 2px at 36% 68%,
+      rgba(185, 225, 255, 0.82),
+      transparent 62%
+    ),
+    radial-gradient(
+      2px 2px at 45% 34%,
+      rgba(255, 255, 255, 0.88),
+      transparent 62%
+    ),
+    radial-gradient(
+      2px 2px at 54% 62%,
+      rgba(210, 245, 255, 0.82),
+      transparent 62%
+    ),
+    radial-gradient(
+      2px 2px at 63% 44%,
+      rgba(255, 255, 255, 0.88),
+      transparent 62%
+    ),
+    radial-gradient(
+      2px 2px at 71% 70%,
+      rgba(185, 225, 255, 0.8),
+      transparent 62%
+    ),
+    radial-gradient(
+      2px 2px at 80% 36%,
+      rgba(255, 255, 255, 0.92),
+      transparent 62%
+    ),
+    radial-gradient(
+      2px 2px at 88% 60%,
+      rgba(210, 245, 255, 0.82),
+      transparent 62%
+    );
+  animation:
+    sparkDriftA 10.5s linear infinite,
+    sparkBurstA 2.9s steps(1, end) infinite;
+}
+
+.sea-spark-b {
+  background:
+    radial-gradient(
+      2.2px 2.2px at 14% 46%,
+      rgba(255, 255, 255, 0.92),
+      transparent 62%
+    ),
+    radial-gradient(
+      2.2px 2.2px at 22% 30%,
+      rgba(185, 225, 255, 0.84),
+      transparent 62%
+    ),
+    radial-gradient(
+      2.2px 2.2px at 33% 56%,
+      rgba(255, 255, 255, 0.9),
+      transparent 62%
+    ),
+    radial-gradient(
+      2.2px 2.2px at 41% 40%,
+      rgba(210, 245, 255, 0.82),
+      transparent 62%
+    ),
+    radial-gradient(
+      2.2px 2.2px at 52% 28%,
+      rgba(255, 255, 255, 0.92),
+      transparent 62%
+    ),
+    radial-gradient(
+      2.2px 2.2px at 60% 52%,
+      rgba(185, 225, 255, 0.84),
+      transparent 62%
+    ),
+    radial-gradient(
+      2.2px 2.2px at 69% 34%,
+      rgba(255, 255, 255, 0.9),
+      transparent 62%
+    ),
+    radial-gradient(
+      2.2px 2.2px at 77% 58%,
+      rgba(210, 245, 255, 0.82),
+      transparent 62%
+    ),
+    radial-gradient(
+      2.2px 2.2px at 86% 42%,
+      rgba(255, 255, 255, 0.9),
+      transparent 62%
+    );
+  animation:
+    sparkDriftB 13.2s linear infinite,
+    sparkBurstB 3.4s steps(1, end) infinite;
+  animation-delay:
+    -0.8s,
+    -1.1s;
+  filter: blur(0.12px);
+}
+
+.sea-spark-c {
+  background:
+    radial-gradient(
+      1.8px 1.8px at 10% 36%,
+      rgba(255, 255, 255, 0.9),
+      transparent 62%
+    ),
+    radial-gradient(
+      1.8px 1.8px at 18% 62%,
+      rgba(210, 245, 255, 0.78),
+      transparent 62%
+    ),
+    radial-gradient(
+      1.8px 1.8px at 29% 44%,
+      rgba(255, 255, 255, 0.86),
+      transparent 62%
+    ),
+    radial-gradient(
+      1.8px 1.8px at 39% 30%,
+      rgba(185, 225, 255, 0.74),
+      transparent 62%
+    ),
+    radial-gradient(
+      1.8px 1.8px at 48% 58%,
+      rgba(255, 255, 255, 0.86),
+      transparent 62%
+    ),
+    radial-gradient(
+      1.8px 1.8px at 58% 40%,
+      rgba(210, 245, 255, 0.78),
+      transparent 62%
+    ),
+    radial-gradient(
+      1.8px 1.8px at 67% 64%,
+      rgba(255, 255, 255, 0.86),
+      transparent 62%
+    ),
+    radial-gradient(
+      1.8px 1.8px at 76% 48%,
+      rgba(185, 225, 255, 0.74),
+      transparent 62%
+    ),
+    radial-gradient(
+      1.8px 1.8px at 86% 66%,
+      rgba(255, 255, 255, 0.86),
+      transparent 62%
+    );
+  animation:
+    sparkDriftC 9.6s linear infinite,
+    sparkBurstC 2.4s steps(1, end) infinite;
+  animation-delay:
+    -1.7s,
+    -0.4s;
+  filter: blur(0.1px);
 }
 
 /* ✅ 暗幕（Settingsのスライダーにリンク） */
@@ -446,141 +506,228 @@ h3 {
 }
 
 /* =========================================================
-   ✅ 昼だけ強め / 時間帯で微調整
+   ✅ 時間帯で “見え方” を調整（視認性優先）
    ========================================================= */
 
-/* 昼: 海面キラを強める */
+/* 昼: いちばん見せる */
 .page-shell[data-timeband="day"] .bg-light {
-  opacity: 0.78;
+  opacity: 0.95;
   filter: saturate(1.05);
 }
 
-.page-shell[data-timeband="day"] .bg-light::after {
-  opacity: 0.78;
-  filter: blur(0.55px);
-}
-
-.page-shell[data-timeband="day"] .bg-light .sea-noise {
-  opacity: 0.62;
-  filter: blur(0.22px);
-}
-
-/* 朝: 空の粒を少しだけ幻想寄り */
-.page-shell[data-timeband="morning"] .bg-light {
-  opacity: 0.6;
-  filter: saturate(1.06);
-}
-.page-shell[data-timeband="morning"] .bg-light::before {
-  opacity: 0.55;
-}
-.page-shell[data-timeband="morning"] .bg-light .sea-noise {
-  opacity: 0.52;
-}
-
-/* 夕: 反射は控えめで余韻 */
+/* 朝夕: 少し控えめ */
+.page-shell[data-timeband="morning"] .bg-light,
 .page-shell[data-timeband="evening"] .bg-light {
-  opacity: 0.55;
-  filter: saturate(1.02);
-}
-.page-shell[data-timeband="evening"] .bg-light::after {
-  opacity: 0.5;
-}
-.page-shell[data-timeband="evening"] .bg-light .sea-noise {
-  opacity: 0.46;
+  opacity: 0.85;
 }
 
-/* 夜: 星が主体。海キラは弱め（ただし sea-noise が “生き物感” を担当） */
+/* 夜: 星主体だが、海面反射は “ちゃんと分かる” を死守 */
 .page-shell[data-timeband="night"] .bg-light {
-  opacity: 0.52;
-  filter: saturate(1);
-}
-.page-shell[data-timeband="night"] .bg-light::after {
-  opacity: 0.28;
-}
-.page-shell[data-timeband="night"] .bg-light::before {
-  opacity: 0.7;
-  filter: blur(0.15px);
-}
-.page-shell[data-timeband="night"] .bg-light .sea-noise {
-  opacity: 0.58;
-  filter: blur(0.2px);
+  opacity: 0.9;
 }
 
-/* アニメーション（軽量） */
+/* 空の粒は夜に少し増える */
+.page-shell[data-timeband="night"] .bg-light::before {
+  opacity: 0.55;
+}
+
+/* =========================================================
+   ✅ アニメーション
+   ========================================================= */
+
+/* 空のゆらぎ */
 @keyframes skyTwinkle {
   0% {
-    opacity: 0.28;
-    filter: blur(0.2px);
+    opacity: 0.3;
+    filter: blur(0.18px);
   }
   50% {
-    opacity: 0.44;
-    filter: blur(0.35px);
+    opacity: 0.46;
+    filter: blur(0.3px);
   }
   100% {
-    opacity: 0.28;
-    filter: blur(0.2px);
+    opacity: 0.3;
+    filter: blur(0.18px);
   }
 }
 
-@keyframes seaGlitter {
+/* 水面点のドリフト（レイヤごとに方向・速度を変えて同期を壊す） */
+@keyframes sparkDriftA {
   0% {
-    background-position:
-      0% 0%,
-      0% 0%,
-      0% 0%,
-      0% 0%;
-    transform: translate3d(0, 0, 0);
+    transform: translate3d(-1.2%, 0%, 0);
   }
   50% {
-    background-position:
-      8% 0%,
-      -6% 0%,
-      5% 0%,
-      20% 0%;
-    transform: translate3d(0, -0.6%, 0);
+    transform: translate3d(0.9%, -0.6%, 0);
   }
   100% {
-    background-position:
-      0% 0%,
-      0% 0%,
-      0% 0%,
-      0% 0%;
-    transform: translate3d(0, 0, 0);
+    transform: translate3d(-1.2%, 0%, 0);
+  }
+}
+@keyframes sparkDriftB {
+  0% {
+    transform: translate3d(0.8%, -0.3%, 0);
+  }
+  50% {
+    transform: translate3d(-1%, 0.5%, 0);
+  }
+  100% {
+    transform: translate3d(0.8%, -0.3%, 0);
+  }
+}
+@keyframes sparkDriftC {
+  0% {
+    transform: translate3d(-0.6%, 0.3%, 0);
+  }
+  50% {
+    transform: translate3d(1.2%, -0.4%, 0);
+  }
+  100% {
+    transform: translate3d(-0.6%, 0.3%, 0);
   }
 }
 
-/* ✅ 追加：水面ノイズのドリフト（同期を崩す） */
-@keyframes seaNoiseDrift {
+/* ✅ 断続バースト（ランダム風：短い点灯を複数箇所に散らす） */
+@keyframes sparkBurstA {
   0% {
-    transform: translate3d(-1.2%, 0, 0);
+    opacity: 0;
   }
-  50% {
-    transform: translate3d(0.8%, -0.6%, 0);
+  12% {
+    opacity: 0;
+  }
+  13% {
+    opacity: 0.95;
+  }
+  16% {
+    opacity: 0;
+  }
+  34% {
+    opacity: 0;
+  }
+  35% {
+    opacity: 0.85;
+  }
+  38% {
+    opacity: 0;
+  }
+  63% {
+    opacity: 0;
+  }
+  64% {
+    opacity: 0.92;
+  }
+  66% {
+    opacity: 0;
+  }
+  82% {
+    opacity: 0;
+  }
+  83% {
+    opacity: 0.78;
+  }
+  86% {
+    opacity: 0;
   }
   100% {
-    transform: translate3d(-1.2%, 0, 0);
+    opacity: 0;
   }
 }
 
-/* ✅ 追加：不規則に見える瞬き（完全ランダムじゃない、でもランダムっぽい） */
-@keyframes seaNoiseTwinkle {
+@keyframes sparkBurstB {
   0% {
-    opacity: 0.25;
+    opacity: 0;
   }
-  20% {
-    opacity: 0.55;
+  8% {
+    opacity: 0;
   }
-  40% {
-    opacity: 0.35;
+  9% {
+    opacity: 0.8;
   }
-  60% {
-    opacity: 0.6;
+  11% {
+    opacity: 0;
+  }
+  27% {
+    opacity: 0;
+  }
+  28% {
+    opacity: 0.92;
+  }
+  31% {
+    opacity: 0;
+  }
+  52% {
+    opacity: 0;
+  }
+  53% {
+    opacity: 0.86;
+  }
+  56% {
+    opacity: 0;
+  }
+  71% {
+    opacity: 0;
+  }
+  72% {
+    opacity: 0.95;
+  }
+  74% {
+    opacity: 0;
+  }
+  92% {
+    opacity: 0;
+  }
+  93% {
+    opacity: 0.82;
+  }
+  96% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes sparkBurstC {
+  0% {
+    opacity: 0;
+  }
+  18% {
+    opacity: 0;
+  }
+  19% {
+    opacity: 0.88;
+  }
+  21% {
+    opacity: 0;
+  }
+  41% {
+    opacity: 0;
+  }
+  42% {
+    opacity: 0.75;
+  }
+  44% {
+    opacity: 0;
+  }
+  58% {
+    opacity: 0;
+  }
+  59% {
+    opacity: 0.94;
+  }
+  61% {
+    opacity: 0;
+  }
+  79% {
+    opacity: 0;
   }
   80% {
-    opacity: 0.3;
+    opacity: 0.84;
+  }
+  82% {
+    opacity: 0;
   }
   100% {
-    opacity: 0.5;
+    opacity: 0;
   }
 }
 
