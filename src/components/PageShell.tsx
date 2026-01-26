@@ -458,16 +458,6 @@ export default function PageShell({
 
   return (
     <div className="page-shell" style={shellStyle} data-timeband={timeBand}>
-      {/* ✅ 光エフェクト用レイヤー（背景の上・暗幕の下） */}
-      <div className="bg-light" aria-hidden="true">
-        {/* ✅ 左下→右上に漂う神秘的な光の玉（サイズ小さめ、ゆっくり明滅） */}
-        <i className="wisp w1" aria-hidden="true" />
-        <i className="wisp w2" aria-hidden="true" />
-        <i className="wisp w3" aria-hidden="true" />
-        <i className="wisp w4" aria-hidden="true" />
-        <i className="wisp w5" aria-hidden="true" />
-      </div>
-
       {/* ✅ すりガラス保険CSS */}
       <style>
         {`
