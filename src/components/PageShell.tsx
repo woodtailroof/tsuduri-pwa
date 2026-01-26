@@ -39,7 +39,7 @@ type Props = {
 
   /** ✅ 追加：縦スクロール制御（Homeで1画面固定したいとき用） */
   scrollY?: "auto" | "hidden";
-  /** ✅ 追加：内側paddingを画面ごとに調整したい時用 */
+  /** ✅ 追加：内側paddingを画面ごとに調整したいとき用 */
   contentPadding?: string;
 };
 
@@ -53,6 +53,12 @@ const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
 type CharacterImageMap = Record<string, string>;
 
 type CSSVars = Record<`--${string}`, string>;
+
+/**
+ * ✅ PageShellが画面遷移で再マウントしても“直前のキャラ”を維持するためのメモリ
+ * - SPA遷移中は保持される（リロードしたら当然消える）
+ */
+let lastDisplayedCharacterSrc: string | null = null;
 
 function getPath() {
   return (
@@ -370,29 +376,66 @@ export default function PageShell({
     return resolveCharacterSrc(requestedCharacterId);
   }, [requestedCharacterId, mappedCharacterSrc]);
 
-  // チラつき対策：先読み→差し替え
-  const [displaySrc, setDisplaySrc] = useState<string | null>(() => {
-    return requestedCharacterSrc ?? testCharacterSrc;
-  });
+  // =========================
+  // ✅ チラつき対策（遷移で再マウントしても維持）
+  // =========================
+  const initialSrc = useMemo(() => {
+    // 1) 前回の表示（SPA内遷移）を最優先
+    if (lastDisplayedCharacterSrc) return lastDisplayedCharacterSrc;
+    // 2) 今回の要求
+    if (requestedCharacterSrc) return requestedCharacterSrc;
+    // 3) テスト画像
+    return testCharacterSrc;
+  }, [requestedCharacterSrc, testCharacterSrc]);
+
+  const [displaySrc, setDisplaySrc] = useState<string | null>(() => initialSrc);
   const [fadeIn, setFadeIn] = useState(true);
-  const lastSrcRef = useRef<string | null>(null);
+
+  // lastSrcRef は「このPageShellの生存中」に同じsrcでフェードを繰り返さない用
+  const lastSrcRef = useRef<string | null>(initialSrc);
 
   useEffect(() => {
     const next = requestedCharacterSrc ?? testCharacterSrc;
     if (!next) return;
 
-    if (lastSrcRef.current === next) return;
-    lastSrcRef.current = next;
+    // 既に表示中なら何もしない（ここでの無駄フェードが“チカッ”の元）
+    if (displaySrc === next) {
+      lastDisplayedCharacterSrc = next;
+      lastSrcRef.current = next;
+      return;
+    }
+
+    // 直前に扱ったsrcと同じなら、念のためフェードはしない
+    if (lastSrcRef.current === next) {
+      setDisplaySrc(next);
+      setFadeIn(true);
+      lastDisplayedCharacterSrc = next;
+      return;
+    }
 
     const img = new Image();
     img.decoding = "async";
     img.src = next;
 
     let cancelled = false;
+
+    // ✅ ブラウザキャッシュに乗っているなら即時切替（フェード無し）
+    if (img.complete) {
+      lastSrcRef.current = next;
+      lastDisplayedCharacterSrc = next;
+      setDisplaySrc(next);
+      setFadeIn(true);
+      return;
+    }
+
     const onLoad = () => {
       if (cancelled) return;
+
+      // フェードアウト→差し替え→フェードイン
       setFadeIn(false);
       requestAnimationFrame(() => {
+        lastSrcRef.current = next;
+        lastDisplayedCharacterSrc = next;
         setDisplaySrc(next);
         requestAnimationFrame(() => setFadeIn(true));
       });
@@ -404,7 +447,8 @@ export default function PageShell({
       cancelled = true;
       img.removeEventListener("load", onLoad);
     };
-  }, [requestedCharacterSrc, testCharacterSrc]);
+    // displaySrc を依存に入れて「表示中なら何もしない」を効かせる
+  }, [requestedCharacterSrc, testCharacterSrc, displaySrc]);
 
   // ✅ transform scaleを使わず、サイズで倍率をかける
   const characterScale = clamp(settings.characterScale ?? 1, 0.7, 5.0);
