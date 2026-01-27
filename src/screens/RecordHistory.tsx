@@ -135,17 +135,18 @@ function BottomSheet({
     if (typeof document === "undefined") return;
     if (!open) return;
 
-    const prevOverflow = document.body.style.overflow;
+    type TouchActionStyle = CSSStyleDeclaration & { touchAction?: string };
 
-    // ✅ any禁止対策：touchAction は CSSStyleDeclaration にあるので普通に触れる
-    const prevTouchAction = document.body.style.touchAction;
+    const style = document.body.style as TouchActionStyle;
+    const prevOverflow = style.overflow;
+    const prevTouch = style.touchAction;
 
-    document.body.style.overflow = "hidden";
-    document.body.style.touchAction = "none";
+    style.overflow = "hidden";
+    style.touchAction = "none";
 
     return () => {
-      document.body.style.overflow = prevOverflow;
-      document.body.style.touchAction = prevTouchAction;
+      style.overflow = prevOverflow;
+      style.touchAction = prevTouch ?? "";
     };
   }, [open]);
 
@@ -153,9 +154,11 @@ function BottomSheet({
     if (open) {
       setMounted(true);
 
+      // ✅ 初期は「透明＆下」
       setOverlayActive(false);
       setSheetActive(false);
 
+      // ✅ 2段階 rAF で確実に差分を作る
       raf1Ref.current = requestAnimationFrame(() => {
         setOverlayActive(true);
         raf2Ref.current = requestAnimationFrame(() => {
@@ -173,6 +176,7 @@ function BottomSheet({
 
     if (!mounted) return;
 
+    // close: シート→暗転の順で戻す
     setSheetActive(false);
     const t1 = window.setTimeout(
       () => setOverlayActive(false),
@@ -204,14 +208,18 @@ function BottomSheet({
   const overlayMs = reduce ? 0 : 220;
   const sheetMs = reduce ? 0 : 280;
 
-  // ✅ overlay も「固定 blur」じゃなく、雰囲気程度に控えめ
   const overlayStyle: CSSProperties = {
     position: "fixed",
     inset: 0,
     zIndex: 99999,
     background: overlayActive ? "rgba(0,0,0,0.62)" : "rgba(0,0,0,0)",
-    backdropFilter: overlayActive ? "blur(6px)" : "blur(0px)",
-    WebkitBackdropFilter: overlayActive ? "blur(6px)" : "blur(0px)",
+    // ✅ PageShellの設定値に“だいたい”追従（強すぎないよう係数）
+    backdropFilter: overlayActive
+      ? "blur(calc(var(--glass-blur,10px) * 0.6))"
+      : "blur(0px)",
+    WebkitBackdropFilter: overlayActive
+      ? "blur(calc(var(--glass-blur,10px) * 0.6))"
+      : "blur(0px)",
     display: "grid",
     alignItems: "end",
     transition: `background ${overlayMs}ms ease, backdrop-filter ${overlayMs}ms ease`,
@@ -285,17 +293,13 @@ function BottomSheet({
 
 export default function RecordHistory({ back }: Props) {
   const isMobile = useIsMobile();
+  const isDesktop = !isMobile;
 
-  /**
-   * ✅ ここ重要：ボタン/ピルが blur を固定で持つと「背景が死ぬ」ので、
-   * - backdropFilter を直書きしない
-   * - 背景/透過は CSS var（PageShell注入）に寄せる
-   */
   const pillBtnStyle: CSSProperties = {
     borderRadius: 999,
     padding: "8px 12px",
     border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgb(0 0 0 / 0.18)",
+    background: "rgba(0,0,0,0.24)",
     color: "rgba(255,255,255,0.78)",
     cursor: "pointer",
     userSelect: "none",
@@ -304,6 +308,8 @@ export default function RecordHistory({ back }: Props) {
     alignItems: "center",
     gap: 8,
     whiteSpace: "nowrap",
+    backdropFilter: "blur(var(--glass-blur,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
   };
 
   const pillBtnStyleDisabled: CSSProperties = {
@@ -348,10 +354,12 @@ export default function RecordHistory({ back }: Props) {
     minWidth: 0,
     maxWidth: "100%",
     border: "1px solid rgba(255,255,255,0.22)",
-    background: "rgb(255 255 255 / 0.06)",
+    background: "rgba(255,255,255,0.06)",
     color: "#ddd",
     boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.12)",
     WebkitTapHighlightColor: "transparent",
+    backdropFilter: "blur(var(--glass-blur,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
   };
 
   function segPill(checked: boolean): CSSProperties {
@@ -410,7 +418,6 @@ export default function RecordHistory({ back }: Props) {
   >({});
 
   const detailPaneRef = useRef<HTMLDivElement | null>(null);
-  const listPaneRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const onUp = () => setOnline(true);
@@ -609,16 +616,10 @@ export default function RecordHistory({ back }: Props) {
       : null;
 
     return (
-      <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+      <div style={{ display: "grid", gap: 12 }}>
         <div
           className="glass glass-strong"
-          style={{
-            borderRadius: 16,
-            padding: 12,
-            display: "grid",
-            gap: 8,
-            minWidth: 0,
-          }}
+          style={{ borderRadius: 16, padding: 12, display: "grid", gap: 8 }}
         >
           <div
             style={{
@@ -627,7 +628,6 @@ export default function RecordHistory({ back }: Props) {
               gap: 12,
               alignItems: "center",
               flexWrap: "wrap",
-              minWidth: 0,
             }}
           >
             <div style={{ fontWeight: 900, ...ellipsis1 }}>🧾 記録の概要</div>
@@ -693,8 +693,10 @@ export default function RecordHistory({ back }: Props) {
                 border: "1px solid rgba(255, 122, 122, 0.35)",
                 padding: "6px 10px",
                 borderRadius: 999,
-                background: "rgb(0 0 0 / 0.18)",
+                background: "rgba(0,0,0,0.18)",
                 cursor: "pointer",
+                backdropFilter: "blur(var(--glass-blur,10px))",
+                WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
               }}
             >
               🗑 削除
@@ -702,7 +704,7 @@ export default function RecordHistory({ back }: Props) {
           </div>
         </div>
 
-        <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+        <div style={{ display: "grid", gap: 10 }}>
           <div style={{ fontWeight: 900 }}>📈 タイドグラフ</div>
 
           {!record.capturedAt ? (
@@ -718,7 +720,7 @@ export default function RecordHistory({ back }: Props) {
                 minHeight: 320,
                 display: "grid",
                 alignItems: "center",
-                overflow: "visible", // ✅ グラフの僅かな見切れ対策
+                overflow: "hidden",
               }}
             >
               {detailTide && detailTide.series.length > 0 && shot ? (
@@ -1020,8 +1022,9 @@ export default function RecordHistory({ back }: Props) {
               alignItems: "center",
               textAlign: "left",
               cursor: "pointer",
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(255,255,255,0.06)",
               boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
-              minWidth: 0,
             }}
             title="この記録を開く"
           >
@@ -1094,120 +1097,248 @@ export default function RecordHistory({ back }: Props) {
     </div>
   );
 
-  // ✅ PC時：タイトルを左へ、中央カラムを縦に最大活用
-  // ✅ PC時：PageShellのスクロールを止めて、内部で左右を独立スクロール
-  const pcBodyHeight = "calc(100svh - 210px)"; // Controls/余白の概算。崩れても“独立スクロール”の効果が優先。
+  // ✅ PC中央：写真拡大プレースホルダー
+  const photoUrl = useMemo(() => {
+    if (!selected?.photoBlob) return null;
+    try {
+      return URL.createObjectURL(selected.photoBlob);
+    } catch {
+      return null;
+    }
+  }, [selected?.id, selected?.photoBlob]);
+
+  useEffect(() => {
+    return () => {
+      if (photoUrl) URL.revokeObjectURL(photoUrl);
+    };
+  }, [photoUrl]);
+
+  const titleNode = (
+    <h1
+      style={{
+        margin: 0,
+        fontSize: "clamp(20px, 3.2vw, 32px)",
+        lineHeight: 1.15,
+      }}
+    >
+      🗃 全履歴
+    </h1>
+  );
 
   return (
     <PageShell
-      title={
-        <h1
-          style={{
-            margin: 0,
-            fontSize: "clamp(20px, 6vw, 32px)",
-            lineHeight: 1.15,
-          }}
-        >
-          🗃 全履歴
-        </h1>
-      }
-      subtitle={headerSub}
+      title={isDesktop ? undefined : titleNode}
+      subtitle={isDesktop ? undefined : headerSub}
       maxWidth={1400}
       showBack
       onBack={back}
-      titleLayout="left"
-      scrollY={isMobile ? "auto" : "hidden"}
+      // ✅ PCは「ページ自体の縦スクロール」を殺して、各カラム内スクロールに寄せる
+      scrollY={isDesktop ? "hidden" : "auto"}
     >
-      <div style={{ overflowX: "clip", maxWidth: "100vw", minWidth: 0 }}>
-        <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
-          {Controls}
+      <div style={{ overflowX: "clip", maxWidth: "100vw", minHeight: 0 }}>
+        {isMobile ? (
+          <div style={{ display: "grid", gap: 12 }}>
+            {Controls}
 
-          {!allLoadedOnce && allLoading ? (
-            <p>読み込み中…</p>
-          ) : all.length === 0 ? (
-            <p>まだ記録がないよ</p>
-          ) : (
-            <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-                絞り込み {filteredArchive.length} 件（表示{" "}
-                {Math.min(archivePageSize, filteredArchive.length)} 件）
+            {!allLoadedOnce && allLoading ? (
+              <p>読み込み中…</p>
+            ) : all.length === 0 ? (
+              <p>まだ記録がないよ</p>
+            ) : (
+              <div style={{ display: "grid", gap: 10 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+                  絞り込み {filteredArchive.length} 件（表示{" "}
+                  {Math.min(archivePageSize, filteredArchive.length)} 件）
+                </div>
+
+                {ListView}
+
+                <BottomSheet
+                  open={sheetOpen}
+                  onClose={() => setSheetOpen(false)}
+                  title="📌 記録の詳細"
+                  pillBtnStyle={pillBtnStyle}
+                >
+                  {selected ? (
+                    <DetailView record={selected} />
+                  ) : (
+                    <div
+                      style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}
+                    >
+                      —
+                    </div>
+                  )}
+                </BottomSheet>
+              </div>
+            )}
+          </div>
+        ) : (
+          // ✅ PC: 3カラム（左：タイトル+履歴 / 中央：写真 / 右：情報+グラフ）
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "minmax(260px, 420px) minmax(360px, 1fr) minmax(320px, 520px)",
+              gap: 14,
+              alignItems: "start",
+              minWidth: 0,
+              height: "calc(100svh - 24px)",
+              minHeight: 0,
+            }}
+          >
+            {/* 左：タイトル＋履歴一覧（画面内で止める） */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateRows: "auto 1fr",
+                gap: 12,
+                minWidth: 0,
+                minHeight: 0,
+              }}
+            >
+              <div
+                className="glass glass-strong"
+                style={{ borderRadius: 16, padding: 12 }}
+              >
+                {titleNode}
+                <div style={{ height: 8 }} />
+                {headerSub}
               </div>
 
-              {isMobile ? (
-                <>
-                  {ListView}
-                  <BottomSheet
-                    open={sheetOpen}
-                    onClose={() => setSheetOpen(false)}
-                    title="📌 記録の詳細"
-                    pillBtnStyle={pillBtnStyle}
-                  >
-                    {selected ? (
-                      <DetailView record={selected} />
-                    ) : (
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "rgba(255,255,255,0.68)",
-                        }}
-                      >
-                        —
-                      </div>
-                    )}
-                  </BottomSheet>
-                </>
-              ) : (
+              <div
+                style={{
+                  minHeight: 0,
+                  overflow: "hidden",
+                }}
+              >
                 <div
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(340px, 520px) 1fr",
-                    gap: 14,
-                    alignItems: "start",
-                    minWidth: 0,
-                    height: pcBodyHeight,
+                    fontSize: 12,
+                    color: "rgba(255,255,255,0.65)",
+                    marginBottom: 8,
                   }}
                 >
-                  <div
-                    ref={listPaneRef}
-                    style={{
-                      minWidth: 0,
-                      height: "100%",
-                      overflowY: "auto",
-                      paddingRight: 4,
-                    }}
-                  >
-                    {ListView}
-                  </div>
+                  絞り込み {filteredArchive.length} 件（表示{" "}
+                  {Math.min(archivePageSize, filteredArchive.length)} 件）
+                </div>
 
-                  <div
-                    ref={detailPaneRef}
-                    className="glass glass-strong"
-                    style={{
-                      borderRadius: 16,
-                      padding: 12,
-                      height: "100%",
-                      overflowY: "auto",
-                      minWidth: 0,
-                    }}
-                  >
-                    {selected ? (
-                      <DetailView record={selected} />
-                    ) : (
-                      <div
+                <div
+                  style={{
+                    height: "100%",
+                    maxHeight: "calc(100svh - 220px)",
+                    overflowY: "auto",
+                    paddingRight: 4,
+                  }}
+                >
+                  {ListView}
+                </div>
+              </div>
+            </div>
+
+            {/* 中央：コントロール＋写真プレースホルダー */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateRows: "auto 1fr",
+                gap: 12,
+                minWidth: 0,
+                minHeight: 0,
+              }}
+            >
+              {Controls}
+
+              <div
+                className="glass glass-strong"
+                style={{
+                  borderRadius: 16,
+                  padding: 12,
+                  minHeight: 0,
+                  overflow: "hidden",
+                  display: "grid",
+                  alignItems: "center",
+                  justifyItems: "center",
+                }}
+              >
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    maxHeight: "calc(100svh - 320px)",
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    background: "rgba(0,0,0,0.14)",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    display: "grid",
+                    alignItems: "center",
+                    justifyItems: "center",
+                  }}
+                >
+                  {selected && photoUrl ? (
+                    <img
+                      src={photoUrl}
+                      alt="selected"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                        display: "block",
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        color: "rgba(255,255,255,0.62)",
+                        fontSize: 13,
+                        padding: 16,
+                        textAlign: "center",
+                      }}
+                    >
+                      🖼 写真の拡大表示
+                      <div style={{ height: 6 }} />
+                      <span
                         style={{
                           fontSize: 12,
-                          color: "rgba(255,255,255,0.68)",
+                          color: "rgba(255,255,255,0.52)",
                         }}
                       >
-                        左の履歴から選択してね
-                      </div>
-                    )}
-                  </div>
+                        左の履歴から選ぶとここに出るよ
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* 右：情報＋グラフ（今まで通り。画面内スクロールにする） */}
+            <div
+              ref={detailPaneRef}
+              className="glass glass-strong"
+              style={{
+                borderRadius: 16,
+                padding: 12,
+                minHeight: 0,
+                maxHeight: "calc(100svh - 80px)",
+                overflowY: "auto",
+              }}
+            >
+              {!allLoadedOnce && allLoading ? (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                  読み込み中…
+                </div>
+              ) : all.length === 0 ? (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                  まだ記録がないよ
+                </div>
+              ) : selected ? (
+                <DetailView record={selected} />
+              ) : (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                  左の履歴から選択してね
                 </div>
               )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </PageShell>
   );

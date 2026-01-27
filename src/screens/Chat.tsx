@@ -8,6 +8,7 @@ import {
   SELECTED_CHARACTER_ID_KEY,
 } from "./CharacterSettings";
 import PageShell from "../components/PageShell";
+import { useAppSettings } from "../lib/appSettings";
 
 type Props = {
   back: () => void;
@@ -37,10 +38,11 @@ type CharacterProfileWithColor = CharacterProfile & { color?: string };
 function safeLoadCharacters(): CharacterProfileWithColor[] {
   const list = safeJsonParse<CharacterProfileWithColor[]>(
     localStorage.getItem(CHARACTERS_STORAGE_KEY),
-    []
+    [],
   );
   if (Array.isArray(list) && list.length) return list;
 
+  // デフォルト（後方互換で color も持てる）
   return [
     {
       id: "tsuduri",
@@ -51,7 +53,7 @@ function safeLoadCharacters(): CharacterProfileWithColor[] {
       description:
         "元気で可愛い、少し甘え＆少し世話焼き。釣りは現実的に頼れる相棒。説教しない。危ないことは心配として止める。",
       color: "#ff7aa2",
-    } as any,
+    },
   ];
 }
 
@@ -72,22 +74,33 @@ function historyKey(roomId: string) {
   return `tsuduri_chat_history_v2:${roomId}`;
 }
 
+function isRecordLike(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null;
+}
+
 function safeLoadHistory(roomId: string): Msg[] {
   const raw = localStorage.getItem(historyKey(roomId));
-  const parsed = safeJsonParse<any[]>(raw, []);
+  const parsed = safeJsonParse<unknown>(raw, []);
   if (!Array.isArray(parsed)) return [];
-  return parsed
-    .filter(
-      (x) =>
-        x &&
-        (x.role === "user" || x.role === "assistant") &&
-        typeof x.content === "string"
-    )
-    .map((x) => ({
-      role: x.role as Msg["role"],
-      content: String(x.content),
-      speakerId: typeof x.speakerId === "string" ? x.speakerId : undefined,
-    }));
+
+  const out: Msg[] = [];
+  for (const item of parsed) {
+    if (!isRecordLike(item)) continue;
+
+    const role = item.role;
+    const content = item.content;
+    const speakerId = item.speakerId;
+
+    if (role !== "user" && role !== "assistant") continue;
+    if (typeof content !== "string") continue;
+
+    out.push({
+      role,
+      content,
+      speakerId: typeof speakerId === "string" ? speakerId : undefined,
+    });
+  }
+  return out;
 }
 
 function safeSaveHistory(roomId: string, messages: Msg[]) {
@@ -104,7 +117,7 @@ function sleep(ms: number) {
 
 function readCharacterProfile(
   id: string,
-  fallback: CharacterProfileWithColor
+  fallback: CharacterProfileWithColor,
 ): CharacterProfileWithColor {
   const list = safeLoadCharacters();
   return list.find((c) => c.id === id) ?? fallback;
@@ -117,7 +130,7 @@ function readCharacterProfile(
  */
 function buildThreadForCharacter(
   allRoomMessages: Msg[],
-  speakerId: string
+  speakerId: string,
 ): { role: "user" | "assistant"; content: string }[] {
   return allRoomMessages
     .filter((m) => {
@@ -132,9 +145,11 @@ async function readErrorBody(res: Response): Promise<string | null> {
   try {
     const ct = res.headers.get("content-type") || "";
     if (ct.includes("application/json")) {
-      const j = await res.json().catch(() => null);
-      if (j?.error) return String(j.error);
-      if (j?.message) return String(j.message);
+      const j: unknown = await res.json().catch(() => null);
+      if (isRecordLike(j)) {
+        if (typeof j.error === "string") return j.error;
+        if (typeof j.message === "string") return j.message;
+      }
       return JSON.stringify(j);
     }
     const t = await res.text().catch(() => "");
@@ -188,7 +203,7 @@ function escapeRegExp(s: string) {
 
 function isFishingJudgeText(text: string) {
   return /(釣り行く|釣りいく|迷って|釣行判断|今日どう|明日どう|風|雨|波|潮|満潮|干潮|水温|ポイント)/.test(
-    text ?? ""
+    text ?? "",
   );
 }
 
@@ -226,7 +241,7 @@ function uniqStrings(xs: Array<string | null | undefined>) {
  */
 function detectMentionedCharacterId(
   text: string,
-  characters: CharacterProfileWithColor[]
+  characters: CharacterProfileWithColor[],
 ): string | null {
   const sRaw = (text ?? "").trim();
   if (!sRaw) return null;
@@ -250,7 +265,7 @@ function detectMentionedCharacterId(
     const tail = full ? tailNickname(full) : null;
     const self = (c.selfName ?? "").trim();
     const keys = uniqStrings([full, tail, self]).filter(
-      (k) => (k ?? "").trim().length >= 2
+      (k) => (k ?? "").trim().length >= 2,
     );
     keys.sort((a, b) => b.length - a.length);
     return { id: c.id, keys };
@@ -282,7 +297,7 @@ function detectMentionedCharacterId(
   }
   if (!hits.length) return null;
   hits.sort((a, b) =>
-    a.index !== b.index ? a.index - b.index : b.keyLen - a.keyLen
+    a.index !== b.index ? a.index - b.index : b.keyLen - a.keyLen,
   );
   return hits[0]?.id ?? null;
 }
@@ -335,7 +350,7 @@ function buildSharedMemoForJudgeFollowers(leadName: string, leadReply: string) {
   const numPart = numbers ? ` / 参考数値: ${numbers}` : "";
 
   return sanitizeJudgeTriggers(
-    `【共有メモ】先頭（${leadName}）の結論：${conclusion}${numPart}`
+    `【共有メモ】先頭（${leadName}）の結論：${conclusion}${numPart}`,
   );
 }
 
@@ -352,7 +367,7 @@ function roleHintForBanter(leadName: string) {
 
 function rewriteLastUserForJudgeFollower(
   baseThread: { role: "user" | "assistant"; content: string }[],
-  day: "today" | "tomorrow"
+  day: "today" | "tomorrow",
 ) {
   const idx = [...baseThread].reverse().findIndex((m) => m.role === "user");
   if (idx < 0) return baseThread;
@@ -362,38 +377,47 @@ function rewriteLastUserForJudgeFollower(
   const replaced = `全員集合の相談：${dayText}の予定について、先頭担当の結論に沿って「補足」や「作戦」を短く提案して。結論は変えない。`;
 
   return baseThread.map((m, i) =>
-    i === lastUserIndex ? { ...m, content: replaced } : m
+    i === lastUserIndex ? { ...m, content: replaced } : m,
   );
 }
 
 /** 色取得（後方互換） */
 function getCharacterColor(c: CharacterProfileWithColor | undefined | null) {
-  const raw = (c as any)?.color;
+  const raw = c?.color;
   if (typeof raw === "string" && raw.trim()) return raw.trim();
   return "#ff7aa2";
 }
 
 export default function Chat({ back, goCharacterSettings }: Props) {
+  const settings = useAppSettings();
+
+  const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
+  const glassBlur = clamp(settings.glassBlur ?? 10, 0, 40);
+
+  const glassBg = (alpha: number) => `rgba(0,0,0,${clamp(alpha, 0, 0.85)})`;
+  const glassBorder = "1px solid rgba(255,255,255,0.14)";
+  const glassFilter = `blur(${Math.round(glassBlur)}px)`;
+
   const [characters, setCharacters] = useState<CharacterProfileWithColor[]>(
-    () => safeLoadCharacters()
+    () => safeLoadCharacters(),
   );
 
   const fallback = useMemo(() => characters[0], [characters]);
 
   const [selectedId, setSelectedId] = useState<string>(() =>
-    safeLoadSelectedCharacterId(safeLoadCharacters()[0]?.id ?? "tsuduri")
+    safeLoadSelectedCharacterId(safeLoadCharacters()[0]?.id ?? "tsuduri"),
   );
 
   const selectedCharacter = useMemo(
     () => readCharacterProfile(selectedId, fallback),
-    [selectedId, fallback]
+    [selectedId, fallback],
   );
 
   const [roomMode, setRoomMode] = useState<"single" | "all">("single");
   const roomId = roomMode === "single" ? selectedId : "all";
 
   const [messages, setMessages] = useState<Msg[]>(() =>
-    safeLoadHistory(roomId)
+    safeLoadHistory(roomId),
   );
   const [input, setInput] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
@@ -440,10 +464,13 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
   // ✅ 画面全体はスクロールさせない（チャット欄だけ）
   useEffect(() => {
-    const prev = document.body.style.overflow;
+    const prevHtml = document.documentElement.style.overflow;
+    const prevBody = document.body.style.overflow;
+    document.documentElement.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = prev;
+      document.documentElement.style.overflow = prevHtml;
+      document.body.style.overflow = prevBody;
     };
   }, []);
 
@@ -492,7 +519,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
   async function callApiChat(
     payloadMessages: { role: "user" | "assistant"; content: string }[],
     character: CharacterProfileWithColor,
-    systemHints: string[] = []
+    systemHints: string[] = [],
   ) {
     const res = await fetch("/api/chat", {
       method: "POST",
@@ -509,10 +536,16 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       throw new Error(`HTTP ${res.status}${bodyErr ? ` / ${bodyErr}` : ""}`);
     }
 
-    const json = await res.json().catch(() => null);
-    if (!json?.ok)
-      throw new Error(json?.error ? String(json.error) : "unknown_error");
-    return String(json.text ?? "");
+    const json: unknown = await res.json().catch(() => null);
+    if (!isRecordLike(json) || json.ok !== true) {
+      const err =
+        isRecordLike(json) && typeof json.error === "string"
+          ? json.error
+          : "unknown_error";
+      throw new Error(err);
+    }
+    const txt = typeof json.text === "string" ? json.text : "";
+    return String(txt ?? "");
   }
 
   async function sendSingle() {
@@ -531,7 +564,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       const thread = next.map((m) => ({ role: m.role, content: m.content }));
       const currentCharacter = readCharacterProfile(
         selectedId,
-        selectedCharacter
+        selectedCharacter,
       );
       const reply = await callApiChat(thread, currentCharacter, []);
       setMessages([...next, { role: "assistant", content: reply }]);
@@ -617,7 +650,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           threadForCall = rewriteLastUserForJudgeFollower(threadForCall, day);
           if (sharedMemoJudge) systemHints.push(sharedMemoJudge);
           systemHints.push(
-            `【あなたは脇役】先頭の結論は変えない。短く補足だけ。復唱禁止。`
+            `【あなたは脇役】先頭の結論は変えない。短く補足だけ。復唱禁止。`,
           );
         } else if (banterHit || mentionedId) {
           systemHints.push(buildSharedMemoForBanter(leadName));
@@ -630,7 +663,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 - 先頭「${leadName}」がメイン。あなたは短く。
 - 付け足すなら「別観点を1つ」だけ。
 - 先頭の言い換え復唱は禁止。
-`.trim()
+`.trim(),
           );
         }
 
@@ -670,13 +703,13 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     padding: "6px 10px",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(0,0,0,0.22)",
+    background: glassBg(glassAlpha),
     color: "rgba(255,255,255,0.82)",
     cursor: "pointer",
     height: 34,
     lineHeight: "20px",
-    backdropFilter: "blur(10px)",
-    WebkitBackdropFilter: "blur(10px)",
+    backdropFilter: glassFilter,
+    WebkitBackdropFilter: glassFilter,
   };
 
   const uiButtonStyleActive: React.CSSProperties = {
@@ -712,12 +745,12 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           gap: 6px;
           padding: 8px 12px;
           border-radius: 14px;
-          background: rgba(0,0,0,0.28);
-          border: 1px solid rgba(255,255,255,0.14);
+          background: ${glassBg(glassAlpha)};
+          border: ${glassBorder};
           color: #fff;
           max-width: 80%;
-          backdrop-filter: blur(10px);
-          -webkit-backdrop-filter: blur(10px);
+          backdrop-filter: ${glassFilter};
+          -webkit-backdrop-filter: ${glassFilter};
         }
         .tsuduri-typing .label {
           font-size: 12px;
@@ -742,7 +775,10 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           flexDirection: "column",
           gap: 12,
           minWidth: 0,
-          height: "calc(100dvh - 120px)",
+          // ✅ PCで微妙に下がはみ出してスクロールが出る対策：
+          // PageShell 側の上下余白と合わせても破綻しにくいように "100%" ベースに寄せる
+          height: "100%",
+          maxHeight: "calc(100dvh - 120px)",
           overflow: "hidden",
         }}
       >
@@ -839,12 +875,12 @@ export default function Chat({ back, goCharacterSettings }: Props) {
             minHeight: 0,
             overflowY: "auto",
             overflowX: "hidden",
-            border: "1px solid rgba(255,255,255,0.14)",
+            border: glassBorder,
             borderRadius: 14,
             padding: 12,
-            background: "rgba(0,0,0,0.20)",
-            backdropFilter: "blur(10px)",
-            WebkitBackdropFilter: "blur(10px)",
+            background: glassBg(glassAlpha),
+            backdropFilter: glassFilter,
+            WebkitBackdropFilter: glassFilter,
             minWidth: 0,
           }}
         >
@@ -917,7 +953,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                       borderRadius: 14,
                       background: isUser
                         ? "rgba(255,77,109,0.92)"
-                        : "rgba(0,0,0,0.22)",
+                        : glassBg(glassAlpha),
                       color: "#fff",
                       maxWidth: "80%",
                       whiteSpace: "pre-wrap",
@@ -925,8 +961,8 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                       overflowWrap: "anywhere",
                       wordBreak: "break-word",
                       border: bubbleBorder,
-                      backdropFilter: "blur(10px)",
-                      WebkitBackdropFilter: "blur(10px)",
+                      backdropFilter: glassFilter,
+                      WebkitBackdropFilter: glassFilter,
                     }}
                   >
                     {m.content}
@@ -987,11 +1023,11 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           style={{
             flex: "0 0 auto",
             padding: 10,
-            border: "1px solid rgba(255,255,255,0.14)",
+            border: glassBorder,
             borderRadius: 14,
-            background: "rgba(0,0,0,0.18)",
-            backdropFilter: "blur(10px)",
-            WebkitBackdropFilter: "blur(10px)",
+            background: glassBg(glassAlpha),
+            backdropFilter: glassFilter,
+            WebkitBackdropFilter: glassFilter,
           }}
         >
           <div
@@ -1022,11 +1058,11 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                 padding: 10,
                 minWidth: 0,
                 borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.14)",
-                background: "rgba(0,0,0,0.22)",
+                border: glassBorder,
+                background: glassBg(glassAlpha),
                 color: "#fff",
-                backdropFilter: "blur(10px)",
-                WebkitBackdropFilter: "blur(10px)",
+                backdropFilter: glassFilter,
+                WebkitBackdropFilter: glassFilter,
               }}
               disabled={false}
             />
