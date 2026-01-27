@@ -206,6 +206,24 @@ function makeBgCssValue(
   return `url(${pAuto}), url(${pSetFallback}), url(/assets/bg/ui-check.png)`;
 }
 
+function useIsWide() {
+  const [wide, setWide] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const mq = window.matchMedia("(min-width: 900px)");
+    return mq.matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(min-width: 900px)");
+    const onChange = () => setWide(mq.matches);
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+
+  return wide;
+}
+
 export default function PageShell({
   title,
   subtitle,
@@ -234,6 +252,7 @@ export default function PageShell({
   contentPadding,
 }: Props) {
   const { settings } = useAppSettings();
+  const isWide = useIsWide();
 
   const current = useMemo(() => getPath(), []);
 
@@ -398,7 +417,7 @@ export default function PageShell({
     const next = requestedCharacterSrc ?? testCharacterSrc;
     if (!next) return;
 
-    // 既に表示中なら何もしない（ここでの無駄フェードが“チカッ”の元）
+    // 既に表示中なら何もしない
     if (displaySrc === next) {
       lastDisplayedCharacterSrc = next;
       lastSrcRef.current = next;
@@ -419,7 +438,7 @@ export default function PageShell({
 
     let cancelled = false;
 
-    // ✅ ブラウザキャッシュに乗っているなら即時切替（フェード無し）
+    // ✅ キャッシュに乗っているなら即時切替（フェード無し）
     if (img.complete) {
       lastSrcRef.current = next;
       lastDisplayedCharacterSrc = next;
@@ -431,7 +450,6 @@ export default function PageShell({
     const onLoad = () => {
       if (cancelled) return;
 
-      // フェードアウト→差し替え→フェードイン
       setFadeIn(false);
       requestAnimationFrame(() => {
         lastSrcRef.current = next;
@@ -447,7 +465,6 @@ export default function PageShell({
       cancelled = true;
       img.removeEventListener("load", onLoad);
     };
-    // displaySrc を依存に入れて「表示中なら何もしない」を効かせる
   }, [requestedCharacterSrc, testCharacterSrc, displaySrc]);
 
   // ✅ transform scaleを使わず、サイズで倍率をかける
@@ -475,7 +492,6 @@ export default function PageShell({
     "--bg-image": resolvedBgCss,
 
     // ✅ セクション境界（この背景に合わせた初期推定値）
-    // 空: 0〜46%、海: 46〜73%、砂: 73〜100%
     "--sky-bottom": "46%",
     "--sea-top": "46%",
     "--sea-bottom": "73%",
@@ -493,6 +509,11 @@ export default function PageShell({
     overflowX: "hidden",
     WebkitOverflowScrolling: "touch",
     overscrollBehavior: "contain",
+
+    // ✅ ここ重要：子が「縦を使い切れる」ようにする
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
   };
 
   const innerPadding = contentPadding ?? "clamp(16px, 3vw, 24px)";
@@ -500,16 +521,18 @@ export default function PageShell({
   // ✅ CSS calcで “clamp(...) * scale” を作る（transformよりボケにくい）
   const scaledHeightCss = `calc(${testCharacterHeight} * ${characterScale})`;
 
+  const hasHeader = !!title || !!subtitle;
+
   return (
     <div className="page-shell" style={shellStyle} data-timeband={timeBand}>
-      {/* ✅ すりガラス保険CSS */}
+      {/* ✅ すりガラス保険CSS（変数追従） */}
       <style>
         {`
           .glass{
             background: rgba(0,0,0,var(--glass-alpha,0.22));
             border: 1px solid rgba(255,255,255,0.14);
-            backdrop-filter: blur(var(--glass-blur,10px));
-            -webkit-backdrop-filter: blur(var(--glass-blur,10px));
+            backdrop-filter: blur(var(--glass-blur,0px));
+            -webkit-backdrop-filter: blur(var(--glass-blur,0px));
           }
           .glass.glass-strong{
             background: rgba(0,0,0,var(--glass-alpha-strong,0.30));
@@ -594,17 +617,70 @@ export default function PageShell({
             padding: innerPadding,
             boxSizing: "border-box",
             position: "relative",
+
+            // ✅ ここ重要：子が minHeight:0 で縮めるように
+            flex: "1 1 auto",
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          <div style={{ position: "relative" }}>
-            {(title || subtitle) && (
-              <div style={{ marginBottom: 16 }}>
-                {title}
-                {subtitle}
+          {/* ✅ PC（広い画面）ではタイトルを左に退避 */}
+          {hasHeader && isWide ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(220px, 280px) 1fr",
+                gap: 18,
+                alignItems: "start",
+                minWidth: 0,
+                flex: "1 1 auto",
+                minHeight: 0,
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div
+                  className="glass"
+                  style={{
+                    borderRadius: 16,
+                    padding: 12,
+                    position: "sticky",
+                    top: showBack ? 56 : 12,
+                  }}
+                >
+                  {title}
+                  {subtitle ? (
+                    <div style={{ marginTop: 10 }}>{subtitle}</div>
+                  ) : null}
+                </div>
               </div>
-            )}
-            {children}
-          </div>
+
+              <div
+                style={{
+                  minWidth: 0,
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                <div style={{ minWidth: 0, minHeight: 0, flex: "1 1 auto" }}>
+                  {children}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {hasHeader && (
+                <div style={{ marginBottom: 16 }}>
+                  {title}
+                  {subtitle}
+                </div>
+              )}
+              <div style={{ minWidth: 0, minHeight: 0, flex: "1 1 auto" }}>
+                {children}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
