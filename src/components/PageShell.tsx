@@ -41,6 +41,13 @@ type Props = {
   scrollY?: "auto" | "hidden";
   /** ✅ 追加：内側paddingを画面ごとに調整したいとき用 */
   contentPadding?: string;
+
+  /**
+   * ✅ 追加：PCのときだけタイトルを左に逃がしたい
+   * - "top": 従来（中央カラムの上）
+   * - "left": PCのみ左カラムに出す（スマホでは自動で "top" に戻す）
+   */
+  titleLayout?: "top" | "left";
 };
 
 const STACK_KEY = "tsuduri_nav_stack_v1";
@@ -177,6 +184,35 @@ function useMinuteTick() {
   return tick;
 }
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const mq = window.matchMedia("(max-width: 820px)");
+    const coarse = window.matchMedia("(pointer: coarse)");
+    return mq.matches || coarse.matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 820px)");
+    const coarse = window.matchMedia("(pointer: coarse)");
+
+    const onChange = () => setIsMobile(mq.matches || coarse.matches);
+
+    mq.addEventListener?.("change", onChange);
+    coarse.addEventListener?.("change", onChange);
+    window.addEventListener("orientationchange", onChange);
+
+    return () => {
+      mq.removeEventListener?.("change", onChange);
+      coarse.removeEventListener?.("change", onChange);
+      window.removeEventListener("orientationchange", onChange);
+    };
+  }, []);
+
+  return isMobile;
+}
+
 /**
  * ✅ 背景の CSS 文字列を作る
  * - 404 等でも真っ黒にならないように「多重urlフォールバック」を入れる
@@ -206,24 +242,6 @@ function makeBgCssValue(
   return `url(${pAuto}), url(${pSetFallback}), url(/assets/bg/ui-check.png)`;
 }
 
-function useIsWide() {
-  const [wide, setWide] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    const mq = window.matchMedia("(min-width: 900px)");
-    return mq.matches;
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mq = window.matchMedia("(min-width: 900px)");
-    const onChange = () => setWide(mq.matches);
-    mq.addEventListener?.("change", onChange);
-    return () => mq.removeEventListener?.("change", onChange);
-  }, []);
-
-  return wide;
-}
-
 export default function PageShell({
   title,
   subtitle,
@@ -250,9 +268,11 @@ export default function PageShell({
 
   scrollY = "auto",
   contentPadding,
+
+  titleLayout = "top",
 }: Props) {
   const { settings } = useAppSettings();
-  const isWide = useIsWide();
+  const isMobile = useIsMobile();
 
   const current = useMemo(() => getPath(), []);
 
@@ -279,22 +299,16 @@ export default function PageShell({
     window.location.assign(prev ?? fallbackHref);
   }, [onBack, fallbackHref]);
 
-  // ==========
-  // 背景（Settings → CSS var）
-  // ==========
+  // ========== 背景（Settings → CSS var）
   const effectiveBgDim = settings.bgDim ?? bgDim;
   const effectiveBgBlur = settings.bgBlur ?? bgBlur;
 
-  // ==========
-  // ガラス（Settings → CSS var）
-  // ==========
+  // ========== ガラス（Settings → CSS var）
   const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
   const glassBlur = clamp(settings.glassBlur ?? 10, 0, 24);
   const glassAlphaStrong = clamp(glassAlpha + 0.08, 0, 0.6);
 
-  // ==========
-  // ✅ 背景画像（auto/fixed/off + 毎分更新）
-  // ==========
+  // ========== 背景画像（auto/fixed/off + 毎分更新）
   const minuteTick = useMinuteTick();
 
   const bgMode = (settings.bgMode ?? DEFAULT_SETTINGS.bgMode) as BgMode;
@@ -305,7 +319,6 @@ export default function PageShell({
 
   const timeBand = useMemo(() => getTimeBand(new Date()), [minuteTick]);
 
-  // 画面個別 bgImage が指定されたらそれを最優先（ただしフォールバックも付ける）
   const resolvedBgCss = useMemo(() => {
     if (bgImage && bgImage.trim()) {
       const p = normalizePublicPath(bgImage);
@@ -314,9 +327,7 @@ export default function PageShell({
     return makeBgCssValue(bgMode, autoBgSet, fixedBgSrc, timeBand);
   }, [bgImage, bgMode, autoBgSet, fixedBgSrc, timeBand]);
 
-  // ==========
-  // ✅ ストレージ変更検知（tick）
-  // ==========
+  // ========== ストレージ変更検知（tick）
   const [storageTick, setStorageTick] = useState(0);
 
   useEffect(() => {
@@ -343,9 +354,6 @@ export default function PageShell({
     };
   }, []);
 
-  // ==========
-  // ✅ tick で更新
-  // ==========
   const [createdIds, setCreatedIds] = useState<string[]>(() =>
     loadCreatedCharacterIds(),
   );
@@ -358,9 +366,7 @@ export default function PageShell({
     setCharacterImageMap(loadCharacterImageMap());
   }, [storageTick]);
 
-  // ==========
-  // キャラ（固定/ランダム）※作成キャラから選ぶ
-  // ==========
+  // ========== キャラ（固定/ランダム）※作成キャラから選ぶ
   const requestedCharacterId = useMemo(() => {
     if (!settings.characterEnabled) return null;
     if (createdIds.length === 0) return null;
@@ -395,36 +401,27 @@ export default function PageShell({
     return resolveCharacterSrc(requestedCharacterId);
   }, [requestedCharacterId, mappedCharacterSrc]);
 
-  // =========================
-  // ✅ チラつき対策（遷移で再マウントしても維持）
-  // =========================
+  // ========== チラつき対策
   const initialSrc = useMemo(() => {
-    // 1) 前回の表示（SPA内遷移）を最優先
     if (lastDisplayedCharacterSrc) return lastDisplayedCharacterSrc;
-    // 2) 今回の要求
     if (requestedCharacterSrc) return requestedCharacterSrc;
-    // 3) テスト画像
     return testCharacterSrc;
   }, [requestedCharacterSrc, testCharacterSrc]);
 
   const [displaySrc, setDisplaySrc] = useState<string | null>(() => initialSrc);
   const [fadeIn, setFadeIn] = useState(true);
-
-  // lastSrcRef は「このPageShellの生存中」に同じsrcでフェードを繰り返さない用
   const lastSrcRef = useRef<string | null>(initialSrc);
 
   useEffect(() => {
     const next = requestedCharacterSrc ?? testCharacterSrc;
     if (!next) return;
 
-    // 既に表示中なら何もしない
     if (displaySrc === next) {
       lastDisplayedCharacterSrc = next;
       lastSrcRef.current = next;
       return;
     }
 
-    // 直前に扱ったsrcと同じなら、念のためフェードはしない
     if (lastSrcRef.current === next) {
       setDisplaySrc(next);
       setFadeIn(true);
@@ -438,7 +435,6 @@ export default function PageShell({
 
     let cancelled = false;
 
-    // ✅ キャッシュに乗っているなら即時切替（フェード無し）
     if (img.complete) {
       lastSrcRef.current = next;
       lastDisplayedCharacterSrc = next;
@@ -467,7 +463,6 @@ export default function PageShell({
     };
   }, [requestedCharacterSrc, testCharacterSrc, displaySrc]);
 
-  // ✅ transform scaleを使わず、サイズで倍率をかける
   const characterScale = clamp(settings.characterScale ?? 1, 0.7, 5.0);
   const characterOpacity = clamp(
     settings.characterOpacity ?? testCharacterOpacity,
@@ -488,10 +483,8 @@ export default function PageShell({
     "--glass-alpha-strong": String(glassAlphaStrong),
     "--glass-blur": `${glassBlur}px`,
 
-    // ✅ 背景画像（多重フォールバック込み）
     "--bg-image": resolvedBgCss,
 
-    // ✅ セクション境界（この背景に合わせた初期推定値）
     "--sky-bottom": "46%",
     "--sea-top": "46%",
     "--sea-bottom": "73%",
@@ -509,33 +502,33 @@ export default function PageShell({
     overflowX: "hidden",
     WebkitOverflowScrolling: "touch",
     overscrollBehavior: "contain",
-
-    // ✅ ここ重要：子が「縦を使い切れる」ようにする
-    display: "flex",
-    flexDirection: "column",
-    minHeight: 0,
   };
 
   const innerPadding = contentPadding ?? "clamp(16px, 3vw, 24px)";
-
-  // ✅ CSS calcで “clamp(...) * scale” を作る（transformよりボケにくい）
   const scaledHeightCss = `calc(${testCharacterHeight} * ${characterScale})`;
 
-  const hasHeader = !!title || !!subtitle;
+  const effectiveTitleLayout =
+    titleLayout === "left" && !isMobile ? "left" : "top";
 
   return (
     <div className="page-shell" style={shellStyle} data-timeband={timeBand}>
-      {/* ✅ すりガラス保険CSS（変数追従） */}
+      {/* ✅ すりガラス保険CSS（var連動） */}
       <style>
         {`
           .glass{
-            background: rgba(0,0,0,var(--glass-alpha,0.22));
+            background: rgb(0 0 0 / var(--glass-alpha,0.22));
             border: 1px solid rgba(255,255,255,0.14);
-            backdrop-filter: blur(var(--glass-blur,0px));
-            -webkit-backdrop-filter: blur(var(--glass-blur,0px));
+            backdrop-filter: blur(var(--glass-blur,10px));
+            -webkit-backdrop-filter: blur(var(--glass-blur,10px));
           }
           .glass.glass-strong{
-            background: rgba(0,0,0,var(--glass-alpha-strong,0.30));
+            background: rgb(0 0 0 / var(--glass-alpha-strong,0.30));
+          }
+          .page-shell .scrollbar-hidden{
+            scrollbar-width: none;
+          }
+          .page-shell .scrollbar-hidden::-webkit-scrollbar{
+            display: none;
           }
         `}
       </style>
@@ -617,69 +610,52 @@ export default function PageShell({
             padding: innerPadding,
             boxSizing: "border-box",
             position: "relative",
-
-            // ✅ ここ重要：子が minHeight:0 で縮めるように
-            flex: "1 1 auto",
-            minHeight: 0,
-            display: "flex",
-            flexDirection: "column",
+            minHeight: "100%",
           }}
         >
-          {/* ✅ PC（広い画面）ではタイトルを左に退避 */}
-          {hasHeader && isWide ? (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(220px, 280px) 1fr",
-                gap: 18,
-                alignItems: "start",
-                minWidth: 0,
-                flex: "1 1 auto",
-                minHeight: 0,
-              }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <div
-                  className="glass"
-                  style={{
-                    borderRadius: 16,
-                    padding: 12,
-                    position: "sticky",
-                    top: showBack ? 56 : 12,
-                  }}
-                >
-                  {title}
-                  {subtitle ? (
-                    <div style={{ marginTop: 10 }}>{subtitle}</div>
-                  ) : null}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  minWidth: 0,
-                  minHeight: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <div style={{ minWidth: 0, minHeight: 0, flex: "1 1 auto" }}>
-                  {children}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <>
-              {hasHeader && (
+          {effectiveTitleLayout === "top" ? (
+            <div style={{ position: "relative" }}>
+              {(title || subtitle) && (
                 <div style={{ marginBottom: 16 }}>
                   {title}
                   {subtitle}
                 </div>
               )}
-              <div style={{ minWidth: 0, minHeight: 0, flex: "1 1 auto" }}>
-                {children}
+              {children}
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(220px, 320px) 1fr",
+                gap: 16,
+                alignItems: "start",
+                minWidth: 0,
+                minHeight: "100%",
+              }}
+            >
+              <div
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  alignSelf: "start",
+                  paddingTop: 2,
+                  minWidth: 0,
+                }}
+              >
+                <div
+                  className="glass glass-strong"
+                  style={{ borderRadius: 16, padding: 12 }}
+                >
+                  {title}
+                  {subtitle ? (
+                    <div style={{ marginTop: 8 }}>{subtitle}</div>
+                  ) : null}
+                </div>
               </div>
-            </>
+
+              <div style={{ minWidth: 0 }}>{children}</div>
+            </div>
           )}
         </div>
       </div>

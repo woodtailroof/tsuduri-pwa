@@ -1,5 +1,4 @@
 // src/screens/RecordHistory.tsx
-
 import {
   useEffect,
   useMemo,
@@ -136,25 +135,24 @@ function BottomSheet({
     if (typeof document === "undefined") return;
     if (!open) return;
 
-    const bodyStyle = document.body.style as CSSStyleDeclaration & {
-      touchAction?: string;
-    };
+    const prevOverflow = document.body.style.overflow;
 
-    const prevOverflow = bodyStyle.overflow;
-    const prevTouch = bodyStyle.touchAction;
+    // ✅ any禁止対策：touchAction は CSSStyleDeclaration にあるので普通に触れる
+    const prevTouchAction = document.body.style.touchAction;
 
-    bodyStyle.overflow = "hidden";
-    bodyStyle.touchAction = "none";
+    document.body.style.overflow = "hidden";
+    document.body.style.touchAction = "none";
 
     return () => {
-      bodyStyle.overflow = prevOverflow;
-      bodyStyle.touchAction = prevTouch ?? "";
+      document.body.style.overflow = prevOverflow;
+      document.body.style.touchAction = prevTouchAction;
     };
   }, [open]);
 
   useEffect(() => {
     if (open) {
       setMounted(true);
+
       setOverlayActive(false);
       setSheetActive(false);
 
@@ -206,18 +204,14 @@ function BottomSheet({
   const overlayMs = reduce ? 0 : 220;
   const sheetMs = reduce ? 0 : 280;
 
+  // ✅ overlay も「固定 blur」じゃなく、雰囲気程度に控えめ
   const overlayStyle: CSSProperties = {
     position: "fixed",
     inset: 0,
     zIndex: 99999,
     background: overlayActive ? "rgba(0,0,0,0.62)" : "rgba(0,0,0,0)",
-    // ✅ 固定blur撤去：glass設定に追従
-    backdropFilter: overlayActive
-      ? "blur(calc(var(--glass-blur, 0px) * 0.6))"
-      : "blur(0px)",
-    WebkitBackdropFilter: overlayActive
-      ? "blur(calc(var(--glass-blur, 0px) * 0.6))"
-      : "blur(0px)",
+    backdropFilter: overlayActive ? "blur(6px)" : "blur(0px)",
+    WebkitBackdropFilter: overlayActive ? "blur(6px)" : "blur(0px)",
     display: "grid",
     alignItems: "end",
     transition: `background ${overlayMs}ms ease, backdrop-filter ${overlayMs}ms ease`,
@@ -289,15 +283,19 @@ function BottomSheet({
   return createPortal(node, document.body);
 }
 
-export default function Archive({ back }: Props) {
+export default function RecordHistory({ back }: Props) {
   const isMobile = useIsMobile();
 
-  // ✅ 透過/ぼかしをCSS変数追従に統一（固定blur撤去）
+  /**
+   * ✅ ここ重要：ボタン/ピルが blur を固定で持つと「背景が死ぬ」ので、
+   * - backdropFilter を直書きしない
+   * - 背景/透過は CSS var（PageShell注入）に寄せる
+   */
   const pillBtnStyle: CSSProperties = {
     borderRadius: 999,
     padding: "8px 12px",
     border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(0,0,0,var(--glass-alpha,0.22))",
+    background: "rgb(0 0 0 / 0.18)",
     color: "rgba(255,255,255,0.78)",
     cursor: "pointer",
     userSelect: "none",
@@ -306,8 +304,6 @@ export default function Archive({ back }: Props) {
     alignItems: "center",
     gap: 8,
     whiteSpace: "nowrap",
-    backdropFilter: "blur(var(--glass-blur, 0px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur, 0px))",
   };
 
   const pillBtnStyleDisabled: CSSProperties = {
@@ -352,12 +348,10 @@ export default function Archive({ back }: Props) {
     minWidth: 0,
     maxWidth: "100%",
     border: "1px solid rgba(255,255,255,0.22)",
-    background: "rgba(0,0,0,var(--glass-alpha,0.22))",
+    background: "rgb(255 255 255 / 0.06)",
     color: "#ddd",
     boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.12)",
     WebkitTapHighlightColor: "transparent",
-    backdropFilter: "blur(var(--glass-blur, 0px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur, 0px))",
   };
 
   function segPill(checked: boolean): CSSProperties {
@@ -416,6 +410,7 @@ export default function Archive({ back }: Props) {
   >({});
 
   const detailPaneRef = useRef<HTMLDivElement | null>(null);
+  const listPaneRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const onUp = () => setOnline(true);
@@ -614,10 +609,16 @@ export default function Archive({ back }: Props) {
       : null;
 
     return (
-      <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
         <div
           className="glass glass-strong"
-          style={{ borderRadius: 16, padding: 12, display: "grid", gap: 8 }}
+          style={{
+            borderRadius: 16,
+            padding: 12,
+            display: "grid",
+            gap: 8,
+            minWidth: 0,
+          }}
         >
           <div
             style={{
@@ -626,6 +627,7 @@ export default function Archive({ back }: Props) {
               gap: 12,
               alignItems: "center",
               flexWrap: "wrap",
+              minWidth: 0,
             }}
           >
             <div style={{ fontWeight: 900, ...ellipsis1 }}>🧾 記録の概要</div>
@@ -691,10 +693,8 @@ export default function Archive({ back }: Props) {
                 border: "1px solid rgba(255, 122, 122, 0.35)",
                 padding: "6px 10px",
                 borderRadius: 999,
-                background: "rgba(0,0,0,var(--glass-alpha,0.22))",
+                background: "rgb(0 0 0 / 0.18)",
                 cursor: "pointer",
-                backdropFilter: "blur(var(--glass-blur, 0px))",
-                WebkitBackdropFilter: "blur(var(--glass-blur, 0px))",
               }}
             >
               🗑 削除
@@ -702,7 +702,7 @@ export default function Archive({ back }: Props) {
           </div>
         </div>
 
-        <div style={{ display: "grid", gap: 10 }}>
+        <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
           <div style={{ fontWeight: 900 }}>📈 タイドグラフ</div>
 
           {!record.capturedAt ? (
@@ -715,11 +715,10 @@ export default function Archive({ back }: Props) {
               style={{
                 borderRadius: 16,
                 padding: 10,
-                // ✅ ほんの少し余裕を見て見切れ回避
-                minHeight: 340,
+                minHeight: 320,
                 display: "grid",
                 alignItems: "center",
-                overflow: "visible",
+                overflow: "visible", // ✅ グラフの僅かな見切れ対策
               }}
             >
               {detailTide && detailTide.series.length > 0 && shot ? (
@@ -731,7 +730,6 @@ export default function Archive({ back }: Props) {
                       : "translateY(0px)",
                     transition: "opacity 220ms ease, transform 220ms ease",
                     willChange: "opacity, transform",
-                    paddingBottom: 6,
                   }}
                 >
                   <TideGraph
@@ -1023,7 +1021,7 @@ export default function Archive({ back }: Props) {
               textAlign: "left",
               cursor: "pointer",
               boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
-              // ✅ 背景/ぼかし固定を撤去（glassクラスに任せる）
+              minWidth: 0,
             }}
             title="この記録を開く"
           >
@@ -1033,13 +1031,11 @@ export default function Archive({ back }: Props) {
                 height: 72,
                 borderRadius: 12,
                 overflow: "hidden",
-                background: "rgba(0,0,0,var(--glass-alpha,0.22))",
+                background: "rgba(0,0,0,0.18)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 flexShrink: 0,
-                backdropFilter: "blur(var(--glass-blur, 0px))",
-                WebkitBackdropFilter: "blur(var(--glass-blur, 0px))",
               }}
             >
               {thumbUrl ? (
@@ -1098,42 +1094,9 @@ export default function Archive({ back }: Props) {
     </div>
   );
 
-  // ✅ PCは「画面内完結」レイアウトにする
-  // - PageShellの全体スクロールを止める（scrollY="hidden"）
-  // - Controlsは上に固定（自分はスクロールしない）
-  // - リスト/詳細がそれぞれ独立スクロール
-  const desktopRootStyle: CSSProperties = {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    minHeight: 0,
-    height: "100%",
-  };
-
-  const desktopSplitStyle: CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: "minmax(320px, 520px) 1fr",
-    gap: 14,
-    alignItems: "stretch",
-    minWidth: 0,
-    minHeight: 0,
-    flex: "1 1 auto",
-  };
-
-  const desktopListPane: CSSProperties = {
-    minWidth: 0,
-    minHeight: 0,
-    overflowY: "auto",
-    paddingRight: 2,
-  };
-
-  const desktopDetailPane: CSSProperties = {
-    borderRadius: 16,
-    padding: 12,
-    minWidth: 0,
-    minHeight: 0,
-    overflowY: "auto",
-  };
+  // ✅ PC時：タイトルを左へ、中央カラムを縦に最大活用
+  // ✅ PC時：PageShellのスクロールを止めて、内部で左右を独立スクロール
+  const pcBodyHeight = "calc(100svh - 210px)"; // Controls/余白の概算。崩れても“独立スクロール”の効果が優先。
 
   return (
     <PageShell
@@ -1149,83 +1112,102 @@ export default function Archive({ back }: Props) {
         </h1>
       }
       subtitle={headerSub}
-      maxWidth={1200}
+      maxWidth={1400}
       showBack
       onBack={back}
+      titleLayout="left"
       scrollY={isMobile ? "auto" : "hidden"}
     >
-      <div
-        style={{
-          overflowX: "clip",
-          maxWidth: "100vw",
-          minHeight: 0,
-          height: "100%",
-        }}
-      >
-        {!allLoadedOnce && allLoading ? (
-          <p>読み込み中…</p>
-        ) : all.length === 0 ? (
-          <p>まだ記録がないよ</p>
-        ) : isMobile ? (
-          <div style={{ display: "grid", gap: 12 }}>
-            {Controls}
+      <div style={{ overflowX: "clip", maxWidth: "100vw", minWidth: 0 }}>
+        <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+          {Controls}
 
-            <div style={{ display: "grid", gap: 10 }}>
+          {!allLoadedOnce && allLoading ? (
+            <p>読み込み中…</p>
+          ) : all.length === 0 ? (
+            <p>まだ記録がないよ</p>
+          ) : (
+            <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
                 絞り込み {filteredArchive.length} 件（表示{" "}
                 {Math.min(archivePageSize, filteredArchive.length)} 件）
               </div>
 
-              {ListView}
-
-              <BottomSheet
-                open={sheetOpen}
-                onClose={() => setSheetOpen(false)}
-                title="📌 記録の詳細"
-                pillBtnStyle={pillBtnStyle}
-              >
-                {selected ? (
-                  <DetailView record={selected} />
-                ) : (
-                  <div
-                    style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}
+              {isMobile ? (
+                <>
+                  {ListView}
+                  <BottomSheet
+                    open={sheetOpen}
+                    onClose={() => setSheetOpen(false)}
+                    title="📌 記録の詳細"
+                    pillBtnStyle={pillBtnStyle}
                   >
-                    —
-                  </div>
-                )}
-              </BottomSheet>
-            </div>
-          </div>
-        ) : (
-          <div style={desktopRootStyle}>
-            {Controls}
-
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-              絞り込み {filteredArchive.length} 件（表示{" "}
-              {Math.min(archivePageSize, filteredArchive.length)} 件）
-            </div>
-
-            <div style={desktopSplitStyle}>
-              <div style={desktopListPane}>{ListView}</div>
-
-              <div
-                ref={detailPaneRef}
-                className="glass glass-strong"
-                style={desktopDetailPane}
-              >
-                {selected ? (
-                  <DetailView record={selected} />
-                ) : (
+                    {selected ? (
+                      <DetailView record={selected} />
+                    ) : (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "rgba(255,255,255,0.68)",
+                        }}
+                      >
+                        —
+                      </div>
+                    )}
+                  </BottomSheet>
+                </>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(340px, 520px) 1fr",
+                    gap: 14,
+                    alignItems: "start",
+                    minWidth: 0,
+                    height: pcBodyHeight,
+                  }}
+                >
                   <div
-                    style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}
+                    ref={listPaneRef}
+                    style={{
+                      minWidth: 0,
+                      height: "100%",
+                      overflowY: "auto",
+                      paddingRight: 4,
+                    }}
                   >
-                    左の履歴から選択してね
+                    {ListView}
                   </div>
-                )}
-              </div>
+
+                  <div
+                    ref={detailPaneRef}
+                    className="glass glass-strong"
+                    style={{
+                      borderRadius: 16,
+                      padding: 12,
+                      height: "100%",
+                      overflowY: "auto",
+                      minWidth: 0,
+                    }}
+                  >
+                    {selected ? (
+                      <DetailView record={selected} />
+                    ) : (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "rgba(255,255,255,0.68)",
+                        }}
+                      >
+                        左の履歴から選択してね
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </PageShell>
   );
