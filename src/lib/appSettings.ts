@@ -2,11 +2,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 export type CharacterMode = "fixed" | "random";
-
-/** ✅ 背景モード */
-export type BgMode = "auto" | "fixed" | "off";
-
-/** ✅ 自動背景の時間帯（ファイル名 suffix） */
+export type BgMode = "auto" | "fixed";
 export type BgTimeBand = "morning" | "day" | "evening" | "night";
 
 export type AppSettings = {
@@ -21,104 +17,52 @@ export type AppSettings = {
   /** 0〜1 */
   characterOpacity: number;
 
-  /** public 配下の画像パスでキャラ画像を上書き（例: "/assets/k1.png" or "assets/k1.png"）空ならデフォルト */
+  /** public 配下の画像パスでキャラ画像を上書き（空ならデフォルト） */
   characterOverrideSrc: string;
 
-  // ===== 表示 =====
+  // ===== 背景 =====
+  bgMode: BgMode;
+  /** fixed 時に使う public 画像パス */
+  bgFixedSrc: string;
+  /** auto 時に使う背景セット名（例: "surf"） */
+  bgAutoSet: string;
+
   /** 背景暗幕 0〜1 */
   bgDim: number;
   /** 背景ぼかし(px) */
   bgBlur: number;
 
-  /** すりガラス濃さ（0〜0.6くらい推奨） */
+  /** ✅ すりガラス濃さ（0〜0.6くらい推奨） */
   glassAlpha: number;
-  /** すりガラスぼかし(px) */
+  /** ✅ すりガラスぼかし(px) */
   glassBlur: number;
-
-  // ===== ✅ 背景画像 =====
-  bgMode: BgMode;
-
-  /**
-   * ✅ 自動背景セットID
-   * 例: "surf" -> /assets/bg/surf_morning.png 等
-   */
-  autoBgSet: string;
-
-  /**
-   * ✅ 固定背景（public配下パス）
-   * 例: "/assets/bg/surf_evening.png"
-   */
-  fixedBgSrc: string;
 };
 
-const KEY = "tsuduri_app_settings_v1";
-
-/** ✅ 作成キャラ（CharacterSettings）保存キー（appSettings側でも読む） */
-const CHARACTERS_STORAGE_KEY = "tsuduri_characters_v2";
-
-/** 初期値 */
 export const DEFAULT_SETTINGS: AppSettings = {
   version: 1,
 
+  // キャラ
   characterEnabled: true,
   characterMode: "fixed",
   fixedCharacterId: "tsuduri",
-  characterScale: 1.15,
-  characterOpacity: 1,
+  characterScale: 1.0,
+  characterOpacity: 1.0,
   characterOverrideSrc: "",
 
-  bgDim: 0.55,
+  // 背景
+  bgMode: "auto",
+  bgFixedSrc: "",
+  bgAutoSet: "surf",
+
+  // 見た目
+  bgDim: 0.18,
   bgBlur: 0,
 
   glassAlpha: 0.22,
   glassBlur: 10,
-
-  // ✅ 背景
-  bgMode: "auto",
-  autoBgSet: "surf",
-  fixedBgSrc: "/assets/bg/ui-check.png",
 };
 
-// キャラ候補（ここ増やせばUIに出る）
-// ※ src は「デフォルト表示パス」。override を入れたらそれが優先される
-export type CharacterOption = { id: string; label: string; src: string };
-export const CHARACTER_OPTIONS: CharacterOption[] = [
-  {
-    id: "tsuduri",
-    label: "つづり（テスト）",
-    src: "/assets/character-test.png",
-  },
-];
-
-/** ✅ 背景セット候補（Settingsのプルダウン用） */
-export type AutoBgSetOption = { id: string; label: string };
-export const AUTO_BG_SETS: AutoBgSetOption[] = [
-  { id: "surf", label: "砂浜（surf）" },
-];
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function safeParse(raw: string | null): unknown {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return null;
-  }
-}
-
-export function normalizePublicPath(p: string) {
-  const s = (p ?? "").trim();
-  if (!s) return "";
-  if (s.startsWith("/")) return s;
-  return `/${s}`;
-}
-
-type StoredCharacterLike = {
-  id?: unknown;
-};
+const STORAGE_KEY = "tsuduri_app_settings_v1";
 
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
   try {
@@ -129,295 +73,156 @@ function safeJsonParse<T>(raw: string | null, fallback: T): T {
   }
 }
 
-/** ✅ 作成キャラID一覧を取得（appSettings単体で参照できるようにここで読む） */
-function loadCreatedCharacterIds(): string[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(CHARACTERS_STORAGE_KEY);
-  const list = safeJsonParse<StoredCharacterLike[]>(raw, []);
-  const ids = Array.isArray(list)
-    ? list
-        .map((c) => (typeof c?.id === "string" ? c.id : ""))
-        .filter((x) => !!x)
-    : [];
-
-  const seen = new Set<string>();
-  const uniq: string[] = [];
-  for (const id of ids) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    uniq.push(id);
-  }
-  return uniq;
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
 }
 
-/** ✅ 固定キャラIDとして「許可」するID集合を作る */
-function getAllowedCharacterIds(): string[] {
-  const base = CHARACTER_OPTIONS.map((c) => c.id).filter(Boolean);
-  const created = loadCreatedCharacterIds();
+function normalizeSettings(
+  x: Partial<AppSettings> | null | undefined,
+): AppSettings {
+  const s = { ...DEFAULT_SETTINGS, ...(x ?? {}) } as AppSettings;
 
-  const seen = new Set<string>();
-  const merged: string[] = [];
+  // 破壊的な型崩れ対策
+  s.version = 1;
 
-  for (const id of created) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    merged.push(id);
-  }
-  for (const id of base) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    merged.push(id);
-  }
-  return merged;
-}
-
-/**
- * ✅ 背景の時間帯判定（ここを“唯一の正解”にする）
- * - morning: 04:00〜09:59
- * - day:     10:00〜15:59
- * - evening: 16:00〜18:59
- * - night:   19:00〜03:59
- */
-export function getTimeBand(d: Date): BgTimeBand {
-  const h = d.getHours();
-  if (h >= 4 && h <= 9) return "morning";
-  if (h >= 10 && h <= 15) return "day";
-  if (h >= 16 && h <= 18) return "evening";
-  return "night";
-}
-
-/**
- * ✅ 自動背景のパス生成（ファイル名規約をここに固定）
- * 現在の public/assets/bg は surf_morning.png のように "_" なので、こちらに統一
- */
-export function resolveAutoBackgroundSrc(setId: string, band: BgTimeBand) {
-  const sid = (setId ?? "").trim() || DEFAULT_SETTINGS.autoBgSet;
-  return `/assets/bg/${sid}_${band}.png`;
-}
-
-/** ✅ 旧規約（ハイフン）も必要になったら使えるように残す */
-export function resolveAutoBackgroundSrcHyphen(
-  setId: string,
-  band: BgTimeBand,
-) {
-  const sid = (setId ?? "").trim() || DEFAULT_SETTINGS.autoBgSet;
-  return `/assets/bg/${sid}-${band}.png`;
-}
-
-/** ✅ 自動背景セットIDの正規化（存在しないIDならデフォルトに） */
-function normalizeAutoBgSetId(id: unknown): string {
-  const s = typeof id === "string" ? id.trim() : "";
-  if (!s) return DEFAULT_SETTINGS.autoBgSet;
-
-  const allowed = new Set(AUTO_BG_SETS.map((x) => x.id));
-  if (allowed.has(s)) return s;
-
-  return DEFAULT_SETTINGS.autoBgSet;
-}
-
-function normalize(input: unknown): AppSettings {
-  const x = (input ?? {}) as Partial<AppSettings>;
-
-  const fixedId =
-    typeof x.fixedCharacterId === "string" && x.fixedCharacterId.trim()
-      ? x.fixedCharacterId.trim()
-      : DEFAULT_SETTINGS.fixedCharacterId;
-
-  const bgMode: BgMode =
-    x.bgMode === "fixed" || x.bgMode === "off" ? x.bgMode : "auto";
-
-  const normalized: AppSettings = {
-    version: 1,
-
-    characterEnabled:
-      typeof x.characterEnabled === "boolean"
-        ? x.characterEnabled
-        : DEFAULT_SETTINGS.characterEnabled,
-    characterMode: x.characterMode === "random" ? "random" : "fixed",
-    fixedCharacterId: fixedId,
-
-    characterScale: clamp(
-      Number.isFinite(x.characterScale as number)
-        ? (x.characterScale as number)
-        : DEFAULT_SETTINGS.characterScale,
-      0.7,
-      5.0,
-    ),
-    characterOpacity: clamp(
-      Number.isFinite(x.characterOpacity as number)
-        ? (x.characterOpacity as number)
-        : DEFAULT_SETTINGS.characterOpacity,
-      0,
-      1,
-    ),
-
-    characterOverrideSrc:
-      typeof x.characterOverrideSrc === "string" ? x.characterOverrideSrc : "",
-
-    bgDim: clamp(
-      Number.isFinite(x.bgDim as number)
-        ? (x.bgDim as number)
-        : DEFAULT_SETTINGS.bgDim,
-      0,
-      1,
-    ),
-    bgBlur: clamp(
-      Number.isFinite(x.bgBlur as number)
-        ? (x.bgBlur as number)
-        : DEFAULT_SETTINGS.bgBlur,
-      0,
-      24,
-    ),
-
-    glassAlpha: clamp(
-      Number.isFinite(x.glassAlpha as number)
-        ? (x.glassAlpha as number)
-        : DEFAULT_SETTINGS.glassAlpha,
-      0,
-      0.6,
-    ),
-    glassBlur: clamp(
-      Number.isFinite(x.glassBlur as number)
-        ? (x.glassBlur as number)
-        : DEFAULT_SETTINGS.glassBlur,
-      0,
-      24,
-    ),
-
-    // ✅ 背景
-    bgMode,
-    autoBgSet: normalizeAutoBgSetId(x.autoBgSet),
-    fixedBgSrc:
-      typeof x.fixedBgSrc === "string"
-        ? x.fixedBgSrc
-        : DEFAULT_SETTINGS.fixedBgSrc,
-  };
-
-  // ✅ fixedCharacterId は「作成キャラ + 既定キャラ」に存在しない場合だけフォールバック
-  const allowed = getAllowedCharacterIds();
-  if (!allowed.includes(normalized.fixedCharacterId)) {
-    normalized.fixedCharacterId =
-      allowed[0] ??
-      CHARACTER_OPTIONS[0]?.id ??
-      DEFAULT_SETTINGS.fixedCharacterId;
-  }
-
-  // パスの正規化（UIは assets/k1.png でもOKにする）
-  normalized.characterOverrideSrc = normalizePublicPath(
-    normalized.characterOverrideSrc,
+  s.characterScale = clamp(
+    Number(s.characterScale) || DEFAULT_SETTINGS.characterScale,
+    0.7,
+    5.0,
+  );
+  s.characterOpacity = clamp(
+    Number(s.characterOpacity) || DEFAULT_SETTINGS.characterOpacity,
+    0,
+    1,
   );
 
-  // ✅ 固定背景も正規化（空なら ui-check）
-  normalized.fixedBgSrc =
-    normalizePublicPath(normalized.fixedBgSrc) || "/assets/bg/ui-check.png";
+  s.bgDim = clamp(Number(s.bgDim) || 0, 0, 1);
+  s.bgBlur = clamp(Number(s.bgBlur) || 0, 0, 30);
 
-  return normalized;
+  // glass は 0〜0.6 くらいが気持ちいい（上限は安全に 0.8 まで許容）
+  s.glassAlpha = clamp(Number(s.glassAlpha) || 0, 0, 0.8);
+  s.glassBlur = clamp(Number(s.glassBlur) || 0, 0, 30);
+
+  if (s.characterMode !== "fixed" && s.characterMode !== "random")
+    s.characterMode = "fixed";
+  if (s.bgMode !== "auto" && s.bgMode !== "fixed") s.bgMode = "auto";
+
+  if (typeof s.fixedCharacterId !== "string")
+    s.fixedCharacterId = DEFAULT_SETTINGS.fixedCharacterId;
+  if (typeof s.characterOverrideSrc !== "string") s.characterOverrideSrc = "";
+  if (typeof s.bgFixedSrc !== "string") s.bgFixedSrc = "";
+  if (typeof s.bgAutoSet !== "string") s.bgAutoSet = "surf";
+
+  return s;
 }
 
-/**
- * ✅ useSyncExternalStore 対策：
- * getSnapshot が「同じ状態のとき同じ参照」を返さないと無限更新になる
- */
-let cachedRaw: string | null = null;
-let cachedSettings: AppSettings = DEFAULT_SETTINGS;
+let _cache: AppSettings | null = null;
+const _listeners = new Set<() => void>();
 
-function readSnapshot(): AppSettings {
+function readSettings(): AppSettings {
+  if (_cache) return _cache;
   if (typeof window === "undefined") return DEFAULT_SETTINGS;
+  const raw = window.localStorage.getItem(STORAGE_KEY);
+  _cache = normalizeSettings(
+    safeJsonParse<Partial<AppSettings>>(raw, DEFAULT_SETTINGS),
+  );
+  return _cache;
+}
 
-  try {
-    const raw = localStorage.getItem(KEY);
-
-    if (raw === cachedRaw) return cachedSettings;
-
-    const next = normalize(safeParse(raw));
-    cachedRaw = raw;
-    cachedSettings = next;
-    return next;
-  } catch {
-    return cachedSettings ?? DEFAULT_SETTINGS;
+function writeSettings(next: AppSettings) {
+  _cache = next;
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   }
+  for (const fn of Array.from(_listeners)) fn();
 }
 
-function write(next: AppSettings) {
-  try {
-    const raw = JSON.stringify(next);
-    localStorage.setItem(KEY, raw);
-
-    cachedRaw = raw;
-    cachedSettings = next;
-  } catch {
-    // ignore
-  }
-  window.dispatchEvent(new Event("tsuduri-settings"));
+export function setAppSettings(patch: Partial<AppSettings>) {
+  const cur = readSettings();
+  const next = normalizeSettings({ ...cur, ...patch });
+  writeSettings(next);
 }
 
-export function getAppSettings(): AppSettings {
-  return readSnapshot();
-}
-
-export function setAppSettings(
-  patch: Partial<AppSettings> | ((prev: AppSettings) => AppSettings),
-) {
-  const prev = readSnapshot();
-  const next =
-    typeof patch === "function"
-      ? patch(prev)
-      : normalize({ ...prev, ...patch });
-  write(next);
+export function resetAppSettings() {
+  writeSettings(DEFAULT_SETTINGS);
 }
 
 function subscribe(cb: () => void) {
-  const onLocal = () => cb();
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === KEY) cb();
-  };
-
-  window.addEventListener("tsuduri-settings", onLocal);
-  window.addEventListener("storage", onStorage);
-
-  return () => {
-    window.removeEventListener("tsuduri-settings", onLocal);
-    window.removeEventListener("storage", onStorage);
-  };
+  _listeners.add(cb);
+  return () => _listeners.delete(cb);
 }
 
-/** 設定を購読して UI に反映するための hook */
-export function useAppSettings() {
-  const settings = useSyncExternalStore(subscribe, readSnapshot, readSnapshot);
-
-  const api = useMemo(
-    () => ({
-      set: (patch: Partial<AppSettings>) => setAppSettings(patch),
-      reset: () => setAppSettings(DEFAULT_SETTINGS),
-    }),
-    [],
+/**
+ * ✅ ここが今回の本丸
+ * - 従来: { settings, set, reset }
+ * - 互換: さらに設定値をトップレベルに展開して返す
+ *
+ * これで Chat.tsx が useAppSettings().glassAlpha を読んでも型エラーにならない
+ */
+export function useAppSettings(): AppSettings & {
+  settings: AppSettings;
+  set: (patch: Partial<AppSettings>) => void;
+  reset: () => void;
+} {
+  const settings = useSyncExternalStore(
+    subscribe,
+    () => readSettings(),
+    () => DEFAULT_SETTINGS,
   );
 
-  useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState === "visible") {
-        window.dispatchEvent(new Event("tsuduri-settings"));
-      }
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, []);
+  const api = useMemo(() => {
+    const set = (patch: Partial<AppSettings>) => setAppSettings(patch);
+    const reset = () => resetAppSettings();
 
-  return { settings, ...api };
+    // ✅ 互換のため settings をトップレベルに展開
+    return Object.assign({}, settings, { settings, set, reset });
+  }, [settings]);
+
+  return api;
 }
 
-/** id→src を解決（見つからなければ先頭） */
-export function resolveCharacterSrc(id: string) {
-  const hit = CHARACTER_OPTIONS.find((c) => c.id === id);
-  return hit?.src ?? CHARACTER_OPTIONS[0]?.src ?? "/assets/character-test.png";
+// ===== 背景セット（必要なら増やす） =====
+export const AUTO_BG_SETS: Record<string, Record<BgTimeBand, string>> = {
+  surf: {
+    morning: "/assets/bg/surf_morning.png",
+    day: "/assets/bg/surf_day.png",
+    evening: "/assets/bg/surf_evening.png",
+    night: "/assets/bg/surf_night.png",
+  },
+};
+
+export function getTimeBand(d: Date): BgTimeBand {
+  const h = d.getHours();
+  if (h >= 5 && h < 9) return "morning";
+  if (h >= 9 && h < 16) return "day";
+  if (h >= 16 && h < 19) return "evening";
+  return "night";
 }
 
-/** ランダム選出（互換用：既定キャラから） */
-export function pickRandomCharacterId(excludeId?: string) {
-  const list = CHARACTER_OPTIONS.map((c) => c.id);
-  if (list.length <= 1) return list[0] ?? "tsuduri";
+export function normalizePublicPath(p: string): string {
+  const s = (p ?? "").trim();
+  if (!s) return "";
+  return s.startsWith("/") ? s : `/${s}`;
+}
 
-  const filtered = excludeId ? list.filter((x) => x !== excludeId) : list;
-  const idx = Math.floor(Math.random() * filtered.length);
-  return filtered[idx] ?? list[0] ?? "tsuduri";
+export function resolveAutoBackgroundSrc(
+  setName: string,
+  band: BgTimeBand,
+): string {
+  const set =
+    AUTO_BG_SETS[setName] ??
+    AUTO_BG_SETS[DEFAULT_SETTINGS.bgAutoSet] ??
+    AUTO_BG_SETS.surf;
+  return set?.[band] ?? "";
+}
+
+/** bgMode に応じて表示する背景の src を返す */
+export function resolveBackgroundSrc(
+  settings: AppSettings,
+  now = new Date(),
+): string {
+  if (settings.bgMode === "fixed")
+    return normalizePublicPath(settings.bgFixedSrc);
+  const band = getTimeBand(now);
+  return resolveAutoBackgroundSrc(settings.bgAutoSet, band);
 }
