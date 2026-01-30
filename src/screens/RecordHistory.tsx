@@ -419,6 +419,44 @@ export default function RecordHistory({ back }: Props) {
 
   const detailPaneRef = useRef<HTMLDivElement | null>(null);
 
+  // ✅ サムネ ObjectURL のキャッシュ（レンダーごとに作らない）
+  const thumbUrlMapRef = useRef<Map<number, string>>(new Map());
+
+  function getThumbUrl(r: CatchRecord): string | null {
+    if (!r.id || !r.photoBlob) return null;
+    const cached = thumbUrlMapRef.current.get(r.id);
+    if (cached) return cached;
+    try {
+      const url = URL.createObjectURL(r.photoBlob);
+      thumbUrlMapRef.current.set(r.id, url);
+      return url;
+    } catch {
+      return null;
+    }
+  }
+
+  // ✅ all が変わったら、不要になったサムネURLを破棄
+  useEffect(() => {
+    const alive = new Set<number>();
+    for (const r of all) if (r.id) alive.add(r.id);
+
+    for (const [id, url] of thumbUrlMapRef.current.entries()) {
+      if (!alive.has(id)) {
+        URL.revokeObjectURL(url);
+        thumbUrlMapRef.current.delete(id);
+      }
+    }
+  }, [all]);
+
+  // ✅ アンマウント時に全部破棄
+  useEffect(() => {
+    return () => {
+      for (const url of thumbUrlMapRef.current.values())
+        URL.revokeObjectURL(url);
+      thumbUrlMapRef.current.clear();
+    };
+  }, []);
+
   useEffect(() => {
     const onUp = () => setOnline(true);
     const onDown = () => setOnline(false);
@@ -929,7 +967,7 @@ export default function RecordHistory({ back }: Props) {
             setArchiveYear("");
             setArchiveMonth("");
           }}
-          style={{ marginLeft: "auto" }}
+          style={pillBtnStyle}
           title="絞り込みを解除"
         >
           リセット
@@ -1005,7 +1043,7 @@ export default function RecordHistory({ back }: Props) {
       {archiveList.map((r) => {
         const created = new Date(r.createdAt);
         const shotDate = r.capturedAt ? new Date(r.capturedAt) : null;
-        const thumbUrl = r.photoBlob ? URL.createObjectURL(r.photoBlob) : null;
+        const thumbUrl = getThumbUrl(r);
 
         return (
           <button
@@ -1046,7 +1084,6 @@ export default function RecordHistory({ back }: Props) {
                   src={thumbUrl}
                   alt="thumb"
                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  onLoad={() => URL.revokeObjectURL(thumbUrl)}
                 />
               ) : (
                 <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
@@ -1182,7 +1219,8 @@ export default function RecordHistory({ back }: Props) {
               gap: 14,
               alignItems: "start",
               minWidth: 0,
-              height: "calc(100svh - 24px)",
+              // ✅ height を固定しすぎると環境でズレるので、maxHeight で安全運転
+              maxHeight: "calc(100svh - 24px)",
               minHeight: 0,
             }}
           >
@@ -1225,7 +1263,6 @@ export default function RecordHistory({ back }: Props) {
                 <div
                   style={{
                     height: "100%",
-                    maxHeight: "calc(100svh - 220px)",
                     overflowY: "auto",
                     paddingRight: 4,
                   }}
@@ -1263,7 +1300,6 @@ export default function RecordHistory({ back }: Props) {
                   style={{
                     width: "100%",
                     height: "100%",
-                    maxHeight: "calc(100svh - 320px)",
                     borderRadius: 14,
                     overflow: "hidden",
                     background: "rgba(0,0,0,0.14)",
@@ -1309,7 +1345,7 @@ export default function RecordHistory({ back }: Props) {
               </div>
             </div>
 
-            {/* 右：情報＋グラフ（今まで通り。画面内スクロールにする） */}
+            {/* 右：情報＋グラフ（画面内スクロール） */}
             <div
               ref={detailPaneRef}
               className="glass glass-strong"
@@ -1317,7 +1353,6 @@ export default function RecordHistory({ back }: Props) {
                 borderRadius: 16,
                 padding: 12,
                 minHeight: 0,
-                maxHeight: "calc(100svh - 80px)",
                 overflowY: "auto",
               }}
             >
