@@ -1,5 +1,4 @@
 // src/screens/Record.tsx
-
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import exifr from "exifr";
 import { db, type CatchRecord, type CatchResult } from "../db";
@@ -22,7 +21,9 @@ function pad2(n: number) {
 }
 
 function toDateTimeLocalValue(d: Date) {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(
+    d.getDate(),
+  )}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
 function parseDateTimeLocalValue(v: string): Date | null {
@@ -46,7 +47,7 @@ function displayPhaseForHeader(phase: string) {
 
 export default function Record({ back }: Props) {
   // =========================
-  // ✅ 見た目（既存の雰囲気を維持）
+  // ✅ 見た目（ガラスは PageShell のCSS変数に追従）
   // =========================
   const glassBoxStyle: CSSProperties = {
     borderRadius: 16,
@@ -95,8 +96,6 @@ export default function Record({ back }: Props) {
     color: "#ddd",
     boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.12)",
     WebkitTapHighlightColor: "transparent",
-    backdropFilter: "blur(10px)",
-    WebkitBackdropFilter: "blur(10px)",
   };
 
   function segPill(checked: boolean): CSSProperties {
@@ -274,6 +273,7 @@ export default function Record({ back }: Props) {
   const resultOk =
     result === "skunk" ||
     (result === "caught" && (sizeCm.trim() === "" || sizeCmNumber != null));
+
   const canSave =
     !saving &&
     !(photo && manualMode && !manualValue && !allowUnknown) &&
@@ -312,7 +312,7 @@ export default function Record({ back }: Props) {
     }
   }
 
-  // ✅ 写真プレースホルダー（常に同じ面積を確保してレイアウト暴れ防止）
+  // ✅ 写真プレースホルダー
   const photoFrameStyle: CSSProperties = {
     width: "100%",
     aspectRatio: "4 / 3",
@@ -328,44 +328,37 @@ export default function Record({ back }: Props) {
   return (
     <PageShell
       title={
-        <div
+        <h1
           style={{
-            display: "flex",
-            justifyContent: "flex-start",
-            alignItems: "center",
+            margin: 0,
+            fontSize: "clamp(20px, 6vw, 32px)",
+            lineHeight: 1.15,
           }}
         >
-          <h1
-            style={{
-              margin: 0,
-              fontSize: "clamp(20px, 6vw, 32px)",
-              lineHeight: 1.15,
-            }}
-          >
-            📸 釣果を記録
-          </h1>
-        </div>
+          📸 釣果を記録
+        </h1>
       }
-      maxWidth={1100}
+      titleLayout="left"
+      maxWidth={1200}
       showBack
       onBack={back}
     >
       <style>{`
-        .record-layout {
-          display: grid;
-          gap: 14px;
-          min-width: 0;
+        .record-layout{
+          display:grid;
+          gap:14px;
+          min-width:0;
         }
-        /* PC: 左に写真、右に入力。写真が出ても崩れない */
-        @media (min-width: 980px) {
-          .record-layout {
+        /* PC: 左に写真、右に入力 */
+        @media (min-width: 980px){
+          .record-layout{
             grid-template-columns: 420px minmax(0, 1fr);
-            align-items: start;
+            align-items:start;
           }
-          .record-left {
+          .record-left{
             position: sticky;
             top: 12px;
-            align-self: start;
+            align-self:start;
           }
         }
       `}</style>
@@ -387,7 +380,7 @@ export default function Record({ back }: Props) {
       <hr style={{ margin: "6px 0 12px", opacity: 0.22 }} />
 
       <div className="record-layout">
-        {/* ===== 左：写真（プレースホルダー固定） ===== */}
+        {/* 左：写真 */}
         <div className="record-left" style={{ minWidth: 0 }}>
           <div
             className="glass glass-strong"
@@ -419,12 +412,10 @@ export default function Record({ back }: Props) {
                           pick: ["DateTimeOriginal", "CreateDate"],
                         });
 
-                        // ✅ any を使わない
                         const meta = dt as {
                           DateTimeOriginal?: Date;
                           CreateDate?: Date;
                         } | null;
-
                         const date =
                           meta?.DateTimeOriginal ?? meta?.CreateDate ?? null;
 
@@ -514,7 +505,7 @@ export default function Record({ back }: Props) {
           </div>
         </div>
 
-        {/* ===== 右：入力（全部こっちに集約） ===== */}
+        {/* 右：入力 */}
         <div
           style={{
             minWidth: 0,
@@ -525,7 +516,7 @@ export default function Record({ back }: Props) {
         >
           {/* 手動日時入力 */}
           {photo && (
-            <div className="glass glass-strong" style={{ ...glassBoxStyle }}>
+            <div className="glass glass-strong" style={glassBoxStyle}>
               <div
                 style={{
                   display: "flex",
@@ -736,7 +727,7 @@ export default function Record({ back }: Props) {
           <div>
             <div style={{ fontWeight: 700, marginBottom: 8 }}>🎣 釣果</div>
 
-            <div className="glass glass-strong" style={{ ...glassBoxStyle }}>
+            <div className="glass glass-strong" style={glassBoxStyle}>
               <div style={segWrapStyle} aria-label="釣果の結果">
                 <label style={segLabelStyle}>
                   <input

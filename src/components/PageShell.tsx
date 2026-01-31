@@ -37,15 +37,15 @@ type Props = {
 
   hideScrollbar?: boolean;
 
-  /** ✅ 追加：縦スクロール制御（Homeで1画面固定したいとき用） */
+  /** ✅ 追加：縦スクロール制御（画面固定したいとき用） */
   scrollY?: "auto" | "hidden";
   /** ✅ 追加：内側paddingを画面ごとに調整したいとき用 */
   contentPadding?: string;
 
   /**
-   * ✅ 追加：PCのときだけタイトルを左に逃がしたい
-   * - "top": 従来（中央カラムの上）
-   * - "left": PCのみ左カラムに出す（スマホでは自動で "top" に戻す）
+   * ※互換のため残す（ただし今回の統一方針では基本使わない想定）
+   * - "top": 通常
+   * - "left": PCのみ左カラム（旧仕様）
    */
   titleLayout?: "top" | "left";
 };
@@ -61,9 +61,6 @@ type CharacterImageMap = Record<string, string>;
 
 type CSSVars = Record<`--${string}`, string>;
 
-/**
- * ✅ PageShellが画面遷移で再マウントしても“直前のキャラ”を維持するためのメモリ
- */
 let lastDisplayedCharacterSrc: string | null = null;
 
 function getPath() {
@@ -307,7 +304,11 @@ export default function PageShell({
   const fixedBgSrc = (settings.fixedBgSrc ??
     DEFAULT_SETTINGS.fixedBgSrc) as string;
 
-  const timeBand = useMemo(() => getTimeBand(new Date()), [minuteTick]);
+  const timeBand = useMemo(() => {
+    // ✅ minuteTick を評価して依存を意味あるものにする（lint対策）
+    void minuteTick;
+    return getTimeBand(new Date());
+  }, [minuteTick]);
 
   const resolvedBgCss = useMemo(() => {
     if (bgImage && bgImage.trim()) {
@@ -458,9 +459,18 @@ export default function PageShell({
     1,
   );
 
+  const innerPad = contentPadding ?? "clamp(16px, 3vw, 24px)";
+  const scaledHeightCss = `calc(${testCharacterHeight} * ${characterScale})`;
+
+  // ✅ 統一方針：タイトルは左上。旧 titleLayout は互換のため残しつつ、基本 top で運用
+  const effectiveTitleLayout =
+    titleLayout === "left" && !isMobile ? "left" : "top";
+
+  // ✅ 画面下が切れない：100dvh + safe-area を前提にする
   const shellStyle: CSSProperties & CSSVars = {
     width: "100vw",
-    height: "100svh",
+    height: "100dvh",
+    minHeight: "100dvh",
     overflow: "hidden",
     position: "relative",
 
@@ -472,6 +482,8 @@ export default function PageShell({
     "--glass-blur": `${glassBlur}px`,
 
     "--bg-image": resolvedBgCss,
+
+    "--shell-pad": String(innerPad),
 
     "--sky-bottom": "46%",
     "--sea-top": "46%",
@@ -485,18 +497,32 @@ export default function PageShell({
     position: "relative",
     zIndex: 10,
     width: "100vw",
-    height: "100svh",
+    height: "100dvh",
     overflowY: scrollY,
     overflowX: "hidden",
     WebkitOverflowScrolling: "touch",
     overscrollBehavior: "contain",
+    paddingBottom: "env(safe-area-inset-bottom)",
   };
 
-  const innerPadding = contentPadding ?? "clamp(16px, 3vw, 24px)";
-  const scaledHeightCss = `calc(${testCharacterHeight} * ${characterScale})`;
-
-  const effectiveTitleLayout =
-    titleLayout === "left" && !isMobile ? "left" : "top";
+  const headerCard =
+    title || subtitle ? (
+      <div
+        className="glass glass-strong"
+        style={{
+          borderRadius: 16,
+          padding: 12,
+          display: "grid",
+          gap: 8,
+          justifyItems: "start",
+          textAlign: "left",
+          minWidth: 0,
+        }}
+      >
+        {title}
+        {subtitle}
+      </div>
+    ) : null;
 
   return (
     <div className="page-shell" style={shellStyle} data-timeband={timeBand}>
@@ -516,6 +542,14 @@ export default function PageShell({
           }
           .page-shell .scrollbar-hidden::-webkit-scrollbar{
             display: none;
+          }
+
+          /* ✅ inner padding を safe-area に追従させる */
+          .page-shell .page-shell-inner{
+            padding: var(--shell-pad);
+            padding-bottom: calc(var(--shell-pad) + env(safe-area-inset-bottom));
+            padding-top: calc(var(--shell-pad) + env(safe-area-inset-top));
+            box-sizing: border-box;
           }
         `}
       </style>
@@ -591,23 +625,29 @@ export default function PageShell({
           style={{
             maxWidth,
             margin: "0 auto",
-            padding: innerPadding,
-            boxSizing: "border-box",
             position: "relative",
             minHeight: "100%",
           }}
         >
           {effectiveTitleLayout === "top" ? (
-            <div style={{ position: "relative" }}>
-              {(title || subtitle) && (
-                <div style={{ marginBottom: 16 }}>
-                  {title}
-                  {subtitle}
-                </div>
-              )}
-              {children}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateRows: headerCard ? "auto 1fr" : "1fr",
+                gap: headerCard ? 12 : 0,
+                minHeight:
+                  "calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
+                minWidth: 0,
+              }}
+            >
+              {/* ✅ タイトル左上（統一） */}
+              {headerCard}
+
+              {/* ✅ コンテンツ */}
+              <div style={{ minWidth: 0, minHeight: 0 }}>{children}</div>
             </div>
           ) : (
+            // 互換：旧 left レイアウト（必要なら使える）
             <div
               style={{
                 display: "grid",
@@ -621,21 +661,13 @@ export default function PageShell({
               <div
                 style={{
                   position: "sticky",
-                  top: 0,
+                  top: "calc(env(safe-area-inset-top) + 2px)",
                   alignSelf: "start",
                   paddingTop: 2,
                   minWidth: 0,
                 }}
               >
-                <div
-                  className="glass glass-strong"
-                  style={{ borderRadius: 16, padding: 12 }}
-                >
-                  {title}
-                  {subtitle ? (
-                    <div style={{ marginTop: 8 }}>{subtitle}</div>
-                  ) : null}
-                </div>
+                {headerCard}
               </div>
 
               <div style={{ minWidth: 0 }}>{children}</div>

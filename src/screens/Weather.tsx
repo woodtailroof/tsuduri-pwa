@@ -133,8 +133,8 @@ function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
             ? e
             : last
           : e.cm <= last.cm
-          ? e
-          : last;
+            ? e
+            : last;
       merged[merged.length - 1] = pick;
     } else {
       merged.push(e);
@@ -173,27 +173,12 @@ type LoadState =
     }
   | { status: "error"; message: string };
 
-const GLASS_BG = "rgba(17,17,17,var(--glass-alpha,0.22))";
-const GLASS_BG_STRONG = "rgba(17,17,17,var(--glass-alpha-strong,0.35))";
-const GLASS_BLUR = "blur(var(--glass-blur,0px))";
-
-const TILE_STYLE: React.CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.10)",
-  borderRadius: 12,
-  padding: 12,
-  background: GLASS_BG,
-  backdropFilter: GLASS_BLUR,
-  WebkitBackdropFilter: GLASS_BLUR,
-  color: "#ddd",
-  minWidth: 0,
-};
-
 export default function Weather({ back }: Props) {
   const [tab, setTab] = useState<"today" | "tomorrow" | "pick">("today");
   const [picked, setPicked] = useState<string>(toDateInputValue(new Date()));
 
   const [online, setOnline] = useState<boolean>(
-    typeof navigator !== "undefined" ? navigator.onLine : true
+    typeof navigator !== "undefined" ? navigator.onLine : true,
   );
   const [state, setState] = useState<LoadState>({ status: "idle" });
 
@@ -235,7 +220,7 @@ export default function Weather({ back }: Props) {
           FIXED_PORT.pc,
           FIXED_PORT.hc,
           targetDate,
-          { ttlDays: 30 }
+          { ttlDays: 30 },
         );
         const dayKey = dayKeyFromDate(targetDate);
         if (!cancelled) {
@@ -291,102 +276,98 @@ export default function Weather({ back }: Props) {
           )}
         </div>
       }
-      maxWidth={980}
+      titleLayout="left"
+      maxWidth={1100}
       showBack
       onBack={back}
     >
+      <style>{`
+        .w-tabs{
+          margin-top: 8px;
+          display:flex;
+          gap:10px;
+          flex-wrap:wrap;
+          min-width:0;
+          align-items:center;
+        }
+        .w-tabbtn{
+          border-radius: 999px;
+          padding: 8px 12px;
+          color: #eee;
+          cursor: pointer;
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.15);
+          box-shadow: inset 0 0 0 1px rgba(0,0,0,0.10);
+        }
+        .w-tabbtn.is-active{
+          border: 2px solid #ff4d6d;
+          background: rgba(255,77,109,0.18);
+          box-shadow: 0 8px 20px rgba(0,0,0,0.22), inset 0 0 0 1px rgba(255,77,109,0.18);
+        }
+        .w-date{
+          display:flex;
+          align-items:center;
+          gap:8px;
+          color:#bbb;
+          min-width:0;
+        }
+        .w-date input{
+          background: rgba(255,255,255,0.06);
+          color:#eee;
+          border: 1px solid rgba(255,255,255,0.15);
+          border-radius:10px;
+          padding:6px 10px;
+          max-width:100%;
+        }
+        .w-stack{
+          margin-top: 12px;
+          display:grid;
+          gap: 10px;
+          min-width:0;
+        }
+        .w-row{
+          display:flex;
+          justify-content:space-between;
+          gap:12px;
+          align-items:center;
+          flex-wrap:wrap;
+          min-width:0;
+        }
+      `}</style>
+
       {/* タブ */}
-      <div
-        style={{
-          marginTop: 16,
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          minWidth: 0,
-        }}
-      >
+      <div className="w-tabs">
         <button
           onClick={() => setTab("today")}
-          style={{
-            borderRadius: 999,
-            padding: "8px 12px",
-            border:
-              tab === "today"
-                ? "2px solid #ff4d6d"
-                : "1px solid rgba(255,255,255,0.15)",
-            background: tab === "today" ? GLASS_BG_STRONG : GLASS_BG,
-            backdropFilter: GLASS_BLUR,
-            WebkitBackdropFilter: GLASS_BLUR,
-            color: "#eee",
-            cursor: "pointer",
-          }}
+          className={`w-tabbtn ${tab === "today" ? "is-active" : ""}`}
+          type="button"
         >
           今日
         </button>
 
         <button
           onClick={() => setTab("tomorrow")}
-          style={{
-            borderRadius: 999,
-            padding: "8px 12px",
-            border:
-              tab === "tomorrow"
-                ? "2px solid #ff4d6d"
-                : "1px solid rgba(255,255,255,0.15)",
-            background: tab === "tomorrow" ? GLASS_BG_STRONG : GLASS_BG,
-            backdropFilter: GLASS_BLUR,
-            WebkitBackdropFilter: GLASS_BLUR,
-            color: "#eee",
-            cursor: "pointer",
-          }}
+          className={`w-tabbtn ${tab === "tomorrow" ? "is-active" : ""}`}
+          type="button"
         >
           明日
         </button>
 
         <button
           onClick={() => setTab("pick")}
-          style={{
-            borderRadius: 999,
-            padding: "8px 12px",
-            border:
-              tab === "pick"
-                ? "2px solid #ff4d6d"
-                : "1px solid rgba(255,255,255,0.15)",
-            background: tab === "pick" ? GLASS_BG_STRONG : GLASS_BG,
-            backdropFilter: GLASS_BLUR,
-            WebkitBackdropFilter: GLASS_BLUR,
-            color: "#eee",
-            cursor: "pointer",
-          }}
+          className={`w-tabbtn ${tab === "pick" ? "is-active" : ""}`}
+          type="button"
         >
           日付指定
         </button>
 
         {tab === "pick" && (
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              color: "#bbb",
-              minWidth: 0,
-            }}
-          >
+          <label className="w-date">
             <span style={{ fontSize: 12 }}>📅</span>
             <input
               type="date"
               value={picked}
               onChange={(e) => setPicked(e.target.value)}
-              style={{
-                background: GLASS_BG,
-                backdropFilter: GLASS_BLUR,
-                WebkitBackdropFilter: GLASS_BLUR,
-                color: "#eee",
-                border: "1px solid rgba(255,255,255,0.15)",
-                borderRadius: 10,
-                padding: "6px 10px",
-                maxWidth: "100%",
-              }}
             />
           </label>
         )}
@@ -405,17 +386,11 @@ export default function Weather({ back }: Props) {
       )}
 
       {/* サマリー */}
-      <div style={{ marginTop: 16, ...TILE_STYLE }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            alignItems: "center",
-            flexWrap: "wrap",
-            minWidth: 0,
-          }}
-        >
+      <div
+        className="glass glass-strong w-stack"
+        style={{ borderRadius: 16, padding: 12 }}
+      >
+        <div className="w-row">
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
             📅 {targetDate.toLocaleDateString()}
           </div>
@@ -473,7 +448,10 @@ export default function Weather({ back }: Props) {
 
       {/* 満潮/干潮 */}
       <div style={{ marginTop: 12, display: "grid", gap: 10, minWidth: 0 }}>
-        <div style={{ ...TILE_STYLE }}>
+        <div
+          className="glass glass-strong"
+          style={{ borderRadius: 16, padding: 12 }}
+        >
           <div style={{ fontWeight: 700, marginBottom: 6 }}>
             🟡 満潮 / 🔵 干潮
           </div>
@@ -524,7 +502,7 @@ export default function Weather({ back }: Props) {
           )}
         </div>
 
-        {/* グラフ */}
+        {/* グラフ（TideGraphは既存のまま） */}
         <div style={{ minWidth: 0 }}>
           <TideGraph
             series={state.status === "ok" ? state.series : []}

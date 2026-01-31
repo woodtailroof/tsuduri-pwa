@@ -116,8 +116,11 @@ export default function Home({ go }: Props) {
           height:auto;
         }
 
+        /* ✅ ここが重要：PageShellの内側(=100%)にフィットさせる
+           100svh/100vh を使うと safe-area + 100dvh とズレて下が切れやすい */
         .home-root{
-          height:100svh;
+          height:100%;
+          min-height:0;
           display:grid;
           grid-template-rows:auto minmax(0,1fr);
           gap:clamp(2px,0.8vh,8px);
@@ -127,19 +130,22 @@ export default function Home({ go }: Props) {
         .home-safe-logo{
           width:100%;
           padding-right:clamp(0px,18vw,430px);
+          min-width:0;
         }
         @media (max-width:720px){
           .home-safe-logo{ padding-right:0; }
         }
 
+        /* ✅ svh だと端末UIで変動しやすいので dvh 寄りに */
         .home-logo-box{
           width:min(96vw,1320px);
-          height:clamp(140px,30svh,300px);
+          height:clamp(140px,28dvh,300px);
+          min-height:0;
         }
         @media (max-width:720px){
           .home-logo-box{
             width:min(96vw,820px);
-            height:clamp(170px,32svh,340px);
+            height:clamp(170px,30dvh,340px);
             margin:0 auto;
           }
         }
@@ -154,6 +160,7 @@ export default function Home({ go }: Props) {
         .home-actions{
           display:grid;
           align-items:center;
+          min-height:0;
         }
         @media (max-width:720px){
           .home-actions{
@@ -164,6 +171,7 @@ export default function Home({ go }: Props) {
         .home-safe-actions{
           width:100%;
           padding-right:clamp(0px,18vw,430px);
+          min-width:0;
         }
         @media (max-width:720px){
           .home-safe-actions{ padding-right:50vw; }
@@ -175,6 +183,7 @@ export default function Home({ go }: Props) {
           display:grid;
           gap:var(--gapy);
           justify-content:center;
+          min-height:0;
         }
 
         .home-grid{
@@ -198,6 +207,7 @@ export default function Home({ go }: Props) {
             padding-left:max(8px,env(safe-area-inset-left));
             padding-right:8px;
             transform:scale(0.92);
+            transform-origin: top center;
             --gapy:clamp(2px,0.45vh,7px);
             --btnw:100%;
           }

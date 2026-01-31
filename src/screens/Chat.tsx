@@ -14,7 +14,6 @@ import {
   SELECTED_CHARACTER_ID_KEY,
 } from "./CharacterSettings";
 import PageShell from "../components/PageShell";
-import { useAppSettings } from "../lib/appSettings";
 
 type Props = {
   back: () => void;
@@ -99,10 +98,8 @@ function safeLoadHistory(roomId: string): Msg[] {
     if (role !== "user" && role !== "assistant") continue;
     if (typeof content !== "string") continue;
 
-    const r = role as "user" | "assistant";
-
     out.push({
-      role: r,
+      role: role as "user" | "assistant",
       content,
       speakerId: typeof speakerId === "string" ? speakerId : undefined,
     });
@@ -377,15 +374,6 @@ function getCharacterColor(c: CharacterProfileWithColor | undefined | null) {
 }
 
 export default function Chat({ back, goCharacterSettings }: Props) {
-  const { settings } = useAppSettings();
-
-  const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
-  const glassBlur = clamp(settings.glassBlur ?? 10, 0, 40);
-
-  const glassBg = (alpha: number) => `rgba(0,0,0,${clamp(alpha, 0, 0.85)})`;
-  const glassBorder = "1px solid rgba(255,255,255,0.14)";
-  const glassFilter = `blur(${Math.round(glassBlur)}px)`;
-
   const [characters, setCharacters] = useState<CharacterProfileWithColor[]>(
     () => safeLoadCharacters(),
   );
@@ -447,17 +435,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     setTimeout(run, 0);
     setTimeout(run, 80);
   }
-
-  useEffect(() => {
-    const prevHtml = document.documentElement.style.overflow;
-    const prevBody = document.body.style.overflow;
-    document.documentElement.style.overflow = "hidden";
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.documentElement.style.overflow = prevHtml;
-      document.body.style.overflow = prevBody;
-    };
-  }, []);
 
   useEffect(() => {
     const onFocus = () => {
@@ -683,14 +660,12 @@ export default function Chat({ back, goCharacterSettings }: Props) {
   const uiButtonStyle: CSSProperties = {
     padding: "6px 10px",
     borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: glassBg(glassAlpha),
-    color: "rgba(255,255,255,0.82)",
     cursor: "pointer",
     height: 34,
     lineHeight: "20px",
-    backdropFilter: glassFilter,
-    WebkitBackdropFilter: glassFilter,
+    color: "rgba(255,255,255,0.90)",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(255,255,255,0.06)",
   };
 
   const uiButtonStyleActive: CSSProperties = {
@@ -714,6 +689,9 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       maxWidth={1100}
       showBack
       onBack={back}
+      titleLayout="left"
+      scrollY="hidden"
+      contentPadding={"clamp(10px, 2vw, 18px)"}
     >
       <style>{`
         @keyframes tsuduri-dot-bounce {
@@ -726,12 +704,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           gap: 6px;
           padding: 8px 12px;
           border-radius: 14px;
-          background: ${glassBg(glassAlpha)};
-          border: ${glassBorder};
-          color: #fff;
           max-width: 80%;
-          backdrop-filter: ${glassFilter};
-          -webkit-backdrop-filter: ${glassFilter};
         }
         .tsuduri-typing .label {
           font-size: 12px;
@@ -748,6 +721,31 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         }
         .tsuduri-typing .dot:nth-child(2) { animation-delay: 0.12s; }
         .tsuduri-typing .dot:nth-child(3) { animation-delay: 0.24s; }
+
+        .chat-btn.glass{
+          display:inline-flex;
+          align-items:center;
+          justify-content:center;
+          height:34px;
+          padding: 6px 10px;
+          border-radius:12px;
+          cursor:pointer;
+          user-select:none;
+          color: rgba(255,255,255,0.90);
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.18);
+        }
+        .chat-btn.glass.is-active{
+          background: rgba(255,77,109,0.14);
+          border: 1px solid rgba(255,77,109,0.55);
+          color:#fff;
+        }
+        .chat-quick{
+          display:flex;
+          flex-wrap:wrap;
+          gap:8px;
+          min-width:0;
+        }
       `}</style>
 
       <div
@@ -756,11 +754,13 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           flexDirection: "column",
           gap: 12,
           minWidth: 0,
-          height: "100%",
-          maxHeight: "calc(100dvh - 120px)",
+          height:
+            "calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px)",
+          maxHeight: "100%",
           overflow: "hidden",
         }}
       >
+        {/* ヘッダー操作群 */}
         <div
           style={{
             display: "flex",
@@ -785,6 +785,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               type="button"
               onClick={toggleAllHands}
               title="全員集合にすると1投げに全員が返す"
+              className={`chat-btn glass ${roomMode === "all" ? "is-active" : ""}`}
               style={roomMode === "all" ? uiButtonStyleActive : uiButtonStyle}
             >
               {roomMode === "all" ? "👥 全員集合：ON" : "👤 全員集合：OFF"}
@@ -804,6 +805,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                   onChange={(e) => setSelectedId(e.target.value)}
                   title="キャラ切替（履歴も切り替わる）"
                   style={selectStyle}
+                  className="glass"
                 >
                   {characters.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -830,6 +832,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
             <button
               onClick={goCharacterSettings}
               title="キャラ管理（掛け合い設定もここ）"
+              className="chat-btn glass"
               style={uiButtonStyle}
             >
               🎭
@@ -838,6 +841,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
             <button
               onClick={clearHistory}
               title="履歴を全消し"
+              className="chat-btn glass"
               style={uiButtonStyle}
             >
               🧹
@@ -845,19 +849,17 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           </div>
         </div>
 
+        {/* 履歴（ここだけスクロール） */}
         <div
           ref={scrollBoxRef}
+          className="glass glass-strong"
           style={{
             flex: 1,
             minHeight: 0,
             overflowY: "auto",
             overflowX: "hidden",
-            border: glassBorder,
             borderRadius: 14,
             padding: 12,
-            background: glassBg(glassAlpha),
-            backdropFilter: glassFilter,
-            WebkitBackdropFilter: glassFilter,
             minWidth: 0,
           }}
         >
@@ -874,11 +876,15 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                 !isUser && roomMode === "all"
                   ? characters.find((c) => c.id === m.speakerId)
                   : null;
+
               const speakerName = speakerObj?.name ?? "だれか";
-              const speakerColor = getCharacterColor(speakerObj);
+              const speakerColor =
+                roomMode === "all"
+                  ? getCharacterColor(speakerObj)
+                  : getCharacterColor(selectedCharacter);
 
               const bubbleBorder = !isUser
-                ? `1px solid ${roomMode === "all" ? speakerColor : getCharacterColor(selectedCharacter)}`
+                ? `1px solid ${speakerColor}`
                 : "1px solid transparent";
 
               return (
@@ -920,13 +926,12 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                   )}
 
                   <span
+                    className={!isUser ? "glass" : undefined}
                     style={{
                       display: "inline-block",
                       padding: "10px 12px",
                       borderRadius: 14,
-                      background: isUser
-                        ? "rgba(255,77,109,0.92)"
-                        : glassBg(glassAlpha),
+                      background: isUser ? "rgba(255,77,109,0.92)" : undefined,
                       color: "#fff",
                       maxWidth: "80%",
                       whiteSpace: "pre-wrap",
@@ -934,8 +939,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                       overflowWrap: "anywhere",
                       wordBreak: "break-word",
                       border: bubbleBorder,
-                      backdropFilter: glassFilter,
-                      WebkitBackdropFilter: glassFilter,
                     }}
                   >
                     {m.content}
@@ -947,7 +950,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
           {loading && (
             <div style={{ marginTop: 6, textAlign: "left" }}>
-              <div className="tsuduri-typing">
+              <div className="tsuduri-typing glass">
                 <span className="label">入力中</span>
                 <span className="dot" />
                 <span className="dot" />
@@ -957,14 +960,16 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           )}
         </div>
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, minWidth: 0 }}>
+        {/* クイック */}
+        <div className="chat-quick">
           <button
             type="button"
             onClick={() => {
               setInput("最近元気～？");
               focusInput();
             }}
-            style={{ opacity: 0.9, ...uiButtonStyle }}
+            className="chat-btn glass"
+            style={{ opacity: 0.92, ...uiButtonStyle }}
           >
             😌 元気？
           </button>
@@ -974,7 +979,8 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               setInput("今日の釣行判断よろしく！");
               focusInput();
             }}
-            style={{ opacity: 0.9, ...uiButtonStyle }}
+            className="chat-btn glass"
+            style={{ opacity: 0.92, ...uiButtonStyle }}
           >
             🎣 釣行判断：今日
           </button>
@@ -984,22 +990,17 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               setInput("明日の釣行判断よろしく！");
               focusInput();
             }}
-            style={{ opacity: 0.9, ...uiButtonStyle }}
+            className="chat-btn glass"
+            style={{ opacity: 0.92, ...uiButtonStyle }}
           >
             🌙 釣行判断：明日
           </button>
         </div>
 
+        {/* 入力欄（常に見える） */}
         <div
-          style={{
-            flex: "0 0 auto",
-            padding: 10,
-            border: glassBorder,
-            borderRadius: 14,
-            background: glassBg(glassAlpha),
-            backdropFilter: glassFilter,
-            WebkitBackdropFilter: glassFilter,
-          }}
+          className="glass glass-strong"
+          style={{ borderRadius: 14, padding: 10 }}
         >
           <div
             style={{
@@ -1024,16 +1025,14 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                   ? "みんなに投げかける…"
                   : `${selectedCharacter.name}に話しかける…`
               }
+              className="glass"
               style={{
                 flex: 1,
                 padding: 10,
                 minWidth: 0,
                 borderRadius: 12,
-                border: glassBorder,
-                background: glassBg(glassAlpha),
                 color: "#fff",
-                backdropFilter: glassFilter,
-                WebkitBackdropFilter: glassFilter,
+                outline: "none",
               }}
             />
 
@@ -1041,7 +1040,12 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               onMouseDown={(e) => e.preventDefault()}
               onClick={send}
               disabled={!canSend}
-              style={uiButtonStyle}
+              className="chat-btn glass"
+              style={{
+                ...uiButtonStyle,
+                opacity: canSend ? 1 : 0.55,
+                cursor: canSend ? "pointer" : "not-allowed",
+              }}
             >
               {loading ? "送信中…" : roomMode === "all" ? "全員に送る" : "送信"}
             </button>
