@@ -16,6 +16,7 @@ import { getTide736DayCached, type TideCacheSource } from "../lib/tide736Cache";
 import { getTidePhaseFromSeries } from "../lib/tidePhase736";
 import TideGraph from "../components/TideGraph";
 import PageShell from "../components/PageShell";
+import { useAppSettings } from "../lib/appSettings";
 
 type Props = {
   back: () => void;
@@ -292,6 +293,8 @@ function BottomSheet({
 }
 
 export default function RecordHistory({ back }: Props) {
+  const { settings } = useAppSettings();
+
   const isMobile = useIsMobile();
   const isDesktop = !isMobile;
 
@@ -1038,6 +1041,23 @@ export default function RecordHistory({ back }: Props) {
     </div>
   );
 
+  // ✅ 履歴カード：ガラス設定追従（固定 0.06 をやめる）
+  const historyCardStyle: CSSProperties = {
+    borderRadius: 16,
+    padding: 12,
+    display: "grid",
+    gridTemplateColumns: "72px 1fr",
+    gap: 12,
+    alignItems: "center",
+    textAlign: "left",
+    cursor: "pointer",
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.35))",
+    boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
+    backdropFilter: "blur(var(--glass-blur,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+  };
+
   const ListView = (
     <div style={{ display: "grid", gap: 10 }}>
       {archiveList.map((r) => {
@@ -1050,20 +1070,8 @@ export default function RecordHistory({ back }: Props) {
             key={r.id}
             type="button"
             onClick={() => openDetailForRecord(r)}
-            className="glass glass-strong"
-            style={{
-              borderRadius: 16,
-              padding: 12,
-              display: "grid",
-              gridTemplateColumns: "72px 1fr",
-              gap: 12,
-              alignItems: "center",
-              textAlign: "left",
-              cursor: "pointer",
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.06)",
-              boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
-            }}
+            className="glass"
+            style={historyCardStyle}
             title="この記録を開く"
           >
             <div
@@ -1077,6 +1085,7 @@ export default function RecordHistory({ back }: Props) {
                 alignItems: "center",
                 justifyContent: "center",
                 flexShrink: 0,
+                border: "1px solid rgba(255,255,255,0.10)",
               }}
             >
               {thumbUrl ? (
@@ -1162,17 +1171,42 @@ export default function RecordHistory({ back }: Props) {
     </h1>
   );
 
+  // ✅ 画面内で glass 設定値をCSS変数として供給（履歴も他UI同様に追従）
+  const glassVars = {
+    "--glass-alpha": String(settings.glassAlpha ?? 0.22),
+    "--glass-blur": `${settings.glassBlur ?? 10}px`,
+  } as unknown as CSSProperties;
+
   return (
     <PageShell
       title={isDesktop ? undefined : titleNode}
-      subtitle={isDesktop ? undefined : headerSub}
+      subtitle={
+        isDesktop ? undefined : (
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
+            🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:
+            {FIXED_PORT.hc}）
+            {!online && (
+              <span style={{ marginLeft: 10, color: "#f6c" }}>
+                📴 オフライン
+              </span>
+            )}
+          </div>
+        )
+      }
       maxWidth={1400}
       showBack
       onBack={back}
-      // ✅ PCは「ページ自体の縦スクロール」を殺して、各カラム内スクロールに寄せる
+      // ✅ PCは「ページ自体の縦スクロール」を殺す（左リストだけスクロールにする）
       scrollY={isDesktop ? "hidden" : "auto"}
     >
-      <div style={{ overflowX: "clip", maxWidth: "100vw", minHeight: 0 }}>
+      <div
+        style={{
+          ...glassVars,
+          overflowX: "clip",
+          maxWidth: "100vw",
+          minHeight: 0,
+        }}
+      >
         {isMobile ? (
           <div style={{ display: "grid", gap: 12 }}>
             {Controls}
@@ -1219,12 +1253,11 @@ export default function RecordHistory({ back }: Props) {
               gap: 14,
               alignItems: "start",
               minWidth: 0,
-              // ✅ height を固定しすぎると環境でズレるので、maxHeight で安全運転
               maxHeight: "calc(100svh - 24px)",
               minHeight: 0,
             }}
           >
-            {/* 左：タイトル＋履歴一覧（画面内で止める） */}
+            {/* 左：タイトル＋履歴一覧（ここだけスクロールさせる） */}
             <div
               style={{
                 display: "grid",
@@ -1240,31 +1273,43 @@ export default function RecordHistory({ back }: Props) {
               >
                 {titleNode}
                 <div style={{ height: 8 }} />
-                {headerSub}
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
+                  🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:
+                  {FIXED_PORT.hc}）
+                  {!online && (
+                    <span style={{ marginLeft: 10, color: "#f6c" }}>
+                      📴 オフライン
+                    </span>
+                  )}
+                </div>
               </div>
 
+              {/* ✅ 履歴枠自体もガラス（設定値追従） */}
               <div
+                className="glass glass-strong"
                 style={{
+                  borderRadius: 16,
+                  padding: 12,
                   minHeight: 0,
                   overflow: "hidden",
+                  display: "grid",
+                  gridTemplateRows: "auto 1fr",
+                  gap: 10,
                 }}
               >
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "rgba(255,255,255,0.65)",
-                    marginBottom: 8,
-                  }}
-                >
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
                   絞り込み {filteredArchive.length} 件（表示{" "}
                   {Math.min(archivePageSize, filteredArchive.length)} 件）
                 </div>
 
+                {/* ✅ “左の履歴が並んでるところ”だけスクロール */}
                 <div
                   style={{
-                    height: "100%",
+                    minHeight: 0,
                     overflowY: "auto",
                     paddingRight: 4,
+                    overscrollBehavior: "contain",
+                    WebkitOverflowScrolling: "touch",
                   }}
                 >
                   {ListView}
@@ -1272,7 +1317,7 @@ export default function RecordHistory({ back }: Props) {
               </div>
             </div>
 
-            {/* 中央：コントロール＋写真プレースホルダー */}
+            {/* 中央：コントロール＋写真プレースホルダー（スクロールしない） */}
             <div
               style={{
                 display: "grid",
@@ -1280,6 +1325,7 @@ export default function RecordHistory({ back }: Props) {
                 gap: 12,
                 minWidth: 0,
                 minHeight: 0,
+                overflow: "hidden",
               }}
             >
               {Controls}
@@ -1345,7 +1391,7 @@ export default function RecordHistory({ back }: Props) {
               </div>
             </div>
 
-            {/* 右：情報＋グラフ（画面内スクロール） */}
+            {/* 右：情報＋グラフ（スクロールしない。はみ出しはクリップ） */}
             <div
               ref={detailPaneRef}
               className="glass glass-strong"
@@ -1353,7 +1399,7 @@ export default function RecordHistory({ back }: Props) {
                 borderRadius: 16,
                 padding: 12,
                 minHeight: 0,
-                overflowY: "auto",
+                overflow: "hidden",
               }}
             >
               {!allLoadedOnce && allLoading ? (

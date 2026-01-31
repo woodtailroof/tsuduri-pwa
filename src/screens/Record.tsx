@@ -418,10 +418,15 @@ export default function Record({ back }: Props) {
                         const dt = await exifr.parse(file, {
                           pick: ["DateTimeOriginal", "CreateDate"],
                         });
+
+                        // ✅ any を使わない
+                        const meta = dt as {
+                          DateTimeOriginal?: Date;
+                          CreateDate?: Date;
+                        } | null;
+
                         const date =
-                          (dt as any)?.DateTimeOriginal ??
-                          (dt as any)?.CreateDate ??
-                          null;
+                          meta?.DateTimeOriginal ?? meta?.CreateDate ?? null;
 
                         if (date instanceof Date) {
                           setCapturedAt(date);
