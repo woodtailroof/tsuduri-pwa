@@ -63,7 +63,6 @@ type CSSVars = Record<`--${string}`, string>;
 
 /**
  * ✅ PageShellが画面遷移で再マウントしても“直前のキャラ”を維持するためのメモリ
- * - SPA遷移中は保持される（リロードしたら当然消える）
  */
 let lastDisplayedCharacterSrc: string | null = null;
 
@@ -142,11 +141,7 @@ function pickRandomFrom<T>(arr: T[]): T | null {
   return arr[i] ?? null;
 }
 
-/**
- * ✅ 毎分だけ tick を進める（時間帯の切替検知用）
- * 1) マウント直後に1回
- * 2) 次の「分」に揃えてから 60秒ごと
- */
+/** 毎分だけ tick を進める（時間帯の切替検知用） */
 function useMinuteTick() {
   const [tick, setTick] = useState(0);
 
@@ -156,7 +151,6 @@ function useMinuteTick() {
 
     const bump = () => setTick((v) => v + 1);
 
-    // 初回
     bump();
 
     const schedule = () => {
@@ -215,21 +209,20 @@ function useIsMobile() {
 
 /**
  * ✅ 背景の CSS 文字列を作る
- * - 404 等でも真っ黒にならないように「多重urlフォールバック」を入れる
- * - 1枚目がダメでも、2枚目以降の背景レイヤが描画される
+ * - 404 等でも真っ黒にならないように「多重urlフォールバック」
  */
 function makeBgCssValue(
   mode: BgMode,
-  setId: string | undefined,
-  fixedSrc: string | undefined,
+  setId: string,
+  fixedSrc: string,
   band: ReturnType<typeof getTimeBand>,
 ) {
-  const sid = (setId ?? "").trim() || (DEFAULT_SETTINGS.bgAutoSet ?? "surf");
+  const sid = (setId ?? "").trim() || DEFAULT_SETTINGS.autoBgSet;
+
+  if (mode === "off") return "none";
 
   if (mode === "fixed") {
-    const pFixed =
-      normalizePublicPath(fixedSrc ?? "") || "/assets/bg/ui-check.png";
-    // fixed が死んでも ui-check に落ちる
+    const pFixed = normalizePublicPath(fixedSrc) || "/assets/bg/ui-check.png";
     return `url(${pFixed}), url(/assets/bg/ui-check.png)`;
   }
 
@@ -296,37 +289,35 @@ export default function PageShell({
     window.location.assign(prev ?? fallbackHref);
   }, [onBack, fallbackHref]);
 
-  // ========== 背景（Settings → CSS var）
+  // 背景演出
   const effectiveBgDim = settings.bgDim ?? bgDim;
   const effectiveBgBlur = settings.bgBlur ?? bgBlur;
 
-  // ========== ガラス（Settings → CSS var）
+  // ガラス
   const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
   const glassBlur = clamp(settings.glassBlur ?? 10, 0, 24);
   const glassAlphaStrong = clamp(glassAlpha + 0.08, 0, 0.6);
 
-  // ========== 背景画像（auto/fixed + 毎分更新）
+  // 背景画像
   const minuteTick = useMinuteTick();
 
   const bgMode = (settings.bgMode ?? DEFAULT_SETTINGS.bgMode) as BgMode;
-  const bgAutoSet = (settings.bgAutoSet ??
-    DEFAULT_SETTINGS.bgAutoSet ??
-    "surf") as string;
-  const bgFixedSrc = (settings.bgFixedSrc ??
-    DEFAULT_SETTINGS.bgFixedSrc ??
-    "") as string;
+  const autoBgSet = (settings.autoBgSet ??
+    DEFAULT_SETTINGS.autoBgSet) as string;
+  const fixedBgSrc = (settings.fixedBgSrc ??
+    DEFAULT_SETTINGS.fixedBgSrc) as string;
 
   const timeBand = useMemo(() => getTimeBand(new Date()), [minuteTick]);
 
   const resolvedBgCss = useMemo(() => {
     if (bgImage && bgImage.trim()) {
-      const p = normalizePublicPath(bgImage) || "/assets/bg/ui-check.png";
+      const p = normalizePublicPath(bgImage);
       return `url(${p}), url(/assets/bg/ui-check.png)`;
     }
-    return makeBgCssValue(bgMode, bgAutoSet, bgFixedSrc, timeBand);
-  }, [bgImage, bgMode, bgAutoSet, bgFixedSrc, timeBand]);
+    return makeBgCssValue(bgMode, autoBgSet, fixedBgSrc, timeBand);
+  }, [bgImage, bgMode, autoBgSet, fixedBgSrc, timeBand]);
 
-  // ========== ストレージ変更検知（tick）
+  // ストレージ変更検知
   const [storageTick, setStorageTick] = useState(0);
 
   useEffect(() => {
@@ -365,14 +356,12 @@ export default function PageShell({
     setCharacterImageMap(loadCharacterImageMap());
   }, [storageTick]);
 
-  // ========== キャラ（固定/ランダム）※作成キャラから選ぶ
+  // キャラ（固定/ランダム）
   const requestedCharacterId = useMemo(() => {
     if (!settings.characterEnabled) return null;
     if (createdIds.length === 0) return null;
 
-    if (settings.characterMode === "random") {
-      return pickRandomFrom(createdIds);
-    }
+    if (settings.characterMode === "random") return pickRandomFrom(createdIds);
 
     const fixed = settings.fixedCharacterId ?? "";
     if (fixed && createdIds.includes(fixed)) return fixed;
@@ -397,13 +386,10 @@ export default function PageShell({
   const requestedCharacterSrc = useMemo(() => {
     if (!requestedCharacterId) return null;
     if (mappedCharacterSrc) return mappedCharacterSrc;
+    return resolveCharacterSrc(requestedCharacterId);
+  }, [requestedCharacterId, mappedCharacterSrc]);
 
-    // ✅ resolveCharacterSrc が 2引数想定でもOKにする（override は空でも可）
-    const override = settings.characterOverrideSrc ?? "";
-    return resolveCharacterSrc(requestedCharacterId, override);
-  }, [requestedCharacterId, mappedCharacterSrc, settings.characterOverrideSrc]);
-
-  // ========== チラつき対策
+  // チラつき対策
   const initialSrc = useMemo(() => {
     if (lastDisplayedCharacterSrc) return lastDisplayedCharacterSrc;
     if (requestedCharacterSrc) return requestedCharacterSrc;
@@ -514,7 +500,6 @@ export default function PageShell({
 
   return (
     <div className="page-shell" style={shellStyle} data-timeband={timeBand}>
-      {/* ✅ すりガラス保険CSS（var連動） */}
       <style>
         {`
           .glass{
@@ -535,7 +520,6 @@ export default function PageShell({
         `}
       </style>
 
-      {/* キャラレイヤ */}
       {shouldShowCharacter && (
         <div
           aria-hidden="true"
@@ -580,7 +564,6 @@ export default function PageShell({
         </div>
       )}
 
-      {/* 戻る */}
       {showBack && (
         <button
           type="button"
@@ -593,7 +576,6 @@ export default function PageShell({
         </button>
       )}
 
-      {/* スクロール領域 */}
       <div
         className={[
           "page-shell-scroll",
