@@ -451,12 +451,12 @@ export default function RecordHistory({ back }: Props) {
     }
   }, [all]);
 
-  // ✅ アンマウント時に全部破棄
+  // ✅ アンマウント時に全部破棄（ref.current 直参照警告を回避）
   useEffect(() => {
+    const map = thumbUrlMapRef.current;
     return () => {
-      for (const url of thumbUrlMapRef.current.values())
-        URL.revokeObjectURL(url);
-      thumbUrlMapRef.current.clear();
+      for (const url of map.values()) URL.revokeObjectURL(url);
+      map.clear();
     };
   }, []);
 
@@ -624,21 +624,13 @@ export default function RecordHistory({ back }: Props) {
       setDetailLoading(false);
     }
 
+    // 右ペインはスクロールさせない設計なので、scrollTo はあっても害なし（将来 overflow を戻してもOK）
     if (!isMobile) {
       requestAnimationFrame(() => {
-        detailPaneRef.current?.scrollTo({ top: 0 });
+        detailPaneRef.current?.scrollTo?.({ top: 0 });
       });
     }
   }
-
-  const headerSub = (
-    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-      🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
-      {!online && (
-        <span style={{ marginLeft: 10, color: "#f6c" }}>📴 オフライン</span>
-      )}
-    </div>
-  );
 
   function DetailView({ record }: { record: CatchRecord }) {
     const shotIso = record.capturedAt ?? record.createdAt;
@@ -834,6 +826,15 @@ export default function RecordHistory({ back }: Props) {
       </div>
     );
   }
+
+  const headerSubNode = (
+    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
+      🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
+      {!online && (
+        <span style={{ marginLeft: 10, color: "#f6c" }}>📴 オフライン</span>
+      )}
+    </div>
+  );
 
   const Controls = (
     <div
@@ -1143,7 +1144,7 @@ export default function RecordHistory({ back }: Props) {
     </div>
   );
 
-  // ✅ PC中央：写真拡大プレースホルダー
+  // ✅ PC中央：写真拡大プレースホルダー（deps 警告を潰す）
   const photoUrl = useMemo(() => {
     if (!selected?.photoBlob) return null;
     try {
@@ -1151,7 +1152,7 @@ export default function RecordHistory({ back }: Props) {
     } catch {
       return null;
     }
-  }, [selected?.id, selected?.photoBlob]);
+  }, [selected?.photoBlob]);
 
   useEffect(() => {
     return () => {
@@ -1180,19 +1181,7 @@ export default function RecordHistory({ back }: Props) {
   return (
     <PageShell
       title={isDesktop ? undefined : titleNode}
-      subtitle={
-        isDesktop ? undefined : (
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-            🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:
-            {FIXED_PORT.hc}）
-            {!online && (
-              <span style={{ marginLeft: 10, color: "#f6c" }}>
-                📴 オフライン
-              </span>
-            )}
-          </div>
-        )
-      }
+      subtitle={isDesktop ? undefined : headerSubNode}
       maxWidth={1400}
       showBack
       onBack={back}
@@ -1273,15 +1262,7 @@ export default function RecordHistory({ back }: Props) {
               >
                 {titleNode}
                 <div style={{ height: 8 }} />
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-                  🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:
-                  {FIXED_PORT.hc}）
-                  {!online && (
-                    <span style={{ marginLeft: 10, color: "#f6c" }}>
-                      📴 オフライン
-                    </span>
-                  )}
-                </div>
+                {headerSubNode}
               </div>
 
               {/* ✅ 履歴枠自体もガラス（設定値追従） */}
