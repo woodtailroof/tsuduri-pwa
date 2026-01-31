@@ -214,7 +214,6 @@ function BottomSheet({
     inset: 0,
     zIndex: 99999,
     background: overlayActive ? "rgba(0,0,0,0.62)" : "rgba(0,0,0,0)",
-    // ✅ PageShellの設定値に“だいたい”追従（強すぎないよう係数）
     backdropFilter: overlayActive
       ? "blur(calc(var(--glass-blur,10px) * 0.6))"
       : "blur(0px)",
@@ -624,7 +623,6 @@ export default function RecordHistory({ back }: Props) {
       setDetailLoading(false);
     }
 
-    // 右ペインはスクロールさせない設計なので、scrollTo はあっても害なし（将来 overflow を戻してもOK）
     if (!isMobile) {
       requestAnimationFrame(() => {
         detailPaneRef.current?.scrollTo?.({ top: 0 });
@@ -1042,7 +1040,6 @@ export default function RecordHistory({ back }: Props) {
     </div>
   );
 
-  // ✅ 履歴カード：ガラス設定追従（固定 0.06 をやめる）
   const historyCardStyle: CSSProperties = {
     borderRadius: 16,
     padding: 12,
@@ -1064,7 +1061,10 @@ export default function RecordHistory({ back }: Props) {
       {archiveList.map((r) => {
         const created = new Date(r.createdAt);
         const shotDate = r.capturedAt ? new Date(r.capturedAt) : null;
-        const thumbUrl = getThumbUrl(r);
+        const thumbUrl = r.id
+          ? (thumbUrlMapRef.current.get(r.id) ?? null)
+          : null;
+        const finalThumb = thumbUrl ?? getThumbUrl(r);
 
         return (
           <button
@@ -1089,9 +1089,9 @@ export default function RecordHistory({ back }: Props) {
                 border: "1px solid rgba(255,255,255,0.10)",
               }}
             >
-              {thumbUrl ? (
+              {finalThumb ? (
                 <img
-                  src={thumbUrl}
+                  src={finalThumb}
                   alt="thumb"
                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 />
@@ -1144,7 +1144,6 @@ export default function RecordHistory({ back }: Props) {
     </div>
   );
 
-  // ✅ PC中央：写真拡大プレースホルダー（deps 警告を潰す）
   const photoUrl = useMemo(() => {
     if (!selected?.photoBlob) return null;
     try {
@@ -1172,7 +1171,6 @@ export default function RecordHistory({ back }: Props) {
     </h1>
   );
 
-  // ✅ 画面内で glass 設定値をCSS変数として供給（履歴も他UI同様に追従）
   const glassVars = {
     "--glass-alpha": String(settings.glassAlpha ?? 0.22),
     "--glass-blur": `${settings.glassBlur ?? 10}px`,
@@ -1185,7 +1183,6 @@ export default function RecordHistory({ back }: Props) {
       maxWidth={1400}
       showBack
       onBack={back}
-      // ✅ PCは「ページ自体の縦スクロール」を殺す（左リストだけスクロールにする）
       scrollY={isDesktop ? "hidden" : "auto"}
     >
       <div
@@ -1194,6 +1191,8 @@ export default function RecordHistory({ back }: Props) {
           overflowX: "clip",
           maxWidth: "100vw",
           minHeight: 0,
+          // ✅ PCレイアウトは「中身に高さが必要」なのでここで面倒みる
+          height: isDesktop ? "calc(100svh - 24px)" : "auto",
         }}
       >
         {isMobile ? (
@@ -1233,7 +1232,6 @@ export default function RecordHistory({ back }: Props) {
             )}
           </div>
         ) : (
-          // ✅ PC: 3カラム（左：タイトル+履歴 / 中央：写真 / 右：情報+グラフ）
           <div
             style={{
               display: "grid",
@@ -1242,11 +1240,12 @@ export default function RecordHistory({ back }: Props) {
               gap: 14,
               alignItems: "start",
               minWidth: 0,
-              maxHeight: "calc(100svh - 24px)",
               minHeight: 0,
+              // ✅ ここが超重要：maxHeight だと高さが確定しないケースがある
+              height: "100%",
             }}
           >
-            {/* 左：タイトル＋履歴一覧（ここだけスクロールさせる） */}
+            {/* 左：タイトル＋履歴一覧（ここだけスクロール） */}
             <div
               style={{
                 display: "grid",
@@ -1254,6 +1253,7 @@ export default function RecordHistory({ back }: Props) {
                 gap: 12,
                 minWidth: 0,
                 minHeight: 0,
+                height: "100%",
               }}
             >
               <div
@@ -1265,13 +1265,13 @@ export default function RecordHistory({ back }: Props) {
                 {headerSubNode}
               </div>
 
-              {/* ✅ 履歴枠自体もガラス（設定値追従） */}
               <div
                 className="glass glass-strong"
                 style={{
                   borderRadius: 16,
                   padding: 12,
                   minHeight: 0,
+                  height: "100%",
                   overflow: "hidden",
                   display: "grid",
                   gridTemplateRows: "auto 1fr",
@@ -1283,10 +1283,10 @@ export default function RecordHistory({ back }: Props) {
                   {Math.min(archivePageSize, filteredArchive.length)} 件）
                 </div>
 
-                {/* ✅ “左の履歴が並んでるところ”だけスクロール */}
                 <div
                   style={{
                     minHeight: 0,
+                    height: "100%",
                     overflowY: "auto",
                     paddingRight: 4,
                     overscrollBehavior: "contain",
@@ -1298,7 +1298,7 @@ export default function RecordHistory({ back }: Props) {
               </div>
             </div>
 
-            {/* 中央：コントロール＋写真プレースホルダー（スクロールしない） */}
+            {/* 中央：コントロール＋写真 */}
             <div
               style={{
                 display: "grid",
@@ -1306,6 +1306,7 @@ export default function RecordHistory({ back }: Props) {
                 gap: 12,
                 minWidth: 0,
                 minHeight: 0,
+                height: "100%",
                 overflow: "hidden",
               }}
             >
@@ -1372,7 +1373,7 @@ export default function RecordHistory({ back }: Props) {
               </div>
             </div>
 
-            {/* 右：情報＋グラフ（スクロールしない。はみ出しはクリップ） */}
+            {/* 右：情報＋グラフ */}
             <div
               ref={detailPaneRef}
               className="glass glass-strong"
@@ -1380,6 +1381,7 @@ export default function RecordHistory({ back }: Props) {
                 borderRadius: 16,
                 padding: 12,
                 minHeight: 0,
+                height: "100%",
                 overflow: "hidden",
               }}
             >
