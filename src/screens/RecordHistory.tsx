@@ -131,7 +131,6 @@ function BottomSheet({
   const raf1Ref = useRef<number | null>(null);
   const raf2Ref = useRef<number | null>(null);
 
-  // ✅ bodyスクロールロック（開いてる間だけ）
   useEffect(() => {
     if (typeof document === "undefined") return;
     if (!open) return;
@@ -155,11 +154,9 @@ function BottomSheet({
     if (open) {
       setMounted(true);
 
-      // ✅ 初期は「透明＆下」
       setOverlayActive(false);
       setSheetActive(false);
 
-      // ✅ 2段階 rAF で確実に差分を作る
       raf1Ref.current = requestAnimationFrame(() => {
         setOverlayActive(true);
         raf2Ref.current = requestAnimationFrame(() => {
@@ -177,7 +174,6 @@ function BottomSheet({
 
     if (!mounted) return;
 
-    // close: シート→暗転の順で戻す
     setSheetActive(false);
     const t1 = window.setTimeout(
       () => setOverlayActive(false),
@@ -421,7 +417,6 @@ export default function RecordHistory({ back }: Props) {
 
   const detailPaneRef = useRef<HTMLDivElement | null>(null);
 
-  // ✅ サムネ ObjectURL のキャッシュ（レンダーごとに作らない）
   const thumbUrlMapRef = useRef<Map<number, string>>(new Map());
 
   function getThumbUrl(r: CatchRecord): string | null {
@@ -437,7 +432,6 @@ export default function RecordHistory({ back }: Props) {
     }
   }
 
-  // ✅ all が変わったら、不要になったサムネURLを破棄
   useEffect(() => {
     const alive = new Set<number>();
     for (const r of all) if (r.id) alive.add(r.id);
@@ -450,7 +444,6 @@ export default function RecordHistory({ back }: Props) {
     }
   }, [all]);
 
-  // ✅ アンマウント時に全部破棄（ref.current 直参照警告を回避）
   useEffect(() => {
     const map = thumbUrlMapRef.current;
     return () => {
@@ -1061,10 +1054,7 @@ export default function RecordHistory({ back }: Props) {
       {archiveList.map((r) => {
         const created = new Date(r.createdAt);
         const shotDate = r.capturedAt ? new Date(r.capturedAt) : null;
-        const thumbUrl = r.id
-          ? (thumbUrlMapRef.current.get(r.id) ?? null)
-          : null;
-        const finalThumb = thumbUrl ?? getThumbUrl(r);
+        const finalThumb = getThumbUrl(r);
 
         return (
           <button
@@ -1176,6 +1166,10 @@ export default function RecordHistory({ back }: Props) {
     "--glass-blur": `${settings.glassBlur ?? 10}px`,
   } as unknown as CSSProperties;
 
+  // ✅ PageShell上部（戻るボタン帯＋余白）ぶんを安全側に確保して「下切れ」を防ぐ
+  // ※もしまだ切れるなら、この数字を 112〜128 くらいに上げると必ず収まる
+  const DESKTOP_CHROME_PX = 104;
+
   return (
     <PageShell
       title={isDesktop ? undefined : titleNode}
@@ -1191,8 +1185,14 @@ export default function RecordHistory({ back }: Props) {
           overflowX: "clip",
           maxWidth: "100vw",
           minHeight: 0,
-          // ✅ PCレイアウトは「中身に高さが必要」なのでここで面倒みる
-          height: isDesktop ? "calc(100svh - 24px)" : "auto",
+
+          // ✅ PCは「PageShell分を引いた高さ」で子を収める（これが下切れ対策の本丸）
+          height: isDesktop
+            ? `calc(100dvh - ${DESKTOP_CHROME_PX}px - env(safe-area-inset-top) - env(safe-area-inset-bottom))`
+            : "auto",
+
+          // ほんの少し余白を残して“ギリ切れ”を防ぐ
+          paddingBottom: isDesktop ? 8 : 0,
         }}
       >
         {isMobile ? (
@@ -1241,11 +1241,10 @@ export default function RecordHistory({ back }: Props) {
               alignItems: "start",
               minWidth: 0,
               minHeight: 0,
-              // ✅ ここが超重要：maxHeight だと高さが確定しないケースがある
               height: "100%",
             }}
           >
-            {/* 左：タイトル＋履歴一覧（ここだけスクロール） */}
+            {/* 左 */}
             <div
               style={{
                 display: "grid",
@@ -1298,7 +1297,7 @@ export default function RecordHistory({ back }: Props) {
               </div>
             </div>
 
-            {/* 中央：コントロール＋写真 */}
+            {/* 中央 */}
             <div
               style={{
                 display: "grid",
@@ -1373,7 +1372,7 @@ export default function RecordHistory({ back }: Props) {
               </div>
             </div>
 
-            {/* 右：情報＋グラフ */}
+            {/* 右 */}
             <div
               ref={detailPaneRef}
               className="glass glass-strong"
