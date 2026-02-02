@@ -104,6 +104,10 @@ function loadCharacterImageMap(): CharacterImageMap {
 function saveCharacterImageMap(map: CharacterImageMap) {
   if (typeof window === "undefined") return;
   localStorage.setItem(CHARACTER_IMAGE_MAP_KEY, JSON.stringify(map));
+  _togglePageShellSync();
+}
+
+function _togglePageShellSync() {
   window.dispatchEvent(new Event("tsuduri-settings"));
 }
 
@@ -369,8 +373,6 @@ export default function Settings({ back }: Props) {
     normalizePublicPath(fixedBgSrcRaw) || "/assets/bg/ui-check.png";
 
   const nowBand: BgTimeBand = useMemo(() => {
-    // ✅ minuteTick を依存に持つ意味を明示（eslint 警告回避）
-    void minuteTick;
     return getTimeBand(new Date());
   }, [minuteTick]);
 
@@ -406,9 +408,9 @@ export default function Settings({ back }: Props) {
       maxWidth={980}
       showBack
       onBack={back}
+      scrollY="auto"
       showTestCharacter={!isNarrow}
     >
-      {/* ここから下は、あなたが貼ってくれた内容をそのまま */}
       <div style={{ display: "grid", gap: 16 }}>
         {/* 👧 キャラ */}
         <div className="glass glass-strong" style={card}>
@@ -595,12 +597,13 @@ export default function Settings({ back }: Props) {
                               setCharImageMap(next);
                             }}
                             placeholder="例: /assets/characters/tsuduri.png"
+                            style={fullWidthControl}
                           />
 
                           <div style={help}>
                             public 配下のパスを指定（例:{" "}
-                            <code>/assets/characters/tsuduri.png</code>
-                            ）。固定/ランダム時にこの割り当てが使われるよ。
+                            <code>/assets/characters/tsuduri.png</code>）。
+                            固定/ランダム時にこの割り当てが使われるよ。
                           </div>
 
                           {p ? (
@@ -704,7 +707,6 @@ export default function Settings({ back }: Props) {
                     display: "inline-flex",
                     gap: 8,
                     alignItems: "center",
-                    cursor: "pointer",
                   }}
                 >
                   <input
@@ -721,7 +723,6 @@ export default function Settings({ back }: Props) {
                     display: "inline-flex",
                     gap: 8,
                     alignItems: "center",
-                    cursor: "pointer",
                   }}
                 >
                   <input
@@ -738,7 +739,6 @@ export default function Settings({ back }: Props) {
                     display: "inline-flex",
                     gap: 8,
                     alignItems: "center",
-                    cursor: "pointer",
                   }}
                 >
                   <input
@@ -819,10 +819,10 @@ export default function Settings({ back }: Props) {
                 <input
                   value={fixedBgSrcRaw}
                   disabled={bgMode !== "fixed"}
-                  onChange={(e) => set({ fixedBgSrc: e.currentTarget.value })}
+                  onChange={(e) => set({ fixedBgSrc: e.target.value })}
                   placeholder="例: /assets/bg/surf_evening.png"
+                  style={fullWidthControl}
                 />
-
                 <div style={help}>
                   public 配下パス（例: <code>/assets/bg/surf_evening.png</code>
                   ）

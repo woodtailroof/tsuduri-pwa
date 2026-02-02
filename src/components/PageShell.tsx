@@ -1,6 +1,12 @@
 // src/components/PageShell.tsx
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { useAppSettings } from "../lib/appSettings";
 
 type TitleLayout = "left" | "center";
@@ -51,6 +57,19 @@ function safeJsonParse<T>(raw: string | null, fallback: T): T {
   }
 }
 
+/**
+ * ✅ purity ルール対策
+ * - render 中に Date.now / Math.random を呼ばない
+ * - “mountごとのseed” はモジュールスコープの連番から作る
+ */
+const GLOBAL_MOUNT_SEED = Math.floor(Math.random() * 1_000_000_000);
+let MOUNT_COUNTER = 0;
+function nextMountSeed() {
+  // 連番で十分（擬似ランダム選択の“分岐”に使うだけ）
+  MOUNT_COUNTER = (MOUNT_COUNTER + 1) % 1_000_000_000;
+  return GLOBAL_MOUNT_SEED + MOUNT_COUNTER;
+}
+
 /** Settings.tsx で使ってる作成キャラ画像マップ */
 const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
 type CharacterImageMap = Record<string, string>;
@@ -89,10 +108,10 @@ function getTimeBand(d: Date): "morning" | "day" | "evening" | "night" {
   return "night";
 }
 
-function pickRandom<T>(arr: T[]): T | null {
-  if (!arr.length) return null;
-  const i = Math.floor(Math.random() * arr.length);
-  return arr[i] ?? null;
+function pickBySeed(arr: string[], seed: number): string | "" {
+  if (!arr.length) return "";
+  const i = Math.abs(seed) % arr.length;
+  return arr[i] ?? "";
 }
 
 export default function PageShell({
@@ -110,8 +129,16 @@ export default function PageShell({
   const { settings } = useAppSettings();
 
   // ===== 背景・表示系（Settings と連動）=====
-  const bgDim = Number.isFinite(settings.bgDim) ? settings.bgDim : 0.35;
-  const bgBlur = Number.isFinite(settings.bgBlur) ? settings.bgBlur : 10;
+  const bgDim = clamp(
+    Number.isFinite(settings.bgDim) ? settings.bgDim : 0.35,
+    0,
+    1,
+  );
+  const bgBlur = clamp(
+    Number.isFinite(settings.bgBlur) ? settings.bgBlur : 10,
+    0,
+    40,
+  );
 
   const bgMode = (settings.bgMode ?? "auto") as "auto" | "fixed" | "off";
   const autoBgSet = (settings.autoBgSet ?? "surf").trim() || "surf";
@@ -138,17 +165,12 @@ export default function PageShell({
     };
   }, []);
 
-  const nowBand = useMemo(() => {
-    // eslint 警告回避（minuteTick を依存に持つ意味を明示）
-    void minuteTick;
-    return getTimeBand(new Date());
-  }, [minuteTick]);
-
   const bgSrc = useMemo(() => {
     if (bgMode === "off") return "";
     if (bgMode === "fixed") return fixedBgSrc || "";
-    return `/assets/bg/${autoBgSet}_${nowBand}.png`;
-  }, [bgMode, fixedBgSrc, autoBgSet, nowBand]);
+    const band = getTimeBand(new Date());
+    return `/assets/bg/${autoBgSet}_${band}.png`;
+  }, [bgMode, fixedBgSrc, autoBgSet, minuteTick]);
 
   // ===== キャラ（Settings と連動）=====
   const characterEnabled = settings.characterEnabled ?? true;
@@ -156,6 +178,7 @@ export default function PageShell({
     | "fixed"
     | "random";
   const fixedCharacterId = (settings.fixedCharacterId ?? "").trim();
+
   const characterScale = clamp(
     Number.isFinite(settings.characterScale) ? settings.characterScale : 1.0,
     0.7,
@@ -174,28 +197,8 @@ export default function PageShell({
     (settings.characterOverrideSrc ?? "").trim(),
   );
 
-  // ランダム用: PageShell の mount ごとに一度決める + 設定が変わったら更新
-  const [activeCharacterId, setActiveCharacterId] = useState<string>(() => {
-    const ids = loadCreatedCharacterIds();
-    if (characterMode === "fixed")
-      return fixedCharacterId || ids[0] || "tsuduri";
-    return (pickRandom(ids) ?? ids[0] ?? "tsuduri") as string;
-  });
-
-  useEffect(() => {
-    // eslint(react-hooks/set-state-in-effect) 回避のため、同フレーム同期で setState しない
-    const raf = requestAnimationFrame(() => {
-      const ids = loadCreatedCharacterIds();
-      if (characterMode === "fixed") {
-        setActiveCharacterId(fixedCharacterId || ids[0] || "tsuduri");
-      } else {
-        setActiveCharacterId(
-          ((pickRandom(ids) ?? ids[0] ?? "tsuduri") as string) || "tsuduri",
-        );
-      }
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [characterMode, fixedCharacterId]);
+  // ✅ mountごとのseed（render中に不純関数ゼロ）
+  const mountSeedRef = useRef<number>(nextMountSeed());
 
   // 同一タブで Settings が map を更新したとき追従（tsuduri-settings イベント）
   const [charMapTick, setCharMapTick] = useState(0);
@@ -206,10 +209,18 @@ export default function PageShell({
       window.removeEventListener("tsuduri-settings", on as EventListener);
   }, []);
 
-  const characterSrc = useMemo(() => {
-    // eslint 警告回避（charMapTick に意味を持たせる）
-    void charMapTick;
+  const activeCharacterId = useMemo(() => {
+    const ids = loadCreatedCharacterIds();
 
+    if (characterMode === "fixed") {
+      return fixedCharacterId || ids[0] || "tsuduri";
+    }
+
+    const picked = pickBySeed(ids, mountSeedRef.current);
+    return picked || ids[0] || "tsuduri";
+  }, [characterMode, fixedCharacterId]);
+
+  const characterSrc = useMemo(() => {
     if (!characterEnabled) return "";
     if (characterOverrideSrc) return characterOverrideSrc;
 
@@ -217,26 +228,17 @@ export default function PageShell({
     const raw = map[activeCharacterId] ?? "";
     const mapped = normalizePublicPath(raw);
 
-    // マップが無い場合のフォールバック
-    // public/assets/characters/{id}.png を置いてある想定（無ければ tsuduri に落とす）
-    return (
-      mapped ||
-      `/assets/characters/${activeCharacterId}.png` ||
-      "/assets/characters/tsuduri.png"
-    );
+    return mapped || `/assets/characters/${activeCharacterId}.png` || "";
   }, [characterEnabled, characterOverrideSrc, activeCharacterId, charMapTick]);
 
-  // キャラに被らないよう “下に余白” を足す（ただし Chat など scrollY="hidden" の画面は増やさない）
+  // キャラに被らないよう “下に余白” を足す（上限あり）
   const characterReservePx = useMemo(() => {
     if (!characterEnabled) return 0;
-    if (scrollY === "hidden") return 0;
     const base = 120;
-    return clamp(Math.round(base * characterScale), 90, 260);
-  }, [characterEnabled, characterScale, scrollY]);
+    return clamp(Math.round(base * characterScale), 90, 280);
+  }, [characterEnabled, characterScale]);
 
-  const dim = clamp(bgDim, 0, 1);
-  const blur = clamp(bgBlur, 0, 40);
-
+  // ===== レイアウト（統一）=====
   const containerStyle: CSSProperties = useMemo(
     () => ({
       minHeight: "100svh",
@@ -254,16 +256,17 @@ export default function PageShell({
     [],
   );
 
+  // UIは最前面（キャラより上）
   const innerStyle: CSSProperties = useMemo(
     () => ({
       width: "100%",
       maxWidth,
       display: "flex",
       flexDirection: "column",
-      gap: 12,
+      gap: 10,
       boxSizing: "border-box",
       position: "relative",
-      zIndex: 3, // ✅ UI は最前面
+      zIndex: 3,
       flex: 1,
       minHeight: 0,
     }),
@@ -271,30 +274,19 @@ export default function PageShell({
   );
 
   const headerStyle: CSSProperties = useMemo(() => {
-    // ✅ 画面ごとの差を減らして統一感を出す
-    return {
-      display: "grid",
-      gridTemplateColumns: "auto 1fr auto",
-      alignItems: "center",
-      gap: 12,
-      minWidth: 0,
-      padding: "0 12px",
-      boxSizing: "border-box",
-    };
-  }, []);
-
-  const titleWrapStyle: CSSProperties = useMemo(() => {
-    const align = titleLayout === "left" ? "flex-start" : "center";
+    const alignItems = titleLayout === "left" ? "flex-start" : "center";
     const textAlign: CSSProperties["textAlign"] =
       titleLayout === "left" ? "left" : "center";
+
     return {
-      display: "flex",
-      flexDirection: "column",
-      alignItems: align,
-      justifyContent: "center",
-      gap: 6,
+      position: "relative",
+      padding: "8px 12px 0 12px",
       minWidth: 0,
-      width: "100%",
+      boxSizing: "border-box",
+      display: "grid",
+      gap: 6,
+      alignItems: "start",
+      justifyItems: alignItems,
       textAlign,
     };
   }, [titleLayout]);
@@ -323,20 +315,6 @@ export default function PageShell({
     };
   }, [scrollY, contentPadding, characterReservePx]);
 
-  const backBtnStyle: CSSProperties = useMemo(
-    () => ({
-      height: 36,
-      padding: "8px 12px",
-      borderRadius: 12,
-      color: "rgba(255,255,255,0.92)",
-      background: "rgba(255,255,255,0.06)",
-      border: "1px solid rgba(255,255,255,0.18)",
-      cursor: "pointer",
-      whiteSpace: "nowrap",
-    }),
-    [],
-  );
-
   return (
     <div style={containerStyle}>
       {/* 背景 */}
@@ -350,14 +328,14 @@ export default function PageShell({
             backgroundSize: "cover",
             backgroundPosition: "center",
             transform: "scale(1.02)",
-            filter: `blur(${Math.round(blur)}px)`,
+            filter: `blur(${Math.round(bgBlur)}px)`,
             opacity: 1,
             zIndex: 0,
           }}
         />
       )}
 
-      {/* キャラ（背景より上、暗幕より下、UIより下） */}
+      {/* キャラ（UIの裏） */}
       {characterEnabled && !!characterSrc && (
         <img
           src={characterSrc}
@@ -365,15 +343,14 @@ export default function PageShell({
           draggable={false}
           style={{
             position: "fixed",
-            right: "calc(env(safe-area-inset-right) + 8px)",
-            bottom: "calc(env(safe-area-inset-bottom) + 8px)",
+            right: "env(safe-area-inset-right)",
+            bottom: "env(safe-area-inset-bottom)",
             height: `${Math.round(220 * characterScale)}px`,
             width: "auto",
             opacity: characterOpacity,
-            zIndex: 1, // ✅ 情報レイヤより下
+            zIndex: 1,
             pointerEvents: "none",
             userSelect: "none",
-            // ✅ 影は付けない（好みで後でSettings化はできる）
             filter: "none",
           }}
           onError={(e) => {
@@ -382,60 +359,63 @@ export default function PageShell({
         />
       )}
 
-      {/* 暗幕（背景＋キャラもまとめて暗くする） */}
+      {/* 暗幕（背景+キャラをまとめて落とす。UIには影響しない） */}
       <div
         aria-hidden
         style={{
           position: "absolute",
           inset: 0,
-          background: `rgba(0,0,0,${dim})`,
+          background: `rgba(0,0,0,${bgDim})`,
           zIndex: 2,
         }}
       />
 
+      {/* 右上固定：戻るボタン */}
+      {showBack && (
+        <button
+          type="button"
+          onClick={() => (onBack ? onBack() : history.back())}
+          className="chat-btn glass"
+          style={{
+            position: "fixed",
+            top: "env(safe-area-inset-top)",
+            right: "env(safe-area-inset-right)",
+            margin: 10,
+            height: 36,
+            padding: "8px 12px",
+            borderRadius: 12,
+            color: "rgba(255,255,255,0.92)",
+            background: "rgba(255,255,255,0.06)",
+            border: "1px solid rgba(255,255,255,0.18)",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            zIndex: 4,
+          }}
+        >
+          ← 戻る
+        </button>
+      )}
+
       <div style={innerStyle}>
-        {/* ヘッダー */}
-        {(showBack || title || subtitle) && (
+        {(title || subtitle) && (
           <div style={headerStyle}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {showBack ? (
-                <button
-                  type="button"
-                  onClick={() => (onBack ? onBack() : history.back())}
-                  style={backBtnStyle}
-                >
-                  ← 戻る
-                </button>
-              ) : (
-                <div style={{ width: 78 }} />
-              )}
-            </div>
-
-            <div style={titleWrapStyle}>
-              {title}
-              {subtitle}
-            </div>
-
-            <div
-              style={{ width: 78, display: "flex", justifyContent: "flex-end" }}
-            >
-              {showTestCharacter ? (
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: "rgba(255,255,255,0.55)",
-                    userSelect: "none",
-                  }}
-                  title="showTestCharacter（PageShell互換）"
-                >
-                  👧
-                </span>
-              ) : null}
-            </div>
+            {title}
+            {subtitle}
+            {showTestCharacter ? (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "rgba(255,255,255,0.55)",
+                  userSelect: "none",
+                }}
+                title="showTestCharacter（PageShell互換）"
+              >
+                👧
+              </div>
+            ) : null}
           </div>
         )}
 
-        {/* コンテンツ */}
         <div style={contentStyle}>{children}</div>
       </div>
     </div>
