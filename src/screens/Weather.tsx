@@ -175,7 +175,7 @@ type LoadState =
   | { status: "error"; message: string };
 
 export default function Weather({ back }: Props) {
-  // ✅ Settings の glass 設定を Weather でも直結で使う（CSS var依存を捨てる）
+  // ✅ Settings の glass 設定を Weather でも直結で使う
   const { settings } = useAppSettings();
   const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
   const glassBlur = clamp(settings.glassBlur ?? 10, 0, 40);
@@ -297,7 +297,6 @@ export default function Weather({ back }: Props) {
   const highs = extremes.filter((e) => e.kind === "high");
   const lows = extremes.filter((e) => e.kind === "low");
 
-  // ✅ PageShellの title枠は使わない（中央寄せ回帰を完全回避）
   return (
     <PageShell
       title={null}
@@ -306,9 +305,27 @@ export default function Weather({ back }: Props) {
       showBack
       onBack={back}
     >
-      {/* ✅ 自前ヘッダー（左寄せ固定） */}
-      <div style={{ ...TILE_STYLE, padding: 16, marginTop: 8 }}>
-        <h1 style={{ margin: 0, fontSize: "clamp(20px, 5.5vw, 32px)" }}>
+      {/* ✅ 自前ヘッダー（左寄せ固定を強める） */}
+      <div
+        style={{
+          ...TILE_STYLE,
+          padding: 16,
+          marginTop: 8,
+          width: "100%",
+          textAlign: "left",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-start",
+        }}
+      >
+        <h1
+          style={{
+            margin: 0,
+            fontSize: "clamp(20px, 5.5vw, 32px)",
+            textAlign: "left",
+            width: "100%",
+          }}
+        >
           ☀️ 天気・潮を見る
         </h1>
         <div
@@ -316,6 +333,8 @@ export default function Weather({ back }: Props) {
             marginTop: 8,
             fontSize: 12,
             color: "rgba(255,255,255,0.65)",
+            textAlign: "left",
+            width: "100%",
           }}
         >
           🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:
@@ -330,10 +349,13 @@ export default function Weather({ back }: Props) {
       <div
         style={{
           marginTop: 14,
+          width: "100%",
           display: "flex",
           gap: 10,
           flexWrap: "wrap",
           minWidth: 0,
+          justifyContent: "flex-start",
+          textAlign: "left",
         }}
       >
         <button
@@ -519,7 +541,6 @@ export default function Weather({ back }: Props) {
           )}
         </div>
 
-        {/* ✅ TideGraph も “ガラス枠” で包んで Settings の blur/alpha を確実反映 */}
         <div style={{ ...TILE_STYLE, padding: 12, minWidth: 0 }}>
           <TideGraph
             series={state.status === "ok" ? state.series : []}
