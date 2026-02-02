@@ -1,5 +1,5 @@
 // src/screens/Weather.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { FIXED_PORT } from "../points";
 import TideGraph from "../components/TideGraph";
 import {
@@ -9,6 +9,7 @@ import {
 } from "../lib/tide736Cache";
 import type { TidePoint } from "../db";
 import PageShell from "../components/PageShell";
+import { useAppSettings } from "../lib/appSettings";
 
 type Props = {
   back: () => void;
@@ -173,31 +174,45 @@ type LoadState =
     }
   | { status: "error"; message: string };
 
-const GLASS_BG = "rgba(17,17,17,var(--glass-alpha,0.22))";
-const GLASS_BG_STRONG = "rgba(17,17,17,var(--glass-alpha-strong,0.35))";
-const GLASS_BLUR = "blur(var(--glass-blur,0px))";
-
-const TILE_STYLE: React.CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.10)",
-  borderRadius: 12,
-  padding: 12,
-  background: GLASS_BG,
-  backdropFilter: GLASS_BLUR,
-  WebkitBackdropFilter: GLASS_BLUR,
-  color: "#ddd",
-  minWidth: 0,
-};
-
-// ✅ タイトル領域を強制で左寄せに固定（PageShellのデフォルト中央寄せ回避）
-const HEADER_LEFT_WRAP: React.CSSProperties = {
-  display: "grid",
-  justifyItems: "start",
-  textAlign: "left",
-  width: "100%",
-  minWidth: 0,
-};
-
 export default function Weather({ back }: Props) {
+  // ✅ Settings の glass 設定を Weather でも直結で使う（CSS var依存を捨てる）
+  const { settings } = useAppSettings();
+  const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
+  const glassBlur = clamp(settings.glassBlur ?? 10, 0, 40);
+
+  const glassBg = (alpha: number) => `rgba(0,0,0,${clamp(alpha, 0, 0.85)})`;
+  const glassBorder = "1px solid rgba(255,255,255,0.14)";
+  const glassFilter = `blur(${Math.round(glassBlur)}px)`;
+
+  const TILE_STYLE: CSSProperties = {
+    border: glassBorder,
+    borderRadius: 14,
+    padding: 12,
+    background: glassBg(glassAlpha),
+    backdropFilter: glassFilter,
+    WebkitBackdropFilter: glassFilter,
+    color: "#ddd",
+    minWidth: 0,
+  };
+
+  const TAB_STYLE: CSSProperties = {
+    borderRadius: 999,
+    padding: "8px 12px",
+    border: "1px solid rgba(255,255,255,0.15)",
+    background: glassBg(glassAlpha),
+    backdropFilter: glassFilter,
+    WebkitBackdropFilter: glassFilter,
+    color: "#eee",
+    cursor: "pointer",
+  };
+
+  const TAB_STYLE_ACTIVE: CSSProperties = {
+    ...TAB_STYLE,
+    border: "2px solid #ff4d6d",
+    background: "rgba(255,77,109,0.14)",
+    color: "#fff",
+  };
+
   const [tab, setTab] = useState<"today" | "tomorrow" | "pick">("today");
   const [picked, setPicked] = useState<string>(toDateInputValue(new Date()));
 
@@ -282,40 +297,39 @@ export default function Weather({ back }: Props) {
   const highs = extremes.filter((e) => e.kind === "high");
   const lows = extremes.filter((e) => e.kind === "low");
 
+  // ✅ PageShellの title枠は使わない（中央寄せ回帰を完全回避）
   return (
     <PageShell
-      title={
-        <div style={HEADER_LEFT_WRAP}>
-          <h1 style={{ margin: 0 }}>☀️ 天気・潮を見る</h1>
-        </div>
-      }
-      subtitle={
-        <div style={HEADER_LEFT_WRAP}>
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: 12,
-              color: "rgba(255,255,255,0.65)",
-            }}
-          >
-            🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:
-            {FIXED_PORT.hc}）
-            {!online && (
-              <span style={{ marginLeft: 10, color: "#f6c" }}>
-                📴 オフライン
-              </span>
-            )}
-          </div>
-        </div>
-      }
+      title={null}
+      subtitle={null}
       maxWidth={980}
       showBack
       onBack={back}
     >
+      {/* ✅ 自前ヘッダー（左寄せ固定） */}
+      <div style={{ ...TILE_STYLE, padding: 16, marginTop: 8 }}>
+        <h1 style={{ margin: 0, fontSize: "clamp(20px, 5.5vw, 32px)" }}>
+          ☀️ 天気・潮を見る
+        </h1>
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 12,
+            color: "rgba(255,255,255,0.65)",
+          }}
+        >
+          🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:
+          {FIXED_PORT.hc}）
+          {!online && (
+            <span style={{ marginLeft: 10, color: "#f6c" }}>📴 オフライン</span>
+          )}
+        </div>
+      </div>
+
       {/* タブ */}
       <div
         style={{
-          marginTop: 16,
+          marginTop: 14,
           display: "flex",
           gap: 10,
           flexWrap: "wrap",
@@ -324,57 +338,21 @@ export default function Weather({ back }: Props) {
       >
         <button
           onClick={() => setTab("today")}
-          style={{
-            borderRadius: 999,
-            padding: "8px 12px",
-            border:
-              tab === "today"
-                ? "2px solid #ff4d6d"
-                : "1px solid rgba(255,255,255,0.15)",
-            background: tab === "today" ? GLASS_BG_STRONG : GLASS_BG,
-            backdropFilter: GLASS_BLUR,
-            WebkitBackdropFilter: GLASS_BLUR,
-            color: "#eee",
-            cursor: "pointer",
-          }}
+          style={tab === "today" ? TAB_STYLE_ACTIVE : TAB_STYLE}
         >
           今日
         </button>
 
         <button
           onClick={() => setTab("tomorrow")}
-          style={{
-            borderRadius: 999,
-            padding: "8px 12px",
-            border:
-              tab === "tomorrow"
-                ? "2px solid #ff4d6d"
-                : "1px solid rgba(255,255,255,0.15)",
-            background: tab === "tomorrow" ? GLASS_BG_STRONG : GLASS_BG,
-            backdropFilter: GLASS_BLUR,
-            WebkitBackdropFilter: GLASS_BLUR,
-            color: "#eee",
-            cursor: "pointer",
-          }}
+          style={tab === "tomorrow" ? TAB_STYLE_ACTIVE : TAB_STYLE}
         >
           明日
         </button>
 
         <button
           onClick={() => setTab("pick")}
-          style={{
-            borderRadius: 999,
-            padding: "8px 12px",
-            border:
-              tab === "pick"
-                ? "2px solid #ff4d6d"
-                : "1px solid rgba(255,255,255,0.15)",
-            background: tab === "pick" ? GLASS_BG_STRONG : GLASS_BG,
-            backdropFilter: GLASS_BLUR,
-            WebkitBackdropFilter: GLASS_BLUR,
-            color: "#eee",
-            cursor: "pointer",
-          }}
+          style={tab === "pick" ? TAB_STYLE_ACTIVE : TAB_STYLE}
         >
           日付指定
         </button>
@@ -395,9 +373,9 @@ export default function Weather({ back }: Props) {
               value={picked}
               onChange={(e) => setPicked(e.target.value)}
               style={{
-                background: GLASS_BG,
-                backdropFilter: GLASS_BLUR,
-                WebkitBackdropFilter: GLASS_BLUR,
+                background: glassBg(glassAlpha),
+                backdropFilter: glassFilter,
+                WebkitBackdropFilter: glassFilter,
                 color: "#eee",
                 border: "1px solid rgba(255,255,255,0.15)",
                 borderRadius: 10,
@@ -422,7 +400,7 @@ export default function Weather({ back }: Props) {
       )}
 
       {/* サマリー */}
-      <div style={{ marginTop: 16, ...TILE_STYLE }}>
+      <div style={{ marginTop: 14, ...TILE_STYLE }}>
         <div
           style={{
             display: "flex",
@@ -541,8 +519,8 @@ export default function Weather({ back }: Props) {
           )}
         </div>
 
-        {/* グラフ */}
-        <div style={{ minWidth: 0 }}>
+        {/* ✅ TideGraph も “ガラス枠” で包んで Settings の blur/alpha を確実反映 */}
+        <div style={{ ...TILE_STYLE, padding: 12, minWidth: 0 }}>
           <TideGraph
             series={state.status === "ok" ? state.series : []}
             baseDate={targetDate}
