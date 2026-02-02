@@ -1,6 +1,6 @@
 // src/components/PageShell.tsx
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useAppSettings } from "../lib/appSettings";
 
 type TitleLayout = "left" | "center";
@@ -27,7 +27,7 @@ type Props = {
   /** ✅ コンテンツのパディング（デフォ: 14） */
   contentPadding?: number | string;
 
-  /** ✅ 設定画面などでテスト表示したい時用（PageShell 側が対応していれば使う） */
+  /** ✅ 設定画面などでテスト表示したい時用（互換用） */
   showTestCharacter?: boolean;
 };
 
@@ -60,7 +60,6 @@ export default function PageShell({
   const bgDim = Number.isFinite(settings.bgDim) ? settings.bgDim : 0.35;
   const bgBlur = Number.isFinite(settings.bgBlur) ? settings.bgBlur : 10;
 
-  // 背景画像（PageShell 側が既に別実装なら、ここは軽く動く安全版）
   const bgMode = (settings.bgMode ?? "auto") as "auto" | "fixed" | "off";
   const autoBgSet = (settings.autoBgSet ?? "surf").trim() || "surf";
   const fixedBgSrcRaw = settings.fixedBgSrc ?? "";
@@ -74,6 +73,7 @@ export default function PageShell({
     return "night";
   }
 
+  // 1分ごとに “auto背景” が追従するようにする
   const [minuteTick, setMinuteTick] = useState(0);
   useEffect(() => {
     let timer: number | null = null;
@@ -96,46 +96,42 @@ export default function PageShell({
   const bgSrc = useMemo(() => {
     if (bgMode === "off") return "";
     if (bgMode === "fixed") return fixedBgSrc || "";
-
-    // auto
     const band = getTimeBand(new Date());
     return `/assets/bg/${autoBgSet}_${band}.png`;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bgMode, fixedBgSrc, autoBgSet, minuteTick]);
 
-  const containerStyle = useMemo(() => {
-    const dim = clamp(bgDim, 0, 1);
-    const blur = clamp(bgBlur, 0, 40);
-
-    return {
+  const containerStyle: CSSProperties = useMemo(
+    () => ({
       minHeight: "100svh",
       width: "100%",
       display: "flex",
       justifyContent: "center",
       padding:
         "env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)",
-      boxSizing: "border-box" as const,
-      position: "relative" as const,
+      boxSizing: "border-box",
+      position: "relative",
       overflow: "hidden",
       backgroundColor: "#0b0f18",
-    };
-  }, [bgDim, bgBlur]);
+    }),
+    [],
+  );
 
-  const innerStyle = useMemo(() => {
-    return {
+  const innerStyle: CSSProperties = useMemo(
+    () => ({
       width: "100%",
       maxWidth,
       display: "flex",
-      flexDirection: "column" as const,
+      flexDirection: "column",
       gap: 12,
       padding: 0,
-      boxSizing: "border-box" as const,
-      position: "relative" as const,
+      boxSizing: "border-box",
+      position: "relative",
       zIndex: 2,
-    };
-  }, [maxWidth]);
+    }),
+    [maxWidth],
+  );
 
-  const headerStyle = useMemo(() => {
+  const headerStyle: CSSProperties = useMemo(() => {
     const align = titleLayout === "left" ? "flex-start" : "center";
     return {
       display: "flex",
@@ -146,31 +142,36 @@ export default function PageShell({
     };
   }, [titleLayout]);
 
-  const titleWrapStyle = useMemo(() => {
+  const titleWrapStyle: CSSProperties = useMemo(() => {
     const align = titleLayout === "left" ? "flex-start" : "center";
-    const textAlign = titleLayout === "left" ? "left" : "center";
+    const textAlign: CSSProperties["textAlign"] =
+      titleLayout === "left" ? "left" : "center";
     return {
       display: "flex",
-      flexDirection: "column" as const,
+      flexDirection: "column",
       alignItems: align,
       justifyContent: "center",
       gap: 6,
       minWidth: 0,
       width: "100%",
-      textAlign: textAlign as const,
+      textAlign,
     };
   }, [titleLayout]);
 
-  const contentStyle = useMemo(() => {
-    return {
+  const contentStyle: CSSProperties = useMemo(
+    () => ({
       flex: 1,
       minHeight: 0,
       overflowY: scrollY,
-      overflowX: "hidden" as const,
+      overflowX: "hidden",
       padding: contentPadding,
-      boxSizing: "border-box" as const,
-    };
-  }, [scrollY, contentPadding]);
+      boxSizing: "border-box",
+    }),
+    [scrollY, contentPadding],
+  );
+
+  const dim = clamp(bgDim, 0, 1);
+  const blur = clamp(bgBlur, 0, 40);
 
   return (
     <div style={containerStyle}>
@@ -185,19 +186,20 @@ export default function PageShell({
             backgroundSize: "cover",
             backgroundPosition: "center",
             transform: "scale(1.02)",
-            filter: `blur(${Math.round(bgBlur)}px)`,
+            filter: `blur(${Math.round(blur)}px)`,
             opacity: 1,
             zIndex: 0,
           }}
         />
       )}
+
       {/* 暗幕 */}
       <div
         aria-hidden
         style={{
           position: "absolute",
           inset: 0,
-          background: `rgba(0,0,0,${clamp(bgDim, 0, 1)})`,
+          background: `rgba(0,0,0,${dim})`,
           zIndex: 1,
         }}
       />
@@ -233,9 +235,13 @@ export default function PageShell({
               {subtitle}
             </div>
 
-            {/* 右側のスペーサ */}
+            {/* 右側のスペーサ（互換用の表示） */}
             <div
-              style={{ width: 78, display: "flex", justifyContent: "flex-end" }}
+              style={{
+                width: 78,
+                display: "flex",
+                justifyContent: "flex-end",
+              }}
             >
               {showTestCharacter ? (
                 <span
