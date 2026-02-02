@@ -608,7 +608,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           threadForCall = rewriteLastUserForJudgeFollower(threadForCall, day);
           if (sharedMemoJudge) systemHints.push(sharedMemoJudge);
           systemHints.push(
-            `【あなたは脇役】先頭の結論は変えない。短く補足だけ。復唱禁止。`,
+            "【あなたは脇役】先頭の結論は変えない。短く補足だけ。復唱禁止。",
           );
         } else if (banterHit || mentionedId) {
           systemHints.push(buildSharedMemoForBanter(leadName));

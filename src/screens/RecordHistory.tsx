@@ -1157,7 +1157,7 @@ export default function RecordHistory({ back }: Props) {
         lineHeight: 1.15,
       }}
     >
-      🗃 全履歴
+      🗃 履歴をみる
     </h1>
   );
 

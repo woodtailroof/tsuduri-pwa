@@ -175,7 +175,6 @@ type LoadState =
   | { status: "error"; message: string };
 
 export default function Weather({ back }: Props) {
-  // ✅ Settings の glass 設定を Weather でも直結で使う
   const { settings } = useAppSettings();
   const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
   const glassBlur = clamp(settings.glassBlur ?? 10, 0, 40);
@@ -252,6 +251,7 @@ export default function Weather({ back }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+
     async function run() {
       setState({ status: "loading" });
       try {
@@ -277,6 +277,7 @@ export default function Weather({ back }: Props) {
         if (!cancelled) setState({ status: "error", message: msg });
       }
     }
+
     run();
     return () => {
       cancelled = true;
@@ -305,7 +306,7 @@ export default function Weather({ back }: Props) {
       showBack
       onBack={back}
     >
-      {/* ✅ 自前ヘッダー（左寄せ固定を強める） */}
+      {/* ✅ 自前ヘッダー */}
       <div
         style={{
           ...TILE_STYLE,

@@ -1,232 +1,45 @@
 // src/components/PageShell.tsx
-import type { CSSProperties, ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  resolveCharacterSrc,
-  useAppSettings,
-  normalizePublicPath,
-  getTimeBand,
-  resolveAutoBackgroundSrc,
-  DEFAULT_SETTINGS,
-  type BgMode,
-} from "../lib/appSettings";
+import type { ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useAppSettings } from "../lib/appSettings";
+
+type TitleLayout = "left" | "center";
 
 type Props = {
   title?: ReactNode;
   subtitle?: ReactNode;
   children: ReactNode;
+
+  /** 画面ごとに幅を変えたい時用（チャットだけ広め…とか） */
   maxWidth?: number;
 
+  /** 戻るボタンを表示するか（デフォルト: true） */
   showBack?: boolean;
+  /** 戻るボタン押下時の挙動を上書きしたい場合 */
   onBack?: () => void;
-  backLabel?: ReactNode;
-  fallbackHref?: string;
-  disableStackPush?: boolean;
 
-  /** ✅ 画面個別で背景を上書きしたい時（通常は未指定でOK） */
-  bgImage?: string;
-  bgDim?: number;
-  bgBlur?: number;
+  /** ✅ タイトルの寄せ（デフォ: center） */
+  titleLayout?: TitleLayout;
 
-  /** キャラ表示（デフォルト true） */
-  showTestCharacter?: boolean;
-  testCharacterSrc?: string;
-  testCharacterHeight?: string;
-  testCharacterOffset?: { right?: number; bottom?: number };
-  testCharacterOpacity?: number;
-
-  hideScrollbar?: boolean;
-
-  /** ✅ 追加：縦スクロール制御（画面固定したいとき用） */
+  /** ✅ コンテンツ領域の縦スクロール制御（デフォ: auto） */
   scrollY?: "auto" | "hidden";
-  /** ✅ 追加：内側paddingを画面ごとに調整したいとき用 */
-  contentPadding?: string;
 
-  /**
-   * ※互換のため残す（ただし今回の統一方針では基本使わない想定）
-   * - "top": 通常
-   * - "left": PCのみ左カラム（旧仕様）
-   */
-  titleLayout?: "top" | "left";
+  /** ✅ コンテンツのパディング（デフォ: 14） */
+  contentPadding?: number | string;
+
+  /** ✅ 設定画面などでテスト表示したい時用（PageShell 側が対応していれば使う） */
+  showTestCharacter?: boolean;
 };
-
-const STACK_KEY = "tsuduri_nav_stack_v1";
-
-// ✅ CharacterSettings 側の作成キャラを読むキー（直接文字列で参照）
-const CHARACTERS_STORAGE_KEY = "tsuduri_characters_v2";
-
-// ✅ Settings.tsx で保存してる「キャラID → 画像パス」割り当てキー
-const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
-type CharacterImageMap = Record<string, string>;
-
-type CSSVars = Record<`--${string}`, string>;
-
-let lastDisplayedCharacterSrc: string | null = null;
-
-function getPath() {
-  return (
-    window.location.pathname + window.location.search + window.location.hash
-  );
-}
-
-function readStack(): string[] {
-  try {
-    const raw = sessionStorage.getItem(STACK_KEY);
-    const arr = raw ? (JSON.parse(raw) as unknown) : [];
-    return Array.isArray(arr) ? arr.filter((x) => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeStack(stack: string[]) {
-  try {
-    sessionStorage.setItem(STACK_KEY, JSON.stringify(stack.slice(-50)));
-  } catch {
-    // ignore
-  }
-}
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-function safeJsonParse<T>(raw: string | null, fallback: T): T {
-  try {
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-type StoredCharacterLike = {
-  id?: unknown;
-  name?: unknown; // v2
-  label?: unknown; // v1
-};
-
-function loadCreatedCharacterIds(): string[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(CHARACTERS_STORAGE_KEY);
-  const list = safeJsonParse<StoredCharacterLike[]>(raw, []);
-  const ids = list
-    .map((c) => (typeof c?.id === "string" ? c.id : ""))
-    .filter((x) => !!x);
-
-  const seen = new Set<string>();
-  const uniq: string[] = [];
-  for (const id of ids) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    uniq.push(id);
-  }
-  return uniq;
-}
-
-function loadCharacterImageMap(): CharacterImageMap {
-  if (typeof window === "undefined") return {};
-  const raw = localStorage.getItem(CHARACTER_IMAGE_MAP_KEY);
-  const map = safeJsonParse<CharacterImageMap>(raw, {});
-  if (!map || typeof map !== "object") return {};
-  return map;
-}
-
-function pickRandomFrom<T>(arr: T[]): T | null {
-  if (!arr.length) return null;
-  const i = Math.floor(Math.random() * arr.length);
-  return arr[i] ?? null;
-}
-
-/** 毎分だけ tick を進める（時間帯の切替検知用） */
-function useMinuteTick() {
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    let intervalId: number | null = null;
-    let timeoutId: number | null = null;
-
-    const bump = () => setTick((v) => v + 1);
-
-    bump();
-
-    const schedule = () => {
-      const now = new Date();
-      const msToNextMinute =
-        (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
-
-      timeoutId = window.setTimeout(
-        () => {
-          bump();
-          intervalId = window.setInterval(bump, 60_000);
-        },
-        Math.max(200, msToNextMinute),
-      );
-    };
-
-    schedule();
-
-    return () => {
-      if (timeoutId !== null) window.clearTimeout(timeoutId);
-      if (intervalId !== null) window.clearInterval(intervalId);
-    };
-  }, []);
-
-  return tick;
-}
-
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    const mq = window.matchMedia("(max-width: 820px)");
-    const coarse = window.matchMedia("(pointer: coarse)");
-    return mq.matches || coarse.matches;
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mq = window.matchMedia("(max-width: 820px)");
-    const coarse = window.matchMedia("(pointer: coarse)");
-
-    const onChange = () => setIsMobile(mq.matches || coarse.matches);
-
-    mq.addEventListener?.("change", onChange);
-    coarse.addEventListener?.("change", onChange);
-    window.addEventListener("orientationchange", onChange);
-
-    return () => {
-      mq.removeEventListener?.("change", onChange);
-      coarse.removeEventListener?.("change", onChange);
-      window.removeEventListener("orientationchange", onChange);
-    };
-  }, []);
-
-  return isMobile;
-}
-
-/**
- * ✅ 背景の CSS 文字列を作る
- * - 404 等でも真っ黒にならないように「多重urlフォールバック」
- */
-function makeBgCssValue(
-  mode: BgMode,
-  setId: string,
-  fixedSrc: string,
-  band: ReturnType<typeof getTimeBand>,
-) {
-  const sid = (setId ?? "").trim() || DEFAULT_SETTINGS.autoBgSet;
-
-  if (mode === "off") return "none";
-
-  if (mode === "fixed") {
-    const pFixed = normalizePublicPath(fixedSrc) || "/assets/bg/ui-check.png";
-    return `url(${pFixed}), url(/assets/bg/ui-check.png)`;
-  }
-
-  // auto
-  const pAuto = resolveAutoBackgroundSrc(sid, band);
-  const pSetFallback = normalizePublicPath(`/assets/bg/${sid}.png`);
-  return `url(${pAuto}), url(${pSetFallback}), url(/assets/bg/ui-check.png)`;
+function normalizePublicPath(p: string) {
+  const s = (p ?? "").trim();
+  if (!s) return "";
+  if (s.startsWith("/")) return s;
+  return `/${s}`;
 }
 
 export default function PageShell({
@@ -234,446 +47,214 @@ export default function PageShell({
   subtitle,
   children,
   maxWidth = 980,
-
   showBack = true,
   onBack,
-  backLabel = "← 戻る",
-  fallbackHref = "/",
-  disableStackPush = false,
-
-  bgImage,
-  bgDim = 0.55,
-  bgBlur = 0,
-
-  showTestCharacter = true,
-  testCharacterSrc = "/assets/character-test.png",
-  testCharacterHeight = "clamp(140px, 18vw, 220px)",
-  testCharacterOffset = { right: 0, bottom: 0 },
-  testCharacterOpacity = 1,
-
-  hideScrollbar = true,
-
+  titleLayout = "center",
   scrollY = "auto",
-  contentPadding,
-
-  titleLayout = "top",
+  contentPadding = 14,
+  showTestCharacter = false,
 }: Props) {
   const { settings } = useAppSettings();
-  const isMobile = useIsMobile();
 
-  const current = useMemo(() => getPath(), []);
+  // ===== 背景・表示系（Settings と連動）=====
+  const bgDim = Number.isFinite(settings.bgDim) ? settings.bgDim : 0.35;
+  const bgBlur = Number.isFinite(settings.bgBlur) ? settings.bgBlur : 10;
 
+  // 背景画像（PageShell 側が既に別実装なら、ここは軽く動く安全版）
+  const bgMode = (settings.bgMode ?? "auto") as "auto" | "fixed" | "off";
+  const autoBgSet = (settings.autoBgSet ?? "surf").trim() || "surf";
+  const fixedBgSrcRaw = settings.fixedBgSrc ?? "";
+  const fixedBgSrc = normalizePublicPath(fixedBgSrcRaw);
+
+  function getTimeBand(d: Date): "morning" | "day" | "evening" | "night" {
+    const h = d.getHours();
+    if (h >= 5 && h <= 9) return "morning";
+    if (h >= 10 && h <= 15) return "day";
+    if (h >= 16 && h <= 18) return "evening";
+    return "night";
+  }
+
+  const [minuteTick, setMinuteTick] = useState(0);
   useEffect(() => {
-    if (disableStackPush) return;
+    let timer: number | null = null;
 
-    const stack = readStack();
-    const last = stack[stack.length - 1];
-    if (last !== current) {
-      stack.push(current);
-      writeStack(stack);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [disableStackPush]);
-
-  const handleBack = useCallback(() => {
-    if (onBack) return onBack();
-
-    const stack = readStack();
-    if (stack.length && stack[stack.length - 1] === getPath()) stack.pop();
-
-    const prev = stack.pop();
-    writeStack(stack);
-    window.location.assign(prev ?? fallbackHref);
-  }, [onBack, fallbackHref]);
-
-  // 背景演出
-  const effectiveBgDim = settings.bgDim ?? bgDim;
-  const effectiveBgBlur = settings.bgBlur ?? bgBlur;
-
-  // ガラス
-  const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
-  const glassBlur = clamp(settings.glassBlur ?? 10, 0, 24);
-  const glassAlphaStrong = clamp(glassAlpha + 0.08, 0, 0.6);
-
-  // 背景画像
-  const minuteTick = useMinuteTick();
-
-  const bgMode = (settings.bgMode ?? DEFAULT_SETTINGS.bgMode) as BgMode;
-  const autoBgSet = (settings.autoBgSet ??
-    DEFAULT_SETTINGS.autoBgSet) as string;
-  const fixedBgSrc = (settings.fixedBgSrc ??
-    DEFAULT_SETTINGS.fixedBgSrc) as string;
-
-  const timeBand = useMemo(() => {
-    // ✅ minuteTick を評価して依存を意味あるものにする（lint対策）
-    void minuteTick;
-    return getTimeBand(new Date());
-  }, [minuteTick]);
-
-  const resolvedBgCss = useMemo(() => {
-    if (bgImage && bgImage.trim()) {
-      const p = normalizePublicPath(bgImage);
-      return `url(${p}), url(/assets/bg/ui-check.png)`;
-    }
-    return makeBgCssValue(bgMode, autoBgSet, fixedBgSrc, timeBand);
-  }, [bgImage, bgMode, autoBgSet, fixedBgSrc, timeBand]);
-
-  // ストレージ変更検知
-  const [storageTick, setStorageTick] = useState(0);
-
-  useEffect(() => {
-    const bump = () => setStorageTick((v) => v + 1);
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key === CHARACTERS_STORAGE_KEY || e.key === CHARACTER_IMAGE_MAP_KEY)
-        bump();
+    const arm = () => {
+      const now = Date.now();
+      const msToNextMinute = 60_000 - (now % 60_000) + 5;
+      timer = window.setTimeout(() => {
+        setMinuteTick((v) => v + 1);
+        arm();
+      }, msToNextMinute);
     };
 
-    const onVis = () => {
-      if (document.visibilityState === "visible") bump();
-    };
-
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("focus", bump);
-    document.addEventListener("visibilitychange", onVis);
-
+    arm();
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", bump);
-      document.removeEventListener("visibilitychange", onVis);
+      if (timer != null) window.clearTimeout(timer);
     };
   }, []);
 
-  const [createdIds, setCreatedIds] = useState<string[]>(() =>
-    loadCreatedCharacterIds(),
-  );
-  const [characterImageMap, setCharacterImageMap] = useState<CharacterImageMap>(
-    () => loadCharacterImageMap(),
-  );
+  const bgSrc = useMemo(() => {
+    if (bgMode === "off") return "";
+    if (bgMode === "fixed") return fixedBgSrc || "";
 
-  useEffect(() => {
-    setCreatedIds(loadCreatedCharacterIds());
-    setCharacterImageMap(loadCharacterImageMap());
-  }, [storageTick]);
+    // auto
+    const band = getTimeBand(new Date());
+    return `/assets/bg/${autoBgSet}_${band}.png`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bgMode, fixedBgSrc, autoBgSet, minuteTick]);
 
-  // キャラ（固定/ランダム）
-  const requestedCharacterId = useMemo(() => {
-    if (!settings.characterEnabled) return null;
-    if (createdIds.length === 0) return null;
+  const containerStyle = useMemo(() => {
+    const dim = clamp(bgDim, 0, 1);
+    const blur = clamp(bgBlur, 0, 40);
 
-    if (settings.characterMode === "random") return pickRandomFrom(createdIds);
-
-    const fixed = settings.fixedCharacterId ?? "";
-    if (fixed && createdIds.includes(fixed)) return fixed;
-    return createdIds[0] ?? null;
-  }, [
-    settings.characterEnabled,
-    settings.characterMode,
-    settings.fixedCharacterId,
-    createdIds,
-  ]);
-
-  const mappedCharacterSrc = useMemo(() => {
-    if (!requestedCharacterId) return null;
-
-    const raw = characterImageMap[requestedCharacterId];
-    if (typeof raw !== "string") return null;
-
-    const p = normalizePublicPath(raw);
-    return p || null;
-  }, [requestedCharacterId, characterImageMap]);
-
-  const requestedCharacterSrc = useMemo(() => {
-    if (!requestedCharacterId) return null;
-    if (mappedCharacterSrc) return mappedCharacterSrc;
-    return resolveCharacterSrc(requestedCharacterId);
-  }, [requestedCharacterId, mappedCharacterSrc]);
-
-  // チラつき対策
-  const initialSrc = useMemo(() => {
-    if (lastDisplayedCharacterSrc) return lastDisplayedCharacterSrc;
-    if (requestedCharacterSrc) return requestedCharacterSrc;
-    return testCharacterSrc;
-  }, [requestedCharacterSrc, testCharacterSrc]);
-
-  const [displaySrc, setDisplaySrc] = useState<string | null>(() => initialSrc);
-  const [fadeIn, setFadeIn] = useState(true);
-  const lastSrcRef = useRef<string | null>(initialSrc);
-
-  useEffect(() => {
-    const next = requestedCharacterSrc ?? testCharacterSrc;
-    if (!next) return;
-
-    if (displaySrc === next) {
-      lastDisplayedCharacterSrc = next;
-      lastSrcRef.current = next;
-      return;
-    }
-
-    if (lastSrcRef.current === next) {
-      setDisplaySrc(next);
-      setFadeIn(true);
-      lastDisplayedCharacterSrc = next;
-      return;
-    }
-
-    const img = new Image();
-    img.decoding = "async";
-    img.src = next;
-
-    let cancelled = false;
-
-    if (img.complete) {
-      lastSrcRef.current = next;
-      lastDisplayedCharacterSrc = next;
-      setDisplaySrc(next);
-      setFadeIn(true);
-      return;
-    }
-
-    const onLoad = () => {
-      if (cancelled) return;
-
-      setFadeIn(false);
-      requestAnimationFrame(() => {
-        lastSrcRef.current = next;
-        lastDisplayedCharacterSrc = next;
-        setDisplaySrc(next);
-        requestAnimationFrame(() => setFadeIn(true));
-      });
+    return {
+      minHeight: "100svh",
+      width: "100%",
+      display: "flex",
+      justifyContent: "center",
+      padding:
+        "env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)",
+      boxSizing: "border-box" as const,
+      position: "relative" as const,
+      overflow: "hidden",
+      backgroundColor: "#0b0f18",
     };
+  }, [bgDim, bgBlur]);
 
-    img.addEventListener("load", onLoad);
-
-    return () => {
-      cancelled = true;
-      img.removeEventListener("load", onLoad);
+  const innerStyle = useMemo(() => {
+    return {
+      width: "100%",
+      maxWidth,
+      display: "flex",
+      flexDirection: "column" as const,
+      gap: 12,
+      padding: 0,
+      boxSizing: "border-box" as const,
+      position: "relative" as const,
+      zIndex: 2,
     };
-  }, [requestedCharacterSrc, testCharacterSrc, displaySrc]);
+  }, [maxWidth]);
 
-  const characterScale = clamp(settings.characterScale ?? 1, 0.7, 5.0);
-  const characterOpacity = clamp(
-    settings.characterOpacity ?? testCharacterOpacity,
-    0,
-    1,
-  );
+  const headerStyle = useMemo(() => {
+    const align = titleLayout === "left" ? "flex-start" : "center";
+    return {
+      display: "flex",
+      alignItems: align,
+      justifyContent: "space-between",
+      gap: 12,
+      minWidth: 0,
+    };
+  }, [titleLayout]);
 
-  const innerPad = contentPadding ?? "clamp(16px, 3vw, 24px)";
-  const scaledHeightCss = `calc(${testCharacterHeight} * ${characterScale})`;
+  const titleWrapStyle = useMemo(() => {
+    const align = titleLayout === "left" ? "flex-start" : "center";
+    const textAlign = titleLayout === "left" ? "left" : "center";
+    return {
+      display: "flex",
+      flexDirection: "column" as const,
+      alignItems: align,
+      justifyContent: "center",
+      gap: 6,
+      minWidth: 0,
+      width: "100%",
+      textAlign: textAlign as const,
+    };
+  }, [titleLayout]);
 
-  // ✅ 統一方針：タイトルは左上。旧 titleLayout は互換のため残しつつ、基本 top で運用
-  const effectiveTitleLayout =
-    titleLayout === "left" && !isMobile ? "left" : "top";
-
-  // ✅ 画面下が切れない：100dvh + safe-area を前提にする
-  const shellStyle: CSSProperties & CSSVars = {
-    width: "100vw",
-    height: "100dvh",
-    minHeight: "100dvh",
-    overflow: "hidden",
-    position: "relative",
-
-    "--bg-dim": String(effectiveBgDim),
-    "--bg-blur": `${effectiveBgBlur}px`,
-
-    "--glass-alpha": String(glassAlpha),
-    "--glass-alpha-strong": String(glassAlphaStrong),
-    "--glass-blur": `${glassBlur}px`,
-
-    "--bg-image": resolvedBgCss,
-
-    "--shell-pad": String(innerPad),
-
-    "--sky-bottom": "46%",
-    "--sea-top": "46%",
-    "--sea-bottom": "73%",
-  };
-
-  const shouldShowCharacter =
-    showTestCharacter && settings.characterEnabled && !!displaySrc;
-
-  const scrollStyle: CSSProperties = {
-    position: "relative",
-    zIndex: 10,
-    width: "100vw",
-    height: "100dvh",
-    overflowY: scrollY,
-    overflowX: "hidden",
-    WebkitOverflowScrolling: "touch",
-    overscrollBehavior: "contain",
-    paddingBottom: "env(safe-area-inset-bottom)",
-  };
-
-  const headerCard =
-    title || subtitle ? (
-      <div
-        className="glass glass-strong"
-        style={{
-          borderRadius: 16,
-          padding: 12,
-          display: "grid",
-          gap: 8,
-          justifyItems: "start",
-          textAlign: "left",
-          minWidth: 0,
-        }}
-      >
-        {title}
-        {subtitle}
-      </div>
-    ) : null;
+  const contentStyle = useMemo(() => {
+    return {
+      flex: 1,
+      minHeight: 0,
+      overflowY: scrollY,
+      overflowX: "hidden" as const,
+      padding: contentPadding,
+      boxSizing: "border-box" as const,
+    };
+  }, [scrollY, contentPadding]);
 
   return (
-    <div className="page-shell" style={shellStyle} data-timeband={timeBand}>
-      <style>
-        {`
-          .glass{
-            background: rgb(0 0 0 / var(--glass-alpha,0.22));
-            border: 1px solid rgba(255,255,255,0.14);
-            backdrop-filter: blur(var(--glass-blur,10px));
-            -webkit-backdrop-filter: blur(var(--glass-blur,10px));
-          }
-          .glass.glass-strong{
-            background: rgb(0 0 0 / var(--glass-alpha-strong,0.30));
-          }
-          .page-shell .scrollbar-hidden{
-            scrollbar-width: none;
-          }
-          .page-shell .scrollbar-hidden::-webkit-scrollbar{
-            display: none;
-          }
-
-          /* ✅ inner padding を safe-area に追従させる */
-          .page-shell .page-shell-inner{
-            padding: var(--shell-pad);
-            padding-bottom: calc(var(--shell-pad) + env(safe-area-inset-bottom));
-            padding-top: calc(var(--shell-pad) + env(safe-area-inset-top));
-            box-sizing: border-box;
-          }
-        `}
-      </style>
-
-      {shouldShowCharacter && (
+    <div style={containerStyle}>
+      {/* 背景 */}
+      {!!bgSrc && (
         <div
-          aria-hidden="true"
+          aria-hidden
           style={{
-            position: "fixed",
-            right: testCharacterOffset.right ?? 0,
-            bottom: testCharacterOffset.bottom ?? 0,
-            zIndex: 5,
-            pointerEvents: "none",
-            userSelect: "none",
-            opacity: characterOpacity,
-
-            transform: "translateZ(0)",
-            backfaceVisibility: "hidden",
-            WebkitBackfaceVisibility: "hidden",
-            willChange: "opacity",
-
-            filter: "drop-shadow(0 10px 28px rgba(0,0,0,0.28))",
-            transition: "opacity 220ms ease",
+            position: "absolute",
+            inset: 0,
+            backgroundImage: `url(${bgSrc})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            transform: "scale(1.02)",
+            filter: `blur(${Math.round(bgBlur)}px)`,
+            opacity: 1,
+            zIndex: 0,
           }}
-        >
-          <img
-            src={displaySrc ?? ""}
-            alt=""
-            draggable={false}
-            loading="eager"
-            decoding="async"
-            style={{
-              height: scaledHeightCss,
-              width: "auto",
-              display: "block",
-
-              transform: "translateZ(0)",
-              backfaceVisibility: "hidden",
-              WebkitBackfaceVisibility: "hidden",
-              willChange: "opacity",
-
-              opacity: fadeIn ? 1 : 0,
-              transition: "opacity 260ms ease",
-            }}
-          />
-        </div>
+        />
       )}
-
-      {showBack && (
-        <button
-          type="button"
-          className="back-button"
-          onClick={handleBack}
-          aria-label="戻る"
-          style={{ zIndex: 30 }}
-        >
-          {backLabel}
-        </button>
-      )}
-
+      {/* 暗幕 */}
       <div
-        className={[
-          "page-shell-scroll",
-          hideScrollbar ? "scrollbar-hidden" : "",
-          showBack ? "with-back-button" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        style={scrollStyle}
-      >
-        <div
-          className="page-shell-inner"
-          style={{
-            maxWidth,
-            margin: "0 auto",
-            position: "relative",
-            minHeight: "100%",
-          }}
-        >
-          {effectiveTitleLayout === "top" ? (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateRows: headerCard ? "auto 1fr" : "1fr",
-                gap: headerCard ? 12 : 0,
-                minHeight:
-                  "calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
-                minWidth: 0,
-              }}
-            >
-              {/* ✅ タイトル左上（統一） */}
-              {headerCard}
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: `rgba(0,0,0,${clamp(bgDim, 0, 1)})`,
+          zIndex: 1,
+        }}
+      />
 
-              {/* ✅ コンテンツ */}
-              <div style={{ minWidth: 0, minHeight: 0 }}>{children}</div>
-            </div>
-          ) : (
-            // 互換：旧 left レイアウト（必要なら使える）
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(220px, 320px) 1fr",
-                gap: 16,
-                alignItems: "start",
-                minWidth: 0,
-                minHeight: "100%",
-              }}
-            >
-              <div
+      <div style={innerStyle}>
+        {/* ヘッダー */}
+        {(showBack || title || subtitle) && (
+          <div style={headerStyle}>
+            {showBack ? (
+              <button
+                type="button"
+                onClick={() => (onBack ? onBack() : history.back())}
+                className="chat-btn glass"
                 style={{
-                  position: "sticky",
-                  top: "calc(env(safe-area-inset-top) + 2px)",
-                  alignSelf: "start",
-                  paddingTop: 2,
-                  minWidth: 0,
+                  height: 36,
+                  padding: "8px 12px",
+                  borderRadius: 12,
+                  color: "rgba(255,255,255,0.92)",
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
                 }}
               >
-                {headerCard}
-              </div>
+                ← 戻る
+              </button>
+            ) : (
+              <div style={{ width: 78 }} />
+            )}
 
-              <div style={{ minWidth: 0 }}>{children}</div>
+            <div style={titleWrapStyle}>
+              {title}
+              {subtitle}
             </div>
-          )}
-        </div>
+
+            {/* 右側のスペーサ */}
+            <div
+              style={{ width: 78, display: "flex", justifyContent: "flex-end" }}
+            >
+              {showTestCharacter ? (
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "rgba(255,255,255,0.55)",
+                    userSelect: "none",
+                  }}
+                  title="showTestCharacter（PageShellの互換用）"
+                >
+                  👧
+                </span>
+              ) : null}
+            </div>
+          </div>
+        )}
+
+        {/* コンテンツ */}
+        <div style={contentStyle}>{children}</div>
       </div>
     </div>
   );
