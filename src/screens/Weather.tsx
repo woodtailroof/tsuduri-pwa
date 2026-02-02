@@ -188,6 +188,15 @@ const TILE_STYLE: React.CSSProperties = {
   minWidth: 0,
 };
 
+// ✅ タイトル領域を強制で左寄せに固定（PageShellのデフォルト中央寄せ回避）
+const HEADER_LEFT_WRAP: React.CSSProperties = {
+  display: "grid",
+  justifyItems: "start",
+  textAlign: "left",
+  width: "100%",
+  minWidth: 0,
+};
+
 export default function Weather({ back }: Props) {
   const [tab, setTab] = useState<"today" | "tomorrow" | "pick">("today");
   const [picked, setPicked] = useState<string>(toDateInputValue(new Date()));
@@ -275,20 +284,28 @@ export default function Weather({ back }: Props) {
 
   return (
     <PageShell
-      title={<h1 style={{ margin: 0 }}>☀️ 天気・潮を見る</h1>}
+      title={
+        <div style={HEADER_LEFT_WRAP}>
+          <h1 style={{ margin: 0 }}>☀️ 天気・潮を見る</h1>
+        </div>
+      }
       subtitle={
-        <div
-          style={{
-            marginTop: 8,
-            fontSize: 12,
-            color: "rgba(255,255,255,0.65)",
-          }}
-        >
-          🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:
-          {FIXED_PORT.hc}）
-          {!online && (
-            <span style={{ marginLeft: 10, color: "#f6c" }}>📴 オフライン</span>
-          )}
+        <div style={HEADER_LEFT_WRAP}>
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 12,
+              color: "rgba(255,255,255,0.65)",
+            }}
+          >
+            🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:
+            {FIXED_PORT.hc}）
+            {!online && (
+              <span style={{ marginLeft: 10, color: "#f6c" }}>
+                📴 オフライン
+              </span>
+            )}
+          </div>
         </div>
       }
       maxWidth={980}
@@ -524,8 +541,8 @@ export default function Weather({ back }: Props) {
           )}
         </div>
 
-        {/* グラフ：✅ ガラスカードで包む（ここが差分） */}
-        <div style={{ ...TILE_STYLE, padding: 12 }}>
+        {/* グラフ */}
+        <div style={{ minWidth: 0 }}>
           <TideGraph
             series={state.status === "ok" ? state.series : []}
             baseDate={targetDate}
