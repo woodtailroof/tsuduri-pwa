@@ -62,7 +62,6 @@ function loadCreatedCharacters(): CharacterOption[] {
   if (typeof window === "undefined") return [];
   const raw = localStorage.getItem(CHARACTERS_STORAGE_KEY);
   const list = safeJsonParse<StoredCharacterLike[]>(raw, []);
-
   const normalized = list
     .map((c) => {
       const id = typeof c?.id === "string" ? c.id : "";
@@ -100,17 +99,12 @@ function loadCharacterImageMap(): CharacterImageMap {
 
 /**
  * ✅ 同一タブで localStorage を更新しても `storage` は飛ばない。
- * PageShell 側の追従用に、同じく購読してる `tsuduri-settings` を明示的に飛ばす。
+ * PageShell 側の追従用に `tsuduri-settings` を明示的に飛ばす。
  */
-function notifyPageShellSync() {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new Event("tsuduri-settings"));
-}
-
 function saveCharacterImageMap(map: CharacterImageMap) {
   if (typeof window === "undefined") return;
   localStorage.setItem(CHARACTER_IMAGE_MAP_KEY, JSON.stringify(map));
-  notifyPageShellSync();
+  window.dispatchEvent(new Event("tsuduri-settings"));
 }
 
 function useIsNarrow(breakpointPx = 720) {
@@ -205,23 +199,20 @@ export default function Settings({ back }: Props) {
     padding: 14,
     display: "grid",
     gap: 12,
-    minWidth: 0,
   };
 
   const formGrid: CSSProperties = {
     display: "grid",
     gap: 12,
-    minWidth: 0,
   };
 
   const row: CSSProperties = isNarrow
-    ? { display: "grid", gap: 8, alignItems: "start", minWidth: 0 }
+    ? { display: "grid", gap: 8, alignItems: "start" }
     : {
         display: "grid",
         gridTemplateColumns: "minmax(160px, 220px) 1fr",
         gap: 12,
         alignItems: "center",
-        minWidth: 0,
       };
 
   const label: CSSProperties = {
@@ -305,14 +296,11 @@ export default function Settings({ back }: Props) {
     const map = loadCharacterImageMap();
     setCharImageMapState(map);
 
-    // fixedCharacterId が不正なら先頭に寄せる
+    // 固定キャラが作成キャラから外れていたら先頭に寄せる
     if (chars.length > 0) {
       const ids = new Set(chars.map((c) => c.id));
       const current = settings.fixedCharacterId ?? "";
-      if (current && !ids.has(current)) {
-        set({ fixedCharacterId: chars[0].id });
-      }
-      if (!current) {
+      if (!ids.has(current)) {
         set({ fixedCharacterId: chars[0].id });
       }
     }
@@ -377,14 +365,15 @@ export default function Settings({ back }: Props) {
   const autoBgSet =
     (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
     DEFAULT_SETTINGS.autoBgSet;
+
   const fixedBgSrcRaw = settings.fixedBgSrc ?? DEFAULT_SETTINGS.fixedBgSrc;
-  const fixedBgSrc = normalizePublicPath(fixedBgSrcRaw);
+  const fixedBgSrc =
+    normalizePublicPath(fixedBgSrcRaw) || "/assets/bg/ui-check.png";
 
   const nowBand: BgTimeBand = useMemo(
     () => getTimeBand(new Date()),
     [minuteTick],
   );
-
   const autoPreviewSrc = useMemo(
     () => resolveAutoBackgroundSrc(autoBgSet, nowBand),
     [autoBgSet, nowBand],
@@ -392,7 +381,7 @@ export default function Settings({ back }: Props) {
 
   const effectivePreviewSrc = useMemo(() => {
     if (bgMode === "off") return "";
-    if (bgMode === "fixed") return fixedBgSrc || "";
+    if (bgMode === "fixed") return fixedBgSrc;
     return autoPreviewSrc;
   }, [bgMode, fixedBgSrc, autoPreviewSrc]);
 
@@ -420,7 +409,7 @@ export default function Settings({ back }: Props) {
       scrollY="auto"
       showTestCharacter={!isNarrow}
     >
-      <div style={{ display: "grid", gap: 16, minWidth: 0 }}>
+      <div style={{ display: "grid", gap: 16 }}>
         {/* 👧 キャラ */}
         <div className="glass glass-strong" style={card}>
           <h2 style={sectionTitle}>👧 キャラクター</h2>
@@ -458,7 +447,6 @@ export default function Settings({ back }: Props) {
                     display: "inline-flex",
                     gap: 8,
                     alignItems: "center",
-                    cursor: characterEnabled ? "pointer" : "not-allowed",
                   }}
                 >
                   <input
@@ -476,7 +464,6 @@ export default function Settings({ back }: Props) {
                     display: "inline-flex",
                     gap: 8,
                     alignItems: "center",
-                    cursor: characterEnabled ? "pointer" : "not-allowed",
                   }}
                 >
                   <input
@@ -549,7 +536,6 @@ export default function Settings({ back }: Props) {
                     {createdCharacters.map((c) => {
                       const raw = charImageMap[c.id] ?? "";
                       const p = normalizePublicPath(raw);
-
                       return (
                         <div
                           key={c.id}
@@ -560,7 +546,6 @@ export default function Settings({ back }: Props) {
                             padding: 10,
                             display: "grid",
                             gap: 8,
-                            minWidth: 0,
                           }}
                         >
                           <div
@@ -569,7 +554,6 @@ export default function Settings({ back }: Props) {
                               justifyContent: "space-between",
                               gap: 10,
                               flexWrap: "wrap",
-                              alignItems: "center",
                             }}
                           >
                             <div
@@ -598,17 +582,15 @@ export default function Settings({ back }: Props) {
                             </button>
                           </div>
 
-                          {/* ✅ “on” みたいな謎属性が入ると即死するので、ここは超シンプルに */}
                           <input
                             value={raw}
-                            onChange={(e) => {
-                              const next = {
+                            onChange={(e) =>
+                              setCharImageMap({
                                 ...charImageMap,
                                 [c.id]: e.target.value,
-                              };
-                              setCharImageMap(next);
-                            }}
-                            placeholder="例: /assets/ch/k1.png"
+                              })
+                            }
+                            placeholder="例: /assets/characters/tsuduri.png"
                             style={fullWidthControl}
                           />
 
@@ -850,8 +832,7 @@ export default function Settings({ back }: Props) {
                 ) : (
                   <>
                     <div style={help}>
-                      表示予定:{" "}
-                      <code>{effectivePreviewSrc || "（未指定）"}</code>
+                      表示予定: <code>{effectivePreviewSrc}</code>
                     </div>
                     {!!effectivePreviewSrc && (
                       <img
@@ -872,7 +853,8 @@ export default function Settings({ back }: Props) {
 
                 <div style={help}>
                   ルール：<code>{`/assets/bg/${autoBgSet}_morning.png`}</code>{" "}
-                  みたいに、<code>_morning / _day / _evening / _night</code>{" "}
+                  みたいに、
+                  <code>_morning / _day / _evening / _night</code>{" "}
                   の4枚を用意すると自動で切り替わるよ。
                 </div>
               </div>
@@ -967,7 +949,7 @@ export default function Settings({ back }: Props) {
                   style={fullWidthControl}
                 />
                 <div style={help}>
-                  0px で完全に無し（端末差が気になるなら 0〜1 で調整）
+                  0px で完全に無し（気になるなら 0〜1 で調整）
                 </div>
               </div>
             </div>
