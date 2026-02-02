@@ -1,9 +1,11 @@
 // src/components/PageShell.tsx
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { useAppSettings } from "../lib/appSettings";
-
-type TitleLayout = "left" | "center";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  DEFAULT_SETTINGS,
+  resolveAutoBackgroundSrc,
+  useAppSettings,
+} from "../lib/appSettings";
 
 type Props = {
   title?: ReactNode;
@@ -18,119 +20,51 @@ type Props = {
   /** 戻るボタン押下時の挙動を上書きしたい場合 */
   onBack?: () => void;
 
-  /** タイトルの寄せ（デフォ: center） */
-  titleLayout?: TitleLayout;
-
-  /** コンテンツ領域の縦スクロール制御（デフォ: auto） */
+  /**
+   * ✅ PageShell の本文スクロール制御
+   * - "auto": 本文が必要に応じてスクロール（基本これ）
+   * - "hidden": 本文をスクロールさせない（画面側で独自スクロールする時だけ）
+   */
   scrollY?: "auto" | "hidden";
 
-  /** コンテンツのパディング（デフォ: 14） */
-  contentPadding?: number | string;
-
-  /** 設定画面などでテスト表示したい時用（互換用） */
+  /**
+   * ✅ 右側に立ち絵を出すか（Settings での大型プレビュー等）
+   * 既存コード互換のため残してる
+   */
   showTestCharacter?: boolean;
+
+  /**
+   * ✅ ヘッダー右側に追加の操作を置きたい時（将来用）
+   * 例：Chat の「全員集合ON/OFF」などを“ヘッダーの中”に収められる
+   */
+  headerRight?: ReactNode;
 };
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function normalizePublicPath(p: string) {
-  const s = (p ?? "").trim();
-  if (!s) return "";
-  if (s.startsWith("/")) return s;
-  return `/${s}`;
-}
-
-function safeJsonParse<T>(raw: string | null, fallback: T): T {
-  try {
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-/** Settings.tsx で使ってる作成キャラ画像マップ */
-const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
-type CharacterImageMap = Record<string, string>;
-
-function loadCharacterImageMap(): CharacterImageMap {
-  if (typeof window === "undefined") return {};
-  const raw = localStorage.getItem(CHARACTER_IMAGE_MAP_KEY);
-  const map = safeJsonParse<CharacterImageMap>(raw, {});
-  if (!map || typeof map !== "object") return {};
-  return map;
-}
-
-/** Settings の “作成キャラ” から読むストレージ（CharacterSettings 側） */
-const CHARACTERS_STORAGE_KEY = "tsuduri_characters_v2";
-type StoredCharacterLike = {
-  id?: unknown;
-  name?: unknown;
-  label?: unknown;
-};
-
-function loadCreatedCharacterIds(): string[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(CHARACTERS_STORAGE_KEY);
-  const list = safeJsonParse<StoredCharacterLike[]>(raw, []);
-  const ids = list
-    .map((c) => (typeof c?.id === "string" ? c.id : ""))
-    .filter(Boolean);
-  return Array.from(new Set(ids));
-}
-
-function getTimeBand(d: Date): "morning" | "day" | "evening" | "night" {
-  const h = d.getHours();
-  if (h >= 5 && h <= 9) return "morning";
-  if (h >= 10 && h <= 15) return "day";
-  if (h >= 16 && h <= 18) return "evening";
-  return "night";
-}
-
-/** “ランダム（画面遷移ごと）” のためのマウントID（impure関数は使わない） */
-let PAGE_SHELL_MOUNT_COUNTER = 0;
-function nextMountId() {
-  PAGE_SHELL_MOUNT_COUNTER += 1;
-  return PAGE_SHELL_MOUNT_COUNTER;
-}
-
-function pickBySeed(ids: string[], seed: number): string {
-  if (!ids.length) return "tsuduri";
-  const s = Math.abs(seed) % ids.length;
-  return ids[s] ?? ids[0] ?? "tsuduri";
-}
+const HEADER_H = 56; // ヘッダー高さ（固定）
 
 export default function PageShell({
   title,
   subtitle,
   children,
-  maxWidth = 980,
+  maxWidth = 960,
   showBack = true,
   onBack,
-  titleLayout = "center",
   scrollY = "auto",
-  contentPadding = 14,
   showTestCharacter = false,
+  headerRight,
 }: Props) {
   const { settings } = useAppSettings();
 
-  // “画面遷移ごと”に seed が変わる（Date.now/Math.randomは使わない）
-  const [mountId] = useState(() => nextMountId());
+  // ===== 背景（ここは PageShell が責任を持つ） =====
+  const bgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
+  const autoBgSet =
+    (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
+    DEFAULT_SETTINGS.autoBgSet;
 
-  // ===== 背景・表示系（Settings と連動）=====
-  const bgDim = Number.isFinite(settings.bgDim) ? settings.bgDim : 0.35;
-  const bgBlur = Number.isFinite(settings.bgBlur) ? settings.bgBlur : 10;
-
-  const bgMode = (settings.bgMode ?? "auto") as "auto" | "fixed" | "off";
-  const autoBgSet = (settings.autoBgSet ?? "surf").trim() || "surf";
-  const fixedBgSrcRaw = settings.fixedBgSrc ?? "";
-  const fixedBgSrc = normalizePublicPath(fixedBgSrcRaw);
-
-  // 1分ごとに “auto背景” が追従する
+  // 1分ごとに “自動背景” を更新したい時だけ tick
   const [minuteTick, setMinuteTick] = useState(0);
   useEffect(() => {
+    if (bgMode !== "auto") return;
     let timer: number | null = null;
 
     const arm = () => {
@@ -146,258 +80,191 @@ export default function PageShell({
     return () => {
       if (timer != null) window.clearTimeout(timer);
     };
-  }, []);
+  }, [bgMode]);
+
+  const nowBand = useMemo(() => {
+    const h = new Date().getHours();
+    if (h >= 5 && h < 9) return "morning";
+    if (h >= 9 && h < 16) return "day";
+    if (h >= 16 && h < 19) return "evening";
+    return "night";
+  }, [minuteTick]);
 
   const bgSrc = useMemo(() => {
     if (bgMode === "off") return "";
-    if (bgMode === "fixed") return fixedBgSrc || "";
-    const band = getTimeBand(new Date());
-    return `/assets/bg/${autoBgSet}_${band}.png`;
-  }, [bgMode, fixedBgSrc, autoBgSet, minuteTick]);
+    if (bgMode === "fixed") return settings.fixedBgSrc || "";
+    return resolveAutoBackgroundSrc(autoBgSet, nowBand as any);
+  }, [bgMode, settings.fixedBgSrc, autoBgSet, nowBand]);
 
-  // ===== キャラ（Settings と連動）=====
-  const characterEnabled = settings.characterEnabled ?? true;
-  const characterMode = (settings.characterMode ?? "fixed") as
-    | "fixed"
-    | "random";
-  const fixedCharacterId = (settings.fixedCharacterId ?? "").trim();
-  const characterScale = clamp(
-    Number.isFinite(settings.characterScale) ? settings.characterScale : 1.0,
-    0.7,
-    5.0,
-  );
-  const characterOpacity = clamp(
-    Number.isFinite(settings.characterOpacity)
-      ? settings.characterOpacity
-      : 0.9,
-    0,
-    1,
-  );
+  const bgDim = Number.isFinite(settings.bgDim)
+    ? settings.bgDim
+    : DEFAULT_SETTINGS.bgDim;
+  const bgBlur = Number.isFinite(settings.bgBlur)
+    ? settings.bgBlur
+    : DEFAULT_SETTINGS.bgBlur;
 
-  // 既存互換: “キャラ画像を全部上書き” があればそれ最優先
-  const characterOverrideSrc = normalizePublicPath(
-    (settings.characterOverrideSrc ?? "").trim(),
-  );
+  // ===== レイアウト =====
+  // ✅ ここが超重要：全画面の“スクロールの責任”を PageShell が握る
+  // これで Settings がスクロールしない/Chat が見切れる問題が消えやすい
+  const shellStyle: React.CSSProperties = {
+    position: "relative",
+    minHeight: "100vh",
+    width: "100%",
+    overflow: "hidden", // 背景用。スクロールは inner に持たせる
+  };
 
-  // 同一タブで Settings が map を更新したとき追従（tsuduri-settings イベント）
-  const [charMapTick, setCharMapTick] = useState(0);
-  useEffect(() => {
-    const on = () => setCharMapTick((v) => v + 1);
-    window.addEventListener("tsuduri-settings", on as EventListener);
-    return () =>
-      window.removeEventListener("tsuduri-settings", on as EventListener);
-  }, []);
+  const bgStyle: React.CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    backgroundImage: bgSrc ? `url(${bgSrc})` : undefined,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    filter: bgBlur ? `blur(${bgBlur}px)` : undefined,
+    transform: bgBlur ? "scale(1.02)" : undefined, // blur の端を隠す
+  };
 
-  const activeCharacterId = useMemo(() => {
-    const ids = loadCreatedCharacterIds();
-    if (characterMode === "fixed")
-      return fixedCharacterId || ids[0] || "tsuduri";
-    // “画面遷移ごと” = PageShell が mount されるたびに mountId が変わる
-    return pickBySeed(ids, mountId);
-  }, [characterMode, fixedCharacterId, mountId]);
+  const dimStyle: React.CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    background: `rgba(0,0,0,${bgDim})`,
+  };
 
-  const characterSrc = useMemo(() => {
-    if (!characterEnabled) return "";
-    if (characterOverrideSrc) return characterOverrideSrc;
+  // ヘッダーは常に上。戻るは右上固定。
+  const headerStyle: React.CSSProperties = {
+    position: "sticky",
+    top: 0,
+    zIndex: 50,
+    height: HEADER_H,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "10px 12px",
+    boxSizing: "border-box",
+    background: "rgba(0,0,0,0.18)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+    borderBottom: "1px solid rgba(255,255,255,0.12)",
+  };
 
-    const map = loadCharacterImageMap();
-    const raw = map[activeCharacterId] ?? "";
-    const mapped = normalizePublicPath(raw);
+  const headerLeftStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 0,
+  };
 
-    // マップが無い場合のフォールバック
-    return (
-      mapped ||
-      `/assets/characters/${activeCharacterId}.png` ||
-      "/assets/characters/tsuduri.png"
-    );
-  }, [characterEnabled, characterOverrideSrc, activeCharacterId, charMapTick]);
+  const titleWrapStyle: React.CSSProperties = {
+    display: "grid",
+    gap: 2,
+    minWidth: 0,
+  };
 
-  // コンテンツ下の確保（控えめに）
-  const characterReservePx = useMemo(() => {
-    if (!characterEnabled) return 0;
-    const base = 90;
-    return clamp(Math.round(base * characterScale), 80, 220);
-  }, [characterEnabled, characterScale]);
+  const subtitleStyle: React.CSSProperties = {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.70)",
+    lineHeight: 1.2,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  };
 
-  const dim = clamp(bgDim, 0, 1);
-  const blur = clamp(bgBlur, 0, 40);
+  const backBtnStyle: React.CSSProperties = {
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(0,0,0,0.25)",
+    color: "rgba(255,255,255,0.85)",
+    padding: "8px 12px",
+    borderRadius: 999,
+    cursor: "pointer",
+    userSelect: "none",
+    lineHeight: 1,
+    whiteSpace: "nowrap",
+  };
 
-  const containerStyle: CSSProperties = useMemo(
-    () => ({
-      minHeight: "100svh",
-      width: "100%",
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "stretch",
-      padding:
-        "env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)",
-      boxSizing: "border-box",
-      position: "relative",
-      overflow: "hidden",
-      backgroundColor: "#0b0f18",
-    }),
-    [],
-  );
+  // 本文：ここがスクロールの本体
+  const bodyOuterStyle: React.CSSProperties = {
+    position: "relative",
+    zIndex: 10,
+    height: `calc(100vh - ${HEADER_H}px)`,
+    overflowY: scrollY === "auto" ? "auto" : "hidden",
+    overflowX: "hidden",
+  };
 
-  const innerStyle: CSSProperties = useMemo(
-    () => ({
-      width: "100%",
-      maxWidth,
-      display: "flex",
-      flexDirection: "column",
-      boxSizing: "border-box",
-      position: "relative",
-      zIndex: 5, // UIを最前面
-      flex: 1,
-      minHeight: 0, // スクロールの肝
-    }),
-    [maxWidth],
-  );
+  const bodyInnerStyle: React.CSSProperties = {
+    width: "100%",
+    maxWidth,
+    margin: "0 auto",
+    padding: "16px 14px 28px",
+    boxSizing: "border-box",
+  };
 
-  const headerStyle: CSSProperties = useMemo(() => {
-    const align = titleLayout === "left" ? "flex-start" : "center";
-    const textAlign: CSSProperties["textAlign"] =
-      titleLayout === "left" ? "left" : "center";
-    return {
-      padding: "10px 12px 0",
-      boxSizing: "border-box",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: align,
-      textAlign,
-      gap: 6,
-      minWidth: 0,
-    };
-  }, [titleLayout]);
+  // 右側立ち絵の領域（既存互換：showTestCharacter）
+  // ※ここは “見た目だけ” で、スクロールを邪魔しないように pointerEvents: none
+  const characterScale = Number.isFinite(settings.characterScale)
+    ? settings.characterScale
+    : DEFAULT_SETTINGS.characterScale;
+  const characterOpacity = Number.isFinite(settings.characterOpacity)
+    ? settings.characterOpacity
+    : DEFAULT_SETTINGS.characterOpacity;
+  const charSrc = settings.characterOverrideSrc || "/assets/ch/vt1.png";
 
-  const contentStyle: CSSProperties = useMemo(() => {
-    const basePadding =
-      typeof contentPadding === "number"
-        ? `${contentPadding}px`
-        : contentPadding;
+  const charStyle: React.CSSProperties = {
+    position: "fixed",
+    right: 8,
+    bottom: -6,
+    zIndex: 20,
+    pointerEvents: "none",
+    opacity: characterOpacity,
+    transform: `scale(${characterScale})`,
+    transformOrigin: "bottom right",
+    filter: "drop-shadow(0 10px 22px rgba(0,0,0,0.35))",
+  };
 
-    const padBottom =
-      typeof contentPadding === "number"
-        ? `${contentPadding + characterReservePx}px`
-        : `calc(${basePadding} + ${characterReservePx}px)`;
-
-    return {
-      flex: 1,
-      minHeight: 0, // スクロールの肝
-      overflowY: scrollY,
-      overflowX: "hidden",
-      paddingTop: basePadding,
-      paddingLeft: basePadding,
-      paddingRight: basePadding,
-      paddingBottom: padBottom,
-      boxSizing: "border-box",
-    };
-  }, [scrollY, contentPadding, characterReservePx]);
+  const showChar =
+    (settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled) &&
+    showTestCharacter;
 
   return (
-    <div style={containerStyle}>
+    <div style={shellStyle}>
       {/* 背景 */}
-      {!!bgSrc && (
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: 0,
-            backgroundImage: `url(${bgSrc})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            transform: "scale(1.02)",
-            filter: `blur(${Math.round(blur)}px)`,
-            opacity: 1,
-            zIndex: 0,
-          }}
-        />
-      )}
+      <div style={bgStyle} />
+      <div style={dimStyle} />
 
-      {/* 暗幕 */}
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: `rgba(0,0,0,${dim})`,
-          zIndex: 1,
-        }}
-      />
-
-      {/* キャラ（UIより後ろに回す / 右下ぴったり / 影なし） */}
-      {characterEnabled && !!characterSrc && (
-        <img
-          src={characterSrc}
-          alt=""
-          draggable={false}
-          style={{
-            position: "fixed",
-            right: "calc(env(safe-area-inset-right) + 0px)",
-            bottom: "calc(env(safe-area-inset-bottom) + 0px)",
-            height: `${Math.round(220 * characterScale)}px`,
-            width: "auto",
-            opacity: characterOpacity,
-            zIndex: 3, // UI(5)より後ろ、背景(0-1)より前
-            pointerEvents: "none",
-            userSelect: "none",
-          }}
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).style.display = "none";
-          }}
-        />
-      )}
-
-      {/* 戻るボタン：右上固定で統一 */}
-      {showBack && (
-        <button
-          type="button"
-          onClick={() => (onBack ? onBack() : history.back())}
-          className="chat-btn glass"
-          style={{
-            position: "fixed",
-            top: "calc(env(safe-area-inset-top) + 10px)",
-            right: "calc(env(safe-area-inset-right) + 10px)",
-            height: 36,
-            padding: "8px 12px",
-            borderRadius: 12,
-            color: "rgba(255,255,255,0.92)",
-            background: "rgba(255,255,255,0.06)",
-            border: "1px solid rgba(255,255,255,0.18)",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-            zIndex: 20,
-          }}
-        >
-          ← 戻る
-        </button>
-      )}
-
-      <div style={innerStyle}>
-        {/* タイトル */}
-        {(title || subtitle) && (
-          <div style={headerStyle}>
-            {title}
-            {subtitle}
-            {showTestCharacter ? (
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "rgba(255,255,255,0.45)",
-                  userSelect: "none",
-                  marginTop: 2,
-                }}
-                title="showTestCharacter（PageShell互換）"
-              >
-                👧
-              </div>
-            ) : null}
+      {/* ヘッダー（右上戻る固定） */}
+      <div style={headerStyle}>
+        <div style={headerLeftStyle}>
+          <div style={titleWrapStyle}>
+            <div style={{ minWidth: 0 }}>{title}</div>
+            {subtitle ? <div style={subtitleStyle}>{subtitle}</div> : null}
           </div>
-        )}
+        </div>
 
-        {/* コンテンツ */}
-        <div style={contentStyle}>{children}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {headerRight}
+          {showBack ? (
+            <button type="button" style={backBtnStyle} onClick={onBack}>
+              ← 戻る
+            </button>
+          ) : null}
+        </div>
       </div>
+
+      {/* 本文（ここがスクロール担当） */}
+      <div style={bodyOuterStyle}>
+        <div style={bodyInnerStyle}>{children}</div>
+      </div>
+
+      {/* 立ち絵 */}
+      {showChar ? (
+        <img
+          src={charSrc}
+          alt=""
+          style={charStyle}
+          onError={(e) => {
+            // 画像が無い時に透明で邪魔しない
+            (e.currentTarget as HTMLImageElement).style.opacity = "0";
+          }}
+        />
+      ) : null}
     </div>
   );
 }
