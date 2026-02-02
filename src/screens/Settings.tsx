@@ -1,11 +1,5 @@
 // src/screens/Settings.tsx
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { FIXED_PORT } from "../points";
 import {
   deleteTideCacheAll,
@@ -191,118 +185,6 @@ export default function Settings({ back }: Props) {
   );
   const [charImageMap, setCharImageMapState] = useState<CharacterImageMap>({});
 
-  // ✅ まず refresh を useEffect より先に（宣言前参照を潰す）
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const s = await getTideCacheStats();
-      setStats(s);
-      const list = await listTideCacheEntries();
-      setEntries(list);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const refreshCreatedCharactersAndMap = useCallback(() => {
-    const chars = loadCreatedCharacters();
-    setCreatedCharacters(chars);
-
-    const map = loadCharacterImageMap();
-    setCharImageMapState(map);
-
-    if (chars.length > 0) {
-      const ids = new Set(chars.map((c) => c.id));
-      const current = settings.fixedCharacterId ?? "";
-      if (!ids.has(current)) {
-        set({ fixedCharacterId: chars[0].id });
-      }
-    }
-  }, [set, settings.fixedCharacterId]);
-
-  const setCharImageMap = useCallback((next: CharacterImageMap) => {
-    setCharImageMapState(next);
-    saveCharacterImageMap(next);
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    refreshCreatedCharactersAndMap();
-  }, [refresh, refreshCreatedCharactersAndMap]);
-
-  const approxMB = useMemo(() => {
-    const kb = stats?.approxKB ?? 0;
-    return Math.round((kb / 1024) * 100) / 100;
-  }, [stats]);
-
-  // settings（安全なデフォルト）
-  const characterEnabled =
-    settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
-  const characterMode =
-    settings.characterMode ?? DEFAULT_SETTINGS.characterMode;
-
-  const createdIds = useMemo(
-    () => new Set(createdCharacters.map((c) => c.id)),
-    [createdCharacters],
-  );
-
-  const fixedCharacterId = useMemo(() => {
-    const candidate = settings.fixedCharacterId ?? "";
-    if (candidate && createdIds.has(candidate)) return candidate;
-    return createdCharacters[0]?.id ?? "";
-  }, [settings.fixedCharacterId, createdIds, createdCharacters]);
-
-  const characterScale = Number.isFinite(settings.characterScale)
-    ? settings.characterScale
-    : DEFAULT_SETTINGS.characterScale;
-  const characterOpacity = Number.isFinite(settings.characterOpacity)
-    ? settings.characterOpacity
-    : DEFAULT_SETTINGS.characterOpacity;
-
-  const bgDim = Number.isFinite(settings.bgDim)
-    ? settings.bgDim
-    : DEFAULT_SETTINGS.bgDim;
-  const bgBlur = Number.isFinite(settings.bgBlur)
-    ? settings.bgBlur
-    : DEFAULT_SETTINGS.bgBlur;
-
-  const glassAlpha = Number.isFinite(settings.glassAlpha)
-    ? settings.glassAlpha
-    : DEFAULT_SETTINGS.glassAlpha;
-  const glassBlur = Number.isFinite(settings.glassBlur)
-    ? settings.glassBlur
-    : DEFAULT_SETTINGS.glassBlur;
-
-  // ===== ✅ 背景 =====
-  const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
-  const autoBgSet =
-    (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
-    DEFAULT_SETTINGS.autoBgSet;
-  const fixedBgSrcRaw = settings.fixedBgSrc ?? DEFAULT_SETTINGS.fixedBgSrc;
-  const fixedBgSrc =
-    normalizePublicPath(fixedBgSrcRaw) || "/assets/bg/ui-check.png";
-
-  const nowBand: BgTimeBand = useMemo(() => {
-    return getTimeBand(new Date());
-  }, [minuteTick]);
-
-  const autoPreviewSrc = useMemo(
-    () => resolveAutoBackgroundSrc(autoBgSet, nowBand),
-    [autoBgSet, nowBand],
-  );
-
-  const effectivePreviewSrc = useMemo(() => {
-    if (bgMode === "off") return "";
-    if (bgMode === "fixed") return fixedBgSrc;
-    return autoPreviewSrc;
-  }, [bgMode, fixedBgSrc, autoPreviewSrc]);
-
-  const isCharControlsDisabled = !characterEnabled;
-  const isFixedDisabled =
-    !characterEnabled ||
-    characterMode !== "fixed" ||
-    createdCharacters.length === 0;
-
   const sectionTitle: CSSProperties = {
     margin: 0,
     fontSize: 16,
@@ -395,6 +277,120 @@ export default function Settings({ back }: Props) {
     cursor: "not-allowed",
   };
 
+  async function refresh() {
+    setLoading(true);
+    try {
+      const s = await getTideCacheStats();
+      setStats(s);
+      const list = await listTideCacheEntries();
+      setEntries(list);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function refreshCreatedCharactersAndMap() {
+    const chars = loadCreatedCharacters();
+    setCreatedCharacters(chars);
+
+    const map = loadCharacterImageMap();
+    setCharImageMapState(map);
+
+    if (chars.length > 0) {
+      const ids = new Set(chars.map((c) => c.id));
+      const current = settings.fixedCharacterId ?? "";
+      if (!ids.has(current)) {
+        set({ fixedCharacterId: chars[0].id });
+      }
+    }
+  }
+
+  function setCharImageMap(next: CharacterImageMap) {
+    setCharImageMapState(next);
+    saveCharacterImageMap(next);
+  }
+
+  useEffect(() => {
+    refresh();
+    refreshCreatedCharactersAndMap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const approxMB = useMemo(() => {
+    const kb = stats?.approxKB ?? 0;
+    return Math.round((kb / 1024) * 100) / 100;
+  }, [stats]);
+
+  // settings（安全なデフォルト）
+  const characterEnabled =
+    settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
+  const characterMode =
+    settings.characterMode ?? DEFAULT_SETTINGS.characterMode;
+
+  const createdIds = useMemo(
+    () => new Set(createdCharacters.map((c) => c.id)),
+    [createdCharacters],
+  );
+
+  const fixedCharacterId = useMemo(() => {
+    const candidate = settings.fixedCharacterId ?? "";
+    if (candidate && createdIds.has(candidate)) return candidate;
+    return createdCharacters[0]?.id ?? "";
+  }, [settings.fixedCharacterId, createdIds, createdCharacters]);
+
+  const characterScale = Number.isFinite(settings.characterScale)
+    ? settings.characterScale
+    : DEFAULT_SETTINGS.characterScale;
+  const characterOpacity = Number.isFinite(settings.characterOpacity)
+    ? settings.characterOpacity
+    : DEFAULT_SETTINGS.characterOpacity;
+
+  const bgDim = Number.isFinite(settings.bgDim)
+    ? settings.bgDim
+    : DEFAULT_SETTINGS.bgDim;
+  const bgBlur = Number.isFinite(settings.bgBlur)
+    ? settings.bgBlur
+    : DEFAULT_SETTINGS.bgBlur;
+
+  const glassAlpha = Number.isFinite(settings.glassAlpha)
+    ? settings.glassAlpha
+    : DEFAULT_SETTINGS.glassAlpha;
+  const glassBlur = Number.isFinite(settings.glassBlur)
+    ? settings.glassBlur
+    : DEFAULT_SETTINGS.glassBlur;
+
+  // ===== ✅ 背景 =====
+  const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
+  const autoBgSet =
+    (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
+    DEFAULT_SETTINGS.autoBgSet;
+  const fixedBgSrcRaw = settings.fixedBgSrc ?? DEFAULT_SETTINGS.fixedBgSrc;
+  const fixedBgSrc =
+    normalizePublicPath(fixedBgSrcRaw) || "/assets/bg/ui-check.png";
+
+  const nowBand: BgTimeBand = useMemo(() => {
+    // ✅ minuteTick を依存に持つ意味を明示（eslint 警告回避）
+    void minuteTick;
+    return getTimeBand(new Date());
+  }, [minuteTick]);
+
+  const autoPreviewSrc = useMemo(
+    () => resolveAutoBackgroundSrc(autoBgSet, nowBand),
+    [autoBgSet, nowBand],
+  );
+
+  const effectivePreviewSrc = useMemo(() => {
+    if (bgMode === "off") return "";
+    if (bgMode === "fixed") return fixedBgSrc;
+    return autoPreviewSrc;
+  }, [bgMode, fixedBgSrc, autoPreviewSrc]);
+
+  const isCharControlsDisabled = !characterEnabled;
+  const isFixedDisabled =
+    !characterEnabled ||
+    characterMode !== "fixed" ||
+    createdCharacters.length === 0;
+
   return (
     <PageShell
       title={
@@ -412,6 +408,7 @@ export default function Settings({ back }: Props) {
       onBack={back}
       showTestCharacter={!isNarrow}
     >
+      {/* ここから下は、あなたが貼ってくれた内容をそのまま */}
       <div style={{ display: "grid", gap: 16 }}>
         {/* 👧 キャラ */}
         <div className="glass glass-strong" style={card}>
@@ -497,7 +494,7 @@ export default function Settings({ back }: Props) {
                   <button
                     type="button"
                     style={pillBase}
-                    onClick={refreshCreatedCharactersAndMap}
+                    onClick={() => refreshCreatedCharactersAndMap()}
                   >
                     ↻ キャラ管理と同期
                   </button>
@@ -822,9 +819,10 @@ export default function Settings({ back }: Props) {
                 <input
                   value={fixedBgSrcRaw}
                   disabled={bgMode !== "fixed"}
-                  onChange={(e) => set({ fixedBgSrc: e.target.value })}
+                  onChange={(e) => set({ fixedBgSrc: e.currentTarget.value })}
                   placeholder="例: /assets/bg/surf_evening.png"
                 />
+
                 <div style={help}>
                   public 配下パス（例: <code>/assets/bg/surf_evening.png</code>
                   ）
@@ -985,7 +983,7 @@ export default function Settings({ back }: Props) {
               type="button"
               style={loading || !!busy ? pillDisabled : pillBase}
               disabled={loading || !!busy}
-              onClick={refresh}
+              onClick={() => refresh()}
             >
               ↻ 更新
             </button>

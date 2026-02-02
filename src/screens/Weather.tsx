@@ -251,7 +251,6 @@ export default function Weather({ back }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-
     async function run() {
       setState({ status: "loading" });
       try {
@@ -277,18 +276,18 @@ export default function Weather({ back }: Props) {
         if (!cancelled) setState({ status: "error", message: msg });
       }
     }
-
     run();
     return () => {
       cancelled = true;
     };
   }, [targetDate]);
 
-  const now = new Date();
   const highlightAt = useMemo(() => {
+    // ✅ now を deps に入れず、memo 内で生成して警告回避
+    const now = new Date();
     if (sameDay(targetDate, now)) return now;
     return null;
-  }, [targetDate, now]);
+  }, [targetDate]);
 
   const extremes = useMemo(() => {
     if (state.status !== "ok") return [];
@@ -306,7 +305,7 @@ export default function Weather({ back }: Props) {
       showBack
       onBack={back}
     >
-      {/* ✅ 自前ヘッダー */}
+      {/* ✅ 自前ヘッダー（左寄せ固定を強める） */}
       <div
         style={{
           ...TILE_STYLE,

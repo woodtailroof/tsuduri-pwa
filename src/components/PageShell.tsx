@@ -78,7 +78,6 @@ function loadCreatedCharacterIds(): string[] {
   const ids = list
     .map((c) => (typeof c?.id === "string" ? c.id : ""))
     .filter(Boolean);
-  // uniq
   return Array.from(new Set(ids));
 }
 
@@ -139,12 +138,17 @@ export default function PageShell({
     };
   }, []);
 
+  const nowBand = useMemo(() => {
+    // eslint 警告回避（minuteTick を依存に持つ意味を明示）
+    void minuteTick;
+    return getTimeBand(new Date());
+  }, [minuteTick]);
+
   const bgSrc = useMemo(() => {
     if (bgMode === "off") return "";
     if (bgMode === "fixed") return fixedBgSrc || "";
-    const band = getTimeBand(new Date());
-    return `/assets/bg/${autoBgSet}_${band}.png`;
-  }, [bgMode, fixedBgSrc, autoBgSet, minuteTick]);
+    return `/assets/bg/${autoBgSet}_${nowBand}.png`;
+  }, [bgMode, fixedBgSrc, autoBgSet, nowBand]);
 
   // ===== キャラ（Settings と連動）=====
   const characterEnabled = settings.characterEnabled ?? true;
@@ -170,22 +174,27 @@ export default function PageShell({
     (settings.characterOverrideSrc ?? "").trim(),
   );
 
-  // ランダム用: 画面遷移ごとに変えたいので PageShell mount ごとに決める
+  // ランダム用: PageShell の mount ごとに一度決める + 設定が変わったら更新
   const [activeCharacterId, setActiveCharacterId] = useState<string>(() => {
     const ids = loadCreatedCharacterIds();
     if (characterMode === "fixed")
       return fixedCharacterId || ids[0] || "tsuduri";
-    return pickRandom(ids)?.toString() || ids[0] || "tsuduri";
+    return (pickRandom(ids) ?? ids[0] ?? "tsuduri") as string;
   });
 
   useEffect(() => {
-    // 設定が変わったら反映
-    const ids = loadCreatedCharacterIds();
-    if (characterMode === "fixed") {
-      setActiveCharacterId(fixedCharacterId || ids[0] || "tsuduri");
-    } else {
-      setActiveCharacterId(pickRandom(ids) || ids[0] || "tsuduri");
-    }
+    // eslint(react-hooks/set-state-in-effect) 回避のため、同フレーム同期で setState しない
+    const raf = requestAnimationFrame(() => {
+      const ids = loadCreatedCharacterIds();
+      if (characterMode === "fixed") {
+        setActiveCharacterId(fixedCharacterId || ids[0] || "tsuduri");
+      } else {
+        setActiveCharacterId(
+          ((pickRandom(ids) ?? ids[0] ?? "tsuduri") as string) || "tsuduri",
+        );
+      }
+    });
+    return () => cancelAnimationFrame(raf);
   }, [characterMode, fixedCharacterId]);
 
   // 同一タブで Settings が map を更新したとき追従（tsuduri-settings イベント）
@@ -198,6 +207,9 @@ export default function PageShell({
   }, []);
 
   const characterSrc = useMemo(() => {
+    // eslint 警告回避（charMapTick に意味を持たせる）
+    void charMapTick;
+
     if (!characterEnabled) return "";
     if (characterOverrideSrc) return characterOverrideSrc;
 
@@ -206,7 +218,7 @@ export default function PageShell({
     const mapped = normalizePublicPath(raw);
 
     // マップが無い場合のフォールバック
-    // public/assets/characters/tsuduri.png を置いてある想定（無ければ好きなパスに変えてOK）
+    // public/assets/characters/{id}.png を置いてある想定（無ければ tsuduri に落とす）
     return (
       mapped ||
       `/assets/characters/${activeCharacterId}.png` ||
@@ -214,12 +226,13 @@ export default function PageShell({
     );
   }, [characterEnabled, characterOverrideSrc, activeCharacterId, charMapTick]);
 
-  // キャラに被らないよう “下に余白” を足す（やりすぎないよう上限あり）
+  // キャラに被らないよう “下に余白” を足す（ただし Chat など scrollY="hidden" の画面は増やさない）
   const characterReservePx = useMemo(() => {
     if (!characterEnabled) return 0;
-    const base = 140; // 基本確保量
-    return clamp(Math.round(base * characterScale), 120, 340);
-  }, [characterEnabled, characterScale]);
+    if (scrollY === "hidden") return 0;
+    const base = 120;
+    return clamp(Math.round(base * characterScale), 90, 260);
+  }, [characterEnabled, characterScale, scrollY]);
 
   const dim = clamp(bgDim, 0, 1);
   const blur = clamp(bgBlur, 0, 40);
@@ -250,7 +263,7 @@ export default function PageShell({
       gap: 12,
       boxSizing: "border-box",
       position: "relative",
-      zIndex: 2,
+      zIndex: 3, // ✅ UI は最前面
       flex: 1,
       minHeight: 0,
     }),
@@ -258,17 +271,17 @@ export default function PageShell({
   );
 
   const headerStyle: CSSProperties = useMemo(() => {
-    const align = titleLayout === "left" ? "flex-start" : "center";
+    // ✅ 画面ごとの差を減らして統一感を出す
     return {
-      display: "flex",
-      alignItems: align,
-      justifyContent: "space-between",
+      display: "grid",
+      gridTemplateColumns: "auto 1fr auto",
+      alignItems: "center",
       gap: 12,
       minWidth: 0,
       padding: "0 12px",
       boxSizing: "border-box",
     };
-  }, [titleLayout]);
+  }, []);
 
   const titleWrapStyle: CSSProperties = useMemo(() => {
     const align = titleLayout === "left" ? "flex-start" : "center";
@@ -292,7 +305,6 @@ export default function PageShell({
         ? `${contentPadding}px`
         : contentPadding;
 
-    // 下方向だけキャラ分をちょい足し（Chat は scrollY="hidden" で自前制御なので影響小）
     const padBottom =
       typeof contentPadding === "number"
         ? `${contentPadding + characterReservePx}px`
@@ -310,6 +322,20 @@ export default function PageShell({
       boxSizing: "border-box",
     };
   }, [scrollY, contentPadding, characterReservePx]);
+
+  const backBtnStyle: CSSProperties = useMemo(
+    () => ({
+      height: 36,
+      padding: "8px 12px",
+      borderRadius: 12,
+      color: "rgba(255,255,255,0.92)",
+      background: "rgba(255,255,255,0.06)",
+      border: "1px solid rgba(255,255,255,0.18)",
+      cursor: "pointer",
+      whiteSpace: "nowrap",
+    }),
+    [],
+  );
 
   return (
     <div style={containerStyle}>
@@ -331,18 +357,7 @@ export default function PageShell({
         />
       )}
 
-      {/* 暗幕 */}
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: `rgba(0,0,0,${dim})`,
-          zIndex: 1,
-        }}
-      />
-
-      {/* キャラ（画面右下固定） */}
+      {/* キャラ（背景より上、暗幕より下、UIより下） */}
       {characterEnabled && !!characterSrc && (
         <img
           src={characterSrc}
@@ -350,61 +365,59 @@ export default function PageShell({
           draggable={false}
           style={{
             position: "fixed",
-            right: "max(10px, env(safe-area-inset-right))",
-            bottom: "max(10px, env(safe-area-inset-bottom))",
+            right: "calc(env(safe-area-inset-right) + 8px)",
+            bottom: "calc(env(safe-area-inset-bottom) + 8px)",
             height: `${Math.round(220 * characterScale)}px`,
             width: "auto",
             opacity: characterOpacity,
-            zIndex: 10,
+            zIndex: 1, // ✅ 情報レイヤより下
             pointerEvents: "none",
             userSelect: "none",
-            filter: "drop-shadow(0 10px 22px rgba(0,0,0,0.45))",
+            // ✅ 影は付けない（好みで後でSettings化はできる）
+            filter: "none",
           }}
           onError={(e) => {
-            // 画像が無ければ静かに消す（壊れアイコン回避）
             (e.currentTarget as HTMLImageElement).style.display = "none";
           }}
         />
       )}
 
+      {/* 暗幕（背景＋キャラもまとめて暗くする） */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: `rgba(0,0,0,${dim})`,
+          zIndex: 2,
+        }}
+      />
+
       <div style={innerStyle}>
         {/* ヘッダー */}
         {(showBack || title || subtitle) && (
           <div style={headerStyle}>
-            {showBack ? (
-              <button
-                type="button"
-                onClick={() => (onBack ? onBack() : history.back())}
-                className="chat-btn glass"
-                style={{
-                  height: 36,
-                  padding: "8px 12px",
-                  borderRadius: 12,
-                  color: "rgba(255,255,255,0.92)",
-                  background: "rgba(255,255,255,0.06)",
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                ← 戻る
-              </button>
-            ) : (
-              <div style={{ width: 78 }} />
-            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {showBack ? (
+                <button
+                  type="button"
+                  onClick={() => (onBack ? onBack() : history.back())}
+                  style={backBtnStyle}
+                >
+                  ← 戻る
+                </button>
+              ) : (
+                <div style={{ width: 78 }} />
+              )}
+            </div>
 
             <div style={titleWrapStyle}>
               {title}
               {subtitle}
             </div>
 
-            {/* 右側スペーサ */}
             <div
-              style={{
-                width: 78,
-                display: "flex",
-                justifyContent: "flex-end",
-              }}
+              style={{ width: 78, display: "flex", justifyContent: "flex-end" }}
             >
               {showTestCharacter ? (
                 <span
