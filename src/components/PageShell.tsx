@@ -1,12 +1,6 @@
 // src/components/PageShell.tsx
 import type { ReactNode } from "react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
 import { useAppSettings } from "../lib/appSettings";
 
 type TitleLayout = "left" | "center";
@@ -57,19 +51,6 @@ function safeJsonParse<T>(raw: string | null, fallback: T): T {
   }
 }
 
-/**
- * ✅ purity ルール対策
- * - render 中に Date.now / Math.random を呼ばない
- * - “mountごとのseed” はモジュールスコープの連番から作る
- */
-const GLOBAL_MOUNT_SEED = Math.floor(Math.random() * 1_000_000_000);
-let MOUNT_COUNTER = 0;
-function nextMountSeed() {
-  // 連番で十分（擬似ランダム選択の“分岐”に使うだけ）
-  MOUNT_COUNTER = (MOUNT_COUNTER + 1) % 1_000_000_000;
-  return GLOBAL_MOUNT_SEED + MOUNT_COUNTER;
-}
-
 /** Settings.tsx で使ってる作成キャラ画像マップ */
 const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
 type CharacterImageMap = Record<string, string>;
@@ -106,6 +87,17 @@ function getTimeBand(d: Date): "morning" | "day" | "evening" | "night" {
   if (h >= 10 && h <= 15) return "day";
   if (h >= 16 && h <= 18) return "evening";
   return "night";
+}
+
+/** useId() 由来の文字列を軽量ハッシュして seed にする */
+function hashStringToInt(s: string): number {
+  // 32bit FNV-1a 風
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h | 0;
 }
 
 function pickBySeed(arr: string[], seed: number): string | "" {
@@ -197,8 +189,9 @@ export default function PageShell({
     (settings.characterOverrideSrc ?? "").trim(),
   );
 
-  // ✅ mountごとのseed（render中に不純関数ゼロ）
-  const mountSeedRef = useRef<number>(nextMountSeed());
+  // ✅ mount単位で安定するID → seed（refも不純関数も不要）
+  const rid = useId();
+  const mountSeed = useMemo(() => hashStringToInt(rid), [rid]);
 
   // 同一タブで Settings が map を更新したとき追従（tsuduri-settings イベント）
   const [charMapTick, setCharMapTick] = useState(0);
@@ -216,9 +209,9 @@ export default function PageShell({
       return fixedCharacterId || ids[0] || "tsuduri";
     }
 
-    const picked = pickBySeed(ids, mountSeedRef.current);
+    const picked = pickBySeed(ids, mountSeed);
     return picked || ids[0] || "tsuduri";
-  }, [characterMode, fixedCharacterId]);
+  }, [characterMode, fixedCharacterId, mountSeed]);
 
   const characterSrc = useMemo(() => {
     if (!characterEnabled) return "";
