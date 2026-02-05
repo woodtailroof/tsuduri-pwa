@@ -78,25 +78,20 @@ export default function Record({ back }: Props) {
   const isMobile = useIsMobile();
   const isDesktop = !isMobile;
 
-  // ✅ PageShell上部（戻るボタン帯＋余白）ぶんを安全側に確保して「下切れ」を防ぐ
-  const DESKTOP_CHROME_PX = 104;
+  /**
+   * ✅ 重要：RecordHistory と同じ “上の安全余白”
+   * 戻るボタン帯がコンテンツに被らないようにする
+   */
+  const SHELL_TOP_SAFE_PX = 72;
 
   // =========================
   // ✅ 見た目（ガラスは PageShell のCSS変数に追従）
   // =========================
-  const ellipsis1: CSSProperties = {
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    minWidth: 0,
-  };
-
   const glassBoxStyle: CSSProperties = {
     borderRadius: 16,
     padding: 12,
     display: "grid",
     gap: 10,
-    minWidth: 0,
   };
 
   const segWrapStyle: CSSProperties = {
@@ -168,48 +163,6 @@ export default function Record({ back }: Props) {
       boxShadow: checked ? "0 0 0 4px rgba(255,77,109,0.16)" : "none",
     };
   }
-
-  const pillBtnStyle: CSSProperties = {
-    borderRadius: 999,
-    padding: "8px 12px",
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(0,0,0,0.24)",
-    color: "rgba(255,255,255,0.78)",
-    cursor: "pointer",
-    userSelect: "none",
-    lineHeight: 1,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    whiteSpace: "nowrap",
-    backdropFilter: "blur(var(--glass-blur,10px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
-  };
-
-  const pillBtnDisabled: CSSProperties = {
-    ...pillBtnStyle,
-    opacity: 0.55,
-    cursor: "not-allowed",
-  };
-
-  const inputStyle: CSSProperties = {
-    background: "rgba(0,0,0,0.22)",
-    color: "rgba(255,255,255,0.88)",
-    border: "1px solid rgba(255,255,255,0.18)",
-    borderRadius: 12,
-    padding: "8px 10px",
-    outline: "none",
-    backdropFilter: "blur(var(--glass-blur,10px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
-  };
-
-  const textareaStyle: CSSProperties = {
-    ...inputStyle,
-    width: "100%",
-    resize: "vertical",
-    minHeight: 72,
-    overflowWrap: "anywhere",
-  };
 
   // =========================
   // ✅ 状態
@@ -399,25 +352,24 @@ export default function Record({ back }: Props) {
     }
   }
 
-  // ✅ 写真プレースホルダー（使い回し）
+  // ✅ 写真プレースホルダー
   const photoFrameStyle: CSSProperties = {
     width: "100%",
-    height: "100%",
+    aspectRatio: "4 / 3",
     borderRadius: 14,
     overflow: "hidden",
-    background: "rgba(0,0,0,0.14)",
-    border: "1px solid rgba(255,255,255,0.10)",
-    display: "grid",
+    background: "rgba(0,0,0,0.18)",
+    border: "1px solid rgba(255,255,255,0.14)",
+    display: "flex",
     alignItems: "center",
-    justifyItems: "center",
-    minHeight: 220,
+    justifyContent: "center",
   };
 
   const titleNode = (
     <h1
       style={{
         margin: 0,
-        fontSize: "clamp(20px, 3.2vw, 32px)",
+        fontSize: "clamp(20px, 6vw, 32px)",
         lineHeight: 1.15,
       }}
     >
@@ -425,7 +377,7 @@ export default function Record({ back }: Props) {
     </h1>
   );
 
-  const headerSubNode = (
+  const subtitleNode = (
     <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
       🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
       {!online && (
@@ -436,190 +388,220 @@ export default function Record({ back }: Props) {
 
   return (
     <PageShell
-      title={isDesktop ? undefined : titleNode}
-      subtitle={isDesktop ? undefined : headerSubNode}
+      title={titleNode}
+      subtitle={subtitleNode}
       titleLayout="left"
-      maxWidth={1400}
+      maxWidth={1200}
       showBack
       onBack={back}
-      scrollY={isDesktop ? "hidden" : "auto"}
+      scrollY="auto"
     >
-      <div
-        style={{
-          overflowX: "clip",
-          maxWidth: "100vw",
-          minHeight: 0,
+      <style>{`
+        .record-layout{
+          display:grid;
+          gap:14px;
+          min-width:0;
+        }
+        /* PC: 左に写真、右に入力 */
+        @media (min-width: 980px){
+          .record-layout{
+            grid-template-columns: 420px minmax(0, 1fr);
+            align-items:start;
+          }
+          .record-left{
+            position: sticky;
+            top: 12px;
+            align-self:start;
+          }
+        }
+      `}</style>
 
-          height: isDesktop
-            ? `calc(100dvh - ${DESKTOP_CHROME_PX}px - env(safe-area-inset-top) - env(safe-area-inset-bottom))`
-            : "auto",
+      {/* ✅ 戻るボタン帯に被らないための安全余白（PCのみ） */}
+      <div style={{ paddingTop: isDesktop ? SHELL_TOP_SAFE_PX : 0 }}>
+        <div className="record-layout">
+          {/* 左：写真 */}
+          <div className="record-left" style={{ minWidth: 0 }}>
+            <div
+              className="glass glass-strong"
+              style={{ borderRadius: 16, padding: 12 }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>🖼 写真</div>
 
-          paddingBottom: isDesktop ? 8 : 0,
-        }}
-      >
-        {isMobile ? (
-          // =========================
-          // ✅ Mobile（縦積み）
-          // =========================
-          <div style={{ display: "grid", gap: 12 }}>
-            <div className="glass glass-strong" style={glassBoxStyle}>
-              {titleNode}
-              {headerSubNode}
-            </div>
+              <div style={{ display: "grid", gap: 10 }}>
+                <label
+                  style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
+                >
+                  写真を選ぶ
+                  <div style={{ marginTop: 6 }}>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={async (e) => {
+                        if (!e.target.files || !e.target.files[0]) return;
+                        const file = e.target.files[0];
+                        setPhoto(file);
+                        setPreviewUrl(URL.createObjectURL(file));
 
-            {/* 写真 */}
-            <div className="glass glass-strong" style={glassBoxStyle}>
-              <div style={{ fontWeight: 900 }}>🖼 写真</div>
+                        setCapturedAt(null);
+                        setExifNote("");
+                        setManualMode(false);
+                        setManualValue("");
+                        setAllowUnknown(false);
 
-              <label style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
-                写真を選ぶ
-                <div style={{ marginTop: 6 }}>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={async (e) => {
-                      if (!e.target.files || !e.target.files[0]) return;
-                      const file = e.target.files[0];
-                      setPhoto(file);
-                      setPreviewUrl(URL.createObjectURL(file));
+                        try {
+                          const dt = await exifr.parse(file, {
+                            pick: ["DateTimeOriginal", "CreateDate"],
+                          });
 
-                      setCapturedAt(null);
-                      setExifNote("");
-                      setManualMode(false);
-                      setManualValue("");
-                      setAllowUnknown(false);
+                          const meta = dt as {
+                            DateTimeOriginal?: Date;
+                            CreateDate?: Date;
+                          } | null;
+                          const date =
+                            meta?.DateTimeOriginal ?? meta?.CreateDate ?? null;
 
-                      try {
-                        const dt = await exifr.parse(file, {
-                          pick: ["DateTimeOriginal", "CreateDate"],
-                        });
-
-                        const meta = dt as {
-                          DateTimeOriginal?: Date;
-                          CreateDate?: Date;
-                        } | null;
-                        const date =
-                          meta?.DateTimeOriginal ?? meta?.CreateDate ?? null;
-
-                        if (date instanceof Date) {
-                          setCapturedAt(date);
-                          setExifNote("");
-                          setManualMode(false);
-                          setManualValue(toDateTimeLocalValue(date));
-                        } else {
+                          if (date instanceof Date) {
+                            setCapturedAt(date);
+                            setExifNote("");
+                            setManualMode(false);
+                            setManualValue(toDateTimeLocalValue(date));
+                          } else {
+                            setCapturedAt(null);
+                            setExifNote(
+                              "撮影日時が見つからなかったよ（手動入力できます）",
+                            );
+                            setManualMode(true);
+                            setManualValue("");
+                          }
+                        } catch {
                           setCapturedAt(null);
                           setExifNote(
-                            "撮影日時が見つからなかったよ（手動入力できます）",
+                            "EXIFの読み取りに失敗したよ（手動入力できます）",
                           );
                           setManualMode(true);
                           setManualValue("");
                         }
-                      } catch {
-                        setCapturedAt(null);
-                        setExifNote(
-                          "EXIFの読み取りに失敗したよ（手動入力できます）",
-                        );
-                        setManualMode(true);
-                        setManualValue("");
-                      }
-                    }}
-                  />
+                      }}
+                    />
+                  </div>
+                </label>
+
+                <div style={photoFrameStyle}>
+                  {previewUrl ? (
+                    <img
+                      src={previewUrl}
+                      alt="preview"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                        display: "block",
+                      }}
+                    />
+                  ) : (
+                    <div style={{ textAlign: "center", padding: 12 }}>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "rgba(255,255,255,0.70)",
+                          fontWeight: 700,
+                        }}
+                      >
+                        プレビュー
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 6,
+                          fontSize: 11,
+                          color: "rgba(255,255,255,0.52)",
+                        }}
+                      >
+                        ここに写真が表示されるよ
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </label>
 
-              <div style={{ ...photoFrameStyle, minHeight: 260 }}>
-                {previewUrl ? (
-                  <img
-                    src={previewUrl}
-                    alt="preview"
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "contain",
-                      display: "block",
-                    }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      color: "rgba(255,255,255,0.62)",
-                      fontSize: 12,
-                      padding: 16,
-                      textAlign: "center",
-                    }}
-                  >
-                    🖼 プレビュー
-                    <div style={{ height: 6 }} />
-                    <span
-                      style={{ fontSize: 11, color: "rgba(255,255,255,0.52)" }}
-                    >
-                      ここに写真が表示されるよ
-                    </span>
-                  </div>
-                )}
-              </div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
+                  {photo ? (
+                    <>選択中：{photo.name}</>
+                  ) : (
+                    <>写真は任意（あとからでもOK）</>
+                  )}
+                </div>
 
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
-                {photo ? (
-                  <>選択中：{photo.name}</>
-                ) : (
-                  <>写真は任意（あとからでもOK）</>
-                )}
-              </div>
-
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-                {capturedAt ? (
-                  <>📅 撮影日時：{capturedAt.toLocaleString()}</>
-                ) : (
-                  <>📅 撮影日時：（不明）</>
-                )}
-                {exifNote && (
-                  <div style={{ marginTop: 4, color: "#ff7a7a" }}>
-                    {exifNote}
-                  </div>
-                )}
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
+                  {capturedAt ? (
+                    <>📅 撮影日時：{capturedAt.toLocaleString()}</>
+                  ) : (
+                    <>📅 撮影日時：（不明）</>
+                  )}
+                  {exifNote && (
+                    <div style={{ marginTop: 4, color: "#ff7a7a" }}>
+                      {exifNote}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
+          </div>
 
-            {/* 手動日時 */}
+          {/* 右：入力 */}
+          <div
+            style={{
+              minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+            }}
+          >
+            {/* 手動日時入力 */}
             {photo && (
               <div className="glass glass-strong" style={glassBoxStyle}>
-                <label
+                <div
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 8,
-                    cursor: "pointer",
-                    userSelect: "none",
+                    gap: 10,
+                    flexWrap: "wrap",
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={manualMode}
-                    onChange={(e) => {
-                      const on = e.target.checked;
-                      setManualMode(on);
-                      if (on) {
-                        if (capturedAt)
-                          setManualValue(toDateTimeLocalValue(capturedAt));
-                      } else {
-                        if (!capturedAt) setManualValue("");
-                        setAllowUnknown(false);
-                      }
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      cursor: "pointer",
                     }}
-                  />
-                  <span
-                    style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
                   >
-                    撮影日時を手動で補正する
-                  </span>
-                </label>
+                    <input
+                      type="checkbox"
+                      checked={manualMode}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setManualMode(on);
+                        if (on) {
+                          if (capturedAt)
+                            setManualValue(toDateTimeLocalValue(capturedAt));
+                        } else {
+                          if (!capturedAt) setManualValue("");
+                          setAllowUnknown(false);
+                        }
+                      }}
+                    />
+                    <span
+                      style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
+                    >
+                      撮影日時を手動で補正する
+                    </span>
+                  </label>
 
-                {!manualMode && !capturedAt && (
-                  <div style={{ fontSize: 12, color: "#f6c" }}>
-                    ※EXIFが無いので、ONにして入力するとタイドに紐づくよ
-                  </div>
-                )}
+                  {!manualMode && !capturedAt && (
+                    <div style={{ fontSize: 12, color: "#f6c" }}>
+                      ※EXIFが無いので、ONにして入力するとタイドに紐づくよ
+                    </div>
+                  )}
+                </div>
 
                 {manualMode && (
                   <>
@@ -627,8 +609,8 @@ export default function Record({ back }: Props) {
                       style={{
                         display: "flex",
                         gap: 10,
-                        flexWrap: "wrap",
                         alignItems: "center",
+                        flexWrap: "wrap",
                       }}
                     >
                       <label
@@ -637,7 +619,7 @@ export default function Record({ back }: Props) {
                           color: "rgba(255,255,255,0.72)",
                         }}
                       >
-                        手動撮影日時：
+                        手動撮影日時（ローカル）：
                         <input
                           type="datetime-local"
                           value={manualValue}
@@ -661,8 +643,6 @@ export default function Record({ back }: Props) {
                           setCapturedAt(now);
                           setAllowUnknown(false);
                         }}
-                        className="glass"
-                        style={pillBtnStyle}
                       >
                         今にする
                       </button>
@@ -675,7 +655,6 @@ export default function Record({ back }: Props) {
                           alignItems: "center",
                           gap: 8,
                           cursor: "pointer",
-                          userSelect: "none",
                         }}
                       >
                         <input
@@ -704,9 +683,12 @@ export default function Record({ back }: Props) {
               </div>
             )}
 
-            {/* タイドプレビュー */}
+            {/* 潮プレビュー */}
             {photo && (
-              <div className="glass glass-strong" style={glassBoxStyle}>
+              <div
+                className="glass glass-strong"
+                style={{ borderRadius: 16, padding: 12 }}
+              >
                 <div
                   style={{
                     display: "flex",
@@ -715,7 +697,7 @@ export default function Record({ back }: Props) {
                     flexWrap: "wrap",
                   }}
                 >
-                  <div style={{ fontWeight: 900 }}>🌙 タイド（プレビュー）</div>
+                  <div style={{ fontWeight: 800 }}>🌙 タイド（プレビュー）</div>
                   {!online && (
                     <div style={{ fontSize: 12, color: "#f6c" }}>
                       📴 オフライン
@@ -742,18 +724,24 @@ export default function Record({ back }: Props) {
 
                 {!capturedAt ? (
                   <div
-                    style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}
+                    style={{
+                      marginTop: 8,
+                      fontSize: 12,
+                      color: "rgba(255,255,255,0.68)",
+                    }}
                   >
                     撮影日時が無いので、タイドに紐づけできないよ
                   </div>
                 ) : tideLoading ? (
-                  <div style={{ fontSize: 12, color: "#0a6" }}>取得中…</div>
+                  <div style={{ marginTop: 8, fontSize: 12, color: "#0a6" }}>
+                    取得中…
+                  </div>
                 ) : tideError ? (
-                  <div style={{ fontSize: 12, color: "#ff7a7a" }}>
+                  <div style={{ marginTop: 8, fontSize: 12, color: "#ff7a7a" }}>
                     取得失敗 → {tideError}
                   </div>
                 ) : (
-                  <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
                     <div
                       style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}
                     >
@@ -770,7 +758,9 @@ export default function Record({ back }: Props) {
                         : "—"}
                     </div>
                     {!online && tideSource === "stale-cache" && (
-                      <div style={{ fontSize: 12, color: "#f6c" }}>
+                      <div
+                        style={{ marginTop: 4, fontSize: 12, color: "#f6c" }}
+                      >
                         ⚠ オフラインのため、期限切れキャッシュの可能性あり
                       </div>
                     )}
@@ -780,129 +770,128 @@ export default function Record({ back }: Props) {
             )}
 
             {/* 釣果 */}
-            <div className="glass glass-strong" style={glassBoxStyle}>
-              <div style={{ fontWeight: 900 }}>🎣 釣果</div>
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>🎣 釣果</div>
 
-              <div style={segWrapStyle} aria-label="釣果の結果">
-                <label style={segLabelStyle}>
-                  <input
-                    type="radio"
-                    name="result"
-                    checked={result === "caught"}
-                    onChange={() => setResult("caught")}
-                    style={segInputHidden}
-                  />
-                  <span style={segPill(result === "caught")}>
-                    <span
-                      style={segDot(result === "caught")}
-                      aria-hidden="true"
+              <div className="glass glass-strong" style={glassBoxStyle}>
+                <div style={segWrapStyle} aria-label="釣果の結果">
+                  <label style={segLabelStyle}>
+                    <input
+                      type="radio"
+                      name="result"
+                      checked={result === "caught"}
+                      onChange={() => setResult("caught")}
+                      style={segInputHidden}
                     />
-                    釣れた
-                  </span>
-                </label>
+                    <span style={segPill(result === "caught")}>
+                      <span
+                        style={segDot(result === "caught")}
+                        aria-hidden="true"
+                      />
+                      釣れた
+                    </span>
+                  </label>
 
-                <label style={segLabelStyle}>
-                  <input
-                    type="radio"
-                    name="result"
-                    checked={result === "skunk"}
-                    onChange={() => setResult("skunk")}
-                    style={segInputHidden}
-                  />
-                  <span style={segPill(result === "skunk")}>
-                    <span
-                      style={segDot(result === "skunk")}
-                      aria-hidden="true"
+                  <label style={segLabelStyle}>
+                    <input
+                      type="radio"
+                      name="result"
+                      checked={result === "skunk"}
+                      onChange={() => setResult("skunk")}
+                      style={segInputHidden}
                     />
-                    釣れなかった（ボウズ）
-                  </span>
-                </label>
-              </div>
-
-              {result === "caught" && (
-                <div style={{ display: "grid", gap: 10 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                    }}
-                  >
-                    <label
-                      style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
-                    >
-                      魚種：
-                      <input
-                        value={species}
-                        onChange={(e) => setSpecies(e.target.value)}
-                        placeholder="例：シーバス"
-                        style={{
-                          ...inputStyle,
-                          marginLeft: 8,
-                          width: 220,
-                          maxWidth: "100%",
-                        }}
+                    <span style={segPill(result === "skunk")}>
+                      <span
+                        style={segDot(result === "skunk")}
+                        aria-hidden="true"
                       />
-                    </label>
-
-                    <label
-                      style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
-                    >
-                      大きさ（cm）：
-                      <input
-                        value={sizeCm}
-                        onChange={(e) => setSizeCm(e.target.value)}
-                        placeholder="例：52"
-                        inputMode="decimal"
-                        style={{ ...inputStyle, marginLeft: 8, width: 120 }}
-                      />
-                    </label>
-                  </div>
-
-                  {sizeCm.trim() !== "" && sizeCmNumber == null && (
-                    <div style={{ fontSize: 12, color: "#f6c" }}>
-                      ※サイズは数字で入れてね（例：52 / 12.5）
-                    </div>
-                  )}
-
-                  <div
-                    style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}
-                  >
-                    ※魚種が空なら「不明」として保存するよ
-                  </div>
+                      釣れなかった（ボウズ）
+                    </span>
+                  </label>
                 </div>
-              )}
+
+                {result === "caught" && (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                      }}
+                    >
+                      <label
+                        style={{
+                          fontSize: 12,
+                          color: "rgba(255,255,255,0.72)",
+                        }}
+                      >
+                        魚種：
+                        <input
+                          value={species}
+                          onChange={(e) => setSpecies(e.target.value)}
+                          placeholder="例：シーバス"
+                          style={{ marginLeft: 8, width: 220 }}
+                        />
+                      </label>
+
+                      <label
+                        style={{
+                          fontSize: 12,
+                          color: "rgba(255,255,255,0.72)",
+                        }}
+                      >
+                        大きさ（cm）：
+                        <input
+                          value={sizeCm}
+                          onChange={(e) => setSizeCm(e.target.value)}
+                          placeholder="例：52"
+                          inputMode="decimal"
+                          style={{ marginLeft: 8, width: 120 }}
+                        />
+                      </label>
+                    </div>
+
+                    {sizeCm.trim() !== "" && sizeCmNumber == null && (
+                      <div style={{ fontSize: 12, color: "#f6c" }}>
+                        ※サイズは数字で入れてね（例：52 / 12.5）
+                      </div>
+                    )}
+
+                    <div
+                      style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}
+                    >
+                      ※魚種が空なら「不明」として保存するよ（後で分析に使えるからね）
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* メモ */}
-            <div className="glass glass-strong" style={glassBoxStyle}>
-              <div style={{ fontWeight: 900 }}>📝 ひとことメモ</div>
-              <textarea
-                value={memo}
-                onChange={(e) => setMemo(e.target.value)}
-                rows={3}
-                style={textareaStyle}
-                placeholder="渋かった…でも一匹！とか"
-              />
+            <div>
+              <label>
+                ひとことメモ
+                <br />
+                <textarea
+                  value={memo}
+                  onChange={(e) => setMemo(e.target.value)}
+                  rows={3}
+                  style={{ width: "100%", overflowWrap: "anywhere" }}
+                  placeholder="渋かった…でも一匹！とか"
+                />
+              </label>
             </div>
 
             {/* 保存 */}
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <button
-                onClick={onSave}
-                disabled={!canSave}
-                className="glass"
-                style={canSave ? pillBtnStyle : pillBtnDisabled}
-              >
+              <button onClick={onSave} disabled={!canSave}>
                 {saving ? "保存中..." : "💾 記録する"}
               </button>
 
               {photo && (
                 <button
                   type="button"
-                  className="glass"
-                  style={pillBtnStyle}
                   onClick={() => {
                     const ok = confirm(
                       "入力内容をリセットして、最初からやり直す？",
@@ -924,616 +913,7 @@ export default function Record({ back }: Props) {
               </div>
             )}
           </div>
-        ) : (
-          // =========================
-          // ✅ Desktop（履歴準拠：3ペインで食い切る）
-          // =========================
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "minmax(300px, 440px) minmax(520px, 1fr) minmax(360px, 520px)",
-              gap: 14,
-              alignItems: "start",
-              minWidth: 0,
-              minHeight: 0,
-              height: "100%",
-            }}
-          >
-            {/* 左 */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateRows: "auto 1fr",
-                gap: 12,
-                minWidth: 0,
-                minHeight: 0,
-                height: "100%",
-              }}
-            >
-              <div
-                className="glass glass-strong"
-                style={{ borderRadius: 16, padding: 12 }}
-              >
-                {titleNode}
-                <div style={{ height: 8 }} />
-                {headerSubNode}
-              </div>
-
-              <div
-                className="glass glass-strong"
-                style={{
-                  borderRadius: 16,
-                  padding: 12,
-                  minHeight: 0,
-                  height: "100%",
-                  overflow: "hidden",
-                  display: "grid",
-                  gridTemplateRows: "auto 1fr",
-                  gap: 10,
-                }}
-              >
-                <div style={{ fontWeight: 900, ...ellipsis1 }}>🖼 写真</div>
-
-                <div
-                  style={{
-                    minHeight: 0,
-                    overflowY: "auto",
-                    paddingRight: 4,
-                    overscrollBehavior: "contain",
-                    WebkitOverflowScrolling: "touch",
-                    display: "grid",
-                    gap: 10,
-                  }}
-                >
-                  <label
-                    style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
-                  >
-                    写真を選ぶ
-                    <div style={{ marginTop: 6 }}>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={async (e) => {
-                          if (!e.target.files || !e.target.files[0]) return;
-                          const file = e.target.files[0];
-                          setPhoto(file);
-                          setPreviewUrl(URL.createObjectURL(file));
-
-                          setCapturedAt(null);
-                          setExifNote("");
-                          setManualMode(false);
-                          setManualValue("");
-                          setAllowUnknown(false);
-
-                          try {
-                            const dt = await exifr.parse(file, {
-                              pick: ["DateTimeOriginal", "CreateDate"],
-                            });
-
-                            const meta = dt as {
-                              DateTimeOriginal?: Date;
-                              CreateDate?: Date;
-                            } | null;
-                            const date =
-                              meta?.DateTimeOriginal ??
-                              meta?.CreateDate ??
-                              null;
-
-                            if (date instanceof Date) {
-                              setCapturedAt(date);
-                              setExifNote("");
-                              setManualMode(false);
-                              setManualValue(toDateTimeLocalValue(date));
-                            } else {
-                              setCapturedAt(null);
-                              setExifNote(
-                                "撮影日時が見つからなかったよ（手動入力できます）",
-                              );
-                              setManualMode(true);
-                              setManualValue("");
-                            }
-                          } catch {
-                            setCapturedAt(null);
-                            setExifNote(
-                              "EXIFの読み取りに失敗したよ（手動入力できます）",
-                            );
-                            setManualMode(true);
-                            setManualValue("");
-                          }
-                        }}
-                      />
-                    </div>
-                  </label>
-
-                  <div
-                    style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}
-                  >
-                    {photo ? (
-                      <>選択中：{photo.name}</>
-                    ) : (
-                      <>写真は任意（あとからでもOK）</>
-                    )}
-                  </div>
-
-                  <div
-                    style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}
-                  >
-                    {capturedAt ? (
-                      <>📅 撮影日時：{capturedAt.toLocaleString()}</>
-                    ) : (
-                      <>📅 撮影日時：（不明）</>
-                    )}
-                    {exifNote && (
-                      <div style={{ marginTop: 4, color: "#ff7a7a" }}>
-                        {exifNote}
-                      </div>
-                    )}
-                  </div>
-
-                  {photo && (
-                    <div
-                      className="glass"
-                      style={{ borderRadius: 14, padding: 10 }}
-                    >
-                      <label
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          cursor: "pointer",
-                          userSelect: "none",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={manualMode}
-                          onChange={(e) => {
-                            const on = e.target.checked;
-                            setManualMode(on);
-                            if (on) {
-                              if (capturedAt)
-                                setManualValue(
-                                  toDateTimeLocalValue(capturedAt),
-                                );
-                            } else {
-                              if (!capturedAt) setManualValue("");
-                              setAllowUnknown(false);
-                            }
-                          }}
-                        />
-                        <span
-                          style={{
-                            fontSize: 12,
-                            color: "rgba(255,255,255,0.72)",
-                          }}
-                        >
-                          撮影日時を手動で補正する
-                        </span>
-                      </label>
-
-                      {!manualMode && !capturedAt && (
-                        <div
-                          style={{ marginTop: 8, fontSize: 12, color: "#f6c" }}
-                        >
-                          ※EXIFが無いので、ONにして入力するとタイドに紐づくよ
-                        </div>
-                      )}
-
-                      {manualMode && (
-                        <div
-                          style={{ marginTop: 10, display: "grid", gap: 10 }}
-                        >
-                          <label
-                            style={{
-                              fontSize: 12,
-                              color: "rgba(255,255,255,0.72)",
-                            }}
-                          >
-                            手動撮影日時：
-                            <input
-                              type="datetime-local"
-                              value={manualValue}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                setManualValue(v);
-                                const d = parseDateTimeLocalValue(v);
-                                setCapturedAt(d);
-                                if (d) setAllowUnknown(false);
-                              }}
-                              style={{ ...inputStyle, marginLeft: 8 }}
-                            />
-                          </label>
-
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 10,
-                              flexWrap: "wrap",
-                            }}
-                          >
-                            <button
-                              type="button"
-                              className="glass"
-                              style={pillBtnStyle}
-                              onClick={() => {
-                                const now = new Date();
-                                const v = toDateTimeLocalValue(now);
-                                setManualValue(v);
-                                setCapturedAt(now);
-                                setAllowUnknown(false);
-                              }}
-                            >
-                              今にする
-                            </button>
-
-                            {!manualValue && (
-                              <label
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 8,
-                                  cursor: "pointer",
-                                  userSelect: "none",
-                                  fontSize: 12,
-                                  color: "rgba(255,255,255,0.72)",
-                                }}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={allowUnknown}
-                                  onChange={(e) =>
-                                    setAllowUnknown(e.target.checked)
-                                  }
-                                />
-                                不明のまま保存
-                              </label>
-                            )}
-                          </div>
-
-                          {!manualValue && !allowUnknown && (
-                            <div style={{ fontSize: 12, color: "#f6c" }}>
-                              ※日時を入れるか、「不明のまま保存」をONにしてね
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* 中央：写真最大 */}
-            <div
-              className="glass glass-strong"
-              style={{
-                borderRadius: 16,
-                padding: 12,
-                minHeight: 0,
-                height: "100%",
-                overflow: "hidden",
-                display: "grid",
-                alignItems: "center",
-                justifyItems: "center",
-              }}
-            >
-              <div style={photoFrameStyle}>
-                {previewUrl ? (
-                  <img
-                    src={previewUrl}
-                    alt="preview"
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "contain",
-                      display: "block",
-                    }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      color: "rgba(255,255,255,0.62)",
-                      fontSize: 13,
-                      padding: 16,
-                      textAlign: "center",
-                    }}
-                  >
-                    🖼 写真の拡大表示
-                    <div style={{ height: 6 }} />
-                    <span
-                      style={{ fontSize: 12, color: "rgba(255,255,255,0.52)" }}
-                    >
-                      左で写真を選ぶとここにドーンと出るよ
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 右：入力（ここだけスクロール） */}
-            <div
-              className="glass glass-strong"
-              style={{
-                borderRadius: 16,
-                padding: 12,
-                minHeight: 0,
-                height: "100%",
-                overflow: "hidden",
-                display: "grid",
-                gridTemplateRows: "auto 1fr",
-                gap: 10,
-              }}
-            >
-              <div style={{ fontWeight: 900 }}>🧾 入力</div>
-
-              <div
-                style={{
-                  minHeight: 0,
-                  overflowY: "auto",
-                  paddingRight: 4,
-                  overscrollBehavior: "contain",
-                  WebkitOverflowScrolling: "touch",
-                  display: "grid",
-                  gap: 12,
-                }}
-              >
-                {/* タイドプレビュー */}
-                {photo && (
-                  <div
-                    className="glass"
-                    style={{ borderRadius: 14, padding: 12 }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 10,
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <div style={{ fontWeight: 900 }}>
-                        🌙 タイド（プレビュー）
-                      </div>
-                      {!online && (
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: "#f6c",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          📴 オフライン
-                        </div>
-                      )}
-                      {tideSource &&
-                        (() => {
-                          const lab = sourceLabel(tideSource, tideIsStale);
-                          if (!lab) return null;
-                          return (
-                            <div
-                              style={{
-                                fontSize: 12,
-                                color: lab.color,
-                                whiteSpace: "nowrap",
-                              }}
-                              title="tide736取得元"
-                            >
-                              🌊 {lab.text}
-                            </div>
-                          );
-                        })()}
-                    </div>
-
-                    {!capturedAt ? (
-                      <div
-                        style={{
-                          marginTop: 8,
-                          fontSize: 12,
-                          color: "rgba(255,255,255,0.68)",
-                        }}
-                      >
-                        撮影日時が無いので、タイドに紐づけできないよ
-                      </div>
-                    ) : tideLoading ? (
-                      <div
-                        style={{ marginTop: 8, fontSize: 12, color: "#0a6" }}
-                      >
-                        取得中…
-                      </div>
-                    ) : tideError ? (
-                      <div
-                        style={{ marginTop: 8, fontSize: 12, color: "#ff7a7a" }}
-                      >
-                        取得失敗 → {tideError}
-                      </div>
-                    ) : (
-                      <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: "rgba(255,255,255,0.75)",
-                          }}
-                        >
-                          🕒 {getTimeBand(capturedAt)}
-                        </div>
-                        <div style={{ fontSize: 12, color: "#6cf" }}>
-                          {tideName ? `🌙 ${tideName}` : "🌙 潮名：—"}
-                          {phase ? ` / 🌊 ${phase}` : ""}
-                        </div>
-                        <div style={{ fontSize: 12, color: "#7ef" }}>
-                          🌊 焼津潮位：
-                          {tideAtShot
-                            ? `${tideAtShot.cm}cm / ${tideAtShot.trend}`
-                            : "—"}
-                        </div>
-                        {!online && tideSource === "stale-cache" && (
-                          <div
-                            style={{
-                              marginTop: 4,
-                              fontSize: 12,
-                              color: "#f6c",
-                            }}
-                          >
-                            ⚠ オフラインのため、期限切れキャッシュの可能性あり
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* 釣果 */}
-                <div className="glass" style={glassBoxStyle}>
-                  <div style={{ fontWeight: 900 }}>🎣 釣果</div>
-
-                  <div style={segWrapStyle} aria-label="釣果の結果">
-                    <label style={segLabelStyle}>
-                      <input
-                        type="radio"
-                        name="result"
-                        checked={result === "caught"}
-                        onChange={() => setResult("caught")}
-                        style={segInputHidden}
-                      />
-                      <span style={segPill(result === "caught")}>
-                        <span
-                          style={segDot(result === "caught")}
-                          aria-hidden="true"
-                        />
-                        釣れた
-                      </span>
-                    </label>
-
-                    <label style={segLabelStyle}>
-                      <input
-                        type="radio"
-                        name="result"
-                        checked={result === "skunk"}
-                        onChange={() => setResult("skunk")}
-                        style={segInputHidden}
-                      />
-                      <span style={segPill(result === "skunk")}>
-                        <span
-                          style={segDot(result === "skunk")}
-                          aria-hidden="true"
-                        />
-                        釣れなかった（ボウズ）
-                      </span>
-                    </label>
-                  </div>
-
-                  {result === "caught" && (
-                    <div style={{ display: "grid", gap: 10 }}>
-                      <label
-                        style={{
-                          fontSize: 12,
-                          color: "rgba(255,255,255,0.72)",
-                        }}
-                      >
-                        魚種：
-                        <input
-                          value={species}
-                          onChange={(e) => setSpecies(e.target.value)}
-                          placeholder="例：シーバス"
-                          style={{
-                            ...inputStyle,
-                            marginLeft: 8,
-                            width: "min(360px, 100%)",
-                          }}
-                        />
-                      </label>
-
-                      <label
-                        style={{
-                          fontSize: 12,
-                          color: "rgba(255,255,255,0.72)",
-                        }}
-                      >
-                        大きさ（cm）：
-                        <input
-                          value={sizeCm}
-                          onChange={(e) => setSizeCm(e.target.value)}
-                          placeholder="例：52"
-                          inputMode="decimal"
-                          style={{ ...inputStyle, marginLeft: 8, width: 140 }}
-                        />
-                      </label>
-
-                      {sizeCm.trim() !== "" && sizeCmNumber == null && (
-                        <div style={{ fontSize: 12, color: "#f6c" }}>
-                          ※サイズは数字で入れてね（例：52 / 12.5）
-                        </div>
-                      )}
-
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "rgba(255,255,255,0.55)",
-                        }}
-                      >
-                        ※魚種が空なら「不明」として保存するよ
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* メモ */}
-                <div className="glass" style={glassBoxStyle}>
-                  <div style={{ fontWeight: 900 }}>📝 ひとことメモ</div>
-                  <textarea
-                    value={memo}
-                    onChange={(e) => setMemo(e.target.value)}
-                    rows={3}
-                    style={textareaStyle}
-                    placeholder="渋かった…でも一匹！とか"
-                  />
-                </div>
-
-                {/* 保存 */}
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <button
-                    onClick={onSave}
-                    disabled={!canSave}
-                    className="glass"
-                    style={canSave ? pillBtnStyle : pillBtnDisabled}
-                  >
-                    {saving ? "保存中..." : "💾 記録する"}
-                  </button>
-
-                  {photo && (
-                    <button
-                      type="button"
-                      className="glass"
-                      style={pillBtnStyle}
-                      onClick={() => {
-                        const ok = confirm(
-                          "入力内容をリセットして、最初からやり直す？",
-                        );
-                        if (!ok) return;
-                        resetPhotoStates();
-                        resetResultStates();
-                        setMemo("");
-                      }}
-                    >
-                      ↺ リセット
-                    </button>
-                  )}
-                </div>
-
-                {!resultOk && (
-                  <div style={{ fontSize: 12, color: "#f6c" }}>
-                    ※サイズが入力されている場合は、数字として正しく入れてね
-                  </div>
-                )}
-
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.50)" }}>
-                  ※写真なしでも保存できるよ。写真を後で付けたい場合は、履歴側で編集を作ると最高。
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
     </PageShell>
   );
