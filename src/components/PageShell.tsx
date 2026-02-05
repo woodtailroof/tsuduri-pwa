@@ -24,24 +24,16 @@ type Props = {
   /** 戻るボタン押下時の挙動を上書きしたい場合 */
   onBack?: () => void;
 
-  /** タイトル配置（将来的に統一するなら基本 "left" 推奨） */
+  /** タイトル配置（統一方針なら left 推奨） */
   titleLayout?: "left" | "center";
 
-  /**
-   * Shell全体の縦スクロール制御
-   * - "hidden": 画面全体はスクロール禁止（推奨、各画面の特定カラムだけスクロール）
-   * - "auto": children 側をスクロールさせたい時
-   */
+  /** Shell全体の縦スクロール制御 */
   scrollY?: "hidden" | "auto";
 
   /** children の内側余白（PageShell側で一括管理したい時） */
   contentPadding?: string;
 
-  /**
-   * 設定画面などで「キャラを一時的に消したい」用途
-   * - false: キャラを非表示
-   * - true/undefined: 通常表示
-   */
+  /** 設定画面などで「キャラを一時的に消したい」用途 */
   showTestCharacter?: boolean;
 };
 
@@ -220,9 +212,9 @@ export default function PageShell({
   };
 
   /**
-   * ✅ 重ね順（クリック可能を最優先）
+   * ✅ レイヤー（クリック安全優先）
    * 背景(0) → 暗幕(1) → キャラ(2) → UI(3)
-   * 戻るボタンは UI 内に配置（←ここが重要！）
+   * 戻るボタンはUI内に配置して「絶対押せる」構造にする
    */
   const Z_BG = 0;
   const Z_DIM = 1;
@@ -258,7 +250,6 @@ export default function PageShell({
         button, select, input { font: inherit; }
       `}</style>
 
-      {/* 背景 */}
       {!!bgSrc && (
         <div
           aria-hidden
@@ -275,7 +266,6 @@ export default function PageShell({
         />
       )}
 
-      {/* 暗幕 */}
       <div
         aria-hidden
         style={{
@@ -286,26 +276,33 @@ export default function PageShell({
         }}
       />
 
-      {/* キャラ（右下ビタ付け） */}
+      {/* ✅ キャラ：右下ビタ付け、scaleはここだけ */}
       {characterEnabled && !!characterSrc && (
-        <img
-          src={characterSrc}
-          alt=""
+        <div
+          aria-hidden
           style={{
             position: "absolute",
             right: 0,
             bottom: 0,
+            zIndex: Z_CHAR,
+            pointerEvents: "none",
             transformOrigin: "bottom right",
             transform: `scale(${characterScale})`,
-            opacity: characterOpacity,
-            pointerEvents: "none",
-            zIndex: Z_CHAR,
-            maxWidth: "60vw",
-            maxHeight: "70svh",
-            // 影が強いと“浮く”ので控えめに
-            filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.28))",
           }}
-        />
+        >
+          <img
+            src={characterSrc}
+            alt=""
+            style={{
+              display: "block",
+              opacity: characterOpacity,
+              maxWidth: "60vw",
+              maxHeight: "70svh",
+              // 影は控えめ（“浮き”軽減）
+              filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.26))",
+            }}
+          />
+        </div>
       )}
 
       {/* UI（最前面） */}
@@ -321,21 +318,9 @@ export default function PageShell({
       >
         {/* ヘッダー（固定） */}
         <div style={{ padding: contentPadding, paddingBottom: 10 }}>
-          <div
-            style={{
-              maxWidth,
-              margin: "0 auto",
-              display: "grid",
-              gap: 8,
-              // 戻るボタンをここに置くので逃がし不要
-            }}
-          >
-            <div
-              style={{
-                position: "relative",
-              }}
-            >
-              {/* ✅ 戻るボタン（UIの中に移設：これで絶対押せる） */}
+          <div style={{ maxWidth, margin: "0 auto", display: "grid", gap: 8 }}>
+            <div style={{ position: "relative" }}>
+              {/* ✅ 戻る：UI内なので確実に押せる */}
               {showBack && (
                 <button
                   type="button"
@@ -361,7 +346,7 @@ export default function PageShell({
                 </button>
               )}
 
-              {/* タイトル（統一したいのでこの箱を基準にする） */}
+              {/* タイトル（統一の基準になる箱） */}
               <div
                 style={{
                   paddingRight: showBack ? 96 : 0,
