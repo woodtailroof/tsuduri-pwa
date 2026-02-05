@@ -1166,9 +1166,13 @@ export default function RecordHistory({ back }: Props) {
     "--glass-blur": `${settings.glassBlur ?? 10}px`,
   } as unknown as CSSProperties;
 
-  // ✅ PageShell上部（戻るボタン帯＋余白）ぶんを安全側に確保して「下切れ」を防ぐ
-  // ※もしまだ切れるなら、この数字を 112〜128 くらいに上げると必ず収まる
-  const DESKTOP_CHROME_PX = 104;
+  /**
+   * ✅ 重要：PageShellの「戻るボタン帯」がコンテンツに被るため、
+   * PCではここで“上の安全余白”を確保して、同時に高さ計算にも反映する。
+   *
+   * もしまだ被るなら：SHELL_TOP_SAFE_PX を 84〜96 に上げれば確実に逃げる。
+   */
+  const SHELL_TOP_SAFE_PX = 72;
 
   return (
     <PageShell
@@ -1186,9 +1190,12 @@ export default function RecordHistory({ back }: Props) {
           maxWidth: "100vw",
           minHeight: 0,
 
-          // ✅ PCは「PageShell分を引いた高さ」で子を収める（これが下切れ対策の本丸）
+          // ✅ PC: 上に安全余白（戻るボタン帯ぶん）を確保
+          paddingTop: isDesktop ? SHELL_TOP_SAFE_PX : 0,
+
+          // ✅ PC: そのぶん高さも引く（下切れ防止）
           height: isDesktop
-            ? `calc(100dvh - ${DESKTOP_CHROME_PX}px - env(safe-area-inset-top) - env(safe-area-inset-bottom))`
+            ? `calc(100dvh - ${SHELL_TOP_SAFE_PX}px - env(safe-area-inset-top) - env(safe-area-inset-bottom))`
             : "auto",
 
           // ほんの少し余白を残して“ギリ切れ”を防ぐ
