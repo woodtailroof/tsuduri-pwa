@@ -506,7 +506,8 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           : "unknown_error";
       throw new Error(err);
     }
-    const txt = typeof json.text === "string" ? json.text : "";
+    const txt =
+      typeof (json as any).text === "string" ? (json as any).text : "";
     return String(txt ?? "");
   }
 
@@ -689,7 +690,9 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       maxWidth={1100}
       showBack
       onBack={back}
-      scrollY={back}
+      titleLayout="left"
+      scrollY="hidden"
+      contentPadding={"clamp(10px, 2vw, 18px)"}
     >
       <style>{`
         @keyframes tsuduri-dot-bounce {
@@ -746,7 +749,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         }
       `}</style>
 
-      {/* ✅ PageShellの中身領域にぴったり合わせる（ここでsvh計算しない） */}
+      {/* ✅ PageShell配下は高さ100%で運用（変なcalcで崩さない） */}
       <div
         style={{
           height: "100%",
@@ -754,103 +757,87 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           display: "flex",
           flexDirection: "column",
           gap: 12,
-          minWidth: 0,
-          overflow: "hidden",
-          paddingBottom: "env(safe-area-inset-bottom)",
         }}
       >
-        {/* ヘッダー操作群 */}
+        {/* ヘッダー操作群（固定） */}
         <div
           style={{
             display: "flex",
-            justifyContent: "space-between",
+            justifyContent: "flex-end",
             alignItems: "center",
             gap: 12,
             minWidth: 0,
-            flex: "0 0 auto",
+            flexWrap: "wrap",
           }}
         >
-          <div style={{ minWidth: 0 }} />
-
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              flexWrap: "wrap",
-              minWidth: 0,
-              justifyContent: "flex-end",
-            }}
+          <button
+            type="button"
+            onClick={toggleAllHands}
+            title="全員集合にすると1投げに全員が返す"
+            className={`chat-btn glass ${roomMode === "all" ? "is-active" : ""}`}
+            style={roomMode === "all" ? uiButtonStyleActive : uiButtonStyle}
           >
-            <button
-              type="button"
-              onClick={toggleAllHands}
-              title="全員集合にすると1投げに全員が返す"
-              className={`chat-btn glass ${roomMode === "all" ? "is-active" : ""}`}
-              style={roomMode === "all" ? uiButtonStyleActive : uiButtonStyle}
-            >
-              {roomMode === "all" ? "👥 全員集合：ON" : "👤 全員集合：OFF"}
-            </button>
+            {roomMode === "all" ? "👥 全員集合：ON" : "👤 全員集合：OFF"}
+          </button>
 
-            {roomMode === "single" && (
-              <div
+          {roomMode === "single" && (
+            <div
+              style={{
+                position: "relative",
+                display: "inline-flex",
+                alignItems: "center",
+              }}
+            >
+              <select
+                ref={selectRef}
+                value={selectedId}
+                onChange={(e) => setSelectedId(e.target.value)}
+                title="キャラ切替（履歴も切り替わる）"
+                style={selectStyle}
+                className="glass"
+              >
+                {characters.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+
+              <span
                 style={{
-                  position: "relative",
-                  display: "inline-flex",
-                  alignItems: "center",
+                  position: "absolute",
+                  right: 10,
+                  pointerEvents: "none",
+                  color: "rgba(255,255,255,0.55)",
+                  fontSize: 12,
+                  transform: "translateY(-1px)",
                 }}
               >
-                <select
-                  ref={selectRef}
-                  value={selectedId}
-                  onChange={(e) => setSelectedId(e.target.value)}
-                  title="キャラ切替（履歴も切り替わる）"
-                  style={selectStyle}
-                  className="glass"
-                >
-                  {characters.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                ▼
+              </span>
+            </div>
+          )}
 
-                <span
-                  style={{
-                    position: "absolute",
-                    right: 10,
-                    pointerEvents: "none",
-                    color: "rgba(255,255,255,0.55)",
-                    fontSize: 12,
-                    transform: "translateY(-1px)",
-                  }}
-                >
-                  ▼
-                </span>
-              </div>
-            )}
+          <button
+            onClick={goCharacterSettings}
+            title="キャラ管理（掛け合い設定もここ）"
+            className="chat-btn glass"
+            style={uiButtonStyle}
+          >
+            🎭
+          </button>
 
-            <button
-              onClick={goCharacterSettings}
-              title="キャラ管理（掛け合い設定もここ）"
-              className="chat-btn glass"
-              style={uiButtonStyle}
-            >
-              🎭
-            </button>
-
-            <button
-              onClick={clearHistory}
-              title="履歴を全消し"
-              className="chat-btn glass"
-              style={uiButtonStyle}
-            >
-              🧹
-            </button>
-          </div>
+          <button
+            onClick={clearHistory}
+            title="履歴を全消し"
+            className="chat-btn glass"
+            style={uiButtonStyle}
+          >
+            🧹
+          </button>
         </div>
 
-        {/* 履歴（ここだけスクロール） */}
+        {/* ✅ 履歴（ここだけスクロール） */}
         <div
           ref={scrollBoxRef}
           className="glass glass-strong"
@@ -862,6 +849,8 @@ export default function Chat({ back, goCharacterSettings }: Props) {
             borderRadius: 14,
             padding: 12,
             minWidth: 0,
+            WebkitOverflowScrolling: "touch",
+            overscrollBehavior: "contain",
           }}
         >
           {messages.length === 0 ? (
@@ -961,8 +950,8 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           )}
         </div>
 
-        {/* クイック */}
-        <div className="chat-quick" style={{ flex: "0 0 auto" }}>
+        {/* クイック（固定） */}
+        <div className="chat-quick">
           <button
             type="button"
             onClick={() => {
@@ -998,10 +987,10 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           </button>
         </div>
 
-        {/* 入力欄（常に見える） */}
+        {/* 入力欄（固定） */}
         <div
           className="glass glass-strong"
-          style={{ borderRadius: 14, padding: 10, flex: "0 0 auto" }}
+          style={{ borderRadius: 14, padding: 10 }}
         >
           <div
             style={{
