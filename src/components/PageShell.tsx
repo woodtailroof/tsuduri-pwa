@@ -175,16 +175,15 @@ export default function PageShell({
   // 画面遷移（＝マウント）や、モード/作成キャラ変化でランダムを引き直す
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     if (characterMode !== "random") return;
 
     const ids = loadCreatedCharacterIds();
     const pool = ids.length ? ids : ["tsuduri"];
     const pick = pool[Math.floor(Math.random() * pool.length)] || "tsuduri";
     setRandomPickId(pick);
-  }, [characterMode, minuteTick]);
+  }, [characterMode]);
 
-  // storage は同一タブ更新で飛ばないことがあるので、Settings が投げる tsuduri-settings も拾う
+  // 同一タブ更新でも追従（Settings が投げる tsuduri-settings も拾う）
   useEffect(() => {
     const onAny = () => {
       if (characterMode !== "random") return;
@@ -213,7 +212,7 @@ export default function PageShell({
     const mapped = normalizePublicPath(map[effectiveCharacterId] ?? "");
     if (mapped) return mapped;
 
-    // 最後の保険（プロジェクトに合わせて好きに差し替えOK）
+    // 最後の保険（プロジェクトに合わせて差し替えOK）
     return "/assets/characters/tsuduri.png";
   }, [overrideSrcRaw, effectiveCharacterId, minuteTick]);
 
@@ -222,6 +221,16 @@ export default function PageShell({
     if (onBack) onBack();
     else history.back();
   };
+
+  /**
+   * ✅ 重ね順（要求どおり）
+   * 背景(0) → 暗幕(1) → キャラ(2) → 戻る(3) → 情報(UI)(4)
+   */
+  const Z_BG = 0;
+  const Z_DIM = 1;
+  const Z_CHAR = 2;
+  const Z_BACK = 3;
+  const Z_UI = 4;
 
   return (
     <div
@@ -253,11 +262,7 @@ export default function PageShell({
           -webkit-overflow-scrolling: touch;
           overscroll-behavior: contain;
         }
-
-        /* ボタン/入力の最低見た目 */
-        button, select, input {
-          font: inherit;
-        }
+        button, select, input { font: inherit; }
       `}</style>
 
       {/* 背景 */}
@@ -272,10 +277,11 @@ export default function PageShell({
             backgroundPosition: "center",
             transform: "scale(1.02)",
             filter: bgBlur ? `blur(${bgBlur}px)` : undefined,
-            zIndex: 0,
+            zIndex: Z_BG,
           }}
         />
       )}
+
       {/* 暗幕 */}
       <div
         aria-hidden
@@ -283,94 +289,11 @@ export default function PageShell({
           position: "absolute",
           inset: 0,
           background: `rgba(0,0,0,${clamp(bgDim, 0, 1)})`,
-          zIndex: 1,
+          zIndex: Z_DIM,
         }}
       />
 
-      {/* 画面本体 */}
-      <div
-        style={{
-          position: "relative",
-          zIndex: 2,
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          minHeight: 0,
-        }}
-      >
-        {/* ヘッダー（固定） */}
-        <div
-          style={{
-            padding: contentPadding,
-            paddingBottom: 10,
-          }}
-        >
-          <div
-            style={{
-              maxWidth,
-              margin: "0 auto",
-              position: "relative",
-              display: "grid",
-              gap: 8,
-            }}
-          >
-            {/* 戻る（右上固定） */}
-            {showBack && (
-              <button
-                type="button"
-                onClick={handleBack}
-                className="glass"
-                style={{
-                  position: "absolute",
-                  right: 0,
-                  top: 0,
-                  height: 38,
-                  padding: "0 12px",
-                  borderRadius: 14,
-                  color: "rgba(255,255,255,0.92)",
-                  cursor: "pointer",
-                  userSelect: "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-                title="戻る"
-              >
-                ⟵ 戻る
-              </button>
-            )}
-
-            <div
-              style={{
-                textAlign: titleLayout === "center" ? "center" : "left",
-                paddingRight: showBack ? 86 : 0, // 右上ボタン分の逃げ
-              }}
-            >
-              {title}
-              {subtitle}
-            </div>
-          </div>
-        </div>
-
-        {/* コンテンツ（ここを scrollY で制御） */}
-        <div
-          className={scrollY === "auto" ? "ts-scroll" : undefined}
-          style={{
-            flex: "1 1 auto",
-            minHeight: 0,
-            overflowY: scrollY === "auto" ? "auto" : "hidden",
-            overflowX: "hidden",
-            padding: contentPadding,
-            paddingTop: 0,
-          }}
-        >
-          <div style={{ maxWidth, margin: "0 auto", minHeight: 0 }}>
-            {children}
-          </div>
-        </div>
-      </div>
-
-      {/* キャラ（右下固定） */}
+      {/* キャラ（背景の上、UIの下） */}
       {characterEnabled && !!characterSrc && (
         <img
           src={characterSrc}
@@ -383,13 +306,105 @@ export default function PageShell({
             transform: `scale(${characterScale})`,
             opacity: characterOpacity,
             pointerEvents: "none",
-            zIndex: 3,
+            zIndex: Z_CHAR,
             maxWidth: "55vw",
             maxHeight: "60svh",
             filter: "drop-shadow(0 10px 24px rgba(0,0,0,0.35))",
           }}
         />
       )}
+
+      {/* ✅ 戻るボタン（キャラより上、UIより下） */}
+      {showBack && (
+        <button
+          type="button"
+          onClick={handleBack}
+          className="glass"
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 10,
+            height: 38,
+            padding: "0 12px",
+            borderRadius: 14,
+            color: "rgba(255,255,255,0.92)",
+            cursor: "pointer",
+            userSelect: "none",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            zIndex: Z_BACK,
+          }}
+          title="戻る"
+        >
+          ⟵ 戻る
+        </button>
+      )}
+
+      {/* 画面本体（情報UIは最前面） */}
+      <div
+        style={{
+          position: "relative",
+          zIndex: Z_UI,
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
+        }}
+      >
+        {/* ヘッダー（固定） */}
+        <div style={{ padding: contentPadding, paddingBottom: 10 }}>
+          <div
+            style={{
+              maxWidth,
+              margin: "0 auto",
+              display: "grid",
+              gap: 8,
+              // 戻るボタンが右上に居座るので少しだけ逃がす
+              paddingRight: 88,
+            }}
+          >
+            <div
+              style={{
+                textAlign: titleLayout === "center" ? "center" : "left",
+              }}
+            >
+              {title}
+              {subtitle}
+            </div>
+          </div>
+        </div>
+
+        {/* コンテンツ（scrollY制御） */}
+        <div
+          className={scrollY === "auto" ? "ts-scroll" : undefined}
+          style={{
+            flex: "1 1 auto",
+            minHeight: 0,
+            overflowY: scrollY === "auto" ? "auto" : "hidden",
+            overflowX: "hidden",
+            padding: contentPadding,
+            paddingTop: 0,
+
+            // ✅ ここが超重要：子が「height:100% + 内側スクロール」を成立させる
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div
+            style={{
+              maxWidth,
+              margin: "0 auto",
+              minHeight: 0,
+              height: "100%",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {children}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
