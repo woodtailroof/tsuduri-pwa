@@ -24,7 +24,7 @@ type Props = {
   /** 戻るボタン押下時の挙動を上書きしたい場合 */
   onBack?: () => void;
 
-  /** タイトル配置 */
+  /** タイトル配置（将来的に統一するなら基本 "left" 推奨） */
   titleLayout?: "left" | "center";
 
   /**
@@ -172,7 +172,6 @@ export default function PageShell({
 
   const [randomPickId, setRandomPickId] = useState<string>("");
 
-  // 画面遷移（＝マウント）や、モード/作成キャラ変化でランダムを引き直す
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (characterMode !== "random") return;
@@ -183,7 +182,6 @@ export default function PageShell({
     setRandomPickId(pick);
   }, [characterMode]);
 
-  // 同一タブ更新でも追従（Settings が投げる tsuduri-settings も拾う）
   useEffect(() => {
     const onAny = () => {
       if (characterMode !== "random") return;
@@ -212,7 +210,6 @@ export default function PageShell({
     const mapped = normalizePublicPath(map[effectiveCharacterId] ?? "");
     if (mapped) return mapped;
 
-    // 最後の保険（プロジェクトに合わせて差し替えOK）
     return "/assets/characters/tsuduri.png";
   }, [overrideSrcRaw, effectiveCharacterId, minuteTick]);
 
@@ -223,14 +220,14 @@ export default function PageShell({
   };
 
   /**
-   * ✅ 重ね順（要求どおり）
-   * 背景(0) → 暗幕(1) → キャラ(2) → 戻る(3) → 情報(UI)(4)
+   * ✅ 重ね順（クリック可能を最優先）
+   * 背景(0) → 暗幕(1) → キャラ(2) → UI(3)
+   * 戻るボタンは UI 内に配置（←ここが重要！）
    */
   const Z_BG = 0;
   const Z_DIM = 1;
   const Z_CHAR = 2;
-  const Z_BACK = 3;
-  const Z_UI = 4;
+  const Z_UI = 3;
 
   return (
     <div
@@ -239,13 +236,11 @@ export default function PageShell({
         overflow: "hidden",
         position: "relative",
         color: "#fff",
-        // glass 変数
         ["--ts-glass-alpha" as any]: String(glassAlpha),
         ["--ts-glass-blur" as any]: `${glassBlur}px`,
       }}
     >
       <style>{`
-        /* ===== glass ===== */
         .glass{
           background: rgba(0,0,0, calc(var(--ts-glass-alpha, 0.22)));
           border: 1px solid rgba(255,255,255,0.14);
@@ -256,8 +251,6 @@ export default function PageShell({
           background: rgba(0,0,0, calc(var(--ts-glass-alpha, 0.22) + 0.06));
           border: 1px solid rgba(255,255,255,0.16);
         }
-
-        /* iOSの変なスクロール */
         .ts-scroll{
           -webkit-overflow-scrolling: touch;
           overscroll-behavior: contain;
@@ -293,55 +286,29 @@ export default function PageShell({
         }}
       />
 
-      {/* キャラ（背景の上、UIの下） */}
+      {/* キャラ（右下ビタ付け） */}
       {characterEnabled && !!characterSrc && (
         <img
           src={characterSrc}
           alt=""
           style={{
             position: "absolute",
-            right: 10,
-            bottom: 10,
+            right: 0,
+            bottom: 0,
             transformOrigin: "bottom right",
             transform: `scale(${characterScale})`,
             opacity: characterOpacity,
             pointerEvents: "none",
             zIndex: Z_CHAR,
-            maxWidth: "55vw",
-            maxHeight: "60svh",
-            filter: "drop-shadow(0 10px 24px rgba(0,0,0,0.35))",
+            maxWidth: "60vw",
+            maxHeight: "70svh",
+            // 影が強いと“浮く”ので控えめに
+            filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.28))",
           }}
         />
       )}
 
-      {/* ✅ 戻るボタン（キャラより上、UIより下） */}
-      {showBack && (
-        <button
-          type="button"
-          onClick={handleBack}
-          className="glass"
-          style={{
-            position: "absolute",
-            top: 10,
-            right: 10,
-            height: 38,
-            padding: "0 12px",
-            borderRadius: 14,
-            color: "rgba(255,255,255,0.92)",
-            cursor: "pointer",
-            userSelect: "none",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            zIndex: Z_BACK,
-          }}
-          title="戻る"
-        >
-          ⟵ 戻る
-        </button>
-      )}
-
-      {/* 画面本体（情報UIは最前面） */}
+      {/* UI（最前面） */}
       <div
         style={{
           position: "relative",
@@ -360,22 +327,55 @@ export default function PageShell({
               margin: "0 auto",
               display: "grid",
               gap: 8,
-              // 戻るボタンが右上に居座るので少しだけ逃がす
-              paddingRight: 88,
+              // 戻るボタンをここに置くので逃がし不要
             }}
           >
             <div
               style={{
-                textAlign: titleLayout === "center" ? "center" : "left",
+                position: "relative",
               }}
             >
-              {title}
-              {subtitle}
+              {/* ✅ 戻るボタン（UIの中に移設：これで絶対押せる） */}
+              {showBack && (
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="glass"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    right: 0,
+                    height: 38,
+                    padding: "0 12px",
+                    borderRadius: 14,
+                    color: "rgba(255,255,255,0.92)",
+                    cursor: "pointer",
+                    userSelect: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                  title="戻る"
+                >
+                  ⟵ 戻る
+                </button>
+              )}
+
+              {/* タイトル（統一したいのでこの箱を基準にする） */}
+              <div
+                style={{
+                  paddingRight: showBack ? 96 : 0,
+                  textAlign: titleLayout === "center" ? "center" : "left",
+                }}
+              >
+                {title}
+                {subtitle}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* コンテンツ（scrollY制御） */}
+        {/* コンテンツ */}
         <div
           className={scrollY === "auto" ? "ts-scroll" : undefined}
           style={{
@@ -385,8 +385,6 @@ export default function PageShell({
             overflowX: "hidden",
             padding: contentPadding,
             paddingTop: 0,
-
-            // ✅ ここが超重要：子が「height:100% + 内側スクロール」を成立させる
             display: "flex",
             flexDirection: "column",
           }}
