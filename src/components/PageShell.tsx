@@ -24,13 +24,13 @@ type Props = {
   /** 戻るボタン押下時の挙動を上書きしたい場合 */
   onBack?: () => void;
 
-  /** タイトル配置（統一方針なら left 推奨） */
+  /** タイトル配置 */
   titleLayout?: "left" | "center";
 
   /** Shell全体の縦スクロール制御 */
   scrollY?: "hidden" | "auto";
 
-  /** children の内側余白（PageShell側で一括管理したい時） */
+  /** children の内側余白 */
   contentPadding?: string;
 
   /** 設定画面などで「キャラを一時的に消したい」用途 */
@@ -212,36 +212,44 @@ export default function PageShell({
   };
 
   /**
-   * ✅ レイヤー（クリック安全優先）
+   * ✅ レイヤー
    * 背景(0) → 暗幕(1) → キャラ(2) → UI(3)
-   * 戻るボタンはUI内に配置して「絶対押せる」構造にする
    */
   const Z_BG = 0;
   const Z_DIM = 1;
   const Z_CHAR = 2;
   const Z_UI = 3;
 
+  // ✅ 重要：RecordHistory.tsx と同じ変数名に統一（互換で ts- も生やす）
+  const cssVars = {
+    "--glass-alpha": String(glassAlpha),
+    "--glass-blur": `${glassBlur}px`,
+    "--ts-glass-alpha": String(glassAlpha),
+    "--ts-glass-blur": `${glassBlur}px`,
+  } as unknown as React.CSSProperties;
+
   return (
     <div
       style={{
+        ...cssVars,
         height: "100svh",
         overflow: "hidden",
         position: "relative",
         color: "#fff",
-        ["--ts-glass-alpha" as any]: String(glassAlpha),
-        ["--ts-glass-blur" as any]: `${glassBlur}px`,
       }}
     >
       <style>{`
         .glass{
-          background: rgba(0,0,0, calc(var(--ts-glass-alpha, 0.22)));
+          background: rgba(0,0,0, calc(var(--glass-alpha, 0.22)));
           border: 1px solid rgba(255,255,255,0.14);
-          backdrop-filter: blur(var(--ts-glass-blur, 12px));
-          -webkit-backdrop-filter: blur(var(--ts-glass-blur, 12px));
+          backdrop-filter: blur(var(--glass-blur, 10px));
+          -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
         }
         .glass-strong{
-          background: rgba(0,0,0, calc(var(--ts-glass-alpha, 0.22) + 0.06));
+          background: rgba(0,0,0, calc(var(--glass-alpha, 0.22) + 0.06));
           border: 1px solid rgba(255,255,255,0.16);
+          backdrop-filter: blur(var(--glass-blur, 10px));
+          -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
         }
         .ts-scroll{
           -webkit-overflow-scrolling: touch;
@@ -298,7 +306,6 @@ export default function PageShell({
               opacity: characterOpacity,
               maxWidth: "60vw",
               maxHeight: "70svh",
-              // 影は控えめ（“浮き”軽減）
               filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.26))",
             }}
           />
@@ -346,7 +353,7 @@ export default function PageShell({
                 </button>
               )}
 
-              {/* タイトル（統一の基準になる箱） */}
+              {/* タイトル */}
               <div
                 style={{
                   paddingRight: showBack ? 96 : 0,
