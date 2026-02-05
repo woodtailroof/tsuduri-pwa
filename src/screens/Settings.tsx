@@ -99,7 +99,7 @@ function loadCharacterImageMap(): CharacterImageMap {
 
 /**
  * ✅ 同一タブで localStorage を更新しても `storage` は飛ばない。
- * PageShell 側の追従用に `tsuduri-settings` を明示的に飛ばす。
+ * PageShell 側の追従用に、同じく購読してる `tsuduri-settings` を明示的に飛ばす。
  */
 function saveCharacterImageMap(map: CharacterImageMap) {
   if (typeof window === "undefined") return;
@@ -296,7 +296,6 @@ export default function Settings({ back }: Props) {
     const map = loadCharacterImageMap();
     setCharImageMapState(map);
 
-    // 固定キャラが作成キャラから外れていたら先頭に寄せる
     if (chars.length > 0) {
       const ids = new Set(chars.map((c) => c.id));
       const current = settings.fixedCharacterId ?? "";
@@ -365,15 +364,14 @@ export default function Settings({ back }: Props) {
   const autoBgSet =
     (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
     DEFAULT_SETTINGS.autoBgSet;
-
   const fixedBgSrcRaw = settings.fixedBgSrc ?? DEFAULT_SETTINGS.fixedBgSrc;
   const fixedBgSrc =
     normalizePublicPath(fixedBgSrcRaw) || "/assets/bg/ui-check.png";
 
-  const nowBand: BgTimeBand = useMemo(
-    () => getTimeBand(new Date()),
-    [minuteTick],
-  );
+  const nowBand: BgTimeBand = useMemo(() => {
+    return getTimeBand(new Date());
+  }, [minuteTick]);
+
   const autoPreviewSrc = useMemo(
     () => resolveAutoBackgroundSrc(autoBgSet, nowBand),
     [autoBgSet, nowBand],
@@ -406,778 +404,834 @@ export default function Settings({ back }: Props) {
       maxWidth={980}
       showBack
       onBack={back}
-      scrollY="auto"
+      scrollY="hidden"
       showTestCharacter={!isNarrow}
     >
-      <div style={{ display: "grid", gap: 16 }}>
-        {/* 👧 キャラ */}
-        <div className="glass glass-strong" style={card}>
-          <h2 style={sectionTitle}>👧 キャラクター</h2>
+      {/* ✅ Shell固定、ここから中身だけスクロールにする */}
+      <div
+        style={{
+          height: "100%",
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
+        {/* ここがスクロール担当 */}
+        <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
+          <div style={{ display: "grid", gap: 16, paddingRight: 2 }}>
+            {/* 👧 キャラ */}
+            <div className="glass glass-strong" style={card}>
+              <h2 style={sectionTitle}>👧 キャラクター</h2>
 
-          <div style={formGrid}>
-            <div style={row}>
-              <div style={label}>表示</div>
-              <label
-                style={{
-                  display: "inline-flex",
-                  gap: 10,
-                  alignItems: "center",
-                  cursor: "pointer",
-                  userSelect: "none",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={characterEnabled}
-                  onChange={(e) => set({ characterEnabled: e.target.checked })}
-                />
-                <span style={{ color: "rgba(255,255,255,0.85)" }}>
-                  キャラを表示する
-                </span>
-              </label>
-            </div>
+              <div style={formGrid}>
+                <div style={row}>
+                  <div style={label}>表示</div>
+                  <label
+                    style={{
+                      display: "inline-flex",
+                      gap: 10,
+                      alignItems: "center",
+                      cursor: "pointer",
+                      userSelect: "none",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={characterEnabled}
+                      onChange={(e) =>
+                        set({ characterEnabled: e.target.checked })
+                      }
+                    />
+                    <span style={{ color: "rgba(255,255,255,0.85)" }}>
+                      キャラを表示する
+                    </span>
+                  </label>
+                </div>
 
-            <div style={row}>
-              <div style={label}>切替</div>
-              <div
-                style={{ ...radioLine, opacity: characterEnabled ? 1 : 0.5 }}
-              >
-                <label
-                  style={{
-                    display: "inline-flex",
-                    gap: 8,
-                    alignItems: "center",
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="characterMode"
-                    checked={characterMode === "fixed"}
-                    disabled={isCharControlsDisabled}
-                    onChange={() => set({ characterMode: "fixed" })}
-                  />
-                  <span>固定</span>
-                </label>
+                <div style={row}>
+                  <div style={label}>切替</div>
+                  <div
+                    style={{
+                      ...radioLine,
+                      opacity: characterEnabled ? 1 : 0.5,
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: "inline-flex",
+                        gap: 8,
+                        alignItems: "center",
+                        cursor: characterEnabled ? "pointer" : "not-allowed",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="characterMode"
+                        checked={characterMode === "fixed"}
+                        disabled={isCharControlsDisabled}
+                        onChange={() => set({ characterMode: "fixed" })}
+                      />
+                      <span>固定</span>
+                    </label>
 
-                <label
-                  style={{
-                    display: "inline-flex",
-                    gap: 8,
-                    alignItems: "center",
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="characterMode"
-                    checked={characterMode === "random"}
-                    disabled={isCharControlsDisabled}
-                    onChange={() => set({ characterMode: "random" })}
-                  />
-                  <span>ランダム（画面遷移ごと）</span>
-                </label>
+                    <label
+                      style={{
+                        display: "inline-flex",
+                        gap: 8,
+                        alignItems: "center",
+                        cursor: characterEnabled ? "pointer" : "not-allowed",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="characterMode"
+                        checked={characterMode === "random"}
+                        disabled={isCharControlsDisabled}
+                        onChange={() => set({ characterMode: "random" })}
+                      />
+                      <span>ランダム（画面遷移ごと）</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div style={row}>
+                  <div style={label}>固定キャラ</div>
+                  <div style={rowStack}>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        style={pillBase}
+                        onClick={() => refreshCreatedCharactersAndMap()}
+                      >
+                        ↻ キャラ管理と同期
+                      </button>
+                      <span style={help}>
+                        キャラ管理で作成したキャラがここに出るよ（固定は作成キャラのみ）。
+                      </span>
+                    </div>
+
+                    <select
+                      value={fixedCharacterId}
+                      disabled={isFixedDisabled}
+                      onChange={(e) =>
+                        set({ fixedCharacterId: e.target.value })
+                      }
+                      style={fullWidthControl}
+                    >
+                      {createdCharacters.length === 0 ? (
+                        <option value="">（作成キャラがありません）</option>
+                      ) : (
+                        createdCharacters.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.label}
+                          </option>
+                        ))
+                      )}
+                    </select>
+
+                    <div style={help}>
+                      「固定」を選んだときだけ有効。作成キャラが無い場合はキャラ管理で追加してね。
+                    </div>
+                  </div>
+                </div>
+
+                <div style={row}>
+                  <div style={label}>作成キャラ画像</div>
+                  <div style={rowStack}>
+                    {createdCharacters.length === 0 ? (
+                      <div style={help}>
+                        まだ作成キャラが見つからないよ（キャラ管理で追加してから同期してね）。
+                      </div>
+                    ) : (
+                      <div style={{ display: "grid", gap: 10 }}>
+                        {createdCharacters.map((c) => {
+                          const raw = charImageMap[c.id] ?? "";
+                          const p = normalizePublicPath(raw);
+                          return (
+                            <div
+                              key={c.id}
+                              style={{
+                                borderRadius: 14,
+                                border: "1px solid rgba(255,255,255,0.14)",
+                                background: "rgba(255,255,255,0.06)",
+                                padding: 10,
+                                display: "grid",
+                                gap: 8,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  gap: 10,
+                                  flexWrap: "wrap",
+                                  alignItems: "center",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    fontSize: 12,
+                                    color: "rgba(255,255,255,0.85)",
+                                    overflowWrap: "anywhere",
+                                  }}
+                                >
+                                  {c.label}{" "}
+                                  <span
+                                    style={{
+                                      color: "rgba(255,255,255,0.55)",
+                                    }}
+                                  >
+                                    （id: {c.id}）
+                                  </span>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  style={pillBase}
+                                  onClick={() => {
+                                    const next = { ...charImageMap };
+                                    delete next[c.id];
+                                    setCharImageMap(next);
+                                  }}
+                                >
+                                  ↩ 未設定に戻す
+                                </button>
+                              </div>
+
+                              <input
+                                value={raw}
+                                onChange={(e) => {
+                                  const next = {
+                                    ...charImageMap,
+                                    [c.id]: e.target.value,
+                                  };
+                                  setCharImageMap(next);
+                                }}
+                                placeholder="例: /assets/characters/tsuduri.png"
+                                style={fullWidthControl}
+                              />
+
+                              <div style={help}>
+                                public 配下のパスを指定（例:{" "}
+                                <code>/assets/characters/tsuduri.png</code>）。
+                                固定/ランダム時にこの割り当てが使われるよ。
+                              </div>
+
+                              {p ? (
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    gap: 10,
+                                    alignItems: "center",
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  <span style={help}>プレビュー:</span>
+                                  <img
+                                    src={p}
+                                    alt=""
+                                    style={{
+                                      height: 64,
+                                      width: "auto",
+                                      borderRadius: 12,
+                                      border:
+                                        "1px solid rgba(255,255,255,0.18)",
+                                      background: "rgba(0,0,0,0.2)",
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <div style={help}>（未設定）</div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={row}>
+                  <div style={label}>大きさ</div>
+                  <div style={rowStack}>
+                    <div style={controlLine}>
+                      <span style={help}>表示サイズ</span>
+                      <span style={help}>
+                        {Math.round(characterScale * 100)}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.7}
+                      max={5.0}
+                      step={0.05}
+                      disabled={isCharControlsDisabled}
+                      value={characterScale}
+                      onChange={(e) =>
+                        set({
+                          characterScale: clamp(
+                            Number(e.target.value),
+                            0.7,
+                            5.0,
+                          ),
+                        })
+                      }
+                      style={fullWidthControl}
+                    />
+                    <div style={help}>
+                      ※ 上げすぎるとボタンが隠れやすいので注意だよ。
+                    </div>
+                  </div>
+                </div>
+
+                <div style={row}>
+                  <div style={label}>不透明度</div>
+                  <div style={rowStack}>
+                    <div style={controlLine}>
+                      <span style={help}>透け具合</span>
+                      <span style={help}>
+                        {Math.round(characterOpacity * 100)}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      disabled={isCharControlsDisabled}
+                      value={characterOpacity}
+                      onChange={(e) =>
+                        set({
+                          characterOpacity: clamp(Number(e.target.value), 0, 1),
+                        })
+                      }
+                      style={fullWidthControl}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div style={row}>
-              <div style={label}>固定キャラ</div>
-              <div style={rowStack}>
+            {/* 🖼 背景 */}
+            <div className="glass glass-strong" style={card}>
+              <h2 style={sectionTitle}>🖼 背景</h2>
+
+              <div style={formGrid}>
+                <div style={row}>
+                  <div style={label}>モード</div>
+                  <div style={radioLine}>
+                    <label
+                      style={{
+                        display: "inline-flex",
+                        gap: 8,
+                        alignItems: "center",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="bgMode"
+                        checked={bgMode === "auto"}
+                        onChange={() => set({ bgMode: "auto" })}
+                      />
+                      <span>自動（時刻連動）</span>
+                    </label>
+
+                    <label
+                      style={{
+                        display: "inline-flex",
+                        gap: 8,
+                        alignItems: "center",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="bgMode"
+                        checked={bgMode === "fixed"}
+                        onChange={() => set({ bgMode: "fixed" })}
+                      />
+                      <span>固定</span>
+                    </label>
+
+                    <label
+                      style={{
+                        display: "inline-flex",
+                        gap: 8,
+                        alignItems: "center",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="bgMode"
+                        checked={bgMode === "off"}
+                        onChange={() => set({ bgMode: "off" })}
+                      />
+                      <span>背景画像なし</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div style={row}>
+                  <div style={label}>自動セット</div>
+                  <div style={rowStack}>
+                    <select
+                      value={autoBgSet}
+                      disabled={bgMode !== "auto"}
+                      onChange={(e) => set({ autoBgSet: e.target.value })}
+                      style={fullWidthControl}
+                    >
+                      {AUTO_BG_SETS.map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.label}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div style={help}>
+                      いまの時間帯:{" "}
+                      <b style={{ color: "rgba(255,255,255,0.88)" }}>
+                        {nowBand === "morning"
+                          ? "朝"
+                          : nowBand === "day"
+                            ? "昼"
+                            : nowBand === "evening"
+                              ? "夕"
+                              : "夜"}
+                      </b>{" "}
+                      / 自動の参照: <code>{autoPreviewSrc}</code>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        style={pillBase}
+                        onClick={() => set({ bgMode: "auto" })}
+                      >
+                        🌈 自動にする
+                      </button>
+
+                      <button
+                        type="button"
+                        style={pillBase}
+                        onClick={() => {
+                          const snap = resolveAutoBackgroundSrc(
+                            autoBgSet,
+                            nowBand,
+                          );
+                          set({ bgMode: "fixed", fixedBgSrc: snap });
+                          alert(`いまの背景を固定にしたよ\n${snap}`);
+                        }}
+                      >
+                        📌 いまの背景を固定に
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={row}>
+                  <div style={label}>固定画像</div>
+                  <div style={rowStack}>
+                    <input
+                      value={fixedBgSrcRaw}
+                      disabled={bgMode !== "fixed"}
+                      onChange={(e) => set({ fixedBgSrc: e.target.value })}
+                      placeholder="例: /assets/bg/surf_evening.png"
+                      style={fullWidthControl}
+                    />
+                    <div style={help}>
+                      public 配下パス（例:{" "}
+                      <code>/assets/bg/surf_evening.png</code>）
+                    </div>
+                  </div>
+                </div>
+
+                <div style={row}>
+                  <div style={label}>プレビュー</div>
+                  <div style={rowStack}>
+                    {bgMode === "off" ? (
+                      <div style={help}>（背景画像なし）</div>
+                    ) : (
+                      <>
+                        <div style={help}>
+                          表示予定: <code>{effectivePreviewSrc}</code>
+                        </div>
+                        {!!effectivePreviewSrc && (
+                          <img
+                            src={effectivePreviewSrc}
+                            alt=""
+                            style={{
+                              width: "100%",
+                              maxWidth: 520,
+                              height: "auto",
+                              borderRadius: 14,
+                              border: "1px solid rgba(255,255,255,0.18)",
+                              background: "rgba(0,0,0,0.18)",
+                            }}
+                          />
+                        )}
+                      </>
+                    )}
+
+                    <div style={help}>
+                      ルール：
+                      <code>{`/assets/bg/${autoBgSet}_morning.png`}</code>{" "}
+                      みたいに、
+                      <code>_morning / _day / _evening / _night</code>{" "}
+                      の4枚を用意すると自動で切り替わるよ。
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 🪟 表示 */}
+            <div className="glass glass-strong" style={card}>
+              <h2 style={sectionTitle}>🪟 表示</h2>
+
+              <div style={formGrid}>
+                <div style={row}>
+                  <div style={label}>背景の暗幕</div>
+                  <div style={rowStack}>
+                    <div style={controlLine}>
+                      <span style={help}>背景を暗くして文字を読みやすく</span>
+                      <span style={help}>{Math.round(bgDim * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.02}
+                      value={bgDim}
+                      onChange={(e) =>
+                        set({ bgDim: clamp(Number(e.target.value), 0, 1) })
+                      }
+                      style={fullWidthControl}
+                    />
+                  </div>
+                </div>
+
+                <div style={row}>
+                  <div style={label}>背景ぼかし</div>
+                  <div style={rowStack}>
+                    <div style={controlLine}>
+                      <span style={help}>雰囲気だけ残して情報を強調</span>
+                      <span style={help}>{bgBlur}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={24}
+                      step={1}
+                      value={bgBlur}
+                      onChange={(e) =>
+                        set({ bgBlur: clamp(Number(e.target.value), 0, 24) })
+                      }
+                      style={fullWidthControl}
+                    />
+                  </div>
+                </div>
+
+                <div style={row}>
+                  <div style={label}>すりガラス濃さ</div>
+                  <div style={rowStack}>
+                    <div style={controlLine}>
+                      <span style={help}>UIの黒さ（薄いほど透明）</span>
+                      <span style={help}>{Math.round(glassAlpha * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={0.6}
+                      step={0.01}
+                      value={glassAlpha}
+                      onChange={(e) =>
+                        set({
+                          glassAlpha: clamp(Number(e.target.value), 0, 0.6),
+                        })
+                      }
+                      style={fullWidthControl}
+                    />
+                  </div>
+                </div>
+
+                <div style={row}>
+                  <div style={label}>すりガラスぼかし</div>
+                  <div style={rowStack}>
+                    <div style={controlLine}>
+                      <span style={help}>ガラス越しのぼかし</span>
+                      <span style={help}>{glassBlur}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={24}
+                      step={1}
+                      value={glassBlur}
+                      onChange={(e) =>
+                        set({ glassBlur: clamp(Number(e.target.value), 0, 24) })
+                      }
+                      style={fullWidthControl}
+                    />
+                    <div style={help}>
+                      0px
+                      で完全に無し（※端末によっては微差が出るので、気になるなら
+                      0〜1 で調整）
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 🌊 キャッシュ */}
+            <div className="glass glass-strong" style={card}>
+              <h2 style={sectionTitle}>🌊 tide736 キャッシュ</h2>
+
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}
+                ）
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
+                <button
+                  type="button"
+                  style={loading || !!busy ? pillDisabled : pillBase}
+                  disabled={loading || !!busy}
+                  onClick={() => refresh()}
+                >
+                  ↻ 更新
+                </button>
+
+                <button
+                  type="button"
+                  style={busy ? pillDisabled : pillBase}
+                  disabled={!!busy}
+                  onClick={async () => {
+                    const ok = confirm(
+                      "tide736 キャッシュをすべて削除する？（戻せない）",
+                    );
+                    if (!ok) return;
+                    setBusy("deleteAll");
+                    try {
+                      await deleteTideCacheAll();
+                      await refresh();
+                      alert("全部消したよ");
+                    } finally {
+                      setBusy(null);
+                    }
+                  }}
+                >
+                  🗑 全削除
+                </button>
+
                 <div
                   style={{
+                    marginLeft: "auto",
                     display: "flex",
-                    gap: 10,
+                    gap: 8,
                     alignItems: "center",
                     flexWrap: "wrap",
                   }}
                 >
+                  <span
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
+                  >
+                    古いの削除：
+                  </span>
+                  <select
+                    value={String(days)}
+                    onChange={(e) =>
+                      setDays(Number(e.target.value) as 30 | 60 | 90 | 180)
+                    }
+                  >
+                    <option value="30">30日</option>
+                    <option value="60">60日</option>
+                    <option value="90">90日</option>
+                    <option value="180">180日</option>
+                  </select>
+
                   <button
                     type="button"
-                    style={pillBase}
-                    onClick={() => refreshCreatedCharactersAndMap()}
+                    style={busy ? pillDisabled : pillBase}
+                    disabled={!!busy}
+                    onClick={async () => {
+                      setBusy("deleteOld");
+                      try {
+                        await deleteTideCacheOlderThan(days);
+                        await refresh();
+                        alert(`古いキャッシュ（${days}日より前）を削除したよ`);
+                      } finally {
+                        setBusy(null);
+                      }
+                    }}
                   >
-                    ↻ キャラ管理と同期
+                    実行
                   </button>
-                  <span style={help}>
-                    キャラ管理で作成したキャラがここに出るよ（固定は作成キャラのみ）。
-                  </span>
-                </div>
-
-                <select
-                  value={fixedCharacterId}
-                  disabled={isFixedDisabled}
-                  onChange={(e) => set({ fixedCharacterId: e.target.value })}
-                  style={fullWidthControl}
-                >
-                  {createdCharacters.length === 0 ? (
-                    <option value="">（作成キャラがありません）</option>
-                  ) : (
-                    createdCharacters.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))
-                  )}
-                </select>
-
-                <div style={help}>
-                  「固定」を選んだときだけ有効。作成キャラが無い場合はキャラ管理で追加してね。
                 </div>
               </div>
-            </div>
 
-            <div style={row}>
-              <div style={label}>作成キャラ画像</div>
-              <div style={rowStack}>
-                {createdCharacters.length === 0 ? (
-                  <div style={help}>
-                    まだ作成キャラが見つからないよ（キャラ管理で追加してから同期してね）。
-                  </div>
-                ) : (
-                  <div style={{ display: "grid", gap: 10 }}>
-                    {createdCharacters.map((c) => {
-                      const raw = charImageMap[c.id] ?? "";
-                      const p = normalizePublicPath(raw);
-                      return (
+              <div style={{ display: "grid", gap: 6 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
+                  {stats
+                    ? `件数: ${stats.count} / 容量(概算): ${stats.approxKB}KB（約 ${approxMB}MB）`
+                    : loading
+                      ? "読み込み中…"
+                      : "—"}
+                </div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                  newest: {fmtIso(stats?.newestFetchedAt ?? null)} / oldest:{" "}
+                  {fmtIso(stats?.oldestFetchedAt ?? null)}
+                </div>
+              </div>
+
+              <hr style={{ opacity: 0.2 }} />
+
+              {entries.length === 0 ? (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+                  {loading ? "読み込み中…" : "キャッシュがまだ無いよ"}
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {entries.slice(0, 80).map((e) => {
+                    const v = e as unknown as {
+                      key: string;
+                      day: string;
+                      pc: string;
+                      hc: string;
+                      fetchedAt?: string | null;
+                    };
+
+                    return (
+                      <div
+                        key={v.key}
+                        style={{
+                          borderRadius: 14,
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          background: "rgba(255,255,255,0.06)",
+                          padding: 10,
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
                         <div
-                          key={c.id}
                           style={{
-                            borderRadius: 14,
-                            border: "1px solid rgba(255,255,255,0.14)",
-                            background: "rgba(255,255,255,0.06)",
-                            padding: 10,
-                            display: "grid",
-                            gap: 8,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            flexWrap: "wrap",
                           }}
                         >
                           <div
                             style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              gap: 10,
-                              flexWrap: "wrap",
+                              fontSize: 12,
+                              color: "rgba(255,255,255,0.85)",
+                              overflowWrap: "anywhere",
                             }}
                           >
-                            <div
-                              style={{
-                                fontSize: 12,
-                                color: "rgba(255,255,255,0.85)",
-                                overflowWrap: "anywhere",
-                              }}
-                            >
-                              {c.label}{" "}
-                              <span style={{ color: "rgba(255,255,255,0.55)" }}>
-                                （id: {c.id}）
-                              </span>
-                            </div>
-
-                            <button
-                              type="button"
-                              style={pillBase}
-                              onClick={() => {
-                                const next = { ...charImageMap };
-                                delete next[c.id];
-                                setCharImageMap(next);
-                              }}
-                            >
-                              ↩ 未設定に戻す
-                            </button>
+                            {v.day}（{v.pc}:{v.hc}）
                           </div>
-
-                          <input
-                            value={raw}
-                            onChange={(e) =>
-                              setCharImageMap({
-                                ...charImageMap,
-                                [c.id]: e.target.value,
-                              })
-                            }
-                            placeholder="例: /assets/characters/tsuduri.png"
-                            style={fullWidthControl}
-                          />
-
-                          <div style={help}>
-                            public 配下のパスを指定（例:{" "}
-                            <code>/assets/characters/tsuduri.png</code>）。
-                            固定/ランダム時にこの割り当てが使われるよ。
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: "rgba(255,255,255,0.6)",
+                            }}
+                          >
+                            fetched: {fmtIso(v.fetchedAt ?? null)}
                           </div>
-
-                          {p ? (
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: 10,
-                                alignItems: "center",
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              <span style={help}>プレビュー:</span>
-                              <img
-                                src={p}
-                                alt=""
-                                style={{
-                                  height: 64,
-                                  width: "auto",
-                                  borderRadius: 12,
-                                  border: "1px solid rgba(255,255,255,0.18)",
-                                  background: "rgba(0,0,0,0.2)",
-                                }}
-                              />
-                            </div>
-                          ) : (
-                            <div style={help}>（未設定）</div>
-                          )}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
 
-            <div style={row}>
-              <div style={label}>大きさ</div>
-              <div style={rowStack}>
-                <div style={controlLine}>
-                  <span style={help}>表示サイズ</span>
-                  <span style={help}>{Math.round(characterScale * 100)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={0.7}
-                  max={5.0}
-                  step={0.05}
-                  disabled={isCharControlsDisabled}
-                  value={characterScale}
-                  onChange={(e) =>
-                    set({
-                      characterScale: clamp(Number(e.target.value), 0.7, 5.0),
-                    })
-                  }
-                  style={fullWidthControl}
-                />
-                <div style={help}>
-                  ※ 上げすぎるとボタンが隠れやすいので注意だよ。
-                </div>
-              </div>
-            </div>
+                        <div
+                          style={{ display: "flex", gap: 10, flexWrap: "wrap" }}
+                        >
+                          <button
+                            type="button"
+                            style={busy === v.key ? pillDisabled : pillBase}
+                            disabled={busy === v.key}
+                            onClick={async () => {
+                              const ok = confirm(
+                                `このキャッシュを削除する？\n${v.key}`,
+                              );
+                              if (!ok) return;
+                              setBusy(v.key);
+                              try {
+                                await deleteTideCacheByKey(v.key);
+                                await refresh();
+                              } finally {
+                                setBusy(null);
+                              }
+                            }}
+                          >
+                            🗑 削除
+                          </button>
 
-            <div style={row}>
-              <div style={label}>不透明度</div>
-              <div style={rowStack}>
-                <div style={controlLine}>
-                  <span style={help}>透け具合</span>
-                  <span style={help}>
-                    {Math.round(characterOpacity * 100)}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  disabled={isCharControlsDisabled}
-                  value={characterOpacity}
-                  onChange={(e) =>
-                    set({
-                      characterOpacity: clamp(Number(e.target.value), 0, 1),
-                    })
-                  }
-                  style={fullWidthControl}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 🖼 背景 */}
-        <div className="glass glass-strong" style={card}>
-          <h2 style={sectionTitle}>🖼 背景</h2>
-
-          <div style={formGrid}>
-            <div style={row}>
-              <div style={label}>モード</div>
-              <div style={radioLine}>
-                <label
-                  style={{
-                    display: "inline-flex",
-                    gap: 8,
-                    alignItems: "center",
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="bgMode"
-                    checked={bgMode === "auto"}
-                    onChange={() => set({ bgMode: "auto" })}
-                  />
-                  <span>自動（時刻連動）</span>
-                </label>
-
-                <label
-                  style={{
-                    display: "inline-flex",
-                    gap: 8,
-                    alignItems: "center",
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="bgMode"
-                    checked={bgMode === "fixed"}
-                    onChange={() => set({ bgMode: "fixed" })}
-                  />
-                  <span>固定</span>
-                </label>
-
-                <label
-                  style={{
-                    display: "inline-flex",
-                    gap: 8,
-                    alignItems: "center",
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="bgMode"
-                    checked={bgMode === "off"}
-                    onChange={() => set({ bgMode: "off" })}
-                  />
-                  <span>背景画像なし</span>
-                </label>
-              </div>
-            </div>
-
-            <div style={row}>
-              <div style={label}>自動セット</div>
-              <div style={rowStack}>
-                <select
-                  value={autoBgSet}
-                  disabled={bgMode !== "auto"}
-                  onChange={(e) => set({ autoBgSet: e.target.value })}
-                  style={fullWidthControl}
-                >
-                  {AUTO_BG_SETS.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.label}
-                    </option>
-                  ))}
-                </select>
-
-                <div style={help}>
-                  いまの時間帯:{" "}
-                  <b style={{ color: "rgba(255,255,255,0.88)" }}>
-                    {nowBand === "morning"
-                      ? "朝"
-                      : nowBand === "day"
-                        ? "昼"
-                        : nowBand === "evening"
-                          ? "夕"
-                          : "夜"}
-                  </b>{" "}
-                  / 自動の参照: <code>{autoPreviewSrc}</code>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                  }}
-                >
-                  <button
-                    type="button"
-                    style={pillBase}
-                    onClick={() => set({ bgMode: "auto" })}
-                  >
-                    🌈 自動にする
-                  </button>
-
-                  <button
-                    type="button"
-                    style={pillBase}
-                    onClick={() => {
-                      const snap = resolveAutoBackgroundSrc(autoBgSet, nowBand);
-                      set({ bgMode: "fixed", fixedBgSrc: snap });
-                      alert(`いまの背景を固定にしたよ\n${snap}`);
-                    }}
-                  >
-                    📌 いまの背景を固定に
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div style={row}>
-              <div style={label}>固定画像</div>
-              <div style={rowStack}>
-                <input
-                  value={fixedBgSrcRaw}
-                  disabled={bgMode !== "fixed"}
-                  onChange={(e) => set({ fixedBgSrc: e.target.value })}
-                  placeholder="例: /assets/bg/surf_evening.png"
-                  style={fullWidthControl}
-                />
-                <div style={help}>
-                  public 配下パス（例: <code>/assets/bg/surf_evening.png</code>
-                  ）
-                </div>
-              </div>
-            </div>
-
-            <div style={row}>
-              <div style={label}>プレビュー</div>
-              <div style={rowStack}>
-                {bgMode === "off" ? (
-                  <div style={help}>（背景画像なし）</div>
-                ) : (
-                  <>
-                    <div style={help}>
-                      表示予定: <code>{effectivePreviewSrc}</code>
-                    </div>
-                    {!!effectivePreviewSrc && (
-                      <img
-                        src={effectivePreviewSrc}
-                        alt=""
-                        style={{
-                          width: "100%",
-                          maxWidth: 520,
-                          height: "auto",
-                          borderRadius: 14,
-                          border: "1px solid rgba(255,255,255,0.18)",
-                          background: "rgba(0,0,0,0.18)",
-                        }}
-                      />
-                    )}
-                  </>
-                )}
-
-                <div style={help}>
-                  ルール：<code>{`/assets/bg/${autoBgSet}_morning.png`}</code>{" "}
-                  みたいに、
-                  <code>_morning / _day / _evening / _night</code>{" "}
-                  の4枚を用意すると自動で切り替わるよ。
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 🪟 表示 */}
-        <div className="glass glass-strong" style={card}>
-          <h2 style={sectionTitle}>🪟 表示</h2>
-
-          <div style={formGrid}>
-            <div style={row}>
-              <div style={label}>背景の暗幕</div>
-              <div style={rowStack}>
-                <div style={controlLine}>
-                  <span style={help}>背景を暗くして文字を読みやすく</span>
-                  <span style={help}>{Math.round(bgDim * 100)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.02}
-                  value={bgDim}
-                  onChange={(e) =>
-                    set({ bgDim: clamp(Number(e.target.value), 0, 1) })
-                  }
-                  style={fullWidthControl}
-                />
-              </div>
-            </div>
-
-            <div style={row}>
-              <div style={label}>背景ぼかし</div>
-              <div style={rowStack}>
-                <div style={controlLine}>
-                  <span style={help}>雰囲気だけ残して情報を強調</span>
-                  <span style={help}>{bgBlur}px</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={24}
-                  step={1}
-                  value={bgBlur}
-                  onChange={(e) =>
-                    set({ bgBlur: clamp(Number(e.target.value), 0, 24) })
-                  }
-                  style={fullWidthControl}
-                />
-              </div>
-            </div>
-
-            <div style={row}>
-              <div style={label}>すりガラス濃さ</div>
-              <div style={rowStack}>
-                <div style={controlLine}>
-                  <span style={help}>UIの黒さ（薄いほど透明）</span>
-                  <span style={help}>{Math.round(glassAlpha * 100)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={0.6}
-                  step={0.01}
-                  value={glassAlpha}
-                  onChange={(e) =>
-                    set({ glassAlpha: clamp(Number(e.target.value), 0, 0.6) })
-                  }
-                  style={fullWidthControl}
-                />
-              </div>
-            </div>
-
-            <div style={row}>
-              <div style={label}>すりガラスぼかし</div>
-              <div style={rowStack}>
-                <div style={controlLine}>
-                  <span style={help}>ガラス越しのぼかし</span>
-                  <span style={help}>{glassBlur}px</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={24}
-                  step={1}
-                  value={glassBlur}
-                  onChange={(e) =>
-                    set({ glassBlur: clamp(Number(e.target.value), 0, 24) })
-                  }
-                  style={fullWidthControl}
-                />
-                <div style={help}>
-                  0px で完全に無し（気になるなら 0〜1 で調整）
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 🌊 キャッシュ */}
-        <div className="glass glass-strong" style={card}>
-          <h2 style={sectionTitle}>🌊 tide736 キャッシュ</h2>
-
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-            基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              flexWrap: "wrap",
-              alignItems: "center",
-            }}
-          >
-            <button
-              type="button"
-              style={loading || !!busy ? pillDisabled : pillBase}
-              disabled={loading || !!busy}
-              onClick={() => refresh()}
-            >
-              ↻ 更新
-            </button>
-
-            <button
-              type="button"
-              style={busy ? pillDisabled : pillBase}
-              disabled={!!busy}
-              onClick={async () => {
-                const ok = confirm(
-                  "tide736 キャッシュをすべて削除する？（戻せない）",
-                );
-                if (!ok) return;
-                setBusy("deleteAll");
-                try {
-                  await deleteTideCacheAll();
-                  await refresh();
-                  alert("全部消したよ");
-                } finally {
-                  setBusy(null);
-                }
-              }}
-            >
-              🗑 全削除
-            </button>
-
-            <div
-              style={{
-                marginLeft: "auto",
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
-                古いの削除：
-              </span>
-              <select
-                value={String(days)}
-                onChange={(e) =>
-                  setDays(Number(e.target.value) as 30 | 60 | 90 | 180)
-                }
-              >
-                <option value="30">30日</option>
-                <option value="60">60日</option>
-                <option value="90">90日</option>
-                <option value="180">180日</option>
-              </select>
-
-              <button
-                type="button"
-                style={busy ? pillDisabled : pillBase}
-                disabled={!!busy}
-                onClick={async () => {
-                  setBusy("deleteOld");
-                  try {
-                    await deleteTideCacheOlderThan(days);
-                    await refresh();
-                    alert(`古いキャッシュ（${days}日より前）を削除したよ`);
-                  } finally {
-                    setBusy(null);
-                  }
-                }}
-              >
-                実行
-              </button>
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gap: 6 }}>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
-              {stats
-                ? `件数: ${stats.count} / 容量(概算): ${stats.approxKB}KB（約 ${approxMB}MB）`
-                : loading
-                  ? "読み込み中…"
-                  : "—"}
-            </div>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
-              newest: {fmtIso(stats?.newestFetchedAt ?? null)} / oldest:{" "}
-              {fmtIso(stats?.oldestFetchedAt ?? null)}
-            </div>
-          </div>
-
-          <hr style={{ opacity: 0.2 }} />
-
-          {entries.length === 0 ? (
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-              {loading ? "読み込み中…" : "キャッシュがまだ無いよ"}
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: 10 }}>
-              {entries.slice(0, 80).map((e) => {
-                const v = e as unknown as {
-                  key: string;
-                  day: string;
-                  pc: string;
-                  hc: string;
-                  fetchedAt?: string | null;
-                };
-
-                return (
-                  <div
-                    key={v.key}
-                    style={{
-                      borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(255,255,255,0.06)",
-                      padding: 10,
-                      display: "grid",
-                      gap: 8,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "rgba(255,255,255,0.85)",
-                          overflowWrap: "anywhere",
-                        }}
-                      >
-                        {v.day}（{v.pc}:{v.hc}）
+                          <button
+                            type="button"
+                            style={
+                              busy === `force:${v.key}`
+                                ? pillDisabled
+                                : pillBase
+                            }
+                            disabled={busy === `force:${v.key}`}
+                            onClick={async () => {
+                              const ok = confirm(
+                                `この日を強制再取得する？（オンライン必須）\n${v.day}`,
+                              );
+                              if (!ok) return;
+                              setBusy(`force:${v.key}`);
+                              try {
+                                await forceRefreshTide736Day(
+                                  v.pc,
+                                  v.hc,
+                                  new Date(v.day),
+                                );
+                                await refresh();
+                                alert("再取得したよ");
+                              } catch (err) {
+                                console.error(err);
+                                alert(
+                                  "再取得に失敗…（オフライン or 制限の可能性）",
+                                );
+                              } finally {
+                                setBusy(null);
+                              }
+                            }}
+                          >
+                            ↻ 強制再取得
+                          </button>
+                        </div>
                       </div>
-                      <div
-                        style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}
-                      >
-                        fetched: {fmtIso(v.fetchedAt ?? null)}
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      <button
-                        type="button"
-                        style={busy === v.key ? pillDisabled : pillBase}
-                        disabled={busy === v.key}
-                        onClick={async () => {
-                          const ok = confirm(
-                            `このキャッシュを削除する？\n${v.key}`,
-                          );
-                          if (!ok) return;
-                          setBusy(v.key);
-                          try {
-                            await deleteTideCacheByKey(v.key);
-                            await refresh();
-                          } finally {
-                            setBusy(null);
-                          }
-                        }}
-                      >
-                        🗑 削除
-                      </button>
-
-                      <button
-                        type="button"
-                        style={
-                          busy === `force:${v.key}` ? pillDisabled : pillBase
-                        }
-                        disabled={busy === `force:${v.key}`}
-                        onClick={async () => {
-                          const ok = confirm(
-                            `この日を強制再取得する？（オンライン必須）\n${v.day}`,
-                          );
-                          if (!ok) return;
-                          setBusy(`force:${v.key}`);
-                          try {
-                            await forceRefreshTide736Day(
-                              v.pc,
-                              v.hc,
-                              new Date(v.day),
-                            );
-                            await refresh();
-                            alert("再取得したよ");
-                          } catch (err) {
-                            console.error(err);
-                            alert(
-                              "再取得に失敗…（オフライン or 制限の可能性）",
-                            );
-                          } finally {
-                            setBusy(null);
-                          }
-                        }}
-                      >
-                        ↻ 強制再取得
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
 
+        {/* 下部ボタンは固定（画面下） */}
         <div
           style={{
+            flex: "0 0 auto",
             display: "flex",
             gap: 10,
             flexWrap: "wrap",
