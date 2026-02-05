@@ -689,7 +689,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       maxWidth={1100}
       showBack
       onBack={back}
-      scrollY="hidden"
+      scrollY={back}
     >
       <style>{`
         @keyframes tsuduri-dot-bounce {
