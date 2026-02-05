@@ -689,9 +689,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       maxWidth={1100}
       showBack
       onBack={back}
-      titleLayout="left"
       scrollY="hidden"
-      contentPadding={"clamp(10px, 2vw, 18px)"}
     >
       <style>{`
         @keyframes tsuduri-dot-bounce {
@@ -748,16 +746,17 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         }
       `}</style>
 
+      {/* ✅ PageShellの中身領域にぴったり合わせる（ここでsvh計算しない） */}
       <div
         style={{
+          height: "100%",
+          minHeight: 0,
           display: "flex",
           flexDirection: "column",
           gap: 12,
           minWidth: 0,
-          height:
-            "calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px)",
-          maxHeight: "100%",
           overflow: "hidden",
+          paddingBottom: "env(safe-area-inset-bottom)",
         }}
       >
         {/* ヘッダー操作群 */}
@@ -768,6 +767,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
             alignItems: "center",
             gap: 12,
             minWidth: 0,
+            flex: "0 0 auto",
           }}
         >
           <div style={{ minWidth: 0 }} />
@@ -779,6 +779,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               alignItems: "center",
               flexWrap: "wrap",
               minWidth: 0,
+              justifyContent: "flex-end",
             }}
           >
             <button
@@ -854,7 +855,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           ref={scrollBoxRef}
           className="glass glass-strong"
           style={{
-            flex: 1,
+            flex: "1 1 auto",
             minHeight: 0,
             overflowY: "auto",
             overflowX: "hidden",
@@ -961,7 +962,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         </div>
 
         {/* クイック */}
-        <div className="chat-quick">
+        <div className="chat-quick" style={{ flex: "0 0 auto" }}>
           <button
             type="button"
             onClick={() => {
@@ -1000,7 +1001,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         {/* 入力欄（常に見える） */}
         <div
           className="glass glass-strong"
-          style={{ borderRadius: 14, padding: 10 }}
+          style={{ borderRadius: 14, padding: 10, flex: "0 0 auto" }}
         >
           <div
             style={{
