@@ -9,6 +9,7 @@ import {
 } from "../lib/tide736Cache";
 import type { TidePoint } from "../db";
 import PageShell from "../components/PageShell";
+import { useAppSettings } from "../lib/appSettings";
 
 type Props = {
   back: () => void;
@@ -160,6 +161,19 @@ function sourceLabel(source: TideCacheSource | null, isStale: boolean) {
   return { text: isStale ? "期限切れキャッシュ" : "キャッシュ", color: "#f6c" };
 }
 
+type LoadState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | {
+      status: "ok";
+      series: TidePoint[];
+      tideName: string | null;
+      source: TideCacheSource;
+      isStale: boolean;
+      dayKey: string;
+    }
+  | { status: "error"; message: string };
+
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
@@ -189,32 +203,32 @@ function useIsMobile() {
   return isMobile;
 }
 
-type LoadState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | {
-      status: "ok";
-      series: TidePoint[];
-      tideName: string | null;
-      source: TideCacheSource;
-      isStale: boolean;
-      dayKey: string;
-    }
-  | { status: "error"; message: string };
-
 export default function Weather({ back }: Props) {
+  const { settings } = useAppSettings();
+  const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
+  const glassBlur = clamp(settings.glassBlur ?? 10, 0, 40);
+
   const isMobile = useIsMobile();
   const isDesktop = !isMobile;
 
   /**
-   * ✅ 重要：RecordHistory と同じ “上の安全余白”
-   * 戻るボタン帯がコンテンツに被らないようにする
+   * ✅ RecordHistory と同じ：戻るボタン帯セーフ領域
+   * もしまだ被るなら 84〜96 に上げれば確実に逃げる
    */
   const SHELL_TOP_SAFE_PX = 72;
 
+  const glassBg = (alpha: number) => `rgba(0,0,0,${clamp(alpha, 0, 0.85)})`;
+  const glassBorder = "1px solid rgba(255,255,255,0.14)";
+  const glassFilter = `blur(${Math.round(glassBlur)}px)`;
+
   const TILE_STYLE: CSSProperties = {
-    borderRadius: 16,
+    border: glassBorder,
+    borderRadius: 14,
     padding: 12,
+    background: glassBg(glassAlpha),
+    backdropFilter: glassFilter,
+    WebkitBackdropFilter: glassFilter,
+    color: "#ddd",
     minWidth: 0,
   };
 
@@ -222,11 +236,11 @@ export default function Weather({ back }: Props) {
     borderRadius: 999,
     padding: "8px 12px",
     border: "1px solid rgba(255,255,255,0.15)",
-    background: "rgba(255,255,255,0.06)",
+    background: glassBg(glassAlpha),
+    backdropFilter: glassFilter,
+    WebkitBackdropFilter: glassFilter,
     color: "#eee",
     cursor: "pointer",
-    backdropFilter: "blur(var(--glass-blur,10px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
   };
 
   const TAB_STYLE_ACTIVE: CSSProperties = {
@@ -234,17 +248,6 @@ export default function Weather({ back }: Props) {
     border: "2px solid #ff4d6d",
     background: "rgba(255,77,109,0.14)",
     color: "#fff",
-  };
-
-  const inputStyle: CSSProperties = {
-    background: "rgba(255,255,255,0.06)",
-    backdropFilter: "blur(var(--glass-blur,10px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
-    color: "#eee",
-    border: "1px solid rgba(255,255,255,0.15)",
-    borderRadius: 10,
-    padding: "6px 10px",
-    maxWidth: "100%",
   };
 
   const [tab, setTab] = useState<"today" | "tomorrow" | "pick">("today");
@@ -331,42 +334,76 @@ export default function Weather({ back }: Props) {
   const highs = extremes.filter((e) => e.kind === "high");
   const lows = extremes.filter((e) => e.kind === "low");
 
-  const titleNode = (
-    <h1
-      style={{
-        margin: 0,
-        fontSize: "clamp(20px, 6vw, 32px)",
-        lineHeight: 1.15,
-      }}
-    >
-      ☀️ 天気・潮を見る
-    </h1>
-  );
-
-  const subtitleNode = (
-    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-      🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
-      {!online && (
-        <span style={{ marginLeft: 10, color: "#f6c" }}>📴 オフライン</span>
-      )}
-    </div>
-  );
-
   return (
     <PageShell
-      title={titleNode}
-      subtitle={subtitleNode}
+      title={null}
+      subtitle={null}
       maxWidth={980}
       showBack
       onBack={back}
-      scrollY="auto"
-      titleLayout="left"
     >
-      {/* ✅ 戻るボタン帯に被らないための安全余白（PCのみ） */}
-      <div style={{ paddingTop: isDesktop ? SHELL_TOP_SAFE_PX : 0 }}>
+      {/* ✅ 戻るボタン帯に被らない“セーフ領域ラッパー” */}
+      <div
+        style={{
+          overflowX: "clip",
+          maxWidth: "100vw",
+          minHeight: 0,
+
+          paddingTop: isDesktop ? SHELL_TOP_SAFE_PX : 0,
+
+          height: isDesktop
+            ? `calc(100dvh - ${SHELL_TOP_SAFE_PX}px - env(safe-area-inset-top) - env(safe-area-inset-bottom))`
+            : "auto",
+
+          paddingBottom: isDesktop ? 8 : 0,
+        }}
+      >
+        {/* ✅ 自前ヘッダー */}
+        <div
+          style={{
+            ...TILE_STYLE,
+            padding: 16,
+            marginTop: 8,
+            width: "100%",
+            textAlign: "left",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-start",
+          }}
+        >
+          <h1
+            style={{
+              margin: 0,
+              fontSize: "clamp(20px, 5.5vw, 32px)",
+              textAlign: "left",
+              width: "100%",
+            }}
+          >
+            ☀️ 天気・潮を見る
+          </h1>
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 12,
+              color: "rgba(255,255,255,0.65)",
+              textAlign: "left",
+              width: "100%",
+            }}
+          >
+            🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:
+            {FIXED_PORT.hc}）
+            {!online && (
+              <span style={{ marginLeft: 10, color: "#f6c" }}>
+                📴 オフライン
+              </span>
+            )}
+          </div>
+        </div>
+
         {/* タブ */}
         <div
           style={{
+            marginTop: 14,
             width: "100%",
             display: "flex",
             gap: 10,
@@ -412,7 +449,16 @@ export default function Weather({ back }: Props) {
                 type="date"
                 value={picked}
                 onChange={(e) => setPicked(e.target.value)}
-                style={inputStyle}
+                style={{
+                  background: glassBg(glassAlpha),
+                  backdropFilter: glassFilter,
+                  WebkitBackdropFilter: glassFilter,
+                  color: "#eee",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  borderRadius: 10,
+                  padding: "6px 10px",
+                  maxWidth: "100%",
+                }}
               />
             </label>
           )}
@@ -431,10 +477,7 @@ export default function Weather({ back }: Props) {
         )}
 
         {/* サマリー */}
-        <div
-          className="glass glass-strong"
-          style={{ marginTop: 14, ...TILE_STYLE }}
-        >
+        <div style={{ marginTop: 14, ...TILE_STYLE }}>
           <div
             style={{
               display: "flex",
@@ -500,9 +543,9 @@ export default function Weather({ back }: Props) {
           )}
         </div>
 
-        {/* 満潮/干潮 + グラフ */}
+        {/* 満潮/干潮 */}
         <div style={{ marginTop: 12, display: "grid", gap: 10, minWidth: 0 }}>
-          <div className="glass glass-strong" style={TILE_STYLE}>
+          <div style={{ ...TILE_STYLE }}>
             <div style={{ fontWeight: 700, marginBottom: 6 }}>
               🟡 満潮 / 🔵 干潮
             </div>
@@ -553,10 +596,7 @@ export default function Weather({ back }: Props) {
             )}
           </div>
 
-          <div
-            className="glass glass-strong"
-            style={{ ...TILE_STYLE, padding: 12 }}
-          >
+          <div style={{ ...TILE_STYLE, padding: 12, minWidth: 0 }}>
             <TideGraph
               series={state.status === "ok" ? state.series : []}
               baseDate={targetDate}

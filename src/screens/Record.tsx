@@ -79,8 +79,8 @@ export default function Record({ back }: Props) {
   const isDesktop = !isMobile;
 
   /**
-   * ✅ 重要：RecordHistory と同じ “上の安全余白”
-   * 戻るボタン帯がコンテンツに被らないようにする
+   * ✅ RecordHistory と同じ：戻るボタン帯セーフ領域
+   * もしまだ被るなら 84〜96 に上げれば確実に逃げる
    */
   const SHELL_TOP_SAFE_PX = 72;
 
@@ -134,8 +134,6 @@ export default function Record({ back }: Props) {
     color: "#ddd",
     boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.12)",
     WebkitTapHighlightColor: "transparent",
-    backdropFilter: "blur(var(--glass-blur,10px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
   };
 
   function segPill(checked: boolean): CSSProperties {
@@ -365,59 +363,76 @@ export default function Record({ back }: Props) {
     justifyContent: "center",
   };
 
-  const titleNode = (
-    <h1
-      style={{
-        margin: 0,
-        fontSize: "clamp(20px, 6vw, 32px)",
-        lineHeight: 1.15,
-      }}
-    >
-      📸 釣果を記録
-    </h1>
-  );
-
-  const subtitleNode = (
-    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-      🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
-      {!online && (
-        <span style={{ marginLeft: 10, color: "#f6c" }}>📴 オフライン</span>
-      )}
-    </div>
-  );
-
   return (
     <PageShell
-      title={titleNode}
-      subtitle={subtitleNode}
+      title={
+        <h1
+          style={{
+            margin: 0,
+            fontSize: "clamp(20px, 6vw, 32px)",
+            lineHeight: 1.15,
+          }}
+        >
+          📸 釣果を記録
+        </h1>
+      }
       titleLayout="left"
       maxWidth={1200}
       showBack
       onBack={back}
-      scrollY="auto"
     >
-      <style>{`
-        .record-layout{
-          display:grid;
-          gap:14px;
-          min-width:0;
-        }
-        /* PC: 左に写真、右に入力 */
-        @media (min-width: 980px){
-          .record-layout{
-            grid-template-columns: 420px minmax(0, 1fr);
-            align-items:start;
-          }
-          .record-left{
-            position: sticky;
-            top: 12px;
-            align-self:start;
-          }
-        }
-      `}</style>
+      {/* ✅ 戻るボタン帯に被らない“セーフ領域ラッパー” */}
+      <div
+        style={{
+          overflowX: "clip",
+          maxWidth: "100vw",
+          minHeight: 0,
 
-      {/* ✅ 戻るボタン帯に被らないための安全余白（PCのみ） */}
-      <div style={{ paddingTop: isDesktop ? SHELL_TOP_SAFE_PX : 0 }}>
+          paddingTop: isDesktop ? SHELL_TOP_SAFE_PX : 0,
+
+          height: isDesktop
+            ? `calc(100dvh - ${SHELL_TOP_SAFE_PX}px - env(safe-area-inset-top) - env(safe-area-inset-bottom))`
+            : "auto",
+
+          paddingBottom: isDesktop ? 8 : 0,
+        }}
+      >
+        <style>{`
+          .record-layout{
+            display:grid;
+            gap:14px;
+            min-width:0;
+          }
+          /* PC: 左に写真、右に入力 */
+          @media (min-width: 980px){
+            .record-layout{
+              grid-template-columns: 420px minmax(0, 1fr);
+              align-items:start;
+            }
+            .record-left{
+              position: sticky;
+              top: 12px;
+              align-self:start;
+            }
+          }
+        `}</style>
+
+        <div
+          style={{
+            fontSize: 12,
+            color: "rgba(255,255,255,0.55)",
+            marginBottom: 8,
+          }}
+        >
+          🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:
+          {FIXED_PORT.hc}）
+          {!online && (
+            <span style={{ marginLeft: 10, color: "#f6c" }}>📴 オフライン</span>
+          )}
+        </div>
+
+        <hr style={{ margin: "6px 0 12px", opacity: 0.22 }} />
+
         <div className="record-layout">
           {/* 左：写真 */}
           <div className="record-left" style={{ minWidth: 0 }}>
