@@ -180,12 +180,12 @@ export default function PageShell(props: Props) {
   const isMobile = useIsMobile();
   const isDesktop = !isMobile;
 
-  // ✅ PC固定ヘッダー仕様（タイトル左上、戻る右上を固定）
+  // ✅ PC固定ヘッダー仕様
   const DESKTOP_HEADER_H = 72;
 
   // ✅ AppSettings（背景/ガラス/キャラ）
   const { settings } = useAppSettings();
-  useMinuteTick(); // 自動背景の時間帯追従
+  useMinuteTick();
 
   // ===== 背景 =====
   const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
@@ -275,7 +275,6 @@ export default function PageShell(props: Props) {
       flexDirection: "column",
       "--shell-header-h": `${DESKTOP_HEADER_H}px`,
 
-      // ✅ 背景・ガラス（index.css の .page-shell が参照）
       "--bg-image": bgImage,
       "--bg-blur": `${Math.round(clamp(bgBlur, 0, 60))}px`,
       "--bg-dim": `${clamp(bgDim, 0, 1)}`,
@@ -293,12 +292,10 @@ export default function PageShell(props: Props) {
     glassAlpha,
   ]);
 
-  // デフォルトの本文 padding（旧互換で contentPadding が来たら上書き）
   const defaultFramePadding = isMobile ? "14px 14px 18px" : "18px 18px 20px";
   const resolvedFramePadding =
     contentPadding !== undefined ? contentPadding : defaultFramePadding;
 
-  // ✅ 本文領域（PCはここだけスクロール制御して統一）
   const contentOuterStyle: CSSProperties = {
     flex: "1 1 auto",
     minHeight: 0,
@@ -315,7 +312,6 @@ export default function PageShell(props: Props) {
     minHeight: "100%",
   };
 
-  // ✅ PC: ヘッダー分だけ本文を下げる
   const desktopContentStyle: CSSProperties = isDesktop
     ? { paddingTop: "var(--shell-header-h)" }
     : {};
@@ -342,7 +338,6 @@ export default function PageShell(props: Props) {
     WebkitBackdropFilter: "blur(10px)",
   };
 
-  // ✅ PC固定ヘッダー
   const desktopHeaderStyle: CSSProperties = {
     position: "fixed",
     top: 0,
@@ -395,7 +390,6 @@ export default function PageShell(props: Props) {
     textOverflow: "ellipsis",
   };
 
-  // ✅ スマホヘッダー
   const mobileHeaderWrapStyle: CSSProperties = {
     display: "grid",
     gap: 6,
@@ -416,11 +410,12 @@ export default function PageShell(props: Props) {
     textAlign: titleLayout === "left" ? "left" : "center",
   };
 
+  // ✅ レイヤ順：背景(-) < キャラ(10) < 情報(20) < ヘッダー(999)
   const characterStyle: CSSProperties = {
     position: "fixed",
     right: "max(6px, env(safe-area-inset-right))",
     bottom: "max(6px, env(safe-area-inset-bottom))",
-    zIndex: 30,
+    zIndex: 10,
     pointerEvents: "none",
     opacity: clamp(characterOpacity, 0, 1),
     transform: `scale(${clamp(characterScale, 0.7, 5)})`,
@@ -432,7 +427,6 @@ export default function PageShell(props: Props) {
 
   return (
     <div className="page-shell" style={rootStyle}>
-      {/* ✅ キャラ（全画面共通） */}
       {characterEnabled && characterSrc ? (
         <img src={characterSrc} alt="" style={characterStyle} />
       ) : null}
@@ -476,7 +470,14 @@ export default function PageShell(props: Props) {
 
       <div style={contentOuterStyle}>
         <div style={frameStyle}>
-          <div className="page-shell-inner" style={desktopContentStyle}>
+          <div
+            className="page-shell-inner"
+            style={{
+              ...desktopContentStyle,
+              position: "relative",
+              zIndex: 20,
+            }}
+          >
             {children}
           </div>
         </div>

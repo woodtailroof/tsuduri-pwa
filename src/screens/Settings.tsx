@@ -404,11 +404,13 @@ export default function Settings({ back }: Props) {
       maxWidth={980}
       showBack
       onBack={back}
-      scrollY="auto" // ✅ PageShellにスクロールを任せる（ここが重要）
+      // ✅ スクロールはPageShellに任せる（PCのスクロール復活）
+      scrollY="auto"
       showTestCharacter={!isNarrow}
     >
-      {/* ✅ 下のstickyバー分だけ余白を確保 */}
-      <div style={{ display: "grid", gap: 16, paddingBottom: 92 }}>
+      <div
+        style={{ display: "grid", gap: 16, paddingRight: 2, paddingBottom: 16 }}
+      >
         {/* 👧 キャラ */}
         <div className="glass glass-strong" style={card}>
           <h2 style={sectionTitle}>👧 キャラクター</h2>
@@ -439,7 +441,10 @@ export default function Settings({ back }: Props) {
             <div style={row}>
               <div style={label}>切替</div>
               <div
-                style={{ ...radioLine, opacity: characterEnabled ? 1 : 0.5 }}
+                style={{
+                  ...radioLine,
+                  opacity: characterEnabled ? 1 : 0.5,
+                }}
               >
                 <label
                   style={{
@@ -599,8 +604,8 @@ export default function Settings({ back }: Props) {
 
                           <div style={help}>
                             public 配下のパスを指定（例:{" "}
-                            <code>/assets/characters/tsuduri.png</code>
-                            ）。固定/ランダム時にこの割り当てが使われるよ。
+                            <code>/assets/characters/tsuduri.png</code>）。
+                            固定/ランダム時にこの割り当てが使われるよ。
                           </div>
 
                           {p ? (
@@ -953,7 +958,8 @@ export default function Settings({ back }: Props) {
                   style={fullWidthControl}
                 />
                 <div style={help}>
-                  0pxで完全に無し（※端末によっては微差が出るので、気になるなら0〜1で調整）
+                  0px で完全に無し（※端末によっては微差が出るので、気になるなら
+                  0〜1 で調整）
                 </div>
               </div>
             </div>
@@ -1179,54 +1185,58 @@ export default function Settings({ back }: Props) {
             </div>
           )}
         </div>
-      </div>
 
-      {/* ✅ 下部ボタンは sticky で常に表示 */}
-      <div
-        className="safe-area-bottom"
-        style={{
-          position: "sticky",
-          bottom: 0,
-          zIndex: 40,
-          marginTop: -76,
-          paddingTop: 12,
-          paddingBottom: 12,
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          alignItems: "center",
-          background: "rgba(0,0,0,0.28)",
-          backdropFilter: "blur(10px)",
-          WebkitBackdropFilter: "blur(10px)",
-          borderTop: "1px solid rgba(255,255,255,0.10)",
-          borderRadius: 16,
-        }}
-      >
-        <button
-          type="button"
-          style={pillBase}
-          onClick={() => {
-            const ok = confirm(
-              "表示/キャラ設定を初期値に戻す？（キャッシュは触らない）",
-            );
-            if (!ok) return;
-            reset();
-            alert("初期値に戻したよ");
+        {/* ✅ 下部ボタン：stickyで画面下に固定 */}
+        <div
+          style={{
+            position: "sticky",
+            bottom: 0,
+            zIndex: 50,
+            marginTop: 8,
+            paddingTop: 10,
+            paddingBottom: "max(10px, env(safe-area-inset-bottom))",
+            background:
+              "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.55) 35%, rgba(0,0,0,0.70) 100%)",
+            backdropFilter: "blur(10px)",
+            WebkitBackdropFilter: "blur(10px)",
+            borderRadius: 16,
           }}
         >
-          🔁 表示/キャラを初期化
-        </button>
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            <button
+              type="button"
+              style={pillBase}
+              onClick={() => {
+                const ok = confirm(
+                  "表示/キャラ設定を初期値に戻す？（キャッシュは触らない）",
+                );
+                if (!ok) return;
+                reset();
+                alert("初期値に戻したよ");
+              }}
+            >
+              🔁 表示/キャラを初期化
+            </button>
 
-        <button
-          type="button"
-          style={pillBase}
-          onClick={() => {
-            set({ ...settings });
-            alert("設定を保存し直したよ");
-          }}
-        >
-          ✅ 設定を保存し直す
-        </button>
+            <button
+              type="button"
+              style={pillBase}
+              onClick={() => {
+                set({ ...settings });
+                alert("設定を保存し直したよ");
+              }}
+            >
+              ✅ 設定を保存し直す
+            </button>
+          </div>
+        </div>
       </div>
     </PageShell>
   );
