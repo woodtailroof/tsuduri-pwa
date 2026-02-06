@@ -21,7 +21,10 @@ type Props = {
   /** 戻るボタン押下時の挙動を上書きしたい場合 */
   onBack?: () => void;
 
-  /** 旧互換：title の配置指示（ヘッダー枠は固定で、テキスト寄せだけ変える） */
+  /**
+   * 旧互換：title の配置指示
+   * ✅ ただし「固定ヘッダーのタイトル位置」は常に左端固定（視点ブレ対策）
+   */
   titleLayout?: "center" | "left";
 
   /** スクロール制御（本文領域に適用） */
@@ -97,7 +100,6 @@ export default function PageShell(props: Props) {
 
   /**
    * ✅ 左右パディングも固定（画面ごとに contentPadding が違ってもヘッダーは動かない）
-   * clamp で端末幅に応じて “気持ちよく” 変わるけど、全画面で同じ
    */
   const HEADER_SIDE_PAD = "clamp(12px, 3vw, 18px)";
 
@@ -196,13 +198,19 @@ export default function PageShell(props: Props) {
     boxSizing: "border-box",
   };
 
+  /**
+   * ✅ ここが今回の本丸：
+   * - ヘッダーのタイトルは常に「左端固定」
+   * - titleLayout はヘッダーでは使わない（視点ブレ対策）
+   */
   const titleSlotStyle: CSSProperties = {
     display: "flex",
     flexDirection: "column",
     justifyContent: "center",
     minWidth: 0,
     flex: "1 1 auto",
-    textAlign: titleLayout === "left" ? "left" : "center",
+    textAlign: "left",
+    alignItems: "flex-start",
   };
 
   const titleClampStyle: CSSProperties = {
@@ -220,20 +228,26 @@ export default function PageShell(props: Props) {
     overflow: "hidden",
     textOverflow: "ellipsis",
     maxWidth: "56vw",
-    textAlign: titleLayout === "left" ? "left" : "center",
+    textAlign: "left",
   };
 
   // ✅ 右側の「戻る」が無いときも位置を固定するためのスペーサ
   const rightSlotStyle: CSSProperties = {
     flex: "0 0 auto",
-    minWidth: 88, // 戻るボタン相当の幅を確保して“中央寄り”事故を防ぐ
+    minWidth: 88, // 戻るボタン相当の幅を確保して“右端位置”を固定
     display: "flex",
     justifyContent: "flex-end",
   };
 
+  /**
+   * （任意）本文内のタイトル寄せは今まで通り使えるように残しておく
+   * ただしヘッダーは常に左固定なので、ここはUI上ほぼ影響しない
+   */
+  void titleLayout;
+
   return (
     <div style={rootStyle}>
-      {/* ✅ 常に固定ヘッダー（位置ブレ絶対殺す） */}
+      {/* ✅ 常に固定ヘッダー（タイトルも戻るも絶対に同じ場所） */}
       <div style={headerStyle}>
         <div style={headerInnerStyle}>
           <div style={titleSlotStyle}>
