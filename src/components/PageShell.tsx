@@ -26,6 +26,18 @@ type Props = {
 
   /** スクロール制御 */
   scrollY?: "auto" | "hidden";
+
+  /**
+   * ✅ 旧実装互換：PageShell内の「本文領域」の padding を上書き
+   * 例: "0" / "12px 18px" / 0
+   */
+  contentPadding?: string | number;
+
+  /**
+   * ✅ 旧実装互換：設定画面などが渡しているフラグ（現行PageShellでは表示制御しない）
+   * 受け口だけ用意してビルドを通す。
+   */
+  showTestCharacter?: boolean;
 };
 
 // CSS変数（--xxx）を style に安全に入れるための型
@@ -70,11 +82,14 @@ export default function PageShell({
   onBack,
   titleLayout = "center",
   scrollY = "auto",
+  contentPadding,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  showTestCharacter,
 }: Props) {
   const isMobile = useIsMobile();
   const isDesktop = !isMobile;
 
-  // ✅ PC固定ヘッダー仕様
+  // ✅ PC固定ヘッダー仕様（タイトル左上、戻る右上を固定）
   const DESKTOP_HEADER_H = 72;
 
   const rootStyle = useMemo<StyleWithVars>(() => {
@@ -87,11 +102,16 @@ export default function PageShell({
     };
   }, [scrollY]);
 
+  // デフォルトの本文 padding（旧互換で contentPadding が来たら上書き）
+  const defaultFramePadding = isMobile ? "14px 14px 18px" : "18px 18px 20px";
+  const resolvedFramePadding =
+    contentPadding !== undefined ? contentPadding : defaultFramePadding;
+
   const frameStyle: CSSProperties = {
     width: "100%",
     maxWidth,
     margin: "0 auto",
-    padding: isMobile ? "14px 14px 18px" : "18px 18px 20px",
+    padding: resolvedFramePadding,
     position: "relative",
     minHeight: "100%",
   };
