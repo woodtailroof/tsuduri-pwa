@@ -93,22 +93,16 @@ export default function PageShell(props: Props) {
   // ✅ PC固定ヘッダー仕様（タイトル左上、戻る右上を固定）
   const DESKTOP_HEADER_H = 72;
 
-  /**
-   * ✅ ここが超重要：PageShell 自体を「画面サイズで固定」して、
-   * 本文だけスクロールさせる。これで Settings のスクロール死が消える。
-   */
   const rootStyle = useMemo<StyleWithVars>(() => {
     return {
       width: "100%",
-      height: "100dvh",
-      overflow: "hidden",
+      minHeight: "100dvh",
       overflowX: "clip",
+      // ここをスクロールコンテナにしない（sticky/fixedの挙動ブレを防ぐ）
+      overflowY: "visible",
       display: "flex",
       flexDirection: "column",
       "--shell-header-h": `${DESKTOP_HEADER_H}px`,
-      // レイヤの“基準”をここで作る
-      position: "relative",
-      zIndex: 0,
     };
   }, []);
 
@@ -117,21 +111,12 @@ export default function PageShell(props: Props) {
   const resolvedFramePadding =
     contentPadding !== undefined ? contentPadding : defaultFramePadding;
 
-  /**
-   * ✅ 本文スクロール領域
-   * - PC: ここが唯一のスクロールコンテナ
-   * - スマホ: 既存挙動をなるべく崩さず（visible寄り）
-   */
+  // ✅ 本文領域（PCはここだけスクロール制御して、全画面の統一感を担保）
   const contentOuterStyle: CSSProperties = {
     flex: "1 1 auto",
     minHeight: 0,
     overflowX: "clip",
-    overflowY: isDesktop ? scrollY : "visible",
-    // PCは固定ヘッダー分だけ中身を下げる（各画面で逃げない）
-    paddingTop: isDesktop ? "var(--shell-header-h)" : 0,
-    // “情報レイヤ”を前に出すための基準
-    position: "relative",
-    zIndex: 40,
+    overflowY: isDesktop ? scrollY : "visible", // スマホは今の挙動を崩さない
   };
 
   const frameStyle: CSSProperties = {
@@ -141,9 +126,12 @@ export default function PageShell(props: Props) {
     padding: resolvedFramePadding,
     position: "relative",
     minHeight: "100%",
-    // PageShell内での情報レイヤを前に出す
-    zIndex: 40,
   };
+
+  // ✅ PC: ヘッダー分だけ本文を下げる（各画面で paddingTop 逃げをさせない）
+  const desktopContentStyle: CSSProperties = isDesktop
+    ? { paddingTop: "var(--shell-header-h)" }
+    : {};
 
   const onClickBack = () => {
     if (onBack) return onBack();
@@ -167,14 +155,13 @@ export default function PageShell(props: Props) {
     WebkitBackdropFilter: "blur(10px)",
   };
 
-  // ✅ PCは「完全固定」ヘッダー（位置ブレなし）
-  // ただし z-index は「キャラより上」「情報より下」になっても困らないよう中間に
+  // ✅ PCは「完全固定」ヘッダー（画面ごとの差分を出さない）
   const desktopHeaderStyle: CSSProperties = {
     position: "fixed",
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 30,
+    zIndex: 999,
     height: "var(--shell-header-h)",
     background: "rgba(0,0,0,0.22)",
     borderBottom: "1px solid rgba(255,255,255,0.10)",
@@ -182,16 +169,21 @@ export default function PageShell(props: Props) {
     WebkitBackdropFilter: "blur(10px)",
   };
 
+  /**
+   * ✅ 重要：
+   * ヘッダーは「画面端基準」で固定。
+   * ここで maxWidth を使うと画面ごとにタイトルがズレるので使わない。
+   */
   const desktopHeaderInnerStyle: CSSProperties = {
     height: "100%",
-    maxWidth,
-    margin: "0 auto",
+    width: "100%",
     padding: "10px 18px",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
     minWidth: 0,
+    boxSizing: "border-box",
   };
 
   const titleSlotStyleDesktop: CSSProperties = {
@@ -200,7 +192,7 @@ export default function PageShell(props: Props) {
     justifyContent: "center",
     minWidth: 0,
     flex: "1 1 auto",
-    alignItems: "flex-start",
+    alignItems: "flex-start", // ✅ 左端固定
     textAlign: "left",
   };
 
@@ -221,7 +213,7 @@ export default function PageShell(props: Props) {
     textOverflow: "ellipsis",
   };
 
-  // ✅ スマホは現状維持
+  // ✅ スマホは現状維持（必要なら後で「左固定」へ寄せる）
   const mobileHeaderWrapStyle: CSSProperties = {
     display: "grid",
     gap: 6,
@@ -282,7 +274,9 @@ export default function PageShell(props: Props) {
       )}
 
       <div style={contentOuterStyle}>
-        <div style={frameStyle}>{children}</div>
+        <div style={frameStyle}>
+          <div style={desktopContentStyle}>{children}</div>
+        </div>
       </div>
     </div>
   );
