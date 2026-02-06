@@ -1,229 +1,440 @@
 // src/screens/Home.tsx
-import { useMemo } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import PageShell from "../components/PageShell";
 
 type Props = {
-  go: (s: "record" | "recordHistory" | "weather" | "chat" | "settings") => void;
+  go: (
+    screen: "record" | "recordHistory" | "weather" | "chat" | "settings",
+  ) => void;
 };
 
-type HomeItem = {
-  key: "record" | "recordHistory" | "weather" | "chat" | "settings";
-  label: string;
-  // 画像ボタンを使ってる場合に備えて optional
-  imgSrc?: string;
-  alt?: string;
+const APP_LOCK_PASS_KEY = "tsuduri_app_pass_v1";
+const APP_LOCK_UNLOCKED_KEY = "tsuduri_app_unlocked_v1";
+
+function loadSavedPass() {
+  try {
+    return localStorage.getItem(APP_LOCK_PASS_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function isUnlocked() {
+  try {
+    return localStorage.getItem(APP_LOCK_UNLOCKED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setUnlocked(pass: string) {
+  try {
+    localStorage.setItem(APP_LOCK_PASS_KEY, pass);
+    localStorage.setItem(APP_LOCK_UNLOCKED_KEY, "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+type ImgBtnProps = {
+  src: string;
+  alt: string;
+  onClick: () => void;
+  style?: CSSProperties;
 };
+
+function ImgButton({ src, alt, onClick, style }: ImgBtnProps) {
+  return (
+    <button
+      type="button"
+      className="home-img-btn"
+      onClick={onClick}
+      aria-label={alt}
+      style={style}
+    >
+      <img
+        className="home-img-btn__img"
+        src={src}
+        alt={alt}
+        draggable={false}
+      />
+    </button>
+  );
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
 
 export default function Home({ go }: Props) {
-  // 既存のボタン画像があるならここに合わせて差し替えてOK
-  // imgSrc が未指定でも、普通の“ガラスボタン”で表示されるようにしてある
-  const items = useMemo<HomeItem[]>(
-    () => [
-      {
-        key: "record",
-        label: "記録する",
-        imgSrc: "/assets/ui/btn_record.png",
-        alt: "記録する",
-      },
-      {
-        key: "recordHistory",
-        label: "履歴をみる",
-        imgSrc: "/assets/ui/btn_history.png",
-        alt: "履歴をみる",
-      },
-      {
-        key: "weather",
-        label: "天気・潮をみる",
-        imgSrc: "/assets/ui/btn_weather.png",
-        alt: "天気・潮をみる",
-      },
-      {
-        key: "chat",
-        label: "話す",
-        imgSrc: "/assets/ui/btn_chat.png",
-        alt: "話す",
-      },
-      {
-        key: "settings",
-        label: "設定",
-        imgSrc: "/assets/ui/btn_settings.png",
-        alt: "設定",
-      },
-    ],
-    [],
-  );
+  // ✅ 初期値で確定できるので、effectでのsetState不要
+  const [unlocked, setUnlockedState] = useState<boolean>(() => isUnlocked());
+  const [pass, setPass] = useState<string>(() => loadSavedPass());
+  const [error, setError] = useState<string>("");
 
-  // 画像が無い環境でも壊れないように “存在チェック” はせず、表示だけフォールバックする
-  const wrapStyle: React.CSSProperties = {
-    height: "100%",
-    minHeight: 0,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "clamp(10px, 2.2vh, 18px)",
-    padding: "clamp(8px, 2.0vh, 18px) 0",
-    overflow: "hidden", // ✅ Homeは絶対スクロール禁止
-  };
+  const canUse = useMemo(() => unlocked, [unlocked]);
 
-  // ロゴの“縦食い”を抑える（画面が低いほど縮む）
-  const logoStyle: React.CSSProperties = {
-    width: "min(680px, 92vw)",
-    maxWidth: "92vw",
-    height: "auto",
-    maxHeight: "clamp(110px, 22vh, 210px)", // ✅ ここが効く（高さに追従）
-    objectFit: "contain",
-    filter: "drop-shadow(0 10px 24px rgba(0,0,0,0.35))",
-    userSelect: "none",
-    pointerEvents: "none",
-  };
+  function unlockNow() {
+    const p = pass.trim();
+    if (!p) {
+      setError("合言葉を入れてね");
+      return;
+    }
+    setUnlocked(p);
+    setUnlockedState(true);
+    setError("");
+  }
 
-  // ボタン群は「残り高さの中で収める」ゾーン
-  const buttonsArea: React.CSSProperties = {
-    width: "min(520px, 92vw)",
-    maxWidth: "92vw",
-    flex: "1 1 auto",
-    minHeight: 0,
-    display: "grid",
-    gridTemplateRows: `repeat(${items.length}, minmax(0, 1fr))`, // ✅ 余ったら均等、足りなければ圧縮
-    gap: "clamp(10px, 2.0vh, 16px)",
-    alignContent: "stretch",
-    overflow: "hidden",
-  };
+  // ===== assets =====
+  const logoSrc = "/assets/logo/logo-title.png";
+  const btnRecord = "/assets/buttons/btn-record.png";
+  const btnHistory = "/assets/buttons/btn-history.png";
+  const btnWeather = "/assets/buttons/btn-weather.png";
+  const btnChat = "/assets/buttons/btn-chat.png";
+  const btnSettings = "/assets/buttons/btn-settings.png";
 
-  // 画像ボタンがある場合、ボタンの中で画像が“はみ出さない”ように
-  const imgBtnStyle: React.CSSProperties = {
-    width: "100%",
-    height: "100%",
-    minHeight: 0,
-    border: "none",
-    background: "transparent",
-    padding: 0,
-    cursor: "pointer",
-  };
+  // ===== ✅ 画面内フィット（はみ出す時だけ全体を縮小） =====
+  const fitOuterRef = useRef<HTMLDivElement | null>(null);
+  const fitInnerRef = useRef<HTMLDivElement | null>(null);
+  const [fitScale, setFitScale] = useState<number>(1);
 
-  const fallbackBtnStyle: React.CSSProperties = {
-    width: "100%",
-    height: "100%",
-    minHeight: 0,
-    borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.16)",
-    background: "rgba(0,0,0,0.20)",
-    color: "rgba(255,255,255,0.92)",
-    backdropFilter: "blur(var(--glass-blur, 10px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur, 10px))",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontWeight: 900,
-    letterSpacing: "0.02em",
-    boxShadow: "0 10px 22px rgba(0,0,0,0.25)",
-  };
+  useEffect(() => {
+    if (typeof window === "undefined") return;
 
-  const btnImageStyle: React.CSSProperties = {
-    width: "100%",
-    height: "100%",
-    maxWidth: "100%",
-    maxHeight: "100%",
-    objectFit: "contain",
-    display: "block",
-    filter: "drop-shadow(0 10px 22px rgba(0,0,0,0.25))",
-    userSelect: "none",
-  };
+    let raf = 0;
+    const calc = () => {
+      const outer = fitOuterRef.current;
+      const inner = fitInnerRef.current;
+      if (!outer || !inner) return;
+
+      // available（表示可能領域）
+      const aw = outer.clientWidth;
+      const ah = outer.clientHeight;
+
+      // content（実サイズ）
+      // scrollWidth/Height は transform の影響を受けにくいので、計測に向く
+      const cw = inner.scrollWidth || inner.getBoundingClientRect().width;
+      const ch = inner.scrollHeight || inner.getBoundingClientRect().height;
+
+      if (!aw || !ah || !cw || !ch) return;
+
+      const sW = aw / cw;
+      const sH = ah / ch;
+      const next = clamp(Math.min(1, sW, sH), 0.55, 1); // 小さすぎ防止（必要なら下限は調整可）
+      setFitScale((prev) => (Math.abs(prev - next) < 0.01 ? prev : next));
+    };
+
+    const schedule = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(calc);
+    };
+
+    schedule();
+
+    const ro = new ResizeObserver(() => schedule());
+    if (fitOuterRef.current) ro.observe(fitOuterRef.current);
+    if (fitInnerRef.current) ro.observe(fitInnerRef.current);
+
+    window.addEventListener("resize", schedule);
+    window.addEventListener("orientationchange", schedule);
+    window.addEventListener("load", schedule);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("orientationchange", schedule);
+      window.removeEventListener("load", schedule);
+    };
+  }, []);
 
   return (
     <PageShell
-      // Homeは “タイトルなし” でOK（ロゴを主役にする）
       title={null}
       subtitle={null}
-      maxWidth={980}
+      maxWidth={1700}
       showBack={false}
-      scrollY="hidden" // ✅ PC側：Shell本文スクロールを殺す
-      contentPadding="0 18px 18px"
+      scrollY="hidden"
+      // ✅ PageShell側のpaddingを0にして、Home側で高さ計算を安定させる
+      contentPadding={0}
     >
-      <div style={wrapStyle}>
-        {/* ロゴ（あるなら差し替え） */}
-        <img
-          src="/assets/ui/home_logo.png"
-          alt="釣嫁ぷろじぇくと"
-          style={logoStyle}
-          draggable={false}
-          onError={(e) => {
-            // ロゴ画像が無い環境でもレイアウト崩れを防ぐ（非表示にする）
-            (e.currentTarget as HTMLImageElement).style.display = "none";
+      <style>
+        {`
+        .home-img-btn{
+          appearance:none;
+          border:0;
+          background:transparent;
+          padding:0;
+          margin:0;
+          display:inline-block;
+          line-height:0;
+          cursor:pointer;
+        }
+        .home-img-btn__img{
+          display:block;
+          width:100%;
+          height:auto;
+        }
+
+        /* ✅ Homeの本文領域：常にviewport内へ（モバイルも含めて固定） */
+        .home-root{
+          width:100%;
+          height:100dvh;
+          min-height:0;
+          overflow:hidden; /* ←スクロール禁止の本丸 */
+        }
+        @media (min-width: 821px){
+          .home-root{
+            height: calc(100dvh - var(--shell-header-h));
+          }
+        }
+
+        /* ✅ フィット外枠（ここが available領域） */
+        .home-fit{
+          height:100%;
+          width:100%;
+          min-height:0;
+          min-width:0;
+          overflow:hidden;
+          display:grid;
+          place-items:center;
+          padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+          box-sizing:border-box;
+        }
+
+        /* ✅ フィット内側（はみ出す時だけ scale される） */
+        .home-fit-inner{
+          width:100%;
+          max-width:1700px;
+          transform-origin: top center;
+          will-change: transform;
+        }
+
+        /* ✅ Homeの内側余白（PageShellのcontentPaddingの代替） */
+        .home-inner{
+          width:100%;
+          min-width:0;
+          padding: clamp(10px, 1.8vw, 16px);
+          display:grid;
+          grid-template-rows:auto minmax(0,1fr);
+          gap: clamp(2px, 0.8vh, 8px);
+          box-sizing:border-box;
+        }
+
+        /* ===== ロゴ ===== */
+        .home-safe-logo{
+          width:100%;
+          padding-right:clamp(0px,18vw,430px);
+          min-width:0;
+        }
+        @media (max-width:720px){
+          .home-safe-logo{ padding-right:0; }
+        }
+
+        /* ✅ dvh 寄りに */
+        .home-logo-box{
+          width:min(96vw,1320px);
+          height:clamp(140px,28dvh,300px);
+          min-height:0;
+        }
+        @media (max-width:720px){
+          .home-logo-box{
+            width:min(96vw,820px);
+            height:clamp(170px,30dvh,340px);
+            margin:0 auto;
+          }
+        }
+        .home-logo{
+          width:100%;
+          height:100%;
+          object-fit:contain;
+          display:block;
+        }
+
+        /* ===== ボタン ===== */
+        .home-actions{
+          display:grid;
+          align-items:center;
+          min-height:0;
+        }
+        @media (max-width:720px){
+          .home-actions{
+            align-items:start;
+          }
+        }
+
+        .home-safe-actions{
+          width:100%;
+          padding-right:clamp(0px,18vw,430px);
+          min-width:0;
+        }
+        @media (max-width:720px){
+          .home-safe-actions{ padding-right:50vw; }
+        }
+
+        .home-actions-scale{
+          --btnw:clamp(210px,22vw,320px);
+          --gapy:clamp(6px,1.1vh,12px);
+          display:grid;
+          gap:var(--gapy);
+          justify-content:center;
+          min-height:0;
+        }
+
+        .home-grid{
+          display:grid;
+          grid-template-columns:1fr;
+          gap:var(--gapy);
+          justify-items:center;
+        }
+
+        .home-settings{
+          display:grid;
+          justify-items:center;
+          margin-top:2px;
+        }
+
+        /* ===== スマホ：左半分カラム内で中央揃え ===== */
+        @media (max-width:720px){
+          .home-actions-scale{
+            width:min(48vw,320px);
+            justify-content:center;
+            padding-left:max(8px,env(safe-area-inset-left));
+            padding-right:8px;
+            transform:scale(0.92);
+            transform-origin: top center;
+            --gapy:clamp(2px,0.45vh,7px);
+            --btnw:100%;
+          }
+          .home-grid{ justify-items:center; }
+          .home-settings{ justify-items:center; }
+        }
+        `}
+      </style>
+
+      {!canUse && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(0,0,0,0.72)",
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
           }}
-        />
-
-        <div style={buttonsArea}>
-          {items.map((it) => {
-            const onClick = () => go(it.key);
-
-            // 画像ボタンが存在しない場合はフォールバックのガラスボタンを表示
-            if (!it.imgSrc) {
-              return (
-                <button
-                  key={it.key}
-                  type="button"
-                  onClick={onClick}
-                  style={fallbackBtnStyle}
-                >
-                  {it.label}
-                </button>
-              );
-            }
-
-            return (
-              <button
-                key={it.key}
-                type="button"
-                onClick={onClick}
-                style={imgBtnStyle}
-                aria-label={it.label}
-              >
-                <img
-                  src={it.imgSrc}
-                  alt={it.alt ?? it.label}
-                  style={btnImageStyle}
-                  draggable={false}
-                  onError={(e) => {
-                    // 画像が無い場合は “文字ボタン” に差し替え（1ボタンだけ壊れない）
-                    const img = e.currentTarget as HTMLImageElement;
-                    const parent =
-                      img.parentElement as HTMLButtonElement | null;
-                    if (parent) {
-                      parent.style.border = fallbackBtnStyle.border as string;
-                      parent.style.borderRadius = String(
-                        fallbackBtnStyle.borderRadius,
-                      );
-                      parent.style.background =
-                        fallbackBtnStyle.background as string;
-                      parent.style.backdropFilter = String(
-                        fallbackBtnStyle.backdropFilter,
-                      );
-                      (parent.style as any).WebkitBackdropFilter = String(
-                        (fallbackBtnStyle as any).WebkitBackdropFilter,
-                      );
-                      parent.style.boxShadow =
-                        fallbackBtnStyle.boxShadow as string;
-                      parent.style.color = fallbackBtnStyle.color as string;
-                      parent.style.fontWeight = String(
-                        fallbackBtnStyle.fontWeight,
-                      );
-                      parent.style.letterSpacing = String(
-                        fallbackBtnStyle.letterSpacing,
-                      );
-                      parent.style.display = "flex";
-                      parent.style.alignItems = "center";
-                      parent.style.justifyContent = "center";
-                      parent.style.padding = "10px 14px";
-                      parent.textContent = it.label;
-                    }
-                  }}
-                />
+        >
+          <div
+            style={{
+              width: "min(520px,96vw)",
+              borderRadius: 14,
+              background: "#0f0f0f",
+              color: "#ddd",
+              padding: 14,
+            }}
+          >
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>
+              🔒 合言葉を入力
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={pass}
+                onChange={(e) => {
+                  setPass(e.target.value);
+                  setError("");
+                }}
+                type="password"
+                style={{ flex: 1 }}
+                onKeyDown={(e) => e.key === "Enter" && unlockNow()}
+              />
+              <button type="button" onClick={unlockNow}>
+                解錠
               </button>
-            );
-          })}
+            </div>
+            {error && <div style={{ color: "#ffb3c1" }}>{error}</div>}
+          </div>
         </div>
+      )}
+
+      <div
+        className="home-root"
+        style={{
+          opacity: canUse ? 1 : 0.25,
+          pointerEvents: canUse ? "auto" : "none",
+        }}
+      >
+        {/* ✅ ここが「画面内に収める」フィット機構 */}
+        <div className="home-fit" ref={fitOuterRef}>
+          <div
+            className="home-fit-inner"
+            ref={fitInnerRef}
+            style={{
+              transform: `scale(${fitScale})`,
+            }}
+          >
+            <div className="home-inner">
+              <div className="home-safe-logo">
+                <div className="home-logo-box">
+                  <img
+                    className="home-logo"
+                    src={logoSrc}
+                    alt="釣嫁ぷろじぇくと"
+                  />
+                </div>
+              </div>
+
+              <div className="home-actions">
+                <div className="home-safe-actions">
+                  <div className="home-actions-scale">
+                    <div className="home-grid">
+                      <ImgButton
+                        src={btnRecord}
+                        alt="記録する"
+                        onClick={() => go("record")}
+                        style={{ width: "var(--btnw)" }}
+                      />
+                      <ImgButton
+                        src={btnHistory}
+                        alt="履歴をみる"
+                        onClick={() => go("recordHistory")}
+                        style={{ width: "var(--btnw)" }}
+                      />
+                      <ImgButton
+                        src={btnWeather}
+                        alt="天気・潮をみる"
+                        onClick={() => go("weather")}
+                        style={{ width: "var(--btnw)" }}
+                      />
+                      <ImgButton
+                        src={btnChat}
+                        alt="話す"
+                        onClick={() => go("chat")}
+                        style={{ width: "var(--btnw)" }}
+                      />
+                    </div>
+                    <div className="home-settings">
+                      <ImgButton
+                        src={btnSettings}
+                        alt="設定"
+                        onClick={() => go("settings")}
+                        style={{ width: "var(--btnw)" }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* /home-inner */}
+          </div>
+          {/* /home-fit-inner */}
+        </div>
+        {/* /home-fit */}
       </div>
     </PageShell>
   );
