@@ -12,7 +12,7 @@ type Props = {
   subtitle?: ReactNode;
   children: ReactNode;
 
-  /** 画面ごとに幅を変えたい時用（本文だけに適用） */
+  /** 画面ごとに幅を変えたい時用（チャットだけ広め…とか） */
   maxWidth?: number;
 
   /** 戻るボタンを表示するか（デフォルト: true） */
@@ -21,13 +21,10 @@ type Props = {
   /** 戻るボタン押下時の挙動を上書きしたい場合 */
   onBack?: () => void;
 
-  /**
-   * 旧互換：title の配置指示
-   * ✅ ただし「固定ヘッダーのタイトル位置」は常に左端固定（視点ブレ対策）
-   */
+  /** 旧互換：title の配置指示（ただしPCは固定ヘッダーで強制的に左上） */
   titleLayout?: "center" | "left";
 
-  /** スクロール制御（本文領域に適用） */
+  /** スクロール制御（※PCは「本文領域」だけに適用して統一） */
   scrollY?: "auto" | "hidden";
 
   /**
@@ -91,43 +88,50 @@ export default function PageShell(props: Props) {
   } = props;
 
   const isMobile = useIsMobile();
+  const isDesktop = !isMobile;
+
+  // ✅ PC固定ヘッダー仕様（タイトル左上、戻る右上を固定）
+  const DESKTOP_HEADER_H = 72;
 
   /**
-   * ✅ 重要：ヘッダーは全画面で “同じ位置” を保証するため、maxWidth に追従させない
-   * - ここを props.maxWidth にすると、画面ごとにヘッダー内側の幅が変わってズレる
+   * ✅ ここが超重要：PageShell 自体を「画面サイズで固定」して、
+   * 本文だけスクロールさせる。これで Settings のスクロール死が消える。
    */
-  const HEADER_MAX_W = 1100;
-
-  /**
-   * ✅ 左右パディングも固定（画面ごとに contentPadding が違ってもヘッダーは動かない）
-   */
-  const HEADER_SIDE_PAD = "clamp(12px, 3vw, 18px)";
-
-  const HEADER_H = isMobile ? 64 : 72;
-
   const rootStyle = useMemo<StyleWithVars>(() => {
     return {
       width: "100%",
-      minHeight: "100dvh",
+      height: "100dvh",
+      overflow: "hidden",
       overflowX: "clip",
-      overflowY: "visible",
       display: "flex",
       flexDirection: "column",
-      "--shell-header-h": `${HEADER_H}px`,
+      "--shell-header-h": `${DESKTOP_HEADER_H}px`,
+      // レイヤの“基準”をここで作る
+      position: "relative",
+      zIndex: 0,
     };
-  }, [HEADER_H]);
+  }, []);
 
   // デフォルトの本文 padding（旧互換で contentPadding が来たら上書き）
   const defaultFramePadding = isMobile ? "14px 14px 18px" : "18px 18px 20px";
   const resolvedFramePadding =
     contentPadding !== undefined ? contentPadding : defaultFramePadding;
 
-  // ✅ 本文領域（ここだけスクロール制御）
+  /**
+   * ✅ 本文スクロール領域
+   * - PC: ここが唯一のスクロールコンテナ
+   * - スマホ: 既存挙動をなるべく崩さず（visible寄り）
+   */
   const contentOuterStyle: CSSProperties = {
     flex: "1 1 auto",
     minHeight: 0,
     overflowX: "clip",
-    overflowY: scrollY,
+    overflowY: isDesktop ? scrollY : "visible",
+    // PCは固定ヘッダー分だけ中身を下げる（各画面で逃げない）
+    paddingTop: isDesktop ? "var(--shell-header-h)" : 0,
+    // “情報レイヤ”を前に出すための基準
+    position: "relative",
+    zIndex: 40,
   };
 
   const frameStyle: CSSProperties = {
@@ -137,11 +141,8 @@ export default function PageShell(props: Props) {
     padding: resolvedFramePadding,
     position: "relative",
     minHeight: "100%",
-  };
-
-  // ✅ ヘッダー分だけ本文を下げる（全端末で統一）
-  const contentTopPadStyle: CSSProperties = {
-    paddingTop: "var(--shell-header-h)",
+    // PageShell内での情報レイヤを前に出す
+    zIndex: 40,
   };
 
   const onClickBack = () => {
@@ -166,13 +167,14 @@ export default function PageShell(props: Props) {
     WebkitBackdropFilter: "blur(10px)",
   };
 
-  // ✅ どの画面でも固定位置になるヘッダー
-  const headerStyle: CSSProperties = {
+  // ✅ PCは「完全固定」ヘッダー（位置ブレなし）
+  // ただし z-index は「キャラより上」「情報より下」になっても困らないよう中間に
+  const desktopHeaderStyle: CSSProperties = {
     position: "fixed",
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 999,
+    zIndex: 30,
     height: "var(--shell-header-h)",
     background: "rgba(0,0,0,0.22)",
     borderBottom: "1px solid rgba(255,255,255,0.10)",
@@ -180,37 +182,36 @@ export default function PageShell(props: Props) {
     WebkitBackdropFilter: "blur(10px)",
   };
 
-  // ✅ ヘッダー“内側”の幅は常に一定（本文 maxWidth と切り離す）
-  const headerInnerStyle: CSSProperties = {
+  const desktopHeaderInnerStyle: CSSProperties = {
     height: "100%",
-    width: "100%",
-    maxWidth: HEADER_MAX_W,
+    maxWidth,
     margin: "0 auto",
-    paddingTop: 10,
-    paddingBottom: 10,
-    paddingLeft: HEADER_SIDE_PAD,
-    paddingRight: HEADER_SIDE_PAD,
+    padding: "10px 18px",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
     minWidth: 0,
-    boxSizing: "border-box",
   };
 
-  /**
-   * ✅ ここが今回の本丸：
-   * - ヘッダーのタイトルは常に「左端固定」
-   * - titleLayout はヘッダーでは使わない（視点ブレ対策）
-   */
-  const titleSlotStyle: CSSProperties = {
+  const titleSlotStyleDesktop: CSSProperties = {
     display: "flex",
     flexDirection: "column",
     justifyContent: "center",
     minWidth: 0,
     flex: "1 1 auto",
-    textAlign: "left",
     alignItems: "flex-start",
+    textAlign: "left",
+  };
+
+  const subtitleStyleDesktop: CSSProperties = {
+    marginTop: 2,
+    fontSize: 12,
+    color: "rgba(255,255,255,0.66)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: "56vw",
   };
 
   const titleClampStyle: CSSProperties = {
@@ -220,42 +221,39 @@ export default function PageShell(props: Props) {
     textOverflow: "ellipsis",
   };
 
-  const subtitleStyle: CSSProperties = {
-    marginTop: 2,
-    fontSize: 12,
-    color: "rgba(255,255,255,0.66)",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    maxWidth: "56vw",
-    textAlign: "left",
+  // ✅ スマホは現状維持
+  const mobileHeaderWrapStyle: CSSProperties = {
+    display: "grid",
+    gap: 6,
+    marginBottom: 12,
   };
 
-  // ✅ 右側の「戻る」が無いときも位置を固定するためのスペーサ
-  const rightSlotStyle: CSSProperties = {
-    flex: "0 0 auto",
-    minWidth: 88, // 戻るボタン相当の幅を確保して“右端位置”を固定
+  const mobileTitleSlotStyle: CSSProperties = {
     display: "flex",
-    justifyContent: "flex-end",
+    alignItems: "center",
+    justifyContent: titleLayout === "left" ? "flex-start" : "center",
+    gap: 10,
+    minWidth: 0,
   };
 
-  /**
-   * （任意）本文内のタイトル寄せは今まで通り使えるように残しておく
-   * ただしヘッダーは常に左固定なので、ここはUI上ほぼ影響しない
-   */
-  void titleLayout;
+  const mobileSubtitleStyle: CSSProperties = {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.62)",
+    textAlign: titleLayout === "left" ? "left" : "center",
+  };
 
   return (
     <div style={rootStyle}>
-      {/* ✅ 常に固定ヘッダー（タイトルも戻るも絶対に同じ場所） */}
-      <div style={headerStyle}>
-        <div style={headerInnerStyle}>
-          <div style={titleSlotStyle}>
-            {title ? <div style={titleClampStyle}>{title}</div> : null}
-            {subtitle ? <div style={subtitleStyle}>{subtitle}</div> : null}
-          </div>
+      {isDesktop ? (
+        <div style={desktopHeaderStyle}>
+          <div style={desktopHeaderInnerStyle}>
+            <div style={titleSlotStyleDesktop}>
+              {title ? <div style={titleClampStyle}>{title}</div> : null}
+              {subtitle ? (
+                <div style={subtitleStyleDesktop}>{subtitle}</div>
+              ) : null}
+            </div>
 
-          <div style={rightSlotStyle}>
             {showBack ? (
               <button type="button" onClick={onClickBack} style={backBtnStyle}>
                 ← 戻る
@@ -265,13 +263,26 @@ export default function PageShell(props: Props) {
             )}
           </div>
         </div>
-      </div>
+      ) : (
+        <div style={mobileHeaderWrapStyle}>
+          <div style={mobileTitleSlotStyle}>
+            {title ? <div style={titleClampStyle}>{title}</div> : null}
+          </div>
 
-      {/* ✅ 本文（ここだけ画面ごとに maxWidth が変わる） */}
-      <div style={contentOuterStyle}>
-        <div style={frameStyle}>
-          <div style={contentTopPadStyle}>{children}</div>
+          {subtitle ? <div style={mobileSubtitleStyle}>{subtitle}</div> : null}
+
+          {showBack ? (
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button type="button" onClick={onClickBack} style={backBtnStyle}>
+                ← 戻る
+              </button>
+            </div>
+          ) : null}
         </div>
+      )}
+
+      <div style={contentOuterStyle}>
+        <div style={frameStyle}>{children}</div>
       </div>
     </div>
   );
