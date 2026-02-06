@@ -248,6 +248,7 @@ export default function PageShell(props: Props) {
       "/assets/characters/tsuduri.png",
   );
 
+  // ✅ 0.5〜2.0に統一
   const characterScale = Number.isFinite(settings.characterScale)
     ? settings.characterScale
     : DEFAULT_SETTINGS.characterScale;
@@ -263,9 +264,9 @@ export default function PageShell(props: Props) {
 
     return {
       width: "100%",
-      height: "100%", // ✅ ここが肝
+      height: "100%",
       minHeight: 0,
-      overflow: "hidden", // ✅ 外は閉じる（中でスクロールさせる）
+      overflow: "hidden",
       display: "flex",
       flexDirection: "column",
       "--shell-header-h": `${DESKTOP_HEADER_H}px`,
@@ -291,7 +292,6 @@ export default function PageShell(props: Props) {
   const resolvedFramePadding =
     contentPadding !== undefined ? contentPadding : defaultFramePadding;
 
-  // ✅ 重要：スクロール領域を「高さ100%」で明示
   const contentOuterStyle: CSSProperties = {
     flex: "1 1 auto",
     minHeight: 0,
@@ -406,21 +406,21 @@ export default function PageShell(props: Props) {
   };
 
   // ✅ レイヤ順：背景(-) < キャラ(10) < 情報(20) < ヘッダー(999)
+  // ✅ ビタ付け：余計な 6px マージンを撤去（safe-area だけ守る）
   const characterStyle: CSSProperties = {
     position: "fixed",
-    right: "max(6px, env(safe-area-inset-right))",
-    bottom: "max(6px, env(safe-area-inset-bottom))",
+    right: "env(safe-area-inset-right)",
+    bottom: "env(safe-area-inset-bottom)",
     zIndex: 10,
     pointerEvents: "none",
     opacity: clamp(characterOpacity, 0, 1),
-    transform: `scale(${clamp(characterScale, 0.7, 5)})`,
+    transform: `scale(${clamp(characterScale, 0.5, 2.0)})`,
     transformOrigin: "bottom right",
     filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.45))",
     maxWidth: "min(46vw, 520px)",
     height: "auto",
   };
 
-  // ✅ PC固定ヘッダー分の押し下げは「中身側」で吸収
   const innerPadTop = isMobile ? 0 : "var(--shell-header-h)";
 
   return (
