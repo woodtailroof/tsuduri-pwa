@@ -1,13 +1,18 @@
 // src/components/PageShell.tsx
-import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 type Props = {
   title?: ReactNode;
   subtitle?: ReactNode;
   children: ReactNode;
 
-  /** 画面ごとに幅を変えたい時用 */
+  /** 画面ごとに幅を変えたい時用（チャットだけ広め…とか） */
   maxWidth?: number;
 
   /** 戻るボタンを表示するか（デフォルト: true） */
@@ -16,16 +21,10 @@ type Props = {
   /** 戻るボタン押下時の挙動を上書きしたい場合 */
   onBack?: () => void;
 
-  /**
-   * 旧互換：title の配置指示（ただしPCは固定ヘッダーで強制的に左上）
-   * - "center" | "left"
-   */
+  /** 旧互換：title の配置指示（ただしPCは固定ヘッダーで強制的に左上） */
   titleLayout?: "center" | "left";
 
-  /**
-   * スクロール制御（画面によっては内部スクロールにしたい等）
-   * - "auto" | "hidden"
-   */
+  /** スクロール制御 */
   scrollY?: "auto" | "hidden";
 };
 
@@ -74,7 +73,7 @@ export default function PageShell({
   // ✅ PC固定ヘッダー仕様
   const DESKTOP_HEADER_H = 72;
 
-  const rootStyle = useMemo<React.CSSProperties>(() => {
+  const rootStyle = useMemo<CSSProperties>(() => {
     return {
       width: "100%",
       minHeight: "100dvh",
@@ -85,7 +84,7 @@ export default function PageShell({
     };
   }, [scrollY]);
 
-  const frameStyle: React.CSSProperties = {
+  const frameStyle: CSSProperties = {
     width: "100%",
     maxWidth,
     margin: "0 auto",
@@ -95,13 +94,11 @@ export default function PageShell({
   };
 
   // ✅ PC: ヘッダー分だけ本文を下げる（各画面で paddingTop 逃げをさせない）
-  const desktopContentStyle: React.CSSProperties = isDesktop
-    ? {
-        paddingTop: `var(--shell-header-h)`,
-      }
+  const desktopContentStyle: CSSProperties = isDesktop
+    ? { paddingTop: `var(--shell-header-h)` }
     : {};
 
-  const headerWrapStyle: React.CSSProperties = isDesktop
+  const headerWrapStyle: CSSProperties = isDesktop
     ? {
         position: "sticky",
         top: 0,
@@ -114,20 +111,18 @@ export default function PageShell({
         padding: "10px 18px",
         margin: "0 auto",
         maxWidth,
-        // 背景がある前提で、ヘッダーだけ少し見やすく
         background: "rgba(0,0,0,0.22)",
         borderBottom: "1px solid rgba(255,255,255,0.10)",
         backdropFilter: "blur(10px)",
         WebkitBackdropFilter: "blur(10px)",
       }
     : {
-        // スマホは既存に近い見せ方（画面側が title を h1 で渡してる前提）
         display: "grid",
         gap: 6,
         marginBottom: 12,
       };
 
-  const titleSlotStyle: React.CSSProperties = isDesktop
+  const titleSlotStyle: CSSProperties = isDesktop
     ? {
         display: "flex",
         alignItems: "center",
@@ -143,7 +138,7 @@ export default function PageShell({
         minWidth: 0,
       };
 
-  const subtitleStyle: React.CSSProperties = isDesktop
+  const subtitleStyle: CSSProperties = isDesktop
     ? {
         marginTop: 2,
         fontSize: 12,
@@ -159,7 +154,7 @@ export default function PageShell({
         textAlign: titleLayout === "left" ? "left" : "center",
       };
 
-  const backBtnStyle: React.CSSProperties = {
+  const backBtnStyle: CSSProperties = {
     borderRadius: 999,
     padding: "10px 14px",
     border: "1px solid rgba(255,255,255,0.18)",
@@ -178,7 +173,7 @@ export default function PageShell({
 
   const onClickBack = () => {
     if (onBack) return onBack();
-    history.back();
+    if (typeof window !== "undefined") window.history.back();
   };
 
   const titleNode = title ? (
@@ -201,7 +196,6 @@ export default function PageShell({
 
   return (
     <div style={rootStyle}>
-      {/* ✅ PC: 固定ヘッダー（タイトル左上・戻る右上） */}
       <div style={headerWrapStyle}>
         {isDesktop ? (
           <>
@@ -216,7 +210,6 @@ export default function PageShell({
           </>
         ) : (
           <>
-            {/* ✅ スマホは既存寄せ：title/subtitleは画面の指定に合わせて整列 */}
             <div style={titleSlotStyle}>{titleNode}</div>
             {subtitle ? <div style={subtitleStyle}>{subtitle}</div> : null}
             {showBack ? (
@@ -234,7 +227,6 @@ export default function PageShell({
         )}
       </div>
 
-      {/* 本文枠 */}
       <div style={frameStyle}>
         <div style={desktopContentStyle}>{children}</div>
       </div>
