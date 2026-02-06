@@ -11,7 +11,6 @@ import {
   getTimeBand,
   normalizePublicPath,
   resolveAutoBackgroundSrc,
-  type BgTimeBand,
   type BgMode,
   useAppSettings,
 } from "../lib/appSettings";
@@ -197,13 +196,10 @@ export default function PageShell(props: Props) {
   const fixedBgSrc =
     normalizePublicPath(fixedBgSrcRaw) || "/assets/bg/ui-check.png";
 
-  const nowBand: BgTimeBand = useMemo(() => getTimeBand(new Date()), []);
-  // ↑ minute tick は hook 側で rerender を起こすので、ここは new Date() でOK
-
-  const autoPreviewSrc = useMemo(
-    () => resolveAutoBackgroundSrc(autoBgSet, getTimeBand(new Date())),
-    [autoBgSet],
-  );
+  const autoPreviewSrc = useMemo(() => {
+    const band = getTimeBand(new Date());
+    return resolveAutoBackgroundSrc(autoBgSet, band);
+  }, [autoBgSet]);
 
   const effectiveBgSrc = useMemo(() => {
     if (bgMode === "off") return "";
@@ -243,7 +239,6 @@ export default function PageShell(props: Props) {
   });
 
   const fixedCharacterId = settings.fixedCharacterId ?? "tsuduri";
-
   const pickCharacterId =
     characterMode === "fixed" ? fixedCharacterId : randomPickedId;
 
@@ -252,6 +247,7 @@ export default function PageShell(props: Props) {
   const fallbackSrc = normalizePublicPath(
     `/assets/characters/${pickCharacterId}.png`,
   );
+
   const characterSrc = normalizePublicPath(
     characterOverrideSrc ||
       mappedSrc ||
