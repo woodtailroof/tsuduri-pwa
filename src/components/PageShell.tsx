@@ -1,399 +1,242 @@
 // src/components/PageShell.tsx
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import {
-  DEFAULT_SETTINGS,
-  getTimeBand,
-  normalizePublicPath,
-  resolveAutoBackgroundSrc,
-  useAppSettings,
-  type BgTimeBand,
-} from "../lib/appSettings";
-import { CHARACTERS_STORAGE_KEY } from "../screens/CharacterSettings";
 
 type Props = {
   title?: ReactNode;
   subtitle?: ReactNode;
   children: ReactNode;
 
-  /** 画面ごとに幅を変えたい時用（チャットだけ広め…とか） */
+  /** 画面ごとに幅を変えたい時用 */
   maxWidth?: number;
 
   /** 戻るボタンを表示するか（デフォルト: true） */
   showBack?: boolean;
+
   /** 戻るボタン押下時の挙動を上書きしたい場合 */
   onBack?: () => void;
 
-  /** タイトル配置 */
-  titleLayout?: "left" | "center";
+  /**
+   * 旧互換：title の配置指示（ただしPCは固定ヘッダーで強制的に左上）
+   * - "center" | "left"
+   */
+  titleLayout?: "center" | "left";
 
-  /** Shell全体の縦スクロール制御 */
-  scrollY?: "hidden" | "auto";
-
-  /** children の内側余白 */
-  contentPadding?: string;
-
-  /** 設定画面などで「キャラを一時的に消したい」用途 */
-  showTestCharacter?: boolean;
+  /**
+   * スクロール制御（画面によっては内部スクロールにしたい等）
+   * - "auto" | "hidden"
+   */
+  scrollY?: "auto" | "hidden";
 };
 
-type StoredCharacterLike = {
-  id?: unknown;
-  name?: unknown; // v2
-  label?: unknown; // v1
-};
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const mq = window.matchMedia("(max-width: 820px)");
+    const coarse = window.matchMedia("(pointer: coarse)");
+    return mq.matches || coarse.matches;
+  });
 
-function safeJsonParse<T>(raw: string | null, fallback: T): T {
-  try {
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 820px)");
+    const coarse = window.matchMedia("(pointer: coarse)");
 
-/** 作成キャラ一覧（v2/v1混在をゆるく吸収） */
-function loadCreatedCharacterIds(): string[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(CHARACTERS_STORAGE_KEY);
-  const list = safeJsonParse<StoredCharacterLike[]>(raw, []);
-  if (!Array.isArray(list)) return [];
-  const ids = list
-    .map((c) => (typeof c?.id === "string" ? c.id : ""))
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return Array.from(new Set(ids));
-}
+    const onChange = () => setIsMobile(mq.matches || coarse.matches);
 
-/** キャラID -> 画像パス の割り当て（Settings で編集してるやつ） */
-const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
-type CharacterImageMap = Record<string, string>;
+    mq.addEventListener?.("change", onChange);
+    coarse.addEventListener?.("change", onChange);
+    window.addEventListener("orientationchange", onChange);
 
-function loadCharacterImageMap(): CharacterImageMap {
-  if (typeof window === "undefined") return {};
-  const raw = localStorage.getItem(CHARACTER_IMAGE_MAP_KEY);
-  const map = safeJsonParse<CharacterImageMap>(raw, {});
-  if (!map || typeof map !== "object") return {};
-  return map;
-}
+    return () => {
+      mq.removeEventListener?.("change", onChange);
+      coarse.removeEventListener?.("change", onChange);
+      window.removeEventListener("orientationchange", onChange);
+    };
+  }, []);
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
+  return isMobile;
 }
 
 export default function PageShell({
   title,
   subtitle,
   children,
-  maxWidth = 980,
+  maxWidth = 1100,
   showBack = true,
   onBack,
-  titleLayout = "left",
-  scrollY = "hidden",
-  contentPadding = "clamp(10px, 2vw, 18px)",
-  showTestCharacter = true,
+  titleLayout = "center",
+  scrollY = "auto",
 }: Props) {
-  const { settings } = useAppSettings();
+  const isMobile = useIsMobile();
+  const isDesktop = !isMobile;
 
-  // ===== 見た目（安全なデフォルト） =====
-  const bgDim = Number.isFinite(settings.bgDim)
-    ? settings.bgDim
-    : DEFAULT_SETTINGS.bgDim;
-  const bgBlur = Number.isFinite(settings.bgBlur)
-    ? settings.bgBlur
-    : DEFAULT_SETTINGS.bgBlur;
+  // ✅ PC固定ヘッダー仕様
+  const DESKTOP_HEADER_H = 72;
 
-  const glassAlpha = Number.isFinite(settings.glassAlpha)
-    ? settings.glassAlpha
-    : DEFAULT_SETTINGS.glassAlpha;
-  const glassBlur = Number.isFinite(settings.glassBlur)
-    ? settings.glassBlur
-    : DEFAULT_SETTINGS.glassBlur;
-
-  // ===== 背景 =====
-  const bgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
-  const autoBgSet = (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim();
-  const fixedBgSrcRaw = settings.fixedBgSrc ?? DEFAULT_SETTINGS.fixedBgSrc;
-  const fixedBgSrc = normalizePublicPath(fixedBgSrcRaw);
-
-  const [minuteTick, setMinuteTick] = useState(0);
-  useEffect(() => {
-    let timer: number | null = null;
-    const arm = () => {
-      const now = Date.now();
-      const ms = 60_000 - (now % 60_000) + 5;
-      timer = window.setTimeout(() => {
-        setMinuteTick((v) => v + 1);
-        arm();
-      }, ms);
+  const rootStyle = useMemo<React.CSSProperties>(() => {
+    return {
+      width: "100%",
+      minHeight: "100dvh",
+      overflowX: "clip",
+      overflowY: scrollY,
+      // PageShell内で高さ計算・余白計算するための変数
+      ["--shell-header-h" as any]: `${DESKTOP_HEADER_H}px`,
     };
-    arm();
-    return () => {
-      if (timer != null) window.clearTimeout(timer);
-    };
-  }, []);
+  }, [scrollY]);
 
-  const nowBand: BgTimeBand = useMemo(
-    () => getTimeBand(new Date()),
-    [minuteTick],
-  );
-
-  const bgSrc = useMemo(() => {
-    if (bgMode === "off") return "";
-    if (bgMode === "fixed") return fixedBgSrc || "";
-    return resolveAutoBackgroundSrc(autoBgSet, nowBand) || "";
-  }, [bgMode, fixedBgSrc, autoBgSet, nowBand]);
-
-  // ===== キャラ =====
-  const characterEnabled =
-    (settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled) &&
-    showTestCharacter;
-
-  const characterMode =
-    settings.characterMode ?? DEFAULT_SETTINGS.characterMode;
-  const fixedCharacterId = (settings.fixedCharacterId ?? "").trim();
-  const overrideSrcRaw = (settings.characterOverrideSrc ?? "").trim();
-
-  const characterScale = Number.isFinite(settings.characterScale)
-    ? clamp(settings.characterScale, 0.7, 5.0)
-    : DEFAULT_SETTINGS.characterScale;
-
-  const characterOpacity = Number.isFinite(settings.characterOpacity)
-    ? clamp(settings.characterOpacity, 0, 1)
-    : DEFAULT_SETTINGS.characterOpacity;
-
-  const [randomPickId, setRandomPickId] = useState<string>("");
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (characterMode !== "random") return;
-
-    const ids = loadCreatedCharacterIds();
-    const pool = ids.length ? ids : ["tsuduri"];
-    const pick = pool[Math.floor(Math.random() * pool.length)] || "tsuduri";
-    setRandomPickId(pick);
-  }, [characterMode]);
-
-  useEffect(() => {
-    const onAny = () => {
-      if (characterMode !== "random") return;
-      const ids = loadCreatedCharacterIds();
-      const pool = ids.length ? ids : ["tsuduri"];
-      const pick = pool[Math.floor(Math.random() * pool.length)] || "tsuduri";
-      setRandomPickId(pick);
-    };
-    window.addEventListener("storage", onAny);
-    window.addEventListener("tsuduri-settings" as any, onAny);
-    return () => {
-      window.removeEventListener("storage", onAny);
-      window.removeEventListener("tsuduri-settings" as any, onAny);
-    };
-  }, [characterMode]);
-
-  const effectiveCharacterId =
-    characterMode === "fixed" ? fixedCharacterId : randomPickId;
-
-  const characterSrc = useMemo(() => {
-    const map = loadCharacterImageMap();
-
-    const override = normalizePublicPath(overrideSrcRaw);
-    if (override) return override;
-
-    const mapped = normalizePublicPath(map[effectiveCharacterId] ?? "");
-    if (mapped) return mapped;
-
-    return "/assets/characters/tsuduri.png";
-  }, [overrideSrcRaw, effectiveCharacterId, minuteTick]);
-
-  // ===== 戻る =====
-  const handleBack = () => {
-    if (onBack) onBack();
-    else history.back();
+  const frameStyle: React.CSSProperties = {
+    width: "100%",
+    maxWidth,
+    margin: "0 auto",
+    padding: isMobile ? "14px 14px 18px" : "18px 18px 20px",
+    position: "relative",
+    minHeight: "100%",
   };
 
-  /**
-   * ✅ レイヤー
-   * 背景(0) → 暗幕(1) → キャラ(2) → UI(3)
-   */
-  const Z_BG = 0;
-  const Z_DIM = 1;
-  const Z_CHAR = 2;
-  const Z_UI = 3;
+  // ✅ PC: ヘッダー分だけ本文を下げる（各画面で paddingTop 逃げをさせない）
+  const desktopContentStyle: React.CSSProperties = isDesktop
+    ? {
+        paddingTop: `var(--shell-header-h)`,
+      }
+    : {};
 
-  // ✅ 重要：RecordHistory.tsx と同じ変数名に統一（互換で ts- も生やす）
-  const cssVars = {
-    "--glass-alpha": String(glassAlpha),
-    "--glass-blur": `${glassBlur}px`,
-    "--ts-glass-alpha": String(glassAlpha),
-    "--ts-glass-blur": `${glassBlur}px`,
-  } as unknown as React.CSSProperties;
+  const headerWrapStyle: React.CSSProperties = isDesktop
+    ? {
+        position: "sticky",
+        top: 0,
+        zIndex: 50,
+        height: `var(--shell-header-h)`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        padding: "10px 18px",
+        margin: "0 auto",
+        maxWidth,
+        // 背景がある前提で、ヘッダーだけ少し見やすく
+        background: "rgba(0,0,0,0.22)",
+        borderBottom: "1px solid rgba(255,255,255,0.10)",
+        backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
+      }
+    : {
+        // スマホは既存に近い見せ方（画面側が title を h1 で渡してる前提）
+        display: "grid",
+        gap: 6,
+        marginBottom: 12,
+      };
 
-  return (
-    <div
-      style={{
-        ...cssVars,
-        height: "100svh",
+  const titleSlotStyle: React.CSSProperties = isDesktop
+    ? {
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        minWidth: 0,
+        flex: "1 1 auto",
+      }
+    : {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: titleLayout === "left" ? "flex-start" : "center",
+        gap: 10,
+        minWidth: 0,
+      };
+
+  const subtitleStyle: React.CSSProperties = isDesktop
+    ? {
+        marginTop: 2,
+        fontSize: 12,
+        color: "rgba(255,255,255,0.66)",
+        whiteSpace: "nowrap",
         overflow: "hidden",
-        position: "relative",
-        color: "#fff",
-      }}
-    >
-      <style>{`
-        .glass{
-          background: rgba(0,0,0, calc(var(--glass-alpha, 0.22)));
-          border: 1px solid rgba(255,255,255,0.14);
-          backdrop-filter: blur(var(--glass-blur, 10px));
-          -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
-        }
-        .glass-strong{
-          background: rgba(0,0,0, calc(var(--glass-alpha, 0.22) + 0.06));
-          border: 1px solid rgba(255,255,255,0.16);
-          backdrop-filter: blur(var(--glass-blur, 10px));
-          -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
-        }
-        .ts-scroll{
-          -webkit-overflow-scrolling: touch;
-          overscroll-behavior: contain;
-        }
-        button, select, input { font: inherit; }
-      `}</style>
+        textOverflow: "ellipsis",
+        maxWidth: "56vw",
+      }
+    : {
+        fontSize: 12,
+        color: "rgba(255,255,255,0.62)",
+        textAlign: titleLayout === "left" ? "left" : "center",
+      };
 
-      {!!bgSrc && (
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: 0,
-            backgroundImage: `url(${bgSrc})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            transform: "scale(1.02)",
-            filter: bgBlur ? `blur(${bgBlur}px)` : undefined,
-            zIndex: Z_BG,
-          }}
-        />
-      )}
+  const backBtnStyle: React.CSSProperties = {
+    borderRadius: 999,
+    padding: "10px 14px",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(0,0,0,0.28)",
+    color: "rgba(255,255,255,0.88)",
+    cursor: "pointer",
+    userSelect: "none",
+    lineHeight: 1,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    whiteSpace: "nowrap",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+  };
 
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: `rgba(0,0,0,${clamp(bgDim, 0, 1)})`,
-          zIndex: Z_DIM,
-        }}
-      />
+  const onClickBack = () => {
+    if (onBack) return onBack();
+    history.back();
+  };
 
-      {/* ✅ キャラ：右下ビタ付け、scaleはここだけ */}
-      {characterEnabled && !!characterSrc && (
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            right: 0,
-            bottom: 0,
-            zIndex: Z_CHAR,
-            pointerEvents: "none",
-            transformOrigin: "bottom right",
-            transform: `scale(${characterScale})`,
-          }}
-        >
-          <img
-            src={characterSrc}
-            alt=""
-            style={{
-              display: "block",
-              opacity: characterOpacity,
-              maxWidth: "60vw",
-              maxHeight: "70svh",
-              filter: "drop-shadow(0 8px 18px rgba(0,0,0,0.26))",
-            }}
-          />
-        </div>
-      )}
-
-      {/* UI（最前面） */}
+  const titleNode = title ? (
+    <div style={{ minWidth: 0 }}>
       <div
         style={{
-          position: "relative",
-          zIndex: Z_UI,
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          minHeight: 0,
+          minWidth: 0,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
         }}
       >
-        {/* ヘッダー（固定） */}
-        <div style={{ padding: contentPadding, paddingBottom: 10 }}>
-          <div style={{ maxWidth, margin: "0 auto", display: "grid", gap: 8 }}>
-            <div style={{ position: "relative" }}>
-              {/* ✅ 戻る：UI内なので確実に押せる */}
-              {showBack && (
+        {title}
+      </div>
+      {isDesktop && subtitle ? (
+        <div style={subtitleStyle}>{subtitle}</div>
+      ) : null}
+    </div>
+  ) : null;
+
+  return (
+    <div style={rootStyle}>
+      {/* ✅ PC: 固定ヘッダー（タイトル左上・戻る右上） */}
+      <div style={headerWrapStyle}>
+        {isDesktop ? (
+          <>
+            <div style={titleSlotStyle}>{titleNode}</div>
+            {showBack ? (
+              <button type="button" onClick={onClickBack} style={backBtnStyle}>
+                ← 戻る
+              </button>
+            ) : (
+              <span />
+            )}
+          </>
+        ) : (
+          <>
+            {/* ✅ スマホは既存寄せ：title/subtitleは画面の指定に合わせて整列 */}
+            <div style={titleSlotStyle}>{titleNode}</div>
+            {subtitle ? <div style={subtitleStyle}>{subtitle}</div> : null}
+            {showBack ? (
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
                 <button
                   type="button"
-                  onClick={handleBack}
-                  className="glass"
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    right: 0,
-                    height: 38,
-                    padding: "0 12px",
-                    borderRadius: 14,
-                    color: "rgba(255,255,255,0.92)",
-                    cursor: "pointer",
-                    userSelect: "none",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                  title="戻る"
+                  onClick={onClickBack}
+                  style={backBtnStyle}
                 >
-                  ⟵ 戻る
+                  ← 戻る
                 </button>
-              )}
-
-              {/* タイトル */}
-              <div
-                style={{
-                  paddingRight: showBack ? 96 : 0,
-                  textAlign: titleLayout === "center" ? "center" : "left",
-                }}
-              >
-                {title}
-                {subtitle}
               </div>
-            </div>
-          </div>
-        </div>
+            ) : null}
+          </>
+        )}
+      </div>
 
-        {/* コンテンツ */}
-        <div
-          className={scrollY === "auto" ? "ts-scroll" : undefined}
-          style={{
-            flex: "1 1 auto",
-            minHeight: 0,
-            overflowY: scrollY === "auto" ? "auto" : "hidden",
-            overflowX: "hidden",
-            padding: contentPadding,
-            paddingTop: 0,
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <div
-            style={{
-              maxWidth,
-              margin: "0 auto",
-              minHeight: 0,
-              height: "100%",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            {children}
-          </div>
-        </div>
+      {/* 本文枠 */}
+      <div style={frameStyle}>
+        <div style={desktopContentStyle}>{children}</div>
       </div>
     </div>
   );
