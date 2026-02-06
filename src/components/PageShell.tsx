@@ -73,19 +73,20 @@ function useIsMobile() {
   return isMobile;
 }
 
-export default function PageShell({
-  title,
-  subtitle,
-  children,
-  maxWidth = 1100,
-  showBack = true,
-  onBack,
-  titleLayout = "center",
-  scrollY = "auto",
-  contentPadding,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  showTestCharacter,
-}: Props) {
+export default function PageShell(props: Props) {
+  const {
+    title,
+    subtitle,
+    children,
+    maxWidth = 1100,
+    showBack = true,
+    onBack,
+    titleLayout = "center",
+    scrollY = "auto",
+    contentPadding,
+    // showTestCharacter は props として受け取れるが、このコンポーネント内では使わない（未使用エラー回避）
+  } = props;
+
   const isMobile = useIsMobile();
   const isDesktop = !isMobile;
 
