@@ -28,6 +28,10 @@ type Props = {
   scrollY?: "auto" | "hidden";
 };
 
+// CSS変数（--xxx）を style に安全に入れるための型
+type CSSVars = Record<`--${string}`, string>;
+type StyleWithVars = CSSProperties & CSSVars;
+
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
@@ -73,14 +77,13 @@ export default function PageShell({
   // ✅ PC固定ヘッダー仕様
   const DESKTOP_HEADER_H = 72;
 
-  const rootStyle = useMemo<CSSProperties>(() => {
+  const rootStyle = useMemo<StyleWithVars>(() => {
     return {
       width: "100%",
       minHeight: "100dvh",
       overflowX: "clip",
       overflowY: scrollY,
-      // PageShell内で高さ計算・余白計算するための変数
-      ["--shell-header-h" as any]: `${DESKTOP_HEADER_H}px`,
+      "--shell-header-h": `${DESKTOP_HEADER_H}px`,
     };
   }, [scrollY]);
 
@@ -95,7 +98,7 @@ export default function PageShell({
 
   // ✅ PC: ヘッダー分だけ本文を下げる（各画面で paddingTop 逃げをさせない）
   const desktopContentStyle: CSSProperties = isDesktop
-    ? { paddingTop: `var(--shell-header-h)` }
+    ? { paddingTop: "var(--shell-header-h)" }
     : {};
 
   const headerWrapStyle: CSSProperties = isDesktop
@@ -103,7 +106,7 @@ export default function PageShell({
         position: "sticky",
         top: 0,
         zIndex: 50,
-        height: `var(--shell-header-h)`,
+        height: "var(--shell-header-h)",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
