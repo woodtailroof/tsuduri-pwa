@@ -1166,21 +1166,16 @@ export default function RecordHistory({ back }: Props) {
     "--glass-blur": `${settings.glassBlur ?? 10}px`,
   } as unknown as CSSProperties;
 
-  /**
-   * ✅ 重要：PageShellの「戻るボタン帯」がコンテンツに被るため、
-   * PCではここで“上の安全余白”を確保して、同時に高さ計算にも反映する。
-   *
-   * もしまだ被るなら：SHELL_TOP_SAFE_PX を 84〜96 に上げれば確実に逃げる。
-   */
-  const SHELL_TOP_SAFE_PX = 72;
-
   return (
     <PageShell
-      title={isDesktop ? undefined : titleNode}
-      subtitle={isDesktop ? undefined : headerSubNode}
+      // ✅ PCでもPageShellヘッダーに統一（タイトル左上 / 戻る右上を完全固定）
+      title={titleNode}
+      subtitle={headerSubNode}
+      titleLayout="left"
       maxWidth={1400}
       showBack
       onBack={back}
+      // ✅ PCは外側スクロールを止めて、各カラムだけスクロールさせる
       scrollY={isDesktop ? "hidden" : "auto"}
     >
       <div
@@ -1189,17 +1184,9 @@ export default function RecordHistory({ back }: Props) {
           overflowX: "clip",
           maxWidth: "100vw",
           minHeight: 0,
-
-          // ✅ PC: 上に安全余白（戻るボタン帯ぶん）を確保
-          paddingTop: isDesktop ? SHELL_TOP_SAFE_PX : 0,
-
-          // ✅ PC: そのぶん高さも引く（下切れ防止）
-          height: isDesktop
-            ? `calc(100dvh - ${SHELL_TOP_SAFE_PX}px - env(safe-area-inset-top) - env(safe-area-inset-bottom))`
-            : "auto",
-
-          // ほんの少し余白を残して“ギリ切れ”を防ぐ
-          paddingBottom: isDesktop ? 8 : 0,
+          // ✅ PageShellがPCヘッダー分のpaddingTopを足してくれる前提なので、ここで上の安全余白は足さない
+          // ✅ PCは“残り領域を使い切る”ために高さだけは定義（header分はCSS変数で引く）
+          height: isDesktop ? "calc(100dvh - var(--shell-header-h))" : "auto",
         }}
       >
         {isMobile ? (
@@ -1251,60 +1238,40 @@ export default function RecordHistory({ back }: Props) {
               height: "100%",
             }}
           >
-            {/* 左 */}
+            {/* 左（リスト） */}
             <div
+              className="glass glass-strong"
               style={{
-                display: "grid",
-                gridTemplateRows: "auto 1fr",
-                gap: 12,
-                minWidth: 0,
+                borderRadius: 16,
+                padding: 12,
                 minHeight: 0,
                 height: "100%",
+                overflow: "hidden",
+                display: "grid",
+                gridTemplateRows: "auto 1fr",
+                gap: 10,
               }}
             >
-              <div
-                className="glass glass-strong"
-                style={{ borderRadius: 16, padding: 12 }}
-              >
-                {titleNode}
-                <div style={{ height: 8 }} />
-                {headerSubNode}
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+                絞り込み {filteredArchive.length} 件（表示{" "}
+                {Math.min(archivePageSize, filteredArchive.length)} 件）
               </div>
 
               <div
-                className="glass glass-strong"
                 style={{
-                  borderRadius: 16,
-                  padding: 12,
                   minHeight: 0,
                   height: "100%",
-                  overflow: "hidden",
-                  display: "grid",
-                  gridTemplateRows: "auto 1fr",
-                  gap: 10,
+                  overflowY: "auto",
+                  paddingRight: 4,
+                  overscrollBehavior: "contain",
+                  WebkitOverflowScrolling: "touch",
                 }}
               >
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-                  絞り込み {filteredArchive.length} 件（表示{" "}
-                  {Math.min(archivePageSize, filteredArchive.length)} 件）
-                </div>
-
-                <div
-                  style={{
-                    minHeight: 0,
-                    height: "100%",
-                    overflowY: "auto",
-                    paddingRight: 4,
-                    overscrollBehavior: "contain",
-                    WebkitOverflowScrolling: "touch",
-                  }}
-                >
-                  {ListView}
-                </div>
+                {ListView}
               </div>
             </div>
 
-            {/* 中央 */}
+            {/* 中央（操作 + 写真） */}
             <div
               style={{
                 display: "grid",
@@ -1379,7 +1346,7 @@ export default function RecordHistory({ back }: Props) {
               </div>
             </div>
 
-            {/* 右 */}
+            {/* 右（詳細） */}
             <div
               ref={detailPaneRef}
               className="glass glass-strong"
@@ -1388,7 +1355,9 @@ export default function RecordHistory({ back }: Props) {
                 padding: 12,
                 minHeight: 0,
                 height: "100%",
-                overflow: "hidden",
+                overflowY: "auto",
+                overscrollBehavior: "contain",
+                WebkitOverflowScrolling: "touch",
               }}
             >
               {!allLoadedOnce && allLoading ? (

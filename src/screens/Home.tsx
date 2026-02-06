@@ -96,7 +96,8 @@ export default function Home({ go }: Props) {
       maxWidth={1700}
       showBack={false}
       scrollY="hidden"
-      contentPadding={"clamp(10px, 1.8vw, 16px)"}
+      // ✅ PageShell側のpaddingを0にして、Home側で高さ計算を安定させる
+      contentPadding={0}
     >
       <style>
         {`
@@ -116,14 +117,25 @@ export default function Home({ go }: Props) {
           height:auto;
         }
 
-        /* ✅ ここが重要：PageShellの内側(=100%)にフィットさせる
-           100svh/100vh を使うと safe-area + 100dvh とズレて下が切れやすい */
+        /* ✅ Homeの本文領域。PageShell(PC)の固定ヘッダー分を“ここで”吸収する */
         .home-root{
+          width:100%;
+          min-height:0;
+        }
+        @media (min-width: 821px){
+          .home-root{
+            height: calc(100dvh - var(--shell-header-h));
+          }
+        }
+
+        /* ✅ Homeの内側余白（PageShellのcontentPaddingの代替） */
+        .home-inner{
           height:100%;
           min-height:0;
+          padding: clamp(10px, 1.8vw, 16px);
           display:grid;
           grid-template-rows:auto minmax(0,1fr);
-          gap:clamp(2px,0.8vh,8px);
+          gap: clamp(2px, 0.8vh, 8px);
         }
 
         /* ===== ロゴ ===== */
@@ -268,48 +280,50 @@ export default function Home({ go }: Props) {
           pointerEvents: canUse ? "auto" : "none",
         }}
       >
-        <div className="home-safe-logo">
-          <div className="home-logo-box">
-            <img className="home-logo" src={logoSrc} alt="釣嫁ぷろじぇくと" />
+        <div className="home-inner">
+          <div className="home-safe-logo">
+            <div className="home-logo-box">
+              <img className="home-logo" src={logoSrc} alt="釣嫁ぷろじぇくと" />
+            </div>
           </div>
-        </div>
 
-        <div className="home-actions">
-          <div className="home-safe-actions">
-            <div className="home-actions-scale">
-              <div className="home-grid">
-                <ImgButton
-                  src={btnRecord}
-                  alt="記録する"
-                  onClick={() => go("record")}
-                  style={{ width: "var(--btnw)" }}
-                />
-                <ImgButton
-                  src={btnHistory}
-                  alt="履歴をみる"
-                  onClick={() => go("recordHistory")}
-                  style={{ width: "var(--btnw)" }}
-                />
-                <ImgButton
-                  src={btnWeather}
-                  alt="天気・潮をみる"
-                  onClick={() => go("weather")}
-                  style={{ width: "var(--btnw)" }}
-                />
-                <ImgButton
-                  src={btnChat}
-                  alt="話す"
-                  onClick={() => go("chat")}
-                  style={{ width: "var(--btnw)" }}
-                />
-              </div>
-              <div className="home-settings">
-                <ImgButton
-                  src={btnSettings}
-                  alt="設定"
-                  onClick={() => go("settings")}
-                  style={{ width: "var(--btnw)" }}
-                />
+          <div className="home-actions">
+            <div className="home-safe-actions">
+              <div className="home-actions-scale">
+                <div className="home-grid">
+                  <ImgButton
+                    src={btnRecord}
+                    alt="記録する"
+                    onClick={() => go("record")}
+                    style={{ width: "var(--btnw)" }}
+                  />
+                  <ImgButton
+                    src={btnHistory}
+                    alt="履歴をみる"
+                    onClick={() => go("recordHistory")}
+                    style={{ width: "var(--btnw)" }}
+                  />
+                  <ImgButton
+                    src={btnWeather}
+                    alt="天気・潮をみる"
+                    onClick={() => go("weather")}
+                    style={{ width: "var(--btnw)" }}
+                  />
+                  <ImgButton
+                    src={btnChat}
+                    alt="話す"
+                    onClick={() => go("chat")}
+                    style={{ width: "var(--btnw)" }}
+                  />
+                </div>
+                <div className="home-settings">
+                  <ImgButton
+                    src={btnSettings}
+                    alt="設定"
+                    onClick={() => go("settings")}
+                    style={{ width: "var(--btnw)" }}
+                  />
+                </div>
               </div>
             </div>
           </div>

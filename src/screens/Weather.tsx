@@ -205,50 +205,14 @@ function useIsMobile() {
 
 export default function Weather({ back }: Props) {
   const { settings } = useAppSettings();
-  const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
-  const glassBlur = clamp(settings.glassBlur ?? 10, 0, 40);
+
+  const glassVars = {
+    "--glass-alpha": String(clamp(settings.glassAlpha ?? 0.22, 0, 0.6)),
+    "--glass-blur": `${clamp(settings.glassBlur ?? 10, 0, 40)}px`,
+  } as unknown as CSSProperties;
 
   const isMobile = useIsMobile();
   const isDesktop = !isMobile;
-
-  /**
-   * ✅ RecordHistory と同じ：戻るボタン帯セーフ領域
-   * もしまだ被るなら 84〜96 に上げれば確実に逃げる
-   */
-  const SHELL_TOP_SAFE_PX = 72;
-
-  const glassBg = (alpha: number) => `rgba(0,0,0,${clamp(alpha, 0, 0.85)})`;
-  const glassBorder = "1px solid rgba(255,255,255,0.14)";
-  const glassFilter = `blur(${Math.round(glassBlur)}px)`;
-
-  const TILE_STYLE: CSSProperties = {
-    border: glassBorder,
-    borderRadius: 14,
-    padding: 12,
-    background: glassBg(glassAlpha),
-    backdropFilter: glassFilter,
-    WebkitBackdropFilter: glassFilter,
-    color: "#ddd",
-    minWidth: 0,
-  };
-
-  const TAB_STYLE: CSSProperties = {
-    borderRadius: 999,
-    padding: "8px 12px",
-    border: "1px solid rgba(255,255,255,0.15)",
-    background: glassBg(glassAlpha),
-    backdropFilter: glassFilter,
-    WebkitBackdropFilter: glassFilter,
-    color: "#eee",
-    cursor: "pointer",
-  };
-
-  const TAB_STYLE_ACTIVE: CSSProperties = {
-    ...TAB_STYLE,
-    border: "2px solid #ff4d6d",
-    background: "rgba(255,77,109,0.14)",
-    color: "#fff",
-  };
 
   const [tab, setTab] = useState<"today" | "tomorrow" | "pick">("today");
   const [picked, setPicked] = useState<string>(toDateInputValue(new Date()));
@@ -334,291 +298,347 @@ export default function Weather({ back }: Props) {
   const highs = extremes.filter((e) => e.kind === "high");
   const lows = extremes.filter((e) => e.kind === "low");
 
+  const titleNode = (
+    <h1
+      style={{
+        margin: 0,
+        fontSize: "clamp(20px, 5.5vw, 32px)",
+        lineHeight: 1.15,
+      }}
+    >
+      ☀️ 天気・潮を見る
+    </h1>
+  );
+
+  const subNode = (
+    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
+      🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
+      {!online && (
+        <span style={{ marginLeft: 10, color: "#f6c" }}>📴 オフライン</span>
+      )}
+    </div>
+  );
+
+  const tileStyle: CSSProperties = {
+    borderRadius: 16,
+    padding: 12,
+    minWidth: 0,
+    overflow: "hidden",
+    background: "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.35))",
+    border: "1px solid rgba(255,255,255,0.12)",
+    boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
+    backdropFilter: "blur(var(--glass-blur,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+  };
+
+  const tabBtnBase: CSSProperties = {
+    borderRadius: 999,
+    padding: "8px 12px",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(0,0,0,0.22)",
+    color: "rgba(255,255,255,0.82)",
+    cursor: "pointer",
+    userSelect: "none",
+    lineHeight: 1,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    whiteSpace: "nowrap",
+    backdropFilter: "blur(var(--glass-blur,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+  };
+
+  const tabBtn = (active: boolean): CSSProperties => ({
+    ...tabBtnBase,
+    border: active ? "2px solid #ff4d6d" : tabBtnBase.border,
+    background: active ? "rgba(255,77,109,0.14)" : tabBtnBase.background,
+    color: active ? "#fff" : tabBtnBase.color,
+    boxShadow: active
+      ? "0 6px 18px rgba(0,0,0,0.22), inset 0 0 0 1px rgba(255,77,109,0.22)"
+      : "none",
+  });
+
   return (
     <PageShell
-      title={null}
-      subtitle={null}
+      title={titleNode}
+      subtitle={subNode}
+      titleLayout="left"
       maxWidth={980}
       showBack
       onBack={back}
+      scrollY={isDesktop ? "hidden" : "auto"}
     >
-      {/* ✅ 戻るボタン帯に被らない“セーフ領域ラッパー” */}
       <div
         style={{
+          ...glassVars,
           overflowX: "clip",
           maxWidth: "100vw",
           minHeight: 0,
-
-          paddingTop: isDesktop ? SHELL_TOP_SAFE_PX : 0,
-
-          height: isDesktop
-            ? `calc(100dvh - ${SHELL_TOP_SAFE_PX}px - env(safe-area-inset-top) - env(safe-area-inset-bottom))`
-            : "auto",
-
-          paddingBottom: isDesktop ? 8 : 0,
+          height: isDesktop ? "calc(100dvh - var(--shell-header-h))" : "auto",
         }}
       >
-        {/* ✅ 自前ヘッダー */}
         <div
           style={{
-            ...TILE_STYLE,
-            padding: 16,
-            marginTop: 8,
-            width: "100%",
-            textAlign: "left",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-start",
+            display: "grid",
+            gap: 12,
+            minWidth: 0,
+            minHeight: 0,
+            height: isDesktop ? "100%" : "auto",
           }}
         >
-          <h1
-            style={{
-              margin: 0,
-              fontSize: "clamp(20px, 5.5vw, 32px)",
-              textAlign: "left",
-              width: "100%",
-            }}
-          >
-            ☀️ 天気・潮を見る
-          </h1>
+          {/* タブ */}
           <div
+            className="glass glass-strong"
             style={{
-              marginTop: 8,
-              fontSize: 12,
-              color: "rgba(255,255,255,0.65)",
-              textAlign: "left",
-              width: "100%",
+              ...tileStyle,
+              display: "flex",
+              gap: 10,
+              flexWrap: "wrap",
+              alignItems: "center",
             }}
           >
-            🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:
-            {FIXED_PORT.hc}）
-            {!online && (
-              <span style={{ marginLeft: 10, color: "#f6c" }}>
-                📴 オフライン
-              </span>
+            <button
+              onClick={() => setTab("today")}
+              style={tabBtn(tab === "today")}
+            >
+              今日
+            </button>
+            <button
+              onClick={() => setTab("tomorrow")}
+              style={tabBtn(tab === "tomorrow")}
+            >
+              明日
+            </button>
+            <button
+              onClick={() => setTab("pick")}
+              style={tabBtn(tab === "pick")}
+            >
+              日付指定
+            </button>
+
+            {tab === "pick" && (
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  minWidth: 0,
+                  color: "rgba(255,255,255,0.72)",
+                }}
+              >
+                <span style={{ fontSize: 12 }}>📅</span>
+                <input
+                  type="date"
+                  value={picked}
+                  onChange={(e) => setPicked(e.target.value)}
+                  style={{
+                    background: "rgba(0,0,0,0.22)",
+                    color: "#eee",
+                    border: "1px solid rgba(255,255,255,0.18)",
+                    borderRadius: 10,
+                    padding: "6px 10px",
+                    maxWidth: "100%",
+                    backdropFilter: "blur(var(--glass-blur,10px))",
+                    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+                  }}
+                />
+              </label>
             )}
           </div>
-        </div>
 
-        {/* タブ */}
-        <div
-          style={{
-            marginTop: 14,
-            width: "100%",
-            display: "flex",
-            gap: 10,
-            flexWrap: "wrap",
-            minWidth: 0,
-            justifyContent: "flex-start",
-            textAlign: "left",
-          }}
-        >
-          <button
-            onClick={() => setTab("today")}
-            style={tab === "today" ? TAB_STYLE_ACTIVE : TAB_STYLE}
-          >
-            今日
-          </button>
+          {/* ステータス */}
+          {(state.status === "loading" || state.status === "error") && (
+            <div
+              className="glass glass-strong"
+              style={{
+                ...tileStyle,
+                fontSize: 12,
+                color: state.status === "loading" ? "#0a6" : "#ff7a7a",
+              }}
+            >
+              {state.status === "loading"
+                ? "🌊 tide736：取得中…"
+                : `🌊 tide736：取得失敗 → ${state.message}`}
+            </div>
+          )}
 
-          <button
-            onClick={() => setTab("tomorrow")}
-            style={tab === "tomorrow" ? TAB_STYLE_ACTIVE : TAB_STYLE}
-          >
-            明日
-          </button>
-
-          <button
-            onClick={() => setTab("pick")}
-            style={tab === "pick" ? TAB_STYLE_ACTIVE : TAB_STYLE}
-          >
-            日付指定
-          </button>
-
-          {tab === "pick" && (
-            <label
+          {/* サマリー */}
+          <div className="glass glass-strong" style={tileStyle}>
+            <div
               style={{
                 display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
                 alignItems: "center",
-                gap: 8,
-                color: "#bbb",
+                flexWrap: "wrap",
                 minWidth: 0,
               }}
             >
-              <span style={{ fontSize: 12 }}>📅</span>
-              <input
-                type="date"
-                value={picked}
-                onChange={(e) => setPicked(e.target.value)}
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+                📅 {targetDate.toLocaleDateString()}
+              </div>
+
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                {state.status === "ok" &&
+                  (() => {
+                    const lab = sourceLabel(state.source, state.isStale);
+                    if (!lab) return null;
+                    return (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: lab.color,
+                          whiteSpace: "nowrap",
+                        }}
+                        title="tide736取得元"
+                      >
+                        🌊 {lab.text}
+                      </div>
+                    );
+                  })()}
+                {!online && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "#f6c",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    📴 オフライン
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 6, fontSize: 12, color: "#6cf" }}>
+              🌙 潮名：
+              {state.status === "ok"
+                ? state.tideName
+                  ? ` ${state.tideName}`
+                  : " （未取得）"
+                : " -"}
+            </div>
+
+            {state.status === "ok" && !state.tideName && (
+              <div
                 style={{
-                  background: glassBg(glassAlpha),
-                  backdropFilter: glassFilter,
-                  WebkitBackdropFilter: glassFilter,
-                  color: "#eee",
-                  border: "1px solid rgba(255,255,255,0.15)",
-                  borderRadius: 10,
-                  padding: "6px 10px",
-                  maxWidth: "100%",
+                  marginTop: 8,
+                  fontSize: 12,
+                  color: "rgba(255,255,255,0.55)",
                 }}
-              />
-            </label>
-          )}
-        </div>
-
-        {/* 状態 */}
-        {state.status === "loading" && (
-          <div style={{ marginTop: 10, fontSize: 12, color: "#0a6" }}>
-            🌊 tide736：取得中…
-          </div>
-        )}
-        {state.status === "error" && (
-          <div style={{ marginTop: 10, fontSize: 12, color: "#f66" }}>
-            🌊 tide736：取得失敗 → {state.message}
-          </div>
-        )}
-
-        {/* サマリー */}
-        <div style={{ marginTop: 14, ...TILE_STYLE }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 12,
-              alignItems: "center",
-              flexWrap: "wrap",
-              minWidth: 0,
-            }}
-          >
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-              📅 {targetDate.toLocaleDateString()}
-            </div>
-
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              {state.status === "ok" &&
-                (() => {
-                  const lab = sourceLabel(state.source, state.isStale);
-                  if (!lab) return null;
-                  return (
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: lab.color,
-                        whiteSpace: "nowrap",
-                      }}
-                      title="tide736取得元"
-                    >
-                      🌊 {lab.text}
-                    </div>
-                  );
-                })()}
-              {!online && (
-                <div
-                  style={{ fontSize: 11, color: "#f6c", whiteSpace: "nowrap" }}
-                  title="オフライン"
-                >
-                  📴 オフライン
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div style={{ marginTop: 6, fontSize: 12, color: "#6cf" }}>
-            🌙 潮名：
-            {state.status === "ok"
-              ? state.tideName
-                ? ` ${state.tideName}`
-                : " （未取得）"
-              : " -"}
-          </div>
-
-          {state.status === "ok" && !state.tideName && (
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 12,
-                color: "rgba(255,255,255,0.55)",
-              }}
-            >
-              ※潮名（大潮など）が未取得のキャッシュです（TTL切れで再取得されたタイミングで入ります）
-            </div>
-          )}
-        </div>
-
-        {/* 満潮/干潮 */}
-        <div style={{ marginTop: 12, display: "grid", gap: 10, minWidth: 0 }}>
-          <div style={{ ...TILE_STYLE }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>
-              🟡 満潮 / 🔵 干潮
-            </div>
-
-            {state.status !== "ok" ? (
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-                データ準備中…
-              </div>
-            ) : state.series.length === 0 ? (
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-                {!online
-                  ? "📴 オフラインで、この日のキャッシュが無いよ（オンライン復帰後に取得できる）"
-                  : "潮位データが無いよ"}
-              </div>
-            ) : extremes.length === 0 ? (
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-                極値がうまく取れなかったよ（データ不足かも）
-              </div>
-            ) : (
-              <div style={{ display: "grid", gap: 8, fontSize: 12 }}>
-                <div style={{ color: "rgba(255,255,255,0.70)" }}>
-                  🟡 満潮：
-                  {highs.length ? (
-                    highs.map((e, i) => (
-                      <span key={`h-${e.min}-${e.cm}`}>
-                        {i > 0 ? " / " : " "}
-                        {formatHMFromMinutes(e.min)}（{Math.round(e.cm)}cm）
-                      </span>
-                    ))
-                  ) : (
-                    <span> -</span>
-                  )}
-                </div>
-                <div style={{ color: "rgba(255,255,255,0.70)" }}>
-                  🔵 干潮：
-                  {lows.length ? (
-                    lows.map((e, i) => (
-                      <span key={`l-${e.min}-${e.cm}`}>
-                        {i > 0 ? " / " : " "}
-                        {formatHMFromMinutes(e.min)}（{Math.round(e.cm)}cm）
-                      </span>
-                    ))
-                  ) : (
-                    <span> -</span>
-                  )}
-                </div>
+              >
+                ※潮名（大潮など）が未取得のキャッシュです（再取得タイミングで入ります）
               </div>
             )}
           </div>
 
-          <div style={{ ...TILE_STYLE, padding: 12, minWidth: 0 }}>
-            <TideGraph
-              series={state.status === "ok" ? state.series : []}
-              baseDate={targetDate}
-              highlightAt={highlightAt}
-              yDomain={{ min: -50, max: 200 }}
-            />
-          </div>
-        </div>
-
-        {state.status === "ok" && (
+          {/* 満潮/干潮 + グラフ */}
           <div
             style={{
-              marginTop: 18,
-              fontSize: 12,
-              color: "rgba(255,255,255,0.50)",
+              display: "grid",
+              gridTemplateColumns: isDesktop
+                ? "minmax(280px, 360px) 1fr"
+                : "1fr",
+              gap: 12,
               minWidth: 0,
-              overflowWrap: "anywhere",
+              minHeight: 0,
+              height: isDesktop ? "1fr" : "auto",
             }}
           >
-            key: {FIXED_PORT.pc}:{FIXED_PORT.hc}:{state.dayKey}
+            <div className="glass glass-strong" style={tileStyle}>
+              <div style={{ fontWeight: 800, marginBottom: 6 }}>
+                🟡 満潮 / 🔵 干潮
+              </div>
+
+              {state.status !== "ok" ? (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                  データ準備中…
+                </div>
+              ) : state.series.length === 0 ? (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                  {!online
+                    ? "📴 オフラインで、この日のキャッシュが無いよ（オンライン復帰後に取得できる）"
+                    : "潮位データが無いよ"}
+                </div>
+              ) : extremes.length === 0 ? (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                  極値がうまく取れなかったよ（データ不足かも）
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 8, fontSize: 12 }}>
+                  <div style={{ color: "rgba(255,255,255,0.78)" }}>
+                    🟡 満潮：
+                    {highs.length ? (
+                      highs.map((e, i) => (
+                        <span key={`h-${e.min}-${e.cm}`}>
+                          {i > 0 ? " / " : " "}
+                          {formatHMFromMinutes(e.min)}（{Math.round(e.cm)}cm）
+                        </span>
+                      ))
+                    ) : (
+                      <span> -</span>
+                    )}
+                  </div>
+                  <div style={{ color: "rgba(255,255,255,0.78)" }}>
+                    🔵 干潮：
+                    {lows.length ? (
+                      lows.map((e, i) => (
+                        <span key={`l-${e.min}-${e.cm}`}>
+                          {i > 0 ? " / " : " "}
+                          {formatHMFromMinutes(e.min)}（{Math.round(e.cm)}cm）
+                        </span>
+                      ))
+                    ) : (
+                      <span> -</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div
+              className="glass glass-strong"
+              style={{
+                ...tileStyle,
+                padding: 10,
+                minHeight: isDesktop ? 360 : 320,
+                display: "grid",
+                alignItems: "center",
+              }}
+            >
+              <div
+                style={{
+                  opacity: state.status === "loading" ? 0.65 : 1,
+                  transform:
+                    state.status === "loading"
+                      ? "translateY(4px)"
+                      : "translateY(0px)",
+                  transition: "opacity 220ms ease, transform 220ms ease",
+                  willChange: "opacity, transform",
+                }}
+              >
+                <TideGraph
+                  series={state.status === "ok" ? state.series : []}
+                  baseDate={targetDate}
+                  highlightAt={highlightAt}
+                  yDomain={{ min: -50, max: 200 }}
+                />
+              </div>
+            </div>
           </div>
-        )}
+
+          {state.status === "ok" && (
+            <div
+              style={{
+                fontSize: 12,
+                color: "rgba(255,255,255,0.50)",
+                overflowWrap: "anywhere",
+              }}
+            >
+              key: {FIXED_PORT.pc}:{FIXED_PORT.hc}:{state.dayKey}
+            </div>
+          )}
+        </div>
       </div>
     </PageShell>
   );

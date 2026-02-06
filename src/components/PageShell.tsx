@@ -24,7 +24,7 @@ type Props = {
   /** 旧互換：title の配置指示（ただしPCは固定ヘッダーで強制的に左上） */
   titleLayout?: "center" | "left";
 
-  /** スクロール制御 */
+  /** スクロール制御（※PCは「本文領域」だけに適用して統一） */
   scrollY?: "auto" | "hidden";
 
   /**
@@ -84,7 +84,7 @@ export default function PageShell(props: Props) {
     titleLayout = "center",
     scrollY = "auto",
     contentPadding,
-    // showTestCharacter は props として受け取れるが、このコンポーネント内では使わない（未使用エラー回避）
+    // showTestCharacter は受け口のみ（このコンポーネント内では使わない）
   } = props;
 
   const isMobile = useIsMobile();
@@ -98,15 +98,26 @@ export default function PageShell(props: Props) {
       width: "100%",
       minHeight: "100dvh",
       overflowX: "clip",
-      overflowY: scrollY,
+      // ここをスクロールコンテナにしない（sticky/fixedの挙動ブレを防ぐ）
+      overflowY: "visible",
+      display: "flex",
+      flexDirection: "column",
       "--shell-header-h": `${DESKTOP_HEADER_H}px`,
     };
-  }, [scrollY]);
+  }, []);
 
   // デフォルトの本文 padding（旧互換で contentPadding が来たら上書き）
   const defaultFramePadding = isMobile ? "14px 14px 18px" : "18px 18px 20px";
   const resolvedFramePadding =
     contentPadding !== undefined ? contentPadding : defaultFramePadding;
+
+  // ✅ 本文領域（PCはここだけスクロール制御して、全画面の統一感を担保）
+  const contentOuterStyle: CSSProperties = {
+    flex: "1 1 auto",
+    minHeight: 0,
+    overflowX: "clip",
+    overflowY: isDesktop ? scrollY : "visible", // スマホは今の挙動を崩さない
+  };
 
   const frameStyle: CSSProperties = {
     width: "100%",
@@ -122,61 +133,10 @@ export default function PageShell(props: Props) {
     ? { paddingTop: "var(--shell-header-h)" }
     : {};
 
-  const headerWrapStyle: CSSProperties = isDesktop
-    ? {
-        position: "sticky",
-        top: 0,
-        zIndex: 50,
-        height: "var(--shell-header-h)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 12,
-        padding: "10px 18px",
-        margin: "0 auto",
-        maxWidth,
-        background: "rgba(0,0,0,0.22)",
-        borderBottom: "1px solid rgba(255,255,255,0.10)",
-        backdropFilter: "blur(10px)",
-        WebkitBackdropFilter: "blur(10px)",
-      }
-    : {
-        display: "grid",
-        gap: 6,
-        marginBottom: 12,
-      };
-
-  const titleSlotStyle: CSSProperties = isDesktop
-    ? {
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        minWidth: 0,
-        flex: "1 1 auto",
-      }
-    : {
-        display: "flex",
-        alignItems: "center",
-        justifyContent: titleLayout === "left" ? "flex-start" : "center",
-        gap: 10,
-        minWidth: 0,
-      };
-
-  const subtitleStyle: CSSProperties = isDesktop
-    ? {
-        marginTop: 2,
-        fontSize: 12,
-        color: "rgba(255,255,255,0.66)",
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        maxWidth: "56vw",
-      }
-    : {
-        fontSize: 12,
-        color: "rgba(255,255,255,0.62)",
-        textAlign: titleLayout === "left" ? "left" : "center",
-      };
+  const onClickBack = () => {
+    if (onBack) return onBack();
+    if (typeof window !== "undefined") window.history.back();
+  };
 
   const backBtnStyle: CSSProperties = {
     borderRadius: 999,
@@ -195,35 +155,90 @@ export default function PageShell(props: Props) {
     WebkitBackdropFilter: "blur(10px)",
   };
 
-  const onClickBack = () => {
-    if (onBack) return onBack();
-    if (typeof window !== "undefined") window.history.back();
+  // ✅ PCは「完全固定」ヘッダー（画面ごとの差分を出さない）
+  const desktopHeaderStyle: CSSProperties = {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 999,
+    height: "var(--shell-header-h)",
+    background: "rgba(0,0,0,0.22)",
+    borderBottom: "1px solid rgba(255,255,255,0.10)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
   };
 
-  const titleNode = title ? (
-    <div style={{ minWidth: 0 }}>
-      <div
-        style={{
-          minWidth: 0,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}
-      >
-        {title}
-      </div>
-      {isDesktop && subtitle ? (
-        <div style={subtitleStyle}>{subtitle}</div>
-      ) : null}
-    </div>
-  ) : null;
+  const desktopHeaderInnerStyle: CSSProperties = {
+    height: "100%",
+    maxWidth,
+    margin: "0 auto",
+    padding: "10px 18px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    minWidth: 0,
+  };
+
+  const titleSlotStyleDesktop: CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    minWidth: 0,
+    flex: "1 1 auto",
+  };
+
+  const subtitleStyleDesktop: CSSProperties = {
+    marginTop: 2,
+    fontSize: 12,
+    color: "rgba(255,255,255,0.66)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: "56vw",
+  };
+
+  const titleClampStyle: CSSProperties = {
+    minWidth: 0,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  };
+
+  // ✅ スマホは現状維持（不満なし前提）
+  const mobileHeaderWrapStyle: CSSProperties = {
+    display: "grid",
+    gap: 6,
+    marginBottom: 12,
+  };
+
+  const mobileTitleSlotStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: titleLayout === "left" ? "flex-start" : "center",
+    gap: 10,
+    minWidth: 0,
+  };
+
+  const mobileSubtitleStyle: CSSProperties = {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.62)",
+    textAlign: titleLayout === "left" ? "left" : "center",
+  };
 
   return (
     <div style={rootStyle}>
-      <div style={headerWrapStyle}>
-        {isDesktop ? (
-          <>
-            <div style={titleSlotStyle}>{titleNode}</div>
+      {isDesktop ? (
+        <div style={desktopHeaderStyle}>
+          <div style={desktopHeaderInnerStyle}>
+            <div style={titleSlotStyleDesktop}>
+              {title ? <div style={titleClampStyle}>{title}</div> : null}
+              {subtitle ? (
+                <div style={subtitleStyleDesktop}>{subtitle}</div>
+              ) : null}
+            </div>
+
             {showBack ? (
               <button type="button" onClick={onClickBack} style={backBtnStyle}>
                 ← 戻る
@@ -231,28 +246,30 @@ export default function PageShell(props: Props) {
             ) : (
               <span />
             )}
-          </>
-        ) : (
-          <>
-            <div style={titleSlotStyle}>{titleNode}</div>
-            {subtitle ? <div style={subtitleStyle}>{subtitle}</div> : null}
-            {showBack ? (
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  onClick={onClickBack}
-                  style={backBtnStyle}
-                >
-                  ← 戻る
-                </button>
-              </div>
-            ) : null}
-          </>
-        )}
-      </div>
+          </div>
+        </div>
+      ) : (
+        <div style={mobileHeaderWrapStyle}>
+          <div style={mobileTitleSlotStyle}>
+            {title ? <div style={titleClampStyle}>{title}</div> : null}
+          </div>
 
-      <div style={frameStyle}>
-        <div style={desktopContentStyle}>{children}</div>
+          {subtitle ? <div style={mobileSubtitleStyle}>{subtitle}</div> : null}
+
+          {showBack ? (
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button type="button" onClick={onClickBack} style={backBtnStyle}>
+                ← 戻る
+              </button>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      <div style={contentOuterStyle}>
+        <div style={frameStyle}>
+          <div style={desktopContentStyle}>{children}</div>
+        </div>
       </div>
     </div>
   );
