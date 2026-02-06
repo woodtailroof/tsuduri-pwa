@@ -33,19 +33,16 @@ type Props = {
   /** 旧互換：title の配置指示（ただしPCは固定ヘッダーで強制的に左上） */
   titleLayout?: "center" | "left";
 
-  /** スクロール制御（※PCは「本文領域」だけに適用して統一） */
+  /** スクロール制御（本文領域のスクロール） */
   scrollY?: "auto" | "hidden";
 
   /**
-   * ✅ 旧実装互換：PageShell内の「本文領域」の padding を上書き
+   * ✅ PageShell内の「本文領域」の padding を上書き
    * 例: "0" / "12px 18px" / 0
    */
   contentPadding?: string | number;
 
-  /**
-   * ✅ 旧実装互換：設定画面などが渡しているフラグ（現行PageShellでは表示制御しない）
-   * 受け口だけ用意してビルドを通す。
-   */
+  /** 受け口だけ残す互換プロップ */
   showTestCharacter?: boolean;
 };
 
@@ -178,12 +175,8 @@ export default function PageShell(props: Props) {
   } = props;
 
   const isMobile = useIsMobile();
-  const isDesktop = !isMobile;
-
-  // ✅ PC固定ヘッダー仕様
   const DESKTOP_HEADER_H = 72;
 
-  // ✅ AppSettings（背景/ガラス/キャラ）
   const { settings } = useAppSettings();
   useMinuteTick();
 
@@ -262,15 +255,17 @@ export default function PageShell(props: Props) {
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
 
+  // ✅ 重要：#app-root が overflow:hidden なので、PageShell 自身を「高さ100%」にして
+  // 内部にスクロール領域を作る
   const rootStyle = useMemo<StyleWithVars>(() => {
     const bgImage =
       effectiveBgSrc && bgMode !== "off" ? `url("${effectiveBgSrc}")` : "none";
 
     return {
       width: "100%",
-      minHeight: "100dvh",
-      overflowX: "clip",
-      overflowY: "visible",
+      height: "100%", // ✅ ここが肝
+      minHeight: 0,
+      overflow: "hidden", // ✅ 外は閉じる（中でスクロールさせる）
       display: "flex",
       flexDirection: "column",
       "--shell-header-h": `${DESKTOP_HEADER_H}px`,
@@ -296,11 +291,15 @@ export default function PageShell(props: Props) {
   const resolvedFramePadding =
     contentPadding !== undefined ? contentPadding : defaultFramePadding;
 
+  // ✅ 重要：スクロール領域を「高さ100%」で明示
   const contentOuterStyle: CSSProperties = {
     flex: "1 1 auto",
     minHeight: 0,
+    height: "100%",
     overflowX: "clip",
-    overflowY: isDesktop ? scrollY : "visible",
+    overflowY: scrollY,
+    WebkitOverflowScrolling: "touch",
+    overscrollBehavior: "contain",
   };
 
   const frameStyle: CSSProperties = {
@@ -310,32 +309,6 @@ export default function PageShell(props: Props) {
     padding: resolvedFramePadding,
     position: "relative",
     minHeight: "100%",
-  };
-
-  const desktopContentStyle: CSSProperties = isDesktop
-    ? { paddingTop: "var(--shell-header-h)" }
-    : {};
-
-  const onClickBack = () => {
-    if (onBack) return onBack();
-    if (typeof window !== "undefined") window.history.back();
-  };
-
-  const backBtnStyle: CSSProperties = {
-    borderRadius: 999,
-    padding: "10px 14px",
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(0,0,0,0.28)",
-    color: "rgba(255,255,255,0.88)",
-    cursor: "pointer",
-    userSelect: "none",
-    lineHeight: 1,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    whiteSpace: "nowrap",
-    backdropFilter: "blur(10px)",
-    WebkitBackdropFilter: "blur(10px)",
   };
 
   const desktopHeaderStyle: CSSProperties = {
@@ -410,6 +383,28 @@ export default function PageShell(props: Props) {
     textAlign: titleLayout === "left" ? "left" : "center",
   };
 
+  const onClickBack = () => {
+    if (onBack) return onBack();
+    if (typeof window !== "undefined") window.history.back();
+  };
+
+  const backBtnStyle: CSSProperties = {
+    borderRadius: 999,
+    padding: "10px 14px",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(0,0,0,0.28)",
+    color: "rgba(255,255,255,0.88)",
+    cursor: "pointer",
+    userSelect: "none",
+    lineHeight: 1,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    whiteSpace: "nowrap",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+  };
+
   // ✅ レイヤ順：背景(-) < キャラ(10) < 情報(20) < ヘッダー(999)
   const characterStyle: CSSProperties = {
     position: "fixed",
@@ -425,13 +420,16 @@ export default function PageShell(props: Props) {
     height: "auto",
   };
 
+  // ✅ PC固定ヘッダー分の押し下げは「中身側」で吸収
+  const innerPadTop = isMobile ? 0 : "var(--shell-header-h)";
+
   return (
     <div className="page-shell" style={rootStyle}>
       {characterEnabled && characterSrc ? (
         <img src={characterSrc} alt="" style={characterStyle} />
       ) : null}
 
-      {isDesktop ? (
+      {!isMobile ? (
         <div style={desktopHeaderStyle}>
           <div style={desktopHeaderInnerStyle}>
             <div style={titleSlotStyleDesktop}>
@@ -473,9 +471,9 @@ export default function PageShell(props: Props) {
           <div
             className="page-shell-inner"
             style={{
-              ...desktopContentStyle,
               position: "relative",
               zIndex: 20,
+              paddingTop: innerPadTop,
             }}
           >
             {children}
