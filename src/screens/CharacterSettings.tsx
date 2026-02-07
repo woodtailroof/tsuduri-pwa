@@ -41,6 +41,10 @@ function safeJsonParse<T>(raw: string | null, fallback: T): T {
   }
 }
 
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
 function uid() {
   return `c_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
 }
@@ -127,13 +131,14 @@ function downloadText(filename: string, text: string) {
 export default function CharacterSettings({ back }: { back: () => void }) {
   const { settings } = useAppSettings();
 
-  // ✅ PageShellのガラス変数に追従させる（この画面内でも上書き可能に）
-  const glassVars = {
-    "--glass-alpha": String(
-      Math.max(0, Math.min(0.6, settings.glassAlpha ?? 0.22)),
-    ),
-    "--glass-blur": `${Math.max(0, Math.min(40, settings.glassBlur ?? 10))}px`,
-  } as unknown as CSSProperties;
+  // ✅ 設定値をJSで確定させる（CSS側で var * 係数 をしない）
+  const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
+  const glassBlurPx = clamp(settings.glassBlur ?? 10, 0, 40);
+
+  // 画面内カード用（適度に薄める）
+  const cardAlpha = clamp(glassAlpha * 0.35, 0, 0.6);
+  const inputAlpha = clamp(glassAlpha * 0.65, 0, 0.85);
+  const btnAlpha = clamp(glassAlpha * 0.28, 0, 0.6);
 
   const [list, setList] = useState<CharacterProfile[]>(() =>
     safeLoadCharacters(),
@@ -306,12 +311,12 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     alert("復元したよ！");
   }
 
-  // ===== 透過UI共通（設定追従） =====
+  // ===== 透過UI共通（設定追従をJS確定） =====
   const glassCard: CSSProperties = {
     border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.35))",
-    backdropFilter: "blur(var(--glass-blur,10px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+    background: `rgba(255,255,255,${cardAlpha})`,
+    backdropFilter: `blur(${glassBlurPx}px)`,
+    WebkitBackdropFilter: `blur(${glassBlurPx}px)`,
     borderRadius: 14,
     boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
   };
@@ -334,10 +339,10 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     padding: "10px 12px",
     borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.28))",
+    background: `rgba(255,255,255,${btnAlpha})`,
     color: "rgba(255,255,255,0.92)",
-    backdropFilter: "blur(var(--glass-blur,10px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+    backdropFilter: `blur(${glassBlurPx}px)`,
+    WebkitBackdropFilter: `blur(${glassBlurPx}px)`,
     cursor: "pointer",
   };
 
@@ -345,12 +350,12 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     width: "100%",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(0,0,0,calc(var(--glass-alpha,0.22) * 0.65))",
+    background: `rgba(0,0,0,${inputAlpha})`,
     color: "#fff",
     padding: "10px 12px",
     outline: "none",
-    backdropFilter: "blur(var(--glass-blur,10px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+    backdropFilter: `blur(${glassBlurPx}px)`,
+    WebkitBackdropFilter: `blur(${glassBlurPx}px)`,
     boxSizing: "border-box",
   };
 
@@ -387,7 +392,6 @@ export default function CharacterSettings({ back }: { back: () => void }) {
       contentPadding={"clamp(10px, 2vw, 18px)"}
     >
       <style>{`
-        /* ✅ スマホで「2カラムがはみ出す」問題を潰す */
         .cs-wrap { overflow-x: hidden; }
         .cs-grid {
           display: grid;
@@ -398,7 +402,6 @@ export default function CharacterSettings({ back }: { back: () => void }) {
         }
         .cs-panel { min-width: 0; }
 
-        /* ✅ iPhoneなど狭い幅は縦積みにする */
         @media (max-width: 900px) {
           .cs-grid { grid-template-columns: 1fr; }
           .cs-actions {
@@ -409,17 +412,15 @@ export default function CharacterSettings({ back }: { back: () => void }) {
           .cs-actions .full { grid-column: 1 / -1; }
         }
 
-        /* ✅ さらに狭い場合はボタン2列を1列へ */
         @media (max-width: 380px) {
           .cs-actions { grid-template-columns: 1fr; }
         }
       `}</style>
 
-      <div className="cs-wrap" style={{ ...glassVars }}>
+      <div className="cs-wrap">
         <div className="cs-grid">
           {/* 左：操作＆一覧 */}
           <div className="cs-panel" style={{ ...glassCard, padding: 12 }}>
-            {/* 操作ボタン群（スマホは2列） */}
             <div className="cs-actions">
               <button type="button" onClick={createNew} style={btn}>
                 ➕ 新規
@@ -509,9 +510,9 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                         : "1px solid rgba(255,255,255,0.12)",
                       background: isSel
                         ? "rgba(255,77,109,0.12)"
-                        : "rgba(0,0,0,calc(var(--glass-alpha,0.22) * 0.55))",
-                      backdropFilter: "blur(var(--glass-blur,10px))",
-                      WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+                        : `rgba(0,0,0,${inputAlpha})`,
+                      backdropFilter: `blur(${glassBlurPx}px)`,
+                      WebkitBackdropFilter: `blur(${glassBlurPx}px)`,
                       padding: 12,
                       cursor: "pointer",
                       color: "#fff",
