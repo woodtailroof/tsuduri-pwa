@@ -25,7 +25,7 @@ export type CharacterProfile = {
 export const CHARACTERS_STORAGE_KEY = "tsuduri_characters_v2";
 export const SELECTED_CHARACTER_ID_KEY = "tsuduri_selected_character_id_v2";
 
-// ✅ 互換用（掛け合いUIは撤去したが、他ファイル参照でビルドが落ちないよう残す）
+// ✅ 互換用（UIは撤去したが、参照元が残っててもビルド落ちないよう残す）
 export const ALLHANDS_BANTER_RATE_KEY = "tsuduri_allhands_banter_rate_v1";
 export const ALLHANDS_BANTER_ENABLED_KEY = "tsuduri_allhands_banter_enabled_v1";
 
@@ -131,14 +131,19 @@ function downloadText(filename: string, text: string) {
 export default function CharacterSettings({ back }: { back: () => void }) {
   const { settings } = useAppSettings();
 
-  // ✅ 設定値をJSで確定させる（CSS側で var * 係数 をしない）
+  // ✅ 設定値をそのまま使う（“薄め係数”をやめて視認できる差にする）
   const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
   const glassBlurPx = clamp(settings.glassBlur ?? 10, 0, 40);
 
-  // 画面内カード用（適度に薄める）
-  const cardAlpha = clamp(glassAlpha * 0.35, 0, 0.6);
-  const inputAlpha = clamp(glassAlpha * 0.65, 0, 0.85);
-  const btnAlpha = clamp(glassAlpha * 0.28, 0, 0.6);
+  // ✅ この画面配下でも .glass / .glass-strong が安定して効くようにCSS変数を流す
+  const glassVars = useMemo(
+    () =>
+      ({
+        "--glass-alpha": String(glassAlpha),
+        "--glass-blur": `${glassBlurPx}px`,
+      }) as unknown as CSSProperties,
+    [glassAlpha, glassBlurPx],
+  );
 
   const [list, setList] = useState<CharacterProfile[]>(() =>
     safeLoadCharacters(),
@@ -237,7 +242,6 @@ export default function CharacterSettings({ back }: { back: () => void }) {
       exportedAt: new Date().toISOString(),
       characters: list,
       selectedId,
-      // ✅ 掛け合い関連は撤去（エクスポートにも入れない）
     };
     downloadText(
       `tsuduri_characters_export_${Date.now()}.json`,
@@ -311,12 +315,13 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     alert("復元したよ！");
   }
 
-  // ===== 透過UI共通（設定追従をJS確定） =====
+  // ===== 透過UI共通（設定値そのまま追従） =====
+  const blur = `blur(${glassBlurPx}px)`;
   const glassCard: CSSProperties = {
     border: "1px solid rgba(255,255,255,0.14)",
-    background: `rgba(255,255,255,${cardAlpha})`,
-    backdropFilter: `blur(${glassBlurPx}px)`,
-    WebkitBackdropFilter: `blur(${glassBlurPx}px)`,
+    background: `rgba(255,255,255,${glassAlpha})`,
+    backdropFilter: blur,
+    WebkitBackdropFilter: blur,
     borderRadius: 14,
     boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
   };
@@ -339,10 +344,10 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     padding: "10px 12px",
     borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.14)",
-    background: `rgba(255,255,255,${btnAlpha})`,
+    background: `rgba(255,255,255,${glassAlpha})`,
     color: "rgba(255,255,255,0.92)",
-    backdropFilter: `blur(${glassBlurPx}px)`,
-    WebkitBackdropFilter: `blur(${glassBlurPx}px)`,
+    backdropFilter: blur,
+    WebkitBackdropFilter: blur,
     cursor: "pointer",
   };
 
@@ -350,12 +355,12 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     width: "100%",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.14)",
-    background: `rgba(0,0,0,${inputAlpha})`,
+    background: `rgba(0,0,0,${glassAlpha})`,
     color: "#fff",
     padding: "10px 12px",
     outline: "none",
-    backdropFilter: `blur(${glassBlurPx}px)`,
-    WebkitBackdropFilter: `blur(${glassBlurPx}px)`,
+    backdropFilter: blur,
+    WebkitBackdropFilter: blur,
     boxSizing: "border-box",
   };
 
@@ -417,7 +422,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
         }
       `}</style>
 
-      <div className="cs-wrap">
+      <div className="cs-wrap" style={glassVars}>
         <div className="cs-grid">
           {/* 左：操作＆一覧 */}
           <div className="cs-panel" style={{ ...glassCard, padding: 12 }}>
@@ -510,9 +515,9 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                         : "1px solid rgba(255,255,255,0.12)",
                       background: isSel
                         ? "rgba(255,77,109,0.12)"
-                        : `rgba(0,0,0,${inputAlpha})`,
-                      backdropFilter: `blur(${glassBlurPx}px)`,
-                      WebkitBackdropFilter: `blur(${glassBlurPx}px)`,
+                        : `rgba(0,0,0,${glassAlpha})`,
+                      backdropFilter: blur,
+                      WebkitBackdropFilter: blur,
                       padding: 12,
                       cursor: "pointer",
                       color: "#fff",
