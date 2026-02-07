@@ -30,7 +30,7 @@ type Props = {
   /** 戻るボタン押下時の挙動を上書きしたい場合 */
   onBack?: () => void;
 
-  /** 旧互換：title の配置指示（ただしPCは固定ヘッダーで強制的に左上） */
+  /** 旧互換：title の配置指示 */
   titleLayout?: "center" | "left";
 
   /** スクロール制御（本文領域のスクロール） */
@@ -103,7 +103,7 @@ function useIsMobile() {
 
 /** ✅ 1分ごとにUIを更新（自動背景の時間帯追従用） */
 function useMinuteTick() {
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let timer: number | null = null;
@@ -123,7 +123,7 @@ function useMinuteTick() {
     };
   }, []);
 
-  return 1;
+  return tick;
 }
 
 function loadCreatedCharacters(): { id: string; label: string }[] {
@@ -169,16 +169,17 @@ export default function PageShell(props: Props) {
     maxWidth = 1100,
     showBack = true,
     onBack,
-    titleLayout = "center",
     scrollY = "auto",
     contentPadding,
   } = props;
 
   const isMobile = useIsMobile();
-  const DESKTOP_HEADER_H = 72;
+
+  // ✅ ヘッダー高さは全端末で固定（位置ブレの根絶）
+  const HEADER_H = 72;
 
   const { settings } = useAppSettings();
-  useMinuteTick();
+  const minuteTick = useMinuteTick();
 
   // ===== 背景 =====
   const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
@@ -192,7 +193,7 @@ export default function PageShell(props: Props) {
   const autoPreviewSrc = useMemo(() => {
     const band = getTimeBand(new Date());
     return resolveAutoBackgroundSrc(autoBgSet, band);
-  }, [autoBgSet]);
+  }, [autoBgSet, minuteTick]);
 
   const effectiveBgSrc = useMemo(() => {
     if (bgMode === "off") return "";
@@ -248,7 +249,7 @@ export default function PageShell(props: Props) {
       "/assets/characters/tsuduri.png",
   );
 
-  // ✅ 0.5〜2.0に統一
+  // ✅ 表示倍率は 50%〜200% に統一（0.5〜2.0）
   const characterScale = Number.isFinite(settings.characterScale)
     ? settings.characterScale
     : DEFAULT_SETTINGS.characterScale;
@@ -256,8 +257,7 @@ export default function PageShell(props: Props) {
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
 
-  // ✅ 重要：#app-root が overflow:hidden なので、PageShell 自身を「高さ100%」にして
-  // 内部にスクロール領域を作る
+  // ✅ root: #app-root が overflow:hidden なので PageShell 内で完結させる
   const rootStyle = useMemo<StyleWithVars>(() => {
     const bgImage =
       effectiveBgSrc && bgMode !== "off" ? `url("${effectiveBgSrc}")` : "none";
@@ -269,7 +269,8 @@ export default function PageShell(props: Props) {
       overflow: "hidden",
       display: "flex",
       flexDirection: "column",
-      "--shell-header-h": `${DESKTOP_HEADER_H}px`,
+
+      "--shell-header-h": `${HEADER_H}px`,
 
       "--bg-image": bgImage,
       "--bg-blur": `${Math.round(clamp(bgBlur, 0, 60))}px`,
@@ -278,28 +279,21 @@ export default function PageShell(props: Props) {
       "--glass-alpha": `${clamp(glassAlpha, 0, 1)}`,
       "--glass-alpha-strong": `${clamp(glassAlpha + 0.13, 0, 1)}`,
     };
-  }, [
-    DESKTOP_HEADER_H,
-    effectiveBgSrc,
-    bgMode,
-    bgBlur,
-    bgDim,
-    glassBlur,
-    glassAlpha,
-  ]);
+  }, [HEADER_H, effectiveBgSrc, bgMode, bgBlur, bgDim, glassBlur, glassAlpha]);
 
   const defaultFramePadding = isMobile ? "14px 14px 18px" : "18px 18px 20px";
   const resolvedFramePadding =
     contentPadding !== undefined ? contentPadding : defaultFramePadding;
 
+  // ✅ 本文スクロール領域（ヘッダー分は常に確保）
   const contentOuterStyle: CSSProperties = {
     flex: "1 1 auto",
     minHeight: 0,
-    height: "100%",
     overflowX: "clip",
     overflowY: scrollY,
     WebkitOverflowScrolling: "touch",
     overscrollBehavior: "contain",
+    paddingTop: "var(--shell-header-h)",
   };
 
   const frameStyle: CSSProperties = {
@@ -311,7 +305,13 @@ export default function PageShell(props: Props) {
     minHeight: "100%",
   };
 
-  const desktopHeaderStyle: CSSProperties = {
+  const onClickBack = () => {
+    if (onBack) return onBack();
+    if (typeof window !== "undefined") window.history.back();
+  };
+
+  // ✅ ヘッダーは常に viewport 基準で固定（maxWidthに依存させない）
+  const headerStyle: CSSProperties = {
     position: "fixed",
     top: 0,
     left: 0,
@@ -324,19 +324,22 @@ export default function PageShell(props: Props) {
     WebkitBackdropFilter: "blur(10px)",
   };
 
-  const desktopHeaderInnerStyle: CSSProperties = {
+  const headerInnerStyle: CSSProperties = {
     height: "100%",
-    maxWidth,
-    margin: "0 auto",
-    padding: "10px 18px",
+    width: "100%",
+    paddingTop: "max(10px, env(safe-area-inset-top))",
+    paddingLeft: "max(14px, env(safe-area-inset-left))",
+    paddingRight: "max(14px, env(safe-area-inset-right))",
+    paddingBottom: 10,
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
     minWidth: 0,
+    boxSizing: "border-box",
   };
 
-  const titleSlotStyleDesktop: CSSProperties = {
+  const titleSlotStyle: CSSProperties = {
     display: "flex",
     flexDirection: "column",
     justifyContent: "center",
@@ -346,16 +349,6 @@ export default function PageShell(props: Props) {
     textAlign: "left",
   };
 
-  const subtitleStyleDesktop: CSSProperties = {
-    marginTop: 2,
-    fontSize: 12,
-    color: "rgba(255,255,255,0.66)",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    maxWidth: "56vw",
-  };
-
   const titleClampStyle: CSSProperties = {
     minWidth: 0,
     whiteSpace: "nowrap",
@@ -363,29 +356,14 @@ export default function PageShell(props: Props) {
     textOverflow: "ellipsis",
   };
 
-  const mobileHeaderWrapStyle: CSSProperties = {
-    display: "grid",
-    gap: 6,
-    marginBottom: 12,
-  };
-
-  const mobileTitleSlotStyle: CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: titleLayout === "left" ? "flex-start" : "center",
-    gap: 10,
-    minWidth: 0,
-  };
-
-  const mobileSubtitleStyle: CSSProperties = {
+  const subtitleStyle: CSSProperties = {
+    marginTop: 2,
     fontSize: 12,
-    color: "rgba(255,255,255,0.62)",
-    textAlign: titleLayout === "left" ? "left" : "center",
-  };
-
-  const onClickBack = () => {
-    if (onBack) return onBack();
-    if (typeof window !== "undefined") window.history.back();
+    color: "rgba(255,255,255,0.66)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: "70vw",
   };
 
   const backBtnStyle: CSSProperties = {
@@ -403,10 +381,11 @@ export default function PageShell(props: Props) {
     whiteSpace: "nowrap",
     backdropFilter: "blur(10px)",
     WebkitBackdropFilter: "blur(10px)",
+    flex: "0 0 auto",
   };
 
   // ✅ レイヤ順：背景(-) < キャラ(10) < 情報(20) < ヘッダー(999)
-  // ✅ ビタ付け：余計な 6px マージンを撤去（safe-area だけ守る）
+  // ✅ ビタ付け：safe-area 以外の余計なオフセット無し
   const characterStyle: CSSProperties = {
     position: "fixed",
     right: "env(safe-area-inset-right)",
@@ -421,60 +400,36 @@ export default function PageShell(props: Props) {
     height: "auto",
   };
 
-  const innerPadTop = isMobile ? 0 : "var(--shell-header-h)";
-
   return (
     <div className="page-shell" style={rootStyle}>
       {characterEnabled && characterSrc ? (
         <img src={characterSrc} alt="" style={characterStyle} />
       ) : null}
 
-      {!isMobile ? (
-        <div style={desktopHeaderStyle}>
-          <div style={desktopHeaderInnerStyle}>
-            <div style={titleSlotStyleDesktop}>
-              {title ? <div style={titleClampStyle}>{title}</div> : null}
-              {subtitle ? (
-                <div style={subtitleStyleDesktop}>{subtitle}</div>
-              ) : null}
-            </div>
-
-            {showBack ? (
-              <button type="button" onClick={onClickBack} style={backBtnStyle}>
-                ← 戻る
-              </button>
-            ) : (
-              <span />
-            )}
-          </div>
-        </div>
-      ) : (
-        <div style={mobileHeaderWrapStyle}>
-          <div style={mobileTitleSlotStyle}>
+      {/* ✅ タイトル/戻る：全端末で完全固定位置（maxWidthの影響を受けない） */}
+      <div style={headerStyle}>
+        <div style={headerInnerStyle}>
+          <div style={titleSlotStyle}>
             {title ? <div style={titleClampStyle}>{title}</div> : null}
+            {subtitle ? <div style={subtitleStyle}>{subtitle}</div> : null}
           </div>
-
-          {subtitle ? <div style={mobileSubtitleStyle}>{subtitle}</div> : null}
 
           {showBack ? (
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button type="button" onClick={onClickBack} style={backBtnStyle}>
-                ← 戻る
-              </button>
-            </div>
-          ) : null}
+            <button type="button" onClick={onClickBack} style={backBtnStyle}>
+              ← 戻る
+            </button>
+          ) : (
+            <span />
+          )}
         </div>
-      )}
+      </div>
 
+      {/* ✅ 本文（情報レイヤ） */}
       <div style={contentOuterStyle}>
         <div style={frameStyle}>
           <div
             className="page-shell-inner"
-            style={{
-              position: "relative",
-              zIndex: 20,
-              paddingTop: innerPadTop,
-            }}
+            style={{ position: "relative", zIndex: 20 }}
           >
             {children}
           </div>
