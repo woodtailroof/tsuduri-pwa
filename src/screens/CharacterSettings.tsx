@@ -1,6 +1,13 @@
 // src/screens/CharacterSettings.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import PageShell from "../components/PageShell";
+import { useAppSettings } from "../lib/appSettings";
 
 export type ReplyLength = "short" | "medium" | "long";
 
@@ -18,10 +25,8 @@ export type CharacterProfile = {
 export const CHARACTERS_STORAGE_KEY = "tsuduri_characters_v2";
 export const SELECTED_CHARACTER_ID_KEY = "tsuduri_selected_character_id_v2";
 
-// ✅ 既存（rate）はすでに使ってる前提
+// ✅ 互換用（掛け合いUIは撤去したが、他ファイル参照でビルドが落ちないよう残す）
 export const ALLHANDS_BANTER_RATE_KEY = "tsuduri_allhands_banter_rate_v1";
-
-// ✅ 新規：ON/OFF をキャラ管理へ移動
 export const ALLHANDS_BANTER_ENABLED_KEY = "tsuduri_allhands_banter_enabled_v1";
 
 // ちょい保険
@@ -34,10 +39,6 @@ function safeJsonParse<T>(raw: string | null, fallback: T): T {
   } catch {
     return fallback;
   }
-}
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
 }
 
 function uid() {
@@ -111,47 +112,6 @@ function safeSaveSelectedId(id: string) {
   }
 }
 
-function safeLoadBanterEnabled() {
-  try {
-    const raw = localStorage.getItem(ALLHANDS_BANTER_ENABLED_KEY);
-    if (raw == null) return true;
-    return raw === "1" || raw === "true";
-  } catch {
-    return true;
-  }
-}
-
-function safeSaveBanterEnabled(v: boolean) {
-  try {
-    localStorage.setItem(ALLHANDS_BANTER_ENABLED_KEY, v ? "1" : "0");
-  } catch {
-    // ignore
-  }
-}
-
-function safeLoadBanterRate() {
-  try {
-    const raw = localStorage.getItem(ALLHANDS_BANTER_RATE_KEY);
-    if (raw == null) return 35;
-    const n = Number(raw);
-    if (!Number.isFinite(n)) return 35;
-    return clamp(Math.round(n), 0, 100);
-  } catch {
-    return 35;
-  }
-}
-
-function safeSaveBanterRate(n: number) {
-  try {
-    localStorage.setItem(
-      ALLHANDS_BANTER_RATE_KEY,
-      String(clamp(Math.round(n), 0, 100)),
-    );
-  } catch {
-    // ignore
-  }
-}
-
 function downloadText(filename: string, text: string) {
   const blob = new Blob([text], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -165,18 +125,21 @@ function downloadText(filename: string, text: string) {
 }
 
 export default function CharacterSettings({ back }: { back: () => void }) {
+  const { settings } = useAppSettings();
+
+  // ✅ PageShellのガラス変数に追従させる（この画面内でも上書き可能に）
+  const glassVars = {
+    "--glass-alpha": String(
+      Math.max(0, Math.min(0.6, settings.glassAlpha ?? 0.22)),
+    ),
+    "--glass-blur": `${Math.max(0, Math.min(40, settings.glassBlur ?? 10))}px`,
+  } as unknown as CSSProperties;
+
   const [list, setList] = useState<CharacterProfile[]>(() =>
     safeLoadCharacters(),
   );
   const [selectedId, setSelectedId] = useState<string>(() =>
     safeLoadSelectedId(safeLoadCharacters()[0]?.id ?? "tsuduri"),
-  );
-
-  const [banterEnabled, setBanterEnabled] = useState<boolean>(() =>
-    safeLoadBanterEnabled(),
-  );
-  const [banterRate, setBanterRate] = useState<number>(() =>
-    safeLoadBanterRate(),
   );
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -201,14 +164,6 @@ export default function CharacterSettings({ back }: { back: () => void }) {
   useEffect(() => {
     safeSaveSelectedId(selectedId);
   }, [selectedId]);
-
-  useEffect(() => {
-    safeSaveBanterEnabled(banterEnabled);
-  }, [banterEnabled]);
-
-  useEffect(() => {
-    safeSaveBanterRate(banterRate);
-  }, [banterRate]);
 
   function updateSelected(patch: Partial<CharacterProfile>) {
     setList((prev) =>
@@ -247,8 +202,8 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     setSelectedId(next[0]?.id ?? "tsuduri");
   }
 
-  function saveOnly() {
-    const fixed = list.map((c) => ({
+  function normalizeListForSave(src: CharacterProfile[]) {
+    return src.map((c) => ({
       ...c,
       name: (c.name ?? "").trim() || "（無名）",
       selfName: (c.selfName ?? "").trim(),
@@ -257,20 +212,16 @@ export default function CharacterSettings({ back }: { back: () => void }) {
       description: String(c.description ?? ""),
       color: normalizeColor(String(c.color ?? "#ff7aa2")),
     }));
+  }
+
+  function saveOnly() {
+    const fixed = normalizeListForSave(list);
     safeSaveCharacters(fixed);
     alert("保存したよ！");
   }
 
   function saveAndBack() {
-    const fixed = list.map((c) => ({
-      ...c,
-      name: (c.name ?? "").trim() || "（無名）",
-      selfName: (c.selfName ?? "").trim(),
-      callUser: (c.callUser ?? "").trim(),
-      replyLength: (c.replyLength ?? "medium") as ReplyLength,
-      description: String(c.description ?? ""),
-      color: normalizeColor(String(c.color ?? "#ff7aa2")),
-    }));
+    const fixed = normalizeListForSave(list);
     safeSaveCharacters(fixed);
     back();
   }
@@ -281,7 +232,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
       exportedAt: new Date().toISOString(),
       characters: list,
       selectedId,
-      allhands: { banterEnabled, banterRate },
+      // ✅ 掛け合い関連は撤去（エクスポートにも入れない）
     };
     downloadText(
       `tsuduri_characters_export_${Date.now()}.json`,
@@ -327,17 +278,13 @@ export default function CharacterSettings({ back }: { back: () => void }) {
       }));
 
     setList(cleaned);
-    setSelectedId(
+
+    const nextSelected =
       parsed?.selectedId && typeof parsed.selectedId === "string"
         ? parsed.selectedId
-        : (cleaned[0]?.id ?? cleaned[0].id),
-    );
+        : (cleaned[0]?.id ?? "tsuduri");
 
-    const be = parsed?.allhands?.banterEnabled;
-    const br = parsed?.allhands?.banterRate;
-    if (typeof be === "boolean") setBanterEnabled(be);
-    if (Number.isFinite(Number(br))) setBanterRate(clamp(Number(br), 0, 100));
-
+    setSelectedId(nextSelected);
     safeSaveCharacters(cleaned);
     alert("インポート完了！");
   }
@@ -359,54 +306,55 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     alert("復元したよ！");
   }
 
-  // ===== 透過UI共通 =====
-  const glassCard: React.CSSProperties = {
+  // ===== 透過UI共通（設定追従） =====
+  const glassCard: CSSProperties = {
     border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(0,0,0,0.18)",
-    backdropFilter: "blur(10px)",
-    WebkitBackdropFilter: "blur(10px)",
+    background: "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.35))",
+    backdropFilter: "blur(var(--glass-blur,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
     borderRadius: 14,
+    boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
   };
 
-  const sectionTitle: React.CSSProperties = {
+  const sectionTitle: CSSProperties = {
     fontSize: 12,
     color: "rgba(255,255,255,0.60)",
     marginBottom: 6,
   };
 
-  const smallHint: React.CSSProperties = {
+  const smallHint: CSSProperties = {
     fontSize: 11,
     color: "rgba(255,255,255,0.50)",
     lineHeight: 1.6,
   };
 
-  const btn: React.CSSProperties = {
+  const btn: CSSProperties = {
     width: "100%",
     textAlign: "center",
     padding: "10px 12px",
     borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(255,255,255,0.06)",
-    color: "rgba(255,255,255,0.90)",
-    backdropFilter: "blur(10px)",
-    WebkitBackdropFilter: "blur(10px)",
+    background: "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.28))",
+    color: "rgba(255,255,255,0.92)",
+    backdropFilter: "blur(var(--glass-blur,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
     cursor: "pointer",
   };
 
-  const inputStyle: React.CSSProperties = {
+  const inputStyle: CSSProperties = {
     width: "100%",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(0,0,0,0.22)",
+    background: "rgba(0,0,0,calc(var(--glass-alpha,0.22) * 0.65))",
     color: "#fff",
     padding: "10px 12px",
     outline: "none",
-    backdropFilter: "blur(10px)",
-    WebkitBackdropFilter: "blur(10px)",
+    backdropFilter: "blur(var(--glass-blur,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
     boxSizing: "border-box",
   };
 
-  const selectStyle: React.CSSProperties = {
+  const selectStyle: CSSProperties = {
     ...inputStyle,
     appearance: "none",
     WebkitAppearance: "none",
@@ -440,9 +388,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     >
       <style>{`
         /* ✅ スマホで「2カラムがはみ出す」問題を潰す */
-        .cs-wrap {
-          overflow-x: hidden;
-        }
+        .cs-wrap { overflow-x: hidden; }
         .cs-grid {
           display: grid;
           grid-template-columns: 320px 1fr;
@@ -450,34 +396,26 @@ export default function CharacterSettings({ back }: { back: () => void }) {
           align-items: start;
           min-width: 0;
         }
-        .cs-panel {
-          min-width: 0;
-        }
+        .cs-panel { min-width: 0; }
 
         /* ✅ iPhoneなど狭い幅は縦積みにする */
         @media (max-width: 900px) {
-          .cs-grid {
-            grid-template-columns: 1fr;
-          }
+          .cs-grid { grid-template-columns: 1fr; }
           .cs-actions {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 10px;
           }
-          .cs-actions .full {
-            grid-column: 1 / -1;
-          }
+          .cs-actions .full { grid-column: 1 / -1; }
         }
 
         /* ✅ さらに狭い場合はボタン2列を1列へ */
         @media (max-width: 380px) {
-          .cs-actions {
-            grid-template-columns: 1fr;
-          }
+          .cs-actions { grid-template-columns: 1fr; }
         }
       `}</style>
 
-      <div className="cs-wrap">
+      <div className="cs-wrap" style={{ ...glassVars }}>
         <div className="cs-grid">
           {/* 左：操作＆一覧 */}
           <div className="cs-panel" style={{ ...glassCard, padding: 12 }}>
@@ -567,13 +505,13 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                       textAlign: "left",
                       borderRadius: 14,
                       border: isSel
-                        ? `1px solid rgba(255,77,109,0.65)`
+                        ? "1px solid rgba(255,77,109,0.65)"
                         : "1px solid rgba(255,255,255,0.12)",
                       background: isSel
                         ? "rgba(255,77,109,0.12)"
-                        : "rgba(0,0,0,0.16)",
-                      backdropFilter: "blur(10px)",
-                      WebkitBackdropFilter: "blur(10px)",
+                        : "rgba(0,0,0,calc(var(--glass-alpha,0.22) * 0.55))",
+                      backdropFilter: "blur(var(--glass-blur,10px))",
+                      WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
                       padding: 12,
                       cursor: "pointer",
                       color: "#fff",
@@ -672,86 +610,6 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                 >
                   ✅ 保存して戻る
                 </button>
-              </div>
-            </div>
-
-            <div
-              style={{
-                height: 1,
-                background: "rgba(255,255,255,0.10)",
-                margin: "12px 0",
-              }}
-            />
-
-            {/* 全員集合：掛け合い設定 */}
-            <div style={{ ...glassCard, padding: 12 }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 900 }}>🗣 全員集合：掛け合い</div>
-                  <div style={smallHint}>
-                    全員集合モードで「後ろ2人が感想係になる」挙動のON/OFFと頻度。
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setBanterEnabled((v) => !v)}
-                  style={{
-                    ...btn,
-                    width: "auto",
-                    padding: "10px 14px",
-                    border: banterEnabled
-                      ? "1px solid rgba(255,77,109,0.65)"
-                      : "1px solid rgba(255,255,255,0.14)",
-                    background: banterEnabled
-                      ? "rgba(255,77,109,0.14)"
-                      : "rgba(255,255,255,0.06)",
-                  }}
-                  title="掛け合い ON/OFF"
-                >
-                  {banterEnabled ? "🗣 掛け合い：ON" : "🤐 掛け合い：OFF"}
-                </button>
-              </div>
-
-              <div
-                style={{
-                  marginTop: 10,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  flexWrap: "wrap",
-                }}
-              >
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.70)" }}>
-                  頻度
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={banterRate}
-                  onChange={(e) => setBanterRate(Number(e.target.value))}
-                  style={{ width: 220, maxWidth: "70vw" }}
-                  disabled={!banterEnabled}
-                />
-                <div
-                  style={{
-                    width: 44,
-                    textAlign: "right",
-                    fontVariantNumeric: "tabular-nums",
-                    color: banterEnabled ? "#fff" : "rgba(255,255,255,0.45)",
-                  }}
-                >
-                  {banterRate}%
-                </div>
               </div>
             </div>
 
