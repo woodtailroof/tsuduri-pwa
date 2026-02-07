@@ -8,8 +8,6 @@ import {
 } from "react";
 import type { CharacterProfile } from "./CharacterSettings";
 import {
-  ALLHANDS_BANTER_ENABLED_KEY,
-  ALLHANDS_BANTER_RATE_KEY,
   CHARACTERS_STORAGE_KEY,
   SELECTED_CHARACTER_ID_KEY,
 } from "./CharacterSettings";
@@ -23,7 +21,6 @@ type Props = {
 type Msg = {
   role: "user" | "assistant";
   content: string;
-  speakerId?: string; // 全員集合ルームで「誰の返答か」
 };
 
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
@@ -90,19 +87,11 @@ function safeLoadHistory(roomId: string): Msg[] {
   const out: Msg[] = [];
   for (const item of parsed) {
     if (!isRecordLike(item)) continue;
-
     const role = item.role;
     const content = item.content;
-    const speakerId = item.speakerId;
-
     if (role !== "user" && role !== "assistant") continue;
     if (typeof content !== "string") continue;
-
-    out.push({
-      role: role as "user" | "assistant",
-      content,
-      speakerId: typeof speakerId === "string" ? speakerId : undefined,
-    });
+    out.push({ role: role as "user" | "assistant", content });
   }
   return out;
 }
@@ -115,30 +104,12 @@ function safeSaveHistory(roomId: string, messages: Msg[]) {
   }
 }
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 function readCharacterProfile(
   id: string,
   fallback: CharacterProfileWithColor,
 ): CharacterProfileWithColor {
   const list = safeLoadCharacters();
   return list.find((c) => c.id === id) ?? fallback;
-}
-
-/**
- * 全員集合ルーム用：
- * - user は全キャラ共通で入れる
- * - assistant は「speakerId がそのキャラのもの」だけ入れる
- */
-function buildThreadForCharacter(
-  allRoomMessages: Msg[],
-  speakerId: string,
-): { role: "user" | "assistant"; content: string }[] {
-  return allRoomMessages
-    .filter((m) => (m.role === "user" ? true : m.speakerId === speakerId))
-    .map((m) => ({ role: m.role, content: m.content }));
 }
 
 async function readErrorBody(res: Response): Promise<string | null> {
@@ -161,223 +132,14 @@ async function readErrorBody(res: Response): Promise<string | null> {
   }
 }
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function safeLoadBanterEnabled() {
-  try {
-    const raw = localStorage.getItem(ALLHANDS_BANTER_ENABLED_KEY);
-    if (raw == null) return true;
-    return raw === "1" || raw === "true";
-  } catch {
-    return true;
-  }
-}
-
-function safeLoadBanterRate() {
-  try {
-    const raw = localStorage.getItem(ALLHANDS_BANTER_RATE_KEY);
-    if (raw == null) return 35;
-    const n = Number(raw);
-    if (!Number.isFinite(n)) return 35;
-    return clamp(Math.round(n), 0, 100);
-  } catch {
-    return 35;
-  }
-}
-
-/** ===== 指名検出ユーティリティ ===== */
-function shuffle<T>(arr: T[]) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-function escapeRegExp(s: string) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function isFishingJudgeText(text: string) {
-  return /(釣り行く|釣りいく|迷って|釣行判断|今日どう|明日どう|風|雨|波|潮|満潮|干潮|水温|ポイント)/.test(
-    text ?? "",
-  );
-}
-
-function detectTargetDay(text: string): "today" | "tomorrow" {
-  const s = text ?? "";
-  if (/(明日|あした|アシタ|tomorrow|明日の|明日行く|明日どう|明日は)/.test(s))
-    return "tomorrow";
-  return "today";
-}
-
-function tailNickname(name: string): string | null {
-  const s = (name ?? "").trim();
-  if (!s) return null;
-  const m = s.match(/([ぁ-んァ-ヶ一-龯a-zA-Z0-9]{2,})$/);
-  if (!m?.[1]) return null;
-  const nick = m[1].trim();
-  return nick || null;
-}
-
-function uniqStrings(xs: Array<string | null | undefined>) {
-  const set = new Set<string>();
-  for (const x of xs) {
-    const t = (x ?? "").trim();
-    if (!t) continue;
-    set.add(t);
-  }
-  return [...set];
-}
-
-function detectMentionedCharacterId(
-  text: string,
-  characters: CharacterProfileWithColor[],
-): string | null {
-  const sRaw = (text ?? "").trim();
-  if (!sRaw) return null;
-  const s = sRaw.replace(/\u3000/g, " ");
-
-  const suffixes = [
-    "ちゃん",
-    "さん",
-    "くん",
-    "様",
-    "さま",
-    "氏",
-    "先生",
-    "先輩",
-  ];
-  const suffixRe = `(?:${suffixes.map(escapeRegExp).join("|")})?`;
-  const sepRe = `[、,.:：!！?？\\s\\n\\r\\t\\-ー…]*`;
-
-  const candidates = characters.map((c) => {
-    const full = (c.name ?? "").trim();
-    const tail = full ? tailNickname(full) : null;
-    const self = (c.selfName ?? "").trim();
-    const keys = uniqStrings([full, tail, self]).filter((k) => k.length >= 2);
-    keys.sort((a, b) => b.length - a.length);
-    return { id: c.id, keys };
-  });
-
-  for (const c of candidates) {
-    for (const k of c.keys) {
-      const headPatterns = [
-        new RegExp(`^${escapeRegExp(k)}${suffixRe}${sepRe}`),
-        new RegExp(`^@${escapeRegExp(k)}${suffixRe}${sepRe}`),
-      ];
-      if (headPatterns.some((re) => re.test(s))) return c.id;
-    }
-  }
-
-  type Hit = { id: string; index: number; keyLen: number };
-  const hits: Hit[] = [];
-  for (const c of candidates) {
-    for (const k of c.keys) {
-      const re = new RegExp(`${escapeRegExp(k)}${suffixRe}(?=${sepRe}|$)`, "g");
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(s)) !== null) {
-        hits.push({ id: c.id, index: m.index, keyLen: k.length });
-        if (m.index === re.lastIndex) re.lastIndex++;
-      }
-    }
-  }
-  if (!hits.length) return null;
-  hits.sort((a, b) =>
-    a.index !== b.index ? a.index - b.index : b.keyLen - a.keyLen,
-  );
-  return hits[0]?.id ?? null;
-}
-
-function buildSharedMemoForBanter(leadName: string) {
-  return `【共有メモ】先頭は「${leadName}」。あなたは脇役として短い感想/合いの手だけ返す。内容の言い換え復唱は禁止。`;
-}
-
-function sanitizeJudgeTriggers(s: string) {
-  const replaces: Array<[RegExp, string]> = [
-    [/釣行判断/g, "判断"],
-    [/釣り行く/g, "出かける"],
-    [/釣りいく/g, "出かける"],
-    [/今日どう/g, "今日の方針"],
-    [/明日どう/g, "明日の方針"],
-    [/風/g, "条件A"],
-    [/雨/g, "条件B"],
-    [/波/g, "条件C"],
-    [/潮/g, "条件D"],
-    [/満潮/g, "時刻1"],
-    [/干潮/g, "時刻2"],
-    [/水温/g, "水の温度"],
-    [/ポイント/g, "場所候補"],
-  ];
-
-  let out = s;
-  for (const [re, to] of replaces) out = out.replace(re, to);
-  return out;
-}
-
-function buildSharedMemoForJudgeFollowers(leadName: string, leadReply: string) {
-  const t = (leadReply ?? "").trim();
-  if (!t) return `【共有メモ】${leadName}の結論：取得失敗`;
-
-  const firstLine =
-    t
-      .split("\n")
-      .map((x) => x.trim())
-      .find(Boolean) ?? "";
-
-  const conclusion = /(行く|様子見|やめる)/.test(firstLine)
-    ? firstLine
-    : `（結論不明：先頭行=${firstLine.slice(0, 40)}）`;
-
-  const numbers = (t.match(/-?\d+(\.\d+)?/g) ?? []).slice(0, 8).join(", ");
-  const numPart = numbers ? ` / 参考数値: ${numbers}` : "";
-
-  return sanitizeJudgeTriggers(
-    `【共有メモ】先頭（${leadName}）の結論：${conclusion}${numPart}`,
-  );
-}
-
-function roleHintForBanter(leadName: string) {
-  return `
-【あなたの役割（掛け合い：感想係）】
-- 先頭「${leadName}」がメイン回答者。あなたは脇役。
-- 3〜6行、段落は1〜2個。先頭より短く。
-- 先頭の内容を言い換えて復唱しない（要約も最大1文まで）。
-- 出せるのは最大2つ：①感想/合いの手 ②質問1つ（任意）
-- “自分の気持ち” でOK。情報を盛らない。
-`.trim();
-}
-
-function rewriteLastUserForJudgeFollower(
-  baseThread: { role: "user" | "assistant"; content: string }[],
-  day: "today" | "tomorrow",
-) {
-  const idx = [...baseThread].reverse().findIndex((m) => m.role === "user");
-  if (idx < 0) return baseThread;
-  const lastUserIndex = baseThread.length - 1 - idx;
-
-  const dayText = day === "tomorrow" ? "明日" : "今日";
-  const replaced = `全員集合の相談：${dayText}の予定について、先頭担当の結論に沿って「補足」や「作戦」を短く提案して。結論は変えない。`;
-
-  return baseThread.map((m, i) =>
-    i === lastUserIndex ? { ...m, content: replaced } : m,
-  );
-}
-
-function getCharacterColor(c: CharacterProfileWithColor | undefined | null) {
-  const raw = c?.color;
-  if (typeof raw === "string" && raw.trim()) return raw.trim();
-  return "#ff7aa2";
-}
-
 export default function Chat({ back, goCharacterSettings }: Props) {
   const [characters, setCharacters] = useState<CharacterProfileWithColor[]>(
     () => safeLoadCharacters(),
   );
-  const fallback = useMemo(() => characters[0], [characters]);
+  const fallback = useMemo(
+    () => characters[0] ?? safeLoadCharacters()[0],
+    [characters],
+  );
 
   const [selectedId, setSelectedId] = useState<string>(() =>
     safeLoadSelectedCharacterId(safeLoadCharacters()[0]?.id ?? "tsuduri"),
@@ -388,8 +150,8 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     [selectedId, fallback],
   );
 
-  const [roomMode, setRoomMode] = useState<"single" | "all">("single");
-  const roomId = roomMode === "single" ? selectedId : "all";
+  // 単体チャット：履歴キーはキャラID
+  const roomId = selectedId;
 
   const [messages, setMessages] = useState<Msg[]>(() =>
     safeLoadHistory(roomId),
@@ -436,6 +198,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     setTimeout(run, 80);
   }
 
+  // 他画面でキャラ編集したあと戻ってきたとき反映
   useEffect(() => {
     const onFocus = () => {
       const list = safeLoadCharacters();
@@ -448,6 +211,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     return () => window.removeEventListener("focus", onFocus);
   }, []);
 
+  // キャラ切替で履歴切替
   useEffect(() => {
     setMessages(safeLoadHistory(roomId));
     scrollToBottom("auto");
@@ -463,7 +227,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     safeSaveSelectedCharacterId(selectedId);
   }, [selectedId]);
 
-  const titleName = roomMode === "all" ? "みんな" : selectedCharacter.name;
   const canSend = useMemo(() => !!input.trim() && !loading, [input, loading]);
 
   function clearHistory() {
@@ -481,7 +244,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
   async function callApiChat(
     payloadMessages: { role: "user" | "assistant"; content: string }[],
     character: CharacterProfileWithColor,
-    systemHints: string[] = [],
   ) {
     const res = await fetch("/api/chat", {
       method: "POST",
@@ -489,7 +251,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       body: JSON.stringify({
         messages: payloadMessages,
         characterProfile: character,
-        systemHints,
+        systemHints: [],
       }),
     });
 
@@ -506,12 +268,13 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           : "unknown_error";
       throw new Error(err);
     }
+
     const txt =
       typeof (json as any).text === "string" ? (json as any).text : "";
     return String(txt ?? "");
   }
 
-  async function sendSingle() {
+  async function send() {
     const text = input.trim();
     if (!text || loading) return;
 
@@ -520,7 +283,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
     setInput("");
     focusInput();
-
     setLoading(true);
 
     try {
@@ -529,7 +291,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         selectedId,
         selectedCharacter,
       );
-      const reply = await callApiChat(thread, currentCharacter, []);
+      const reply = await callApiChat(thread, currentCharacter);
       setMessages([...next, { role: "assistant", content: reply }]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -543,121 +305,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     }
   }
 
-  async function sendAllHands() {
-    const text = input.trim();
-    if (!text || loading) return;
-
-    const activeCharacters = characters;
-    if (!activeCharacters.length) {
-      alert("キャラがいないよ（キャラ設定で作ってね）");
-      return;
-    }
-
-    const baseNext: Msg[] = [...messages, { role: "user", content: text }];
-    setMessages(baseNext);
-
-    setInput("");
-    focusInput();
-
-    setLoading(true);
-
-    const banterEnabled = safeLoadBanterEnabled();
-    const banterRate = safeLoadBanterRate();
-
-    try {
-      let curMessages = baseNext;
-
-      const mentionedId = detectMentionedCharacterId(text, activeCharacters);
-      const judge = isFishingJudgeText(text);
-      const day = detectTargetDay(text);
-
-      let leadId: string;
-      if (mentionedId) leadId = mentionedId;
-      else leadId = shuffle(activeCharacters)[0].id;
-
-      const lead =
-        activeCharacters.find((c) => c.id === leadId) ?? activeCharacters[0];
-      const rest = shuffle(activeCharacters.filter((c) => c.id !== lead.id));
-
-      const banterCandidate = !!banterEnabled && !judge;
-      const banterHit = banterCandidate && Math.random() * 100 < banterRate;
-
-      {
-        const thread0 = buildThreadForCharacter(curMessages, lead.id);
-        const reply0 = await callApiChat(thread0, lead, []);
-        curMessages = [
-          ...curMessages,
-          { role: "assistant", content: reply0, speakerId: lead.id },
-        ];
-        setMessages(curMessages);
-        await sleep(120);
-      }
-
-      const leadName = lead.name ?? "先頭キャラ";
-      const leadReply = curMessages[curMessages.length - 1]?.content ?? "";
-
-      const sharedMemoJudge = judge
-        ? buildSharedMemoForJudgeFollowers(leadName, leadReply)
-        : null;
-
-      for (let i = 0; i < rest.length; i++) {
-        const c = rest[i];
-        let threadForCall = buildThreadForCharacter(curMessages, c.id);
-        const systemHints: string[] = [];
-
-        if (judge) {
-          threadForCall = rewriteLastUserForJudgeFollower(threadForCall, day);
-          if (sharedMemoJudge) systemHints.push(sharedMemoJudge);
-          systemHints.push(
-            "【あなたは脇役】先頭の結論は変えない。短く補足だけ。復唱禁止。",
-          );
-        } else if (banterHit || mentionedId) {
-          systemHints.push(buildSharedMemoForBanter(leadName));
-          systemHints.push(roleHintForBanter(leadName));
-        } else {
-          systemHints.push(buildSharedMemoForBanter(leadName));
-          systemHints.push(
-            `
-【あなたの役割（通常：ちょい足し）】
-- 先頭「${leadName}」がメイン。あなたは短く。
-- 付け足すなら「別観点を1つ」だけ。
-- 先頭の言い換え復唱は禁止。
-`.trim(),
-          );
-        }
-
-        const reply = await callApiChat(threadForCall, c, systemHints);
-        curMessages = [
-          ...curMessages,
-          { role: "assistant", content: reply, speakerId: c.id },
-        ];
-        setMessages(curMessages);
-        await sleep(120);
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `ごめん…🥺\n理由：${msg}`,
-          speakerId: selectedId,
-        },
-      ]);
-    } finally {
-      setLoading(false);
-      focusInput();
-    }
-  }
-
-  async function send() {
-    if (roomMode === "all") return sendAllHands();
-    return sendSingle();
-  }
-
-  const toggleAllHands = () =>
-    setRoomMode((m) => (m === "all" ? "single" : "all"));
-
   const uiButtonStyle: CSSProperties = {
     padding: "6px 10px",
     borderRadius: 12,
@@ -666,14 +313,8 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     lineHeight: "20px",
     color: "rgba(255,255,255,0.90)",
     border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(255,255,255,0.06)",
-  };
-
-  const uiButtonStyleActive: CSSProperties = {
-    ...uiButtonStyle,
-    background: "rgba(255,77,109,0.14)",
-    color: "#fff",
-    border: "1px solid rgba(255,77,109,0.55)",
+    background: "rgba(17,17,17,var(--glass-alpha,0.22))",
+    userSelect: "none",
   };
 
   const selectStyle: CSSProperties = {
@@ -686,7 +327,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
   return (
     <PageShell
-      title={<h1 style={{ margin: 0 }}>💬 {titleName}と話す</h1>}
+      title={<h1 style={{ margin: 0 }}>💬 {selectedCharacter.name}と話す</h1>}
       maxWidth={1100}
       showBack
       onBack={back}
@@ -733,13 +374,8 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           cursor:pointer;
           user-select:none;
           color: rgba(255,255,255,0.90);
-          background: rgba(255,255,255,0.06);
+          background: rgba(17,17,17,var(--glass-alpha,0.22));
           border: 1px solid rgba(255,255,255,0.18);
-        }
-        .chat-btn.glass.is-active{
-          background: rgba(255,77,109,0.14);
-          border: 1px solid rgba(255,77,109,0.55);
-          color:#fff;
         }
         .chat-quick{
           display:flex;
@@ -749,17 +385,17 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         }
       `}</style>
 
-      {/* ✅ PageShell配下は高さ100%で運用（変なcalcで崩さない） */}
+      {/* ✅ 上部貫通対策：ヘッダー高ぶん差し引いた高さに固定 */}
       <div
         style={{
-          height: "100%",
+          height: "calc(100dvh - var(--shell-header-h))",
           minHeight: 0,
           display: "flex",
           flexDirection: "column",
           gap: 12,
         }}
       >
-        {/* ヘッダー操作群（固定） */}
+        {/* 操作群（固定） */}
         <div
           style={{
             display: "flex",
@@ -770,57 +406,45 @@ export default function Chat({ back, goCharacterSettings }: Props) {
             flexWrap: "wrap",
           }}
         >
-          <button
-            type="button"
-            onClick={toggleAllHands}
-            title="全員集合にすると1投げに全員が返す"
-            className={`chat-btn glass ${roomMode === "all" ? "is-active" : ""}`}
-            style={roomMode === "all" ? uiButtonStyleActive : uiButtonStyle}
+          <div
+            style={{
+              position: "relative",
+              display: "inline-flex",
+              alignItems: "center",
+            }}
           >
-            {roomMode === "all" ? "👥 全員集合：ON" : "👤 全員集合：OFF"}
-          </button>
+            <select
+              ref={selectRef}
+              value={selectedId}
+              onChange={(e) => setSelectedId(e.target.value)}
+              title="キャラ切替（履歴も切り替わる）"
+              style={selectStyle}
+              className="glass"
+            >
+              {characters.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
 
-          {roomMode === "single" && (
-            <div
+            <span
               style={{
-                position: "relative",
-                display: "inline-flex",
-                alignItems: "center",
+                position: "absolute",
+                right: 10,
+                pointerEvents: "none",
+                color: "rgba(255,255,255,0.55)",
+                fontSize: 12,
+                transform: "translateY(-1px)",
               }}
             >
-              <select
-                ref={selectRef}
-                value={selectedId}
-                onChange={(e) => setSelectedId(e.target.value)}
-                title="キャラ切替（履歴も切り替わる）"
-                style={selectStyle}
-                className="glass"
-              >
-                {characters.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-
-              <span
-                style={{
-                  position: "absolute",
-                  right: 10,
-                  pointerEvents: "none",
-                  color: "rgba(255,255,255,0.55)",
-                  fontSize: 12,
-                  transform: "translateY(-1px)",
-                }}
-              >
-                ▼
-              </span>
-            </div>
-          )}
+              ▼
+            </span>
+          </div>
 
           <button
             onClick={goCharacterSettings}
-            title="キャラ管理（掛け合い設定もここ）"
+            title="キャラ管理"
             className="chat-btn glass"
             style={uiButtonStyle}
           >
@@ -837,7 +461,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           </button>
         </div>
 
-        {/* ✅ 履歴（ここだけスクロール） */}
+        {/* 履歴（ここだけスクロール） */}
         <div
           ref={scrollBoxRef}
           className="glass glass-strong"
@@ -855,28 +479,11 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         >
           {messages.length === 0 ? (
             <div style={{ color: "rgba(255,255,255,0.60)", fontSize: 13 }}>
-              {roomMode === "all"
-                ? "釣嫁たち「ひろっち、今日はどうする？🎣」"
-                : `${selectedCharacter.name}「ひろっち、今日はどうする？🎣」`}
+              {selectedCharacter.name}「ひろっち、今日はどうする？🎣」
             </div>
           ) : (
             messages.map((m, index) => {
               const isUser = m.role === "user";
-              const speakerObj =
-                !isUser && roomMode === "all"
-                  ? characters.find((c) => c.id === m.speakerId)
-                  : null;
-
-              const speakerName = speakerObj?.name ?? "だれか";
-              const speakerColor =
-                roomMode === "all"
-                  ? getCharacterColor(speakerObj)
-                  : getCharacterColor(selectedCharacter);
-
-              const bubbleBorder = !isUser
-                ? `1px solid ${speakerColor}`
-                : "1px solid transparent";
-
               return (
                 <div
                   key={index}
@@ -885,36 +492,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                     textAlign: isUser ? "right" : "left",
                   }}
                 >
-                  {!isUser && roomMode === "all" && (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        marginBottom: 6,
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          height: 18,
-                          padding: "0 8px",
-                          borderRadius: 999,
-                          fontSize: 11,
-                          fontWeight: 800,
-                          color: "#111",
-                          background: speakerColor,
-                          boxShadow: "0 0 0 1px rgba(255,255,255,0.08) inset",
-                          userSelect: "none",
-                        }}
-                        title={speakerName}
-                      >
-                        {speakerName}
-                      </span>
-                    </div>
-                  )}
-
                   <span
                     className={!isUser ? "glass" : undefined}
                     style={{
@@ -928,7 +505,9 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                       lineHeight: 1.65,
                       overflowWrap: "anywhere",
                       wordBreak: "break-word",
-                      border: bubbleBorder,
+                      border: !isUser
+                        ? "1px solid rgba(255,255,255,0.16)"
+                        : "1px solid transparent",
                     }}
                   >
                     {m.content}
@@ -955,13 +534,13 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           <button
             type="button"
             onClick={() => {
-              setInput("最近元気～？");
+              setInput("元気にしてる？");
               focusInput();
             }}
             className="chat-btn glass"
             style={{ opacity: 0.92, ...uiButtonStyle }}
           >
-            😌 元気？
+            😌 元気にしてる？
           </button>
           <button
             type="button"
@@ -972,7 +551,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
             className="chat-btn glass"
             style={{ opacity: 0.92, ...uiButtonStyle }}
           >
-            🎣 釣行判断：今日
+            🎣 今日の釣行判断
           </button>
           <button
             type="button"
@@ -983,7 +562,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
             className="chat-btn glass"
             style={{ opacity: 0.92, ...uiButtonStyle }}
           >
-            🌙 釣行判断：明日
+            🌙 明日の釣行判断
           </button>
         </div>
 
@@ -1010,19 +589,17 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                   send();
                 }
               }}
-              placeholder={
-                roomMode === "all"
-                  ? "みんなに投げかける…"
-                  : `${selectedCharacter.name}に話しかける…`
-              }
+              placeholder={`${selectedCharacter.name}に話しかける…`}
               className="glass"
               style={{
                 flex: 1,
                 padding: 10,
                 minWidth: 0,
                 borderRadius: 12,
-                color: "#fff",
+                color: "rgba(255,255,255,0.92)",
                 outline: "none",
+                border: "1px solid rgba(255,255,255,0.16)",
+                background: "rgba(17,17,17,var(--glass-alpha,0.22))",
               }}
             />
 
@@ -1037,7 +614,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                 cursor: canSend ? "pointer" : "not-allowed",
               }}
             >
-              {loading ? "送信中…" : roomMode === "all" ? "全員に送る" : "送信"}
+              {loading ? "送信中…" : "送信"}
             </button>
           </div>
         </div>

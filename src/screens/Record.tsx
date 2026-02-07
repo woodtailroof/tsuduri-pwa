@@ -47,13 +47,68 @@ function displayPhaseForHeader(phase: string) {
 
 export default function Record({ back }: Props) {
   // =========================
-  // ✅ 見た目（ガラスは PageShell のCSS変数に追従）
+  // ✅ 共通スタイル（PageShellのガラス変数に追従）
   // =========================
-  const glassBoxStyle: CSSProperties = {
+  const tileStyle: CSSProperties = {
     borderRadius: 16,
     padding: 12,
+    minWidth: 0,
+    overflow: "hidden",
+    border: "1px solid rgba(255,255,255,0.12)",
+    boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
+  };
+
+  const glassBoxStyle: CSSProperties = {
+    ...tileStyle,
     display: "grid",
     gap: 10,
+  };
+
+  const inputStyle: CSSProperties = {
+    background: "rgba(17,17,17,var(--glass-alpha-strong,0.35))",
+    color: "rgba(255,255,255,0.92)",
+    border: "1px solid rgba(255,255,255,0.18)",
+    borderRadius: 10,
+    padding: "8px 10px",
+    outline: "none",
+  };
+
+  const textareaStyle: CSSProperties = {
+    ...inputStyle,
+    width: "100%",
+    resize: "vertical",
+    lineHeight: 1.35,
+  };
+
+  const btnBase: CSSProperties = {
+    borderRadius: 12,
+    padding: "10px 14px",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(17,17,17,var(--glass-alpha,0.22))",
+    color: "rgba(255,255,255,0.88)",
+    cursor: "pointer",
+    userSelect: "none",
+    lineHeight: 1,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    boxShadow: "0 6px 18px rgba(0,0,0,0.18)",
+    WebkitTapHighlightColor: "transparent",
+  };
+
+  const btnPrimary: CSSProperties = {
+    ...btnBase,
+    border: "1px solid rgba(255,77,109,0.55)",
+    background: "rgba(255,77,109,0.18)",
+    color: "#fff",
+    boxShadow:
+      "0 8px 20px rgba(0,0,0,0.22), inset 0 0 0 1px rgba(255,77,109,0.18)",
+  };
+
+  const btnDisabled: CSSProperties = {
+    opacity: 0.45,
+    cursor: "not-allowed",
+    filter: "saturate(0.7)",
   };
 
   const segWrapStyle: CSSProperties = {
@@ -81,6 +136,7 @@ export default function Record({ back }: Props) {
     height: 1,
   };
 
+  // ✅ ピルもガラス変数参照に（濃さ追従）
   const segPillBase: CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
@@ -92,8 +148,8 @@ export default function Record({ back }: Props) {
     minWidth: 0,
     maxWidth: "100%",
     border: "1px solid rgba(255,255,255,0.22)",
-    background: "rgba(255,255,255,0.06)",
-    color: "#ddd",
+    background: "rgba(17,17,17,var(--glass-alpha,0.22))",
+    color: "rgba(255,255,255,0.82)",
     boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.12)",
     WebkitTapHighlightColor: "transparent",
   };
@@ -102,7 +158,9 @@ export default function Record({ back }: Props) {
     return {
       ...segPillBase,
       border: checked ? "2px solid #ff4d6d" : segPillBase.border,
-      background: checked ? "rgba(255,77,109,0.18)" : segPillBase.background,
+      background: checked
+        ? "rgba(17,17,17,var(--glass-alpha-strong,0.35))"
+        : segPillBase.background,
       color: checked ? "#fff" : segPillBase.color,
       boxShadow: checked
         ? "0 6px 18px rgba(0,0,0,0.22), inset 0 0 0 1px rgba(255,77,109,0.25)"
@@ -312,13 +370,13 @@ export default function Record({ back }: Props) {
     }
   }
 
-  // ✅ 写真プレースホルダー
+  // ✅ 写真プレースホルダー（濃さ追従）
   const photoFrameStyle: CSSProperties = {
     width: "100%",
     aspectRatio: "4 / 3",
     borderRadius: 14,
     overflow: "hidden",
-    background: "rgba(0,0,0,0.18)",
+    background: "rgba(17,17,17,var(--glass-alpha,0.22))",
     border: "1px solid rgba(255,255,255,0.14)",
     display: "flex",
     alignItems: "center",
@@ -342,7 +400,6 @@ export default function Record({ back }: Props) {
       maxWidth={1200}
       showBack
       onBack={back}
-      // ✅ PageShellに任せる（画面側で「セーフ余白」を足さない）
       scrollY="auto"
     >
       <style>{`
@@ -384,10 +441,7 @@ export default function Record({ back }: Props) {
       <div className="record-layout">
         {/* 左：写真 */}
         <div className="record-left" style={{ minWidth: 0 }}>
-          <div
-            className="glass glass-strong"
-            style={{ borderRadius: 16, padding: 12 }}
-          >
+          <div className="glass glass-strong" style={tileStyle}>
             <div style={{ fontWeight: 800, marginBottom: 8 }}>🖼 写真</div>
 
             <div style={{ display: "grid", gap: 10 }}>
@@ -588,7 +642,7 @@ export default function Record({ back }: Props) {
                           setCapturedAt(d);
                           if (d) setAllowUnknown(false);
                         }}
-                        style={{ marginLeft: 8 }}
+                        style={{ ...inputStyle, marginLeft: 8 }}
                       />
                     </label>
 
@@ -601,6 +655,8 @@ export default function Record({ back }: Props) {
                         setCapturedAt(now);
                         setAllowUnknown(false);
                       }}
+                      className="glass"
+                      style={btnBase}
                     >
                       今にする
                     </button>
@@ -643,10 +699,7 @@ export default function Record({ back }: Props) {
 
           {/* 潮プレビュー */}
           {photo && (
-            <div
-              className="glass glass-strong"
-              style={{ borderRadius: 16, padding: 12 }}
-            >
+            <div className="glass glass-strong" style={tileStyle}>
               <div
                 style={{
                   display: "flex",
@@ -784,7 +837,7 @@ export default function Record({ back }: Props) {
                         value={species}
                         onChange={(e) => setSpecies(e.target.value)}
                         placeholder="例：シーバス"
-                        style={{ marginLeft: 8, width: 220 }}
+                        style={{ ...inputStyle, marginLeft: 8, width: 220 }}
                       />
                     </label>
 
@@ -797,7 +850,7 @@ export default function Record({ back }: Props) {
                         onChange={(e) => setSizeCm(e.target.value)}
                         placeholder="例：52"
                         inputMode="decimal"
-                        style={{ marginLeft: 8, width: 120 }}
+                        style={{ ...inputStyle, marginLeft: 8, width: 120 }}
                       />
                     </label>
                   </div>
@@ -818,24 +871,32 @@ export default function Record({ back }: Props) {
             </div>
           </div>
 
-          {/* メモ */}
-          <div>
-            <label>
-              ひとことメモ
-              <br />
-              <textarea
-                value={memo}
-                onChange={(e) => setMemo(e.target.value)}
-                rows={3}
-                style={{ width: "100%", overflowWrap: "anywhere" }}
-                placeholder="渋かった…でも一匹！とか"
-              />
-            </label>
+          {/* メモ（✅ ここをガラスカード化して、textareaも追従させる） */}
+          <div className="glass glass-strong" style={glassBoxStyle}>
+            <div style={{ fontWeight: 800 }}>✍️ ひとことメモ</div>
+            <textarea
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              rows={3}
+              style={{ ...textareaStyle, overflowWrap: "anywhere" }}
+              placeholder="渋かった…でも一匹！とか"
+            />
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
+              ※短くてもOK。あとで見返したときの“潮と気分”が残るやつ😌
+            </div>
           </div>
 
-          {/* 保存 */}
+          {/* 保存（✅ ボタンもガラス統一、disabledも見た目を合わせる） */}
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <button onClick={onSave} disabled={!canSave}>
+            <button
+              onClick={onSave}
+              disabled={!canSave}
+              className="glass"
+              style={{
+                ...btnPrimary,
+                ...(canSave ? null : btnDisabled),
+              }}
+            >
               {saving ? "保存中..." : "💾 記録する"}
             </button>
 
@@ -851,6 +912,8 @@ export default function Record({ back }: Props) {
                   resetResultStates();
                   setMemo("");
                 }}
+                className="glass"
+                style={btnBase}
               >
                 ↺ リセット
               </button>

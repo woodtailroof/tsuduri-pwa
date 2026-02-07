@@ -60,7 +60,7 @@ body {
   --bg-blur: 0px;
   --bg-dim: 0.25;
 
-  /* ✅ すりガラス（情報レイヤー/入力/ボタン等すべてこれに統一） */
+  /* ✅ すりガラス（全UIで統一して参照） */
   --glass-blur: 10px; /* 0pxで完全オフ */
   --glass-alpha: 0.22; /* 0〜1（濃さ） */
   --glass-alpha-strong: 0.35; /* “少し濃い”用 */
@@ -286,7 +286,7 @@ h3 {
   white-space: nowrap;
 
   color: rgba(255, 255, 255, 0.92);
-  background: rgba(10, 10, 12, 0.55);
+  background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
 
   backdrop-filter: blur(var(--glass-blur, 0px));
   -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
@@ -303,12 +303,34 @@ h3 {
 }
 
 /* =========================================================
-   ✅ 透過UIの“質感”ベース（固定blur撤去）
+   ✅ すりガラス：カード/パネルの共通クラス
+   - ここで「濃さ」が全画面スライダーに追従する
+   ========================================================= */
+
+/* 互換：Settings.tsx などで使っている glass/glass-strong を正式化 */
+.glass,
+.glass-panel {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
+  backdrop-filter: blur(var(--glass-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
+}
+
+.glass-strong,
+.glass-panel.strong {
+  background: rgba(17, 17, 17, var(--glass-alpha-strong, 0.35));
+}
+
+/* =========================================================
+   ✅ 透過UI（ボタン/入力）も “濃さ” に追従させる
    ========================================================= */
 button {
   border: 1px solid var(--line);
   color: rgba(255, 255, 255, 0.9);
-  background: rgba(255, 255, 255, 0.06);
+
+  /* ✅ 固定rgbaをやめて、設定スライダーに追従 */
+  background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
 
   backdrop-filter: blur(var(--glass-blur, 0px));
   -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
@@ -326,7 +348,9 @@ textarea,
 select {
   border: 1px solid var(--line);
   color: rgba(255, 255, 255, 0.92);
-  background: rgba(0, 0, 0, 0.28);
+
+  /* ✅ 入力も追従（やや濃い方を使う） */
+  background: rgba(17, 17, 17, var(--glass-alpha-strong, 0.35));
 
   backdrop-filter: blur(var(--glass-blur, 0px));
   -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
@@ -340,37 +364,6 @@ input:focus,
 textarea:focus,
 select:focus {
   border-color: rgba(255, 77, 109, 0.55);
-}
-
-/* =========================================================
-   ✅ すりガラス “板” 統一（ここが今回の修正ポイント）
-   - 画面ごとに className="glass ..." が混在しても同じ見た目/同じ変数追従にする
-   ========================================================= */
-
-/* 旧: glass-panel を使ってる箇所も救済（そのまま変数追従） */
-.glass-panel,
-.glass {
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 14px;
-
-  /* ✅ 濃さは Settings の slider（--glass-alpha）に追従 */
-  background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
-
-  backdrop-filter: blur(var(--glass-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
-}
-
-/* 濃い板（strong） */
-.glass-panel.strong,
-.glass-strong,
-.glass.strong {
-  background: rgba(17, 17, 17, var(--glass-alpha-strong, 0.35));
-}
-
-/* （任意）枠線を少しだけ目立たせたい時 */
-.glass-panel.outline,
-.glass-outline {
-  border-color: rgba(255, 255, 255, 0.14);
 }
 
 /* 以下は元のまま（使ってないなら消してOK） */
