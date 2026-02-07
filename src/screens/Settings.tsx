@@ -194,6 +194,7 @@ export default function Settings({ back }: Props) {
     gap: 8,
   };
 
+  // ✅ cardは「枠/余白/レイアウト」だけにして、質感は index.css の glass-panel に寄せる
   const card: CSSProperties = {
     borderRadius: 16,
     padding: 14,
@@ -254,11 +255,12 @@ export default function Settings({ back }: Props) {
     boxSizing: "border-box",
   };
 
+  // ✅ 固定の blur(10px) は撤去して、全体の --glass-blur / --glass-alpha に追従させる
   const pillBase: CSSProperties = {
     borderRadius: 999,
     padding: "10px 12px",
     border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(0,0,0,0.24)",
+    background: "rgba(17, 17, 17, var(--glass-alpha-strong, 0.35))",
     color: "rgba(255,255,255,0.82)",
     cursor: "pointer",
     userSelect: "none",
@@ -267,8 +269,8 @@ export default function Settings({ back }: Props) {
     alignItems: "center",
     gap: 8,
     whiteSpace: "nowrap",
-    backdropFilter: "blur(10px)",
-    WebkitBackdropFilter: "blur(10px)",
+    backdropFilter: "blur(var(--glass-blur, 0px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur, 0px))",
   };
 
   const pillDisabled: CSSProperties = {
@@ -391,6 +393,9 @@ export default function Settings({ back }: Props) {
     characterMode !== "fixed" ||
     createdCharacters.length === 0;
 
+  // ✅ Settingsカードのクラスを index.css に合わせる（ここが “濃さが効かない” 本丸）
+  const cardClass = "glass-panel strong";
+
   return (
     <PageShell
       title={
@@ -421,7 +426,7 @@ export default function Settings({ back }: Props) {
         <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
           <div style={{ display: "grid", gap: 16, paddingRight: 2 }}>
             {/* 👧 キャラ */}
-            <div className="glass glass-strong" style={card}>
+            <div className={cardClass} style={card}>
               <h2 style={sectionTitle}>👧 キャラクター</h2>
 
               <div style={formGrid}>
@@ -561,10 +566,14 @@ export default function Settings({ back }: Props) {
                               style={{
                                 borderRadius: 14,
                                 border: "1px solid rgba(255,255,255,0.14)",
-                                background: "rgba(255,255,255,0.06)",
+                                background:
+                                  "rgba(17, 17, 17, var(--glass-alpha, 0.22))",
                                 padding: 10,
                                 display: "grid",
                                 gap: 8,
+                                backdropFilter: "blur(var(--glass-blur, 0px))",
+                                WebkitBackdropFilter:
+                                  "blur(var(--glass-blur, 0px))",
                               }}
                             >
                               <div
@@ -659,7 +668,7 @@ export default function Settings({ back }: Props) {
                   </div>
                 </div>
 
-                {/* ✅ ここが変更点：50〜200% */}
+                {/* ✅ 50〜200% */}
                 <div style={row}>
                   <div style={label}>大きさ</div>
                   <div style={rowStack}>
@@ -723,7 +732,7 @@ export default function Settings({ back }: Props) {
             </div>
 
             {/* 🖼 背景 */}
-            <div className="glass glass-strong" style={card}>
+            <div className={cardClass} style={card}>
               <h2 style={sectionTitle}>🖼 背景</h2>
 
               <div style={formGrid}>
@@ -901,7 +910,7 @@ export default function Settings({ back }: Props) {
             </div>
 
             {/* 🪟 表示 */}
-            <div className="glass glass-strong" style={card}>
+            <div className={cardClass} style={card}>
               <h2 style={sectionTitle}>🪟 表示</h2>
 
               <div style={formGrid}>
@@ -989,8 +998,7 @@ export default function Settings({ back }: Props) {
                       style={fullWidthControl}
                     />
                     <div style={help}>
-                      0px
-                      で完全に無し（※端末によっては微差が出るので、気になるなら
+                      0pxで完全に無し（※端末によっては微差が出るので、気になるなら
                       0〜1 で調整）
                     </div>
                   </div>
@@ -999,7 +1007,7 @@ export default function Settings({ back }: Props) {
             </div>
 
             {/* 🌊 キャッシュ */}
-            <div className="glass glass-strong" style={card}>
+            <div className={cardClass} style={card}>
               <h2 style={sectionTitle}>🌊 tide736 キャッシュ</h2>
 
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
@@ -1129,10 +1137,13 @@ export default function Settings({ back }: Props) {
                         style={{
                           borderRadius: 14,
                           border: "1px solid rgba(255,255,255,0.14)",
-                          background: "rgba(255,255,255,0.06)",
+                          background:
+                            "rgba(17, 17, 17, var(--glass-alpha, 0.22))",
                           padding: 10,
                           display: "grid",
                           gap: 8,
+                          backdropFilter: "blur(var(--glass-blur, 0px))",
+                          WebkitBackdropFilter: "blur(var(--glass-blur, 0px))",
                         }}
                       >
                         <div
