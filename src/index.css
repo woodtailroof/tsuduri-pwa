@@ -342,17 +342,35 @@ select:focus {
   border-color: rgba(255, 77, 109, 0.55);
 }
 
-/* ✅ “情報レイヤー板”を作りたい時の共通クラス（必要なら使う） */
-.glass-panel {
+/* =========================================================
+   ✅ すりガラス “板” 統一（ここが今回の修正ポイント）
+   - 画面ごとに className="glass ..." が混在しても同じ見た目/同じ変数追従にする
+   ========================================================= */
+
+/* 旧: glass-panel を使ってる箇所も救済（そのまま変数追従） */
+.glass-panel,
+.glass {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
+
+  /* ✅ 濃さは Settings の slider（--glass-alpha）に追従 */
   background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
+
   backdrop-filter: blur(var(--glass-blur, 0px));
   -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
 }
 
-.glass-panel.strong {
+/* 濃い板（strong） */
+.glass-panel.strong,
+.glass-strong,
+.glass.strong {
   background: rgba(17, 17, 17, var(--glass-alpha-strong, 0.35));
+}
+
+/* （任意）枠線を少しだけ目立たせたい時 */
+.glass-panel.outline,
+.glass-outline {
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
 /* 以下は元のまま（使ってないなら消してOK） */
