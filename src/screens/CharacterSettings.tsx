@@ -25,10 +25,6 @@ export type CharacterProfile = {
 export const CHARACTERS_STORAGE_KEY = "tsuduri_characters_v2";
 export const SELECTED_CHARACTER_ID_KEY = "tsuduri_selected_character_id_v2";
 
-// ✅ 互換用（UIは撤去したが、参照元が残っててもビルド落ちないよう残す）
-export const ALLHANDS_BANTER_RATE_KEY = "tsuduri_allhands_banter_rate_v1";
-export const ALLHANDS_BANTER_ENABLED_KEY = "tsuduri_allhands_banter_enabled_v1";
-
 // ちょい保険
 const BACKUP_KEY = "tsuduri_characters_backup_v1";
 
@@ -131,19 +127,11 @@ function downloadText(filename: string, text: string) {
 export default function CharacterSettings({ back }: { back: () => void }) {
   const { settings } = useAppSettings();
 
-  // ✅ 設定値をそのまま使う（“薄め係数”をやめて視認できる差にする）
-  const glassAlpha = clamp(settings.glassAlpha ?? 0.22, 0, 0.6);
-  const glassBlurPx = clamp(settings.glassBlur ?? 10, 0, 40);
-
-  // ✅ この画面配下でも .glass / .glass-strong が安定して効くようにCSS変数を流す
-  const glassVars = useMemo(
-    () =>
-      ({
-        "--glass-alpha": String(glassAlpha),
-        "--glass-blur": `${glassBlurPx}px`,
-      }) as unknown as CSSProperties,
-    [glassAlpha, glassBlurPx],
-  );
+  // ✅ すりガラス設定をこの画面にも流し込む（これが無いと「一部だけ反映」になる）
+  const glassVars = {
+    "--glass-alpha": String(clamp(settings.glassAlpha ?? 0.22, 0, 0.6)),
+    "--glass-blur": `${clamp(settings.glassBlur ?? 10, 0, 40)}px`,
+  } as unknown as CSSProperties;
 
   const [list, setList] = useState<CharacterProfile[]>(() =>
     safeLoadCharacters(),
@@ -212,8 +200,8 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     setSelectedId(next[0]?.id ?? "tsuduri");
   }
 
-  function normalizeListForSave(src: CharacterProfile[]) {
-    return src.map((c) => ({
+  function normalizeAndSave(showToast: boolean) {
+    const fixed = list.map((c) => ({
       ...c,
       name: (c.name ?? "").trim() || "（無名）",
       selfName: (c.selfName ?? "").trim(),
@@ -222,17 +210,16 @@ export default function CharacterSettings({ back }: { back: () => void }) {
       description: String(c.description ?? ""),
       color: normalizeColor(String(c.color ?? "#ff7aa2")),
     }));
+    safeSaveCharacters(fixed);
+    if (showToast) alert("保存したよ！");
   }
 
   function saveOnly() {
-    const fixed = normalizeListForSave(list);
-    safeSaveCharacters(fixed);
-    alert("保存したよ！");
+    normalizeAndSave(true);
   }
 
   function saveAndBack() {
-    const fixed = normalizeListForSave(list);
-    safeSaveCharacters(fixed);
+    normalizeAndSave(false);
     back();
   }
 
@@ -287,13 +274,12 @@ export default function CharacterSettings({ back }: { back: () => void }) {
       }));
 
     setList(cleaned);
-
-    const nextSelected =
+    setSelectedId(
       parsed?.selectedId && typeof parsed.selectedId === "string"
         ? parsed.selectedId
-        : (cleaned[0]?.id ?? "tsuduri");
+        : (cleaned[0]?.id ?? cleaned[0].id),
+    );
 
-    setSelectedId(nextSelected);
     safeSaveCharacters(cleaned);
     alert("インポート完了！");
   }
@@ -315,15 +301,17 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     alert("復元したよ！");
   }
 
-  // ===== 透過UI共通（設定値そのまま追従） =====
-  const blur = `blur(${glassBlurPx}px)`;
+  // ===== 見た目（重要：CSS変数を使って統一）=====
+  const cardBg = "rgba(0,0,0,calc(0.10 + var(--glass-alpha,0.22) * 0.70))";
+  const fieldBg = "rgba(0,0,0,calc(0.16 + var(--glass-alpha,0.22) * 0.65))";
+  const btnBg = "rgba(0,0,0,calc(0.12 + var(--glass-alpha,0.22) * 0.55))";
+
   const glassCard: CSSProperties = {
     border: "1px solid rgba(255,255,255,0.14)",
-    background: `rgba(255,255,255,${glassAlpha})`,
-    backdropFilter: blur,
-    WebkitBackdropFilter: blur,
+    background: cardBg,
+    backdropFilter: "blur(var(--glass-blur,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
     borderRadius: 14,
-    boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
   };
 
   const sectionTitle: CSSProperties = {
@@ -344,10 +332,10 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     padding: "10px 12px",
     borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.14)",
-    background: `rgba(255,255,255,${glassAlpha})`,
+    background: btnBg,
     color: "rgba(255,255,255,0.92)",
-    backdropFilter: blur,
-    WebkitBackdropFilter: blur,
+    backdropFilter: "blur(var(--glass-blur,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
     cursor: "pointer",
   };
 
@@ -355,12 +343,12 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     width: "100%",
     borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.14)",
-    background: `rgba(0,0,0,${glassAlpha})`,
+    background: fieldBg,
     color: "#fff",
     padding: "10px 12px",
     outline: "none",
-    backdropFilter: blur,
-    WebkitBackdropFilter: blur,
+    backdropFilter: "blur(var(--glass-blur,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
     boxSizing: "border-box",
   };
 
@@ -416,13 +404,13 @@ export default function CharacterSettings({ back }: { back: () => void }) {
           }
           .cs-actions .full { grid-column: 1 / -1; }
         }
-
         @media (max-width: 380px) {
           .cs-actions { grid-template-columns: 1fr; }
         }
       `}</style>
 
-      <div className="cs-wrap" style={glassVars}>
+      {/* ✅ ここで CSS 変数を画面全体に供給 */}
+      <div className="cs-wrap" style={{ ...glassVars }}>
         <div className="cs-grid">
           {/* 左：操作＆一覧 */}
           <div className="cs-panel" style={{ ...glassCard, padding: 12 }}>
@@ -511,13 +499,13 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                       textAlign: "left",
                       borderRadius: 14,
                       border: isSel
-                        ? "1px solid rgba(255,77,109,0.65)"
+                        ? `1px solid rgba(255,77,109,0.65)`
                         : "1px solid rgba(255,255,255,0.12)",
                       background: isSel
-                        ? "rgba(255,77,109,0.12)"
-                        : `rgba(0,0,0,${glassAlpha})`,
-                      backdropFilter: blur,
-                      WebkitBackdropFilter: blur,
+                        ? "rgba(255,77,109,calc(0.06 + var(--glass-alpha,0.22) * 0.20))"
+                        : cardBg,
+                      backdropFilter: "blur(var(--glass-blur,10px))",
+                      WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
                       padding: 12,
                       cursor: "pointer",
                       color: "#fff",
