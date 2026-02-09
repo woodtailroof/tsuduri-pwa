@@ -21,32 +21,15 @@ type Props = {
   subtitle?: ReactNode;
   children: ReactNode;
 
-  /** 画面ごとに幅を変えたい時用（チャットだけ広め…とか） */
   maxWidth?: number;
-
-  /** 戻るボタンを表示するか（デフォルト: true） */
   showBack?: boolean;
-
-  /** 戻るボタン押下時の挙動を上書きしたい場合 */
   onBack?: () => void;
-
-  /** 旧互換：title の配置指示 */
   titleLayout?: "center" | "left";
-
-  /** スクロール制御（本文領域のスクロール） */
   scrollY?: "auto" | "hidden";
-
-  /**
-   * ✅ PageShell内の「本文領域」の padding を上書き
-   * 例: "0" / "12px 18px" / 0
-   */
   contentPadding?: string | number;
-
-  /** 受け口だけ残す互換プロップ */
   showTestCharacter?: boolean;
 };
 
-// CSS変数（--xxx）を style に安全に入れるための型
 type CSSVars = Record<`--${string}`, string>;
 type StyleWithVars = CSSProperties & CSSVars;
 
@@ -55,8 +38,8 @@ type CharacterImageMap = Record<string, string>;
 
 type StoredCharacterLike = {
   id?: unknown;
-  name?: unknown; // v2
-  label?: unknown; // v1
+  name?: unknown;
+  label?: unknown;
 };
 
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
@@ -101,7 +84,6 @@ function useIsMobile() {
   return isMobile;
 }
 
-/** ✅ 1分ごとにUIを更新（自動背景の時間帯追従用） */
 function useMinuteTick() {
   const [tick, setTick] = useState(0);
 
@@ -174,8 +156,6 @@ export default function PageShell(props: Props) {
   } = props;
 
   const isMobile = useIsMobile();
-
-  // ✅ ヘッダー高さは全端末で固定（位置ブレの根絶）
   const HEADER_H = 72;
 
   const { settings } = useAppSettings();
@@ -249,7 +229,6 @@ export default function PageShell(props: Props) {
       "/assets/characters/tsuduri.png",
   );
 
-  // ✅ 表示倍率は 50%〜200% に統一（0.5〜2.0）
   const characterScale = Number.isFinite(settings.characterScale)
     ? settings.characterScale
     : DEFAULT_SETTINGS.characterScale;
@@ -257,7 +236,6 @@ export default function PageShell(props: Props) {
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
 
-  // ✅ root: #app-root が overflow:hidden なので PageShell 内で完結させる
   const rootStyle = useMemo<StyleWithVars>(() => {
     const bgImage =
       effectiveBgSrc && bgMode !== "off" ? `url("${effectiveBgSrc}")` : "none";
@@ -271,7 +249,6 @@ export default function PageShell(props: Props) {
       flexDirection: "column",
 
       "--shell-header-h": `${HEADER_H}px`,
-
       "--bg-image": bgImage,
       "--bg-blur": `${Math.round(clamp(bgBlur, 0, 60))}px`,
       "--bg-dim": `${clamp(bgDim, 0, 1)}`,
@@ -285,7 +262,6 @@ export default function PageShell(props: Props) {
   const resolvedFramePadding =
     contentPadding !== undefined ? contentPadding : defaultFramePadding;
 
-  // ✅ 本文スクロール領域（ヘッダー分は常に確保）
   const contentOuterStyle: CSSProperties = {
     flex: "1 1 auto",
     minHeight: 0,
@@ -310,7 +286,6 @@ export default function PageShell(props: Props) {
     if (typeof window !== "undefined") window.history.back();
   };
 
-  // ✅ ヘッダーは常に viewport 基準で固定（maxWidthに依存させない）
   const headerStyle: CSSProperties = {
     position: "fixed",
     top: 0,
@@ -339,33 +314,6 @@ export default function PageShell(props: Props) {
     boxSizing: "border-box",
   };
 
-  const titleSlotStyle: CSSProperties = {
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    minWidth: 0,
-    flex: "1 1 auto",
-    alignItems: "flex-start",
-    textAlign: "left",
-  };
-
-  const titleClampStyle: CSSProperties = {
-    minWidth: 0,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  };
-
-  const subtitleStyle: CSSProperties = {
-    marginTop: 2,
-    fontSize: 12,
-    color: "rgba(255,255,255,0.66)",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    maxWidth: "70vw",
-  };
-
   const backBtnStyle: CSSProperties = {
     borderRadius: 999,
     padding: "10px 14px",
@@ -381,16 +329,14 @@ export default function PageShell(props: Props) {
     whiteSpace: "nowrap",
     backdropFilter: "blur(10px)",
     WebkitBackdropFilter: "blur(10px)",
-    flex: "0 0 auto",
   };
 
-  // ✅ レイヤ順：背景(-) < キャラ(10) < 情報(20) < ヘッダー(999)
-  // ✅ ビタ付け：safe-area 以外の余計なオフセット無し
+  // ★ スマホ時はキャラを情報レイヤより奥へ
   const characterStyle: CSSProperties = {
     position: "fixed",
     right: "env(safe-area-inset-right)",
     bottom: "env(safe-area-inset-bottom)",
-    zIndex: 10,
+    zIndex: isMobile ? 5 : 10,
     pointerEvents: "none",
     opacity: clamp(characterOpacity, 0, 1),
     transform: `scale(${clamp(characterScale, 0.5, 2.0)})`,
@@ -406,14 +352,12 @@ export default function PageShell(props: Props) {
         <img src={characterSrc} alt="" style={characterStyle} />
       ) : null}
 
-      {/* ✅ タイトル/戻る：全端末で完全固定位置（maxWidthの影響を受けない） */}
       <div style={headerStyle}>
         <div style={headerInnerStyle}>
-          <div style={titleSlotStyle}>
-            {title ? <div style={titleClampStyle}>{title}</div> : null}
-            {subtitle ? <div style={subtitleStyle}>{subtitle}</div> : null}
+          <div style={{ minWidth: 0, flex: "1 1 auto" }}>
+            {title}
+            {subtitle}
           </div>
-
           {showBack ? (
             <button type="button" onClick={onClickBack} style={backBtnStyle}>
               ← 戻る
@@ -424,7 +368,6 @@ export default function PageShell(props: Props) {
         </div>
       </div>
 
-      {/* ✅ 本文（情報レイヤ） */}
       <div style={contentOuterStyle}>
         <div style={frameStyle}>
           <div
