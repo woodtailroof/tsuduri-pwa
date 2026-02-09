@@ -163,20 +163,16 @@ function loadCharacterImageMap(): CharacterImageMap {
 }
 
 export default function PageShell(props: Props) {
-  const {
-    title,
-    subtitle,
-    children,
-    maxWidth = 1100,
-    showBack = true,
-    onBack,
-    scrollY = "auto",
-    contentPadding,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    showTestCharacter,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    titleLayout,
-  } = props;
+  // ✅ TS6133対策：互換プロップは「型に残す」だけで、分割代入して変数にしない（= 未使用エラー回避）
+  const title = props.title;
+  const subtitle = props.subtitle;
+  const children = props.children;
+
+  const maxWidth = props.maxWidth ?? 1100;
+  const showBack = props.showBack ?? true;
+  const onBack = props.onBack;
+  const scrollY = props.scrollY ?? "auto";
+  const contentPadding = props.contentPadding;
 
   const isMobile = useIsMobile();
 
