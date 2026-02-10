@@ -113,12 +113,9 @@ export default function Home({ go }: Props) {
       const inner = fitInnerRef.current;
       if (!outer || !inner) return;
 
-      // available（表示可能領域）
       const aw = outer.clientWidth;
       const ah = outer.clientHeight;
 
-      // content（実サイズ）
-      // scrollWidth/Height は transform の影響を受けにくいので、計測に向く
       const cw = inner.scrollWidth || inner.getBoundingClientRect().width;
       const ch = inner.scrollHeight || inner.getBoundingClientRect().height;
 
@@ -126,7 +123,7 @@ export default function Home({ go }: Props) {
 
       const sW = aw / cw;
       const sH = ah / ch;
-      const next = clamp(Math.min(1, sW, sH), 0.55, 1); // 小さすぎ防止（必要なら下限は調整可）
+      const next = clamp(Math.min(1, sW, sH), 0.55, 1);
       setFitScale((prev) => (Math.abs(prev - next) < 0.01 ? prev : next));
     };
 
@@ -161,7 +158,6 @@ export default function Home({ go }: Props) {
       maxWidth={1700}
       showBack={false}
       scrollY="hidden"
-      // ✅ PageShell側のpaddingを0にして、Home側で高さ計算を安定させる
       contentPadding={0}
     >
       <style>
@@ -182,12 +178,11 @@ export default function Home({ go }: Props) {
           height:auto;
         }
 
-        /* ✅ Homeの本文領域：常にviewport内へ（モバイルも含めて固定） */
         .home-root{
           width:100%;
           height:100dvh;
           min-height:0;
-          overflow:hidden; /* ←スクロール禁止の本丸 */
+          overflow:hidden;
         }
         @media (min-width: 821px){
           .home-root{
@@ -203,6 +198,8 @@ export default function Home({ go }: Props) {
           min-width:0;
           overflow:hidden;
           display:grid;
+
+          /* ここがポイント：PCはセンターでOK */
           place-items:center;
 
           padding:
@@ -214,15 +211,16 @@ export default function Home({ go }: Props) {
           box-sizing:border-box;
         }
 
-        /* ✅ スマホ：タイトル（ロゴ）だけ、ほんの少し上へ */
+        /* ✅ スマホ：縦センターをやめて上寄せにする（タイトルが上がる本命） */
         @media (max-width:720px){
           .home-fit{
-            /* 上だけ気持ち薄く（クリップ回避で 0 にはしない） */
-            padding-top: max(2px, env(safe-area-inset-top));
+            place-items: start center;
+            /* 微調整用：+で下げ、-で上げ */
+            --home-top-nudge: -10px;
+            padding-top: calc(max(2px, env(safe-area-inset-top)) + var(--home-top-nudge));
           }
         }
 
-        /* ✅ フィット内側（はみ出す時だけ scale される） */
         .home-fit-inner{
           width:100%;
           max-width:1700px;
@@ -230,7 +228,6 @@ export default function Home({ go }: Props) {
           will-change: transform;
         }
 
-        /* ✅ Homeの内側余白（PageShellのcontentPaddingの代替） */
         .home-inner{
           width:100%;
           min-width:0;
@@ -241,22 +238,15 @@ export default function Home({ go }: Props) {
           box-sizing:border-box;
         }
 
-        /* ===== ロゴ ===== */
         .home-safe-logo{
           width:100%;
           padding-right:clamp(0px,18vw,430px);
           min-width:0;
         }
         @media (max-width:720px){
-          .home-safe-logo{
-            padding-right:0;
-
-            /* ✅ ここがメイン：ロゴ塊を少し上へ */
-            margin-top: clamp(-14px, -1.6dvh, -8px);
-          }
+          .home-safe-logo{ padding-right:0; }
         }
 
-        /* ✅ dvh 寄りに */
         .home-logo-box{
           width:min(96vw,1320px);
           height:clamp(140px,28dvh,300px);
@@ -276,7 +266,6 @@ export default function Home({ go }: Props) {
           display:block;
         }
 
-        /* ===== ボタン ===== */
         .home-actions{
           display:grid;
           align-items:center;
@@ -319,7 +308,6 @@ export default function Home({ go }: Props) {
           margin-top:2px;
         }
 
-        /* ===== スマホ：左半分カラム内で中央揃え ===== */
         @media (max-width:720px){
           .home-actions-scale{
             width:min(48vw,320px);
@@ -388,7 +376,6 @@ export default function Home({ go }: Props) {
           pointerEvents: canUse ? "auto" : "none",
         }}
       >
-        {/* ✅ ここが「画面内に収める」フィット機構 */}
         <div className="home-fit" ref={fitOuterRef}>
           <div
             className="home-fit-inner"
