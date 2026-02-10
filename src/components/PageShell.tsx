@@ -179,6 +179,10 @@ export default function PageShell(props: Props) {
   // ✅ ヘッダー高さは全端末で固定（位置ブレの根絶）
   const HEADER_H = 72;
 
+  // ✅ Homeのように title/subtitle/back が全部無い画面はヘッダー自体を消す（= 上に詰める）
+  const headerVisible = !!title || !!subtitle || showBack;
+  const effectiveHeaderH = headerVisible ? HEADER_H : 0;
+
   const { settings } = useAppSettings();
   const minuteTick = useMinuteTick();
 
@@ -272,7 +276,7 @@ export default function PageShell(props: Props) {
       flexDirection: "column",
       position: "relative",
 
-      "--shell-header-h": `${HEADER_H}px`,
+      "--shell-header-h": `${effectiveHeaderH}px`,
 
       "--bg-image": bgImage,
       "--bg-blur": `${Math.round(clamp(bgBlur, 0, 60))}px`,
@@ -281,7 +285,15 @@ export default function PageShell(props: Props) {
       "--glass-alpha": `${clamp(glassAlpha, 0, 1)}`,
       "--glass-alpha-strong": `${clamp(glassAlpha + 0.13, 0, 1)}`,
     };
-  }, [HEADER_H, effectiveBgSrc, bgMode, bgBlur, bgDim, glassBlur, glassAlpha]);
+  }, [
+    effectiveHeaderH,
+    effectiveBgSrc,
+    bgMode,
+    bgBlur,
+    bgDim,
+    glassBlur,
+    glassAlpha,
+  ]);
 
   const defaultFramePadding = isMobile ? "14px 14px 18px" : "18px 18px 20px";
   const resolvedFramePadding =
@@ -440,22 +452,24 @@ export default function PageShell(props: Props) {
       </div>
 
       {/* ✅ ヘッダー（最前面） */}
-      <div style={headerStyle}>
-        <div style={headerInnerStyle}>
-          <div style={titleSlotStyle}>
-            {title ? <div style={titleClampStyle}>{title}</div> : null}
-            {subtitle ? <div style={subtitleStyle}>{subtitle}</div> : null}
-          </div>
+      {headerVisible ? (
+        <div style={headerStyle}>
+          <div style={headerInnerStyle}>
+            <div style={titleSlotStyle}>
+              {title ? <div style={titleClampStyle}>{title}</div> : null}
+              {subtitle ? <div style={subtitleStyle}>{subtitle}</div> : null}
+            </div>
 
-          {showBack ? (
-            <button type="button" onClick={onClickBack} style={backBtnStyle}>
-              ← 戻る
-            </button>
-          ) : (
-            <span />
-          )}
+            {showBack ? (
+              <button type="button" onClick={onClickBack} style={backBtnStyle}>
+                ← 戻る
+              </button>
+            ) : (
+              <span />
+            )}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {/* ✅ 本文（情報レイヤ：キャラより前） */}
       <div style={contentOuterStyle}>

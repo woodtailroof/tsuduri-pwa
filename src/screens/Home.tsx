@@ -204,7 +204,14 @@ export default function Home({ go }: Props) {
           overflow:hidden;
           display:grid;
           place-items:center;
-          padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+
+          /* Homeはヘッダーが消えるので、上余白は安全寄りに薄く */
+          padding:
+            max(4px, env(safe-area-inset-top))
+            max(8px, env(safe-area-inset-right))
+            max(8px, env(safe-area-inset-bottom))
+            max(8px, env(safe-area-inset-left));
+
           box-sizing:border-box;
         }
 
