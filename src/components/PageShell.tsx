@@ -45,6 +45,12 @@ type Props = {
 
   /** ✅ 旧コード互換：Settings 側が渡してても落ちないよう受け口だけ残す */
   showTestCharacter?: boolean;
+
+  /**
+   * ✅ この画面で表示するキャラIDを強制したいとき（Chatの選択キャラと表示キャラを一致させる等）
+   * 未指定なら settings（fixed/random）に従う
+   */
+  displayCharacterId?: string;
 };
 
 // CSS変数（--xxx）を style に安全に入れるための型
@@ -241,10 +247,16 @@ export default function PageShell(props: Props) {
   const pickCharacterId =
     characterMode === "fixed" ? fixedCharacterId : randomPickedId;
 
+  // ✅ 画面側からの指定があればそれを最優先
+  const displayCharacterId = (props.displayCharacterId ?? "").trim();
+  const effectiveCharacterId = displayCharacterId || pickCharacterId;
+
   const characterOverrideSrc = (settings.characterOverrideSrc ?? "").trim();
-  const mappedSrc = normalizePublicPath(charImageMap[pickCharacterId] ?? "");
+  const mappedSrc = normalizePublicPath(
+    charImageMap[effectiveCharacterId] ?? "",
+  );
   const fallbackSrc = normalizePublicPath(
-    `/assets/characters/${pickCharacterId}.png`,
+    `/assets/characters/${effectiveCharacterId}.png`,
   );
 
   const characterSrc = normalizePublicPath(

@@ -334,6 +334,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       titleLayout="left"
       scrollY="hidden"
       contentPadding={"clamp(10px, 2vw, 18px)"}
+      displayCharacterId={selectedId} // ✅ 選択キャラと表示キャラをリンク
     >
       <style>{`
         @keyframes tsuduri-dot-bounce {
