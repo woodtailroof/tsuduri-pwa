@@ -205,7 +205,6 @@ export default function Home({ go }: Props) {
           display:grid;
           place-items:center;
 
-          /* Homeはヘッダーが消えるので、上余白は安全寄りに薄く */
           padding:
             max(4px, env(safe-area-inset-top))
             max(8px, env(safe-area-inset-right))
@@ -213,6 +212,14 @@ export default function Home({ go }: Props) {
             max(8px, env(safe-area-inset-left));
 
           box-sizing:border-box;
+        }
+
+        /* ✅ スマホ：タイトル（ロゴ）だけ、ほんの少し上へ */
+        @media (max-width:720px){
+          .home-fit{
+            /* 上だけ気持ち薄く（クリップ回避で 0 にはしない） */
+            padding-top: max(2px, env(safe-area-inset-top));
+          }
         }
 
         /* ✅ フィット内側（はみ出す時だけ scale される） */
@@ -241,7 +248,12 @@ export default function Home({ go }: Props) {
           min-width:0;
         }
         @media (max-width:720px){
-          .home-safe-logo{ padding-right:0; }
+          .home-safe-logo{
+            padding-right:0;
+
+            /* ✅ ここがメイン：ロゴ塊を少し上へ */
+            margin-top: clamp(-14px, -1.6dvh, -8px);
+          }
         }
 
         /* ✅ dvh 寄りに */
