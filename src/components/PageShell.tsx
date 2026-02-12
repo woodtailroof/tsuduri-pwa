@@ -240,8 +240,9 @@ export default function PageShell(props: Props) {
   const characterMode =
     settings.characterMode ?? DEFAULT_SETTINGS.characterMode;
 
-  const createdCharacters = useMemo(() => loadCreatedCharacters(), []);
-  const charImageMap = useMemo(() => loadCharacterImageMap(), []);
+  // ✅ ここは「毎回読む」方式に（設定で更新したマップを即反映したい）
+  const createdCharacters = loadCreatedCharacters();
+  const charImageMap = loadCharacterImageMap();
 
   const [randomPickedId] = useState<string>(() => {
     if (typeof window === "undefined") return "";
@@ -261,15 +262,17 @@ export default function PageShell(props: Props) {
   const characterOverrideSrc = (settings.characterOverrideSrc ?? "").trim();
 
   // ✅ 表情対応：/assets/characters/{id}/{expression}.png → neutral.png → 旧互換へ
+  // ただし「id がフォルダ名と一致しない（mk...等）」ケースが多いので、
+  // まずは settings のキャラ別画像マップ（mappedSrc）を最優先にする。
+  const mappedSrc = normalizePublicPath(
+    charImageMap[effectiveCharacterId] ?? "",
+  );
+
   const expressionSrc = normalizePublicPath(
     `/assets/characters/${effectiveCharacterId}/${displayExpression}.png`,
   );
   const neutralSrc = normalizePublicPath(
     `/assets/characters/${effectiveCharacterId}/neutral.png`,
-  );
-
-  const mappedSrc = normalizePublicPath(
-    charImageMap[effectiveCharacterId] ?? "",
   );
   const fallbackSrc = normalizePublicPath(
     `/assets/characters/${effectiveCharacterId}.png`,
@@ -277,9 +280,9 @@ export default function PageShell(props: Props) {
 
   const characterSrc = normalizePublicPath(
     characterOverrideSrc ||
+      mappedSrc || // ✅ 最優先：設定画面の「キャラ別パス」
       expressionSrc ||
       neutralSrc ||
-      mappedSrc ||
       fallbackSrc ||
       "/assets/characters/tsuduri.png",
   );
@@ -312,7 +315,6 @@ export default function PageShell(props: Props) {
       "--bg-blur": `${Math.round(clamp(bgBlur, 0, 60))}px`,
       "--bg-dim": `${clamp(bgDim, 0, 1)}`,
 
-      // ✅ ここが「すりガラス設定が効く」本体（復活）
       "--glass-blur": `${Math.round(clamp(glassBlur, 0, 60))}px`,
       "--glass-alpha": `${clamp(glassAlpha, 0, 1)}`,
       "--glass-alpha-strong": `${clamp(glassAlpha + 0.13, 0, 1)}`,
@@ -434,8 +436,6 @@ export default function PageShell(props: Props) {
 
   /**
    * ✅ レイヤ順を「DOMとスタッキングコンテキスト」で安定化
-   * 背景レイヤ(0) の中にキャラを入れて、情報レイヤ(20)より必ず後ろへ。
-   * iOS Safari の fixed + backdropFilter バグに強い構造にする。
    */
   const bgLayerStyle: CSSProperties = {
     position: "fixed",
