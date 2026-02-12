@@ -38,28 +38,28 @@ type Props = {
   scrollY?: "auto" | "hidden";
 
   /**
-   * PageShell内の「本文領域」の padding を上書き
+   * ✅ PageShell内の「本文領域」の padding を上書き
    * 例: "0" / "12px 18px" / 0
    */
   contentPadding?: string | number;
 
-  /** 旧コード互換 */
+  /** ✅ 旧コード互換：Settings 側が渡してても落ちないよう受け口だけ残す */
   showTestCharacter?: boolean;
 
   /**
-   * この画面で表示するキャラIDを強制したいとき
+   * ✅ この画面で表示するキャラIDを強制したいとき（Chatの選択キャラと表示キャラを一致させる等）
    * 未指定なら settings（fixed/random）に従う
    */
   displayCharacterId?: string;
 
   /**
-   * ✅ 表示する表情キー
-   * 例: "neutral" | "thinking" | "happy" ...
+   * ✅ 表示する表情キー（neutral / thinking / happy ...）
+   * 未指定時は neutral
    */
   displayExpression?: string;
 };
 
-// CSS変数を style に安全に入れるための型
+// CSS変数（--xxx）を style に安全に入れるための型
 type CSSVars = Record<`--${string}`, string>;
 type StyleWithVars = CSSProperties & CSSVars;
 
@@ -68,8 +68,8 @@ type CharacterImageMap = Record<string, string>;
 
 type StoredCharacterLike = {
   id?: unknown;
-  name?: unknown;
-  label?: unknown;
+  name?: unknown; // v2
+  label?: unknown; // v1
 };
 
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
@@ -97,6 +97,7 @@ function useIsMobile() {
     if (typeof window === "undefined") return;
     const mq = window.matchMedia("(max-width: 820px)");
     const coarse = window.matchMedia("(pointer: coarse)");
+
     const onChange = () => setIsMobile(mq.matches || coarse.matches);
 
     mq.addEventListener?.("change", onChange);
@@ -113,7 +114,7 @@ function useIsMobile() {
   return isMobile;
 }
 
-/** 1分ごとにUIを更新（自動背景の時間帯追従用） */
+/** ✅ 1分ごとにUIを更新（自動背景の時間帯追従用） */
 function useMinuteTick() {
   const [tick, setTick] = useState(0);
 
@@ -188,7 +189,10 @@ export default function PageShell(props: Props) {
 
   const isMobile = useIsMobile();
 
+  // ✅ ヘッダー高さは全端末で固定（位置ブレの根絶）
   const HEADER_H = 72;
+
+  // ✅ Homeのように title/subtitle/back が全部無い画面はヘッダー自体を消す（= 上に詰める）
   const headerVisible = !!title || !!subtitle || showBack;
   const effectiveHeaderH = headerVisible ? HEADER_H : 0;
 
@@ -200,8 +204,9 @@ export default function PageShell(props: Props) {
   const autoBgSet =
     (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
     DEFAULT_SETTINGS.autoBgSet;
+  const fixedBgSrcRaw = settings.fixedBgSrc ?? DEFAULT_SETTINGS.fixedBgSrc;
   const fixedBgSrc =
-    normalizePublicPath(settings.fixedBgSrc) || "/assets/bg/ui-check.png";
+    normalizePublicPath(fixedBgSrcRaw) || "/assets/bg/ui-check.png";
 
   const autoPreviewSrc = useMemo(() => {
     const band = getTimeBand(new Date());
@@ -214,16 +219,32 @@ export default function PageShell(props: Props) {
     return autoPreviewSrc;
   }, [bgMode, fixedBgSrc, autoPreviewSrc]);
 
+  // ===== ガラス =====
+  const bgDim = Number.isFinite(settings.bgDim)
+    ? settings.bgDim
+    : DEFAULT_SETTINGS.bgDim;
+  const bgBlur = Number.isFinite(settings.bgBlur)
+    ? settings.bgBlur
+    : DEFAULT_SETTINGS.bgBlur;
+
+  const glassAlpha = Number.isFinite(settings.glassAlpha)
+    ? settings.glassAlpha
+    : DEFAULT_SETTINGS.glassAlpha;
+  const glassBlur = Number.isFinite(settings.glassBlur)
+    ? settings.glassBlur
+    : DEFAULT_SETTINGS.glassBlur;
+
   // ===== キャラ =====
   const characterEnabled =
     settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
   const characterMode =
     settings.characterMode ?? DEFAULT_SETTINGS.characterMode;
 
-  const createdCharacters = useMemo(loadCreatedCharacters, []);
-  const charImageMap = useMemo(loadCharacterImageMap, []);
+  const createdCharacters = useMemo(() => loadCreatedCharacters(), []);
+  const charImageMap = useMemo(() => loadCharacterImageMap(), []);
 
   const [randomPickedId] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
     if (!createdCharacters.length) return "tsuduri";
     const i = Math.floor(Math.random() * createdCharacters.length);
     return createdCharacters[i]?.id ?? createdCharacters[0].id;
@@ -233,18 +254,20 @@ export default function PageShell(props: Props) {
   const pickCharacterId =
     characterMode === "fixed" ? fixedCharacterId : randomPickedId;
 
+  // ✅ 画面側からの指定があればそれを最優先
   const displayCharacterId = (props.displayCharacterId ?? "").trim();
   const effectiveCharacterId = displayCharacterId || pickCharacterId;
 
   const characterOverrideSrc = (settings.characterOverrideSrc ?? "").trim();
 
-  // ===== 表情対応（ここが今回の差分の本体）=====
+  // ✅ 表情対応：/assets/characters/{id}/{expression}.png → neutral.png → 旧互換へ
   const expressionSrc = normalizePublicPath(
     `/assets/characters/${effectiveCharacterId}/${displayExpression}.png`,
   );
   const neutralSrc = normalizePublicPath(
     `/assets/characters/${effectiveCharacterId}/neutral.png`,
   );
+
   const mappedSrc = normalizePublicPath(
     charImageMap[effectiveCharacterId] ?? "",
   );
@@ -261,6 +284,7 @@ export default function PageShell(props: Props) {
       "/assets/characters/tsuduri.png",
   );
 
+  // ✅ 表示倍率は 50%〜200% に統一（0.5〜2.0）
   const characterScale = Number.isFinite(settings.characterScale)
     ? settings.characterScale
     : DEFAULT_SETTINGS.characterScale;
@@ -268,6 +292,7 @@ export default function PageShell(props: Props) {
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
 
+  // ✅ root: #app-root が overflow:hidden なので PageShell 内で完結させる
   const rootStyle = useMemo<StyleWithVars>(() => {
     const bgImage =
       effectiveBgSrc && bgMode !== "off" ? `url("${effectiveBgSrc}")` : "none";
@@ -282,79 +307,208 @@ export default function PageShell(props: Props) {
       position: "relative",
 
       "--shell-header-h": `${effectiveHeaderH}px`,
+
       "--bg-image": bgImage,
+      "--bg-blur": `${Math.round(clamp(bgBlur, 0, 60))}px`,
+      "--bg-dim": `${clamp(bgDim, 0, 1)}`,
+
+      // ✅ ここが「すりガラス設定が効く」本体（復活）
+      "--glass-blur": `${Math.round(clamp(glassBlur, 0, 60))}px`,
+      "--glass-alpha": `${clamp(glassAlpha, 0, 1)}`,
+      "--glass-alpha-strong": `${clamp(glassAlpha + 0.13, 0, 1)}`,
     };
-  }, [effectiveHeaderH, effectiveBgSrc, bgMode]);
+  }, [
+    effectiveHeaderH,
+    effectiveBgSrc,
+    bgMode,
+    bgBlur,
+    bgDim,
+    glassBlur,
+    glassAlpha,
+  ]);
 
   const defaultFramePadding = isMobile ? "14px 14px 18px" : "18px 18px 20px";
   const resolvedFramePadding =
     contentPadding !== undefined ? contentPadding : defaultFramePadding;
 
+  // ✅ 本文スクロール領域（ヘッダー分は常に確保）
+  const contentOuterStyle: CSSProperties = {
+    flex: "1 1 auto",
+    minHeight: 0,
+    overflowX: "clip",
+    overflowY: scrollY,
+    WebkitOverflowScrolling: "touch",
+    overscrollBehavior: "contain",
+    paddingTop: "var(--shell-header-h)",
+    position: "relative",
+    zIndex: 20, // ✅ 情報レイヤは常に前
+  };
+
+  const frameStyle: CSSProperties = {
+    width: "100%",
+    maxWidth,
+    margin: "0 auto",
+    padding: resolvedFramePadding,
+    position: "relative",
+    minHeight: "100%",
+  };
+
   const onClickBack = useCallback(() => {
     if (onBack) return onBack();
-    window.history.back();
+    if (typeof window !== "undefined") window.history.back();
   }, [onBack]);
+
+  // ✅ ヘッダーは常に viewport 基準で固定
+  const headerStyle: CSSProperties = {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 999,
+    height: "var(--shell-header-h)",
+    background: "rgba(0,0,0,0.22)",
+    borderBottom: "1px solid rgba(255,255,255,0.10)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+  };
+
+  const headerInnerStyle: CSSProperties = {
+    height: "100%",
+    width: "100%",
+    paddingTop: "max(10px, env(safe-area-inset-top))",
+    paddingLeft: "max(14px, env(safe-area-inset-left))",
+    paddingRight: "max(14px, env(safe-area-inset-right))",
+    paddingBottom: 10,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    minWidth: 0,
+    boxSizing: "border-box",
+  };
+
+  const titleSlotStyle: CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    minWidth: 0,
+    flex: "1 1 auto",
+    alignItems: "flex-start",
+    textAlign: "left",
+  };
+
+  const titleClampStyle: CSSProperties = {
+    minWidth: 0,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  };
+
+  const subtitleStyle: CSSProperties = {
+    marginTop: 2,
+    fontSize: 12,
+    color: "rgba(255,255,255,0.66)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: "70vw",
+  };
+
+  const backBtnStyle: CSSProperties = {
+    borderRadius: 999,
+    padding: "10px 14px",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(0,0,0,0.28)",
+    color: "rgba(255,255,255,0.88)",
+    cursor: "pointer",
+    userSelect: "none",
+    lineHeight: 1,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    whiteSpace: "nowrap",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+    flex: "0 0 auto",
+  };
+
+  /**
+   * ✅ レイヤ順を「DOMとスタッキングコンテキスト」で安定化
+   * 背景レイヤ(0) の中にキャラを入れて、情報レイヤ(20)より必ず後ろへ。
+   * iOS Safari の fixed + backdropFilter バグに強い構造にする。
+   */
+  const bgLayerStyle: CSSProperties = {
+    position: "fixed",
+    inset: 0,
+    zIndex: 0,
+    pointerEvents: "none",
+  };
+
+  const bgImageStyle: CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    backgroundImage: "var(--bg-image)",
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    filter: `blur(var(--bg-blur))`,
+    transform: "scale(1.03)",
+  };
+
+  const bgDimStyle: CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    background: `rgba(0,0,0,var(--bg-dim))`,
+  };
+
+  const characterStyle: CSSProperties = {
+    position: "absolute",
+    right: "env(safe-area-inset-right)",
+    bottom: "env(safe-area-inset-bottom)",
+    opacity: clamp(characterOpacity, 0, 1),
+    transform: `scale(${clamp(characterScale, 0.5, 2.0)})`,
+    transformOrigin: "bottom right",
+    filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.45))",
+    maxWidth: "min(46vw, 520px)",
+    height: "auto",
+  };
 
   return (
     <div className="page-shell" style={rootStyle}>
-      {/* 背景＋キャラ */}
-      <div style={{ position: "fixed", inset: 0, zIndex: 0 }}>
-        {characterEnabled && characterSrc && (
-          <img
-            src={characterSrc}
-            alt=""
-            style={{
-              position: "absolute",
-              right: "env(safe-area-inset-right)",
-              bottom: "env(safe-area-inset-bottom)",
-              opacity: clamp(characterOpacity, 0, 1),
-              transform: `scale(${clamp(characterScale, 0.5, 2.0)})`,
-              transformOrigin: "bottom right",
-              maxWidth: "min(46vw, 520px)",
-              filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.45))",
-            }}
-          />
-        )}
+      {/* ✅ 背景レイヤ（最背面） */}
+      <div style={bgLayerStyle} aria-hidden="true">
+        <div style={bgImageStyle} />
+        <div style={bgDimStyle} />
+        {characterEnabled && characterSrc ? (
+          <img src={characterSrc} alt="" style={characterStyle} />
+        ) : null}
       </div>
 
-      {headerVisible && (
-        <div
-          style={{
-            position: "fixed",
-            inset: "0 0 auto 0",
-            height: "var(--shell-header-h)",
-            zIndex: 999,
-            background: "rgba(0,0,0,0.22)",
-            backdropFilter: "blur(10px)",
-          }}
-        >
-          <div style={{ padding: 12, display: "flex", gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              {title}
-              {subtitle}
+      {/* ✅ ヘッダー（最前面） */}
+      {headerVisible ? (
+        <div style={headerStyle}>
+          <div style={headerInnerStyle}>
+            <div style={titleSlotStyle}>
+              {title ? <div style={titleClampStyle}>{title}</div> : null}
+              {subtitle ? <div style={subtitleStyle}>{subtitle}</div> : null}
             </div>
-            {showBack && <button onClick={onClickBack}>← 戻る</button>}
+
+            {showBack ? (
+              <button type="button" onClick={onClickBack} style={backBtnStyle}>
+                ← 戻る
+              </button>
+            ) : (
+              <span />
+            )}
           </div>
         </div>
-      )}
+      ) : null}
 
-      <div
-        style={{
-          flex: "1 1 auto",
-          minHeight: 0,
-          overflowY: scrollY,
-          paddingTop: "var(--shell-header-h)",
-          zIndex: 20,
-        }}
-      >
-        <div
-          style={{
-            maxWidth,
-            margin: "0 auto",
-            padding: resolvedFramePadding,
-          }}
-        >
-          {children}
+      {/* ✅ 本文（情報レイヤ：キャラより前） */}
+      <div style={contentOuterStyle}>
+        <div style={frameStyle}>
+          <div className="page-shell-inner" style={{ position: "relative" }}>
+            {children}
+          </div>
         </div>
       </div>
     </div>
