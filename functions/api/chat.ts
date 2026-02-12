@@ -71,7 +71,8 @@ function replyLengthFromVolume(volume: number): ReplyLength {
 function normalizeReplyLength(x: any): ReplyLength {
   const rl = String(x ?? "").trim();
   if (rl === "medium") return "standard";
-  if (rl === "short" || rl === "standard" || rl === "long" || rl === "verylong") return rl;
+  if (rl === "short" || rl === "standard" || rl === "long" || rl === "verylong")
+    return rl;
   return DEFAULT_CHARACTER.replyLength;
 }
 
@@ -80,7 +81,10 @@ function safeCharacter(raw: unknown): CharacterV2 {
     if (!raw || typeof raw !== "object") return DEFAULT_CHARACTER;
     const r = raw as CharacterV2 & CharacterLegacy;
 
-    const id = typeof r.id === "string" && r.id.trim() ? r.id.trim() : DEFAULT_CHARACTER.id;
+    const id =
+      typeof r.id === "string" && r.id.trim()
+        ? r.id.trim()
+        : DEFAULT_CHARACTER.id;
 
     const name =
       (typeof r.name === "string" && r.name.trim() ? r.name.trim() : "") ||
@@ -89,7 +93,9 @@ function safeCharacter(raw: unknown): CharacterV2 {
 
     const self =
       (typeof r.self === "string" && r.self.trim() ? r.self.trim() : "") ||
-      (typeof r.selfName === "string" && r.selfName.trim() ? r.selfName.trim() : "") ||
+      (typeof r.selfName === "string" && r.selfName.trim()
+        ? r.selfName.trim()
+        : "") ||
       DEFAULT_CHARACTER.self;
 
     const callUser =
@@ -105,7 +111,9 @@ function safeCharacter(raw: unknown): CharacterV2 {
 
     const replyLength =
       (r.replyLength ? normalizeReplyLength(r.replyLength) : null) ??
-      (Number.isFinite(Number(r.volume)) ? replyLengthFromVolume(Number(r.volume)) : null) ??
+      (Number.isFinite(Number(r.volume))
+        ? replyLengthFromVolume(Number(r.volume))
+        : null) ??
       DEFAULT_CHARACTER.replyLength;
 
     return { id, name, self, callUser, replyLength, prompt };
@@ -132,12 +140,15 @@ function rateLimit(ip: string) {
 }
 
 function isFishingJudgeText(text: string) {
-  return /(釣り行く|釣りいく|迷って|釣行判断|今日どう|明日どう|風|雨|波|潮|満潮|干潮|水温|ポイント)/.test(text ?? "");
+  return /(釣り行く|釣りいく|迷って|釣行判断|今日どう|明日どう|風|雨|波|潮|満潮|干潮|水温|ポイント)/.test(
+    text ?? "",
+  );
 }
 
 function detectTargetDay(text: string): "today" | "tomorrow" {
   const s = text ?? "";
-  if (/(明日|あした|アシタ|tomorrow|明日の|明日行く|明日どう|明日は)/.test(s)) return "tomorrow";
+  if (/(明日|あした|アシタ|tomorrow|明日の|明日行く|明日どう|明日は)/.test(s))
+    return "tomorrow";
   return "today";
 }
 
@@ -147,134 +158,6 @@ function pad2(n: number) {
 
 function dayKey(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-async function readTextSafe(res: Response) {
-  try {
-    return await res.text();
-  } catch {
-    return "";
-  }
-}
-
-/**
- * ===== Open-Meteo（天気）=====
- * ✅ 10分キャッシュ（連打で429踏むのを防ぐ）
- * ✅ targetDay だけ取る（呼び出し回数削減）
- */
-const openMeteoCache = new Map<string, { ts: number; text: string }>();
-const OPENMETEO_TTL_MS = 10 * 60 * 1000;
-
-type WeatherSummary = {
-  tempMin: number;
-  tempMax: number;
-  windAvg: number;
-  windMax: number;
-  gustMax: number;
-  rainMaxProb: number;
-  rainMaxMm: number;
-};
-
-async function fetchOpenMeteoHourly(lat: number, lon: number) {
-  const tz = "Asia/Tokyo";
-  const url =
-    `https://api.open-meteo.com/v1/forecast` +
-    `?latitude=${encodeURIComponent(String(lat))}` +
-    `&longitude=${encodeURIComponent(String(lon))}` +
-    `&hourly=temperature_2m,precipitation,precipitation_probability,wind_speed_10m,wind_gusts_10m` +
-    `&forecast_days=2` +
-    `&timezone=${encodeURIComponent(tz)}` +
-    `&wind_speed_unit=ms`;
-
-  const res = await fetch(url);
-  const text = await readTextSafe(res);
-
-  if (!res.ok) {
-    const head = (text || "").replace(/\s+/g, " ").trim().slice(0, 160);
-    if (res.status === 429) throw new Error(`openmeteo_rate_limited_429${head ? `:${head}` : ""}`);
-    throw new Error(`openmeteo_http_${res.status}${head ? `:${head}` : ""}`);
-  }
-
-  let json: any;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    throw new Error(`openmeteo_json_parse_failed:${text.slice(0, 160)}`);
-  }
-  return json;
-}
-
-function summarizeOneDay(json: any, day: string): WeatherSummary {
-  const h = json?.hourly;
-  const times: string[] = h?.time ?? [];
-
-  const idxs: number[] = [];
-  for (let i = 0; i < times.length; i++) {
-    const t = times[i];
-    if (typeof t === "string" && t.startsWith(day)) idxs.push(i);
-  }
-
-  const safe: WeatherSummary = {
-    tempMin: 0,
-    tempMax: 0,
-    windAvg: 0,
-    windMax: 0,
-    gustMax: 0,
-    rainMaxProb: 0,
-    rainMaxMm: 0,
-  };
-  if (!idxs.length) return safe;
-
-  const pick = (arr: any[]) => idxs.map((i) => Number(arr?.[i])).filter(Number.isFinite);
-
-  const temp = pick(h?.temperature_2m ?? []);
-  const prcp = pick(h?.precipitation ?? []);
-  const pop = pick(h?.precipitation_probability ?? []);
-  const wind = pick(h?.wind_speed_10m ?? []);
-  const gust = pick(h?.wind_gusts_10m ?? []);
-
-  const avg = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0);
-  const max = (xs: number[]) => (xs.length ? xs.reduce((m, x) => (x > m ? x : m), xs[0]) : 0);
-  const round1 = (n: number) => Math.round(n * 10) / 10;
-
-  return {
-    tempMin: temp.length ? round1(Math.min(...temp)) : 0,
-    tempMax: temp.length ? round1(Math.max(...temp)) : 0,
-    windAvg: round1(avg(wind)),
-    windMax: round1(max(wind)),
-    gustMax: round1(max(gust)),
-    rainMaxProb: Math.round(max(pop)),
-    rainMaxMm: round1(max(prcp)),
-  };
-}
-
-async function buildWeatherMemo(lat: number, lon: number, targetDay: "today" | "tomorrow") {
-  const today = new Date();
-  const tomorrow = new Date();
-  tomorrow.setDate(today.getDate() + 1);
-
-  const day = targetDay === "tomorrow" ? dayKey(tomorrow) : dayKey(today);
-  const cacheKey = `openmeteo:${lat},${lon}:${day}`;
-
-  const now = Date.now();
-  const cached = openMeteoCache.get(cacheKey);
-  if (cached && now - cached.ts <= OPENMETEO_TTL_MS) {
-    return cached.text;
-  }
-
-  const json = await fetchOpenMeteoHourly(lat, lon);
-  const s = summarizeOneDay(json, day);
-
-  const label = targetDay === "tomorrow" ? "明日" : "今日";
-  const memo = `
-【Weather：${label}（焼津周辺の目安 / 単位：風m/s・雨mm/h）】
-- 気温${s.tempMin}〜${s.tempMax}℃
-- 風 平均${s.windAvg} 最大${s.windMax}（突風${s.gustMax}）m/s
-- 雨 最大${s.rainMaxProb}%（${s.rainMaxMm}mm/h）
-`.trim();
-
-  openMeteoCache.set(cacheKey, { ts: now, text: memo });
-  return memo;
 }
 
 /**
@@ -348,7 +231,8 @@ function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
       const b = slope;
       const mid = uniq[i - 1];
       if (a > 0 && b < 0) raw.push({ kind: "high", min: mid.min, cm: mid.cm });
-      else if (a < 0 && b > 0) raw.push({ kind: "low", min: mid.min, cm: mid.cm });
+      else if (a < 0 && b > 0)
+        raw.push({ kind: "low", min: mid.min, cm: mid.cm });
     }
 
     if (slope !== 0) prevSlope = slope;
@@ -358,16 +242,33 @@ function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
   const merged: TideExtreme[] = [];
   for (const e of raw) {
     const last = merged[merged.length - 1];
-    if (last && last.kind === e.kind && Math.abs(e.min - last.min) <= MERGE_MIN) {
-      const pick = e.kind === "high" ? (e.cm >= last.cm ? e : last) : (e.cm <= last.cm ? e : last);
+    if (
+      last &&
+      last.kind === e.kind &&
+      Math.abs(e.min - last.min) <= MERGE_MIN
+    ) {
+      const pick =
+        e.kind === "high"
+          ? e.cm >= last.cm
+            ? e
+            : last
+          : e.cm <= last.cm
+            ? e
+            : last;
       merged[merged.length - 1] = pick;
     } else {
       merged.push(e);
     }
   }
 
-  const highs = merged.filter((e) => e.kind === "high").sort((a, b) => a.min - b.min).slice(0, 2);
-  const lows = merged.filter((e) => e.kind === "low").sort((a, b) => a.min - b.min).slice(0, 2);
+  const highs = merged
+    .filter((e) => e.kind === "high")
+    .sort((a, b) => a.min - b.min)
+    .slice(0, 2);
+  const lows = merged
+    .filter((e) => e.kind === "low")
+    .sort((a, b) => a.min - b.min)
+    .slice(0, 2);
 
   return [...highs, ...lows].sort((a, b) => a.min - b.min);
 }
@@ -426,7 +327,11 @@ function extractTideName(json: any, date: Date): string | null {
   return null;
 }
 
-async function fetchTideDayInfo(pc: string, hc: string, date: Date): Promise<TideDayInfo> {
+async function fetchTideDayInfo(
+  pc: string,
+  hc: string,
+  date: Date,
+): Promise<TideDayInfo> {
   const day = dayKey(date);
   const json = await fetchTide736JSON(pc, hc, date);
   const series = extractTideSeries(json, date);
@@ -502,10 +407,17 @@ function maxOutputByLength(replyLength: ReplyLength, isJudge: boolean) {
 }
 
 function lengthRules(replyLength: ReplyLength, isJudge: boolean) {
-  if (isJudge) return { lines: "20〜40行（フォーマット優先）", paragraphs: "段落は3〜6個" };
-  if (replyLength === "short") return { lines: "6〜10行", paragraphs: "段落は2〜3個" };
-  if (replyLength === "standard") return { lines: "10〜16行", paragraphs: "段落は3〜5個" };
-  if (replyLength === "long") return { lines: "16〜24行", paragraphs: "段落は4〜6個" };
+  if (isJudge)
+    return {
+      lines: "20〜40行（フォーマット優先）",
+      paragraphs: "段落は3〜6個",
+    };
+  if (replyLength === "short")
+    return { lines: "6〜10行", paragraphs: "段落は2〜3個" };
+  if (replyLength === "standard")
+    return { lines: "10〜16行", paragraphs: "段落は3〜5個" };
+  if (replyLength === "long")
+    return { lines: "16〜24行", paragraphs: "段落は4〜6個" };
   return { lines: "24〜36行", paragraphs: "段落は5〜7個" };
 }
 
@@ -597,6 +509,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           .slice(0, 8)
       : [];
 
+    // ✅ クライアントから渡される天気メモ（釣行判断で利用）
+    const clientWeatherMemo =
+      typeof body?.clientWeatherMemo === "string" &&
+      body.clientWeatherMemo.trim()
+        ? String(body.clientWeatherMemo).trim().slice(0, 1200)
+        : null;
+
     if (!Array.isArray(messages) || messages.length === 0) {
       return jsonResponse(400, { ok: false, error: "messages_required" });
     }
@@ -606,15 +525,18 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       .slice(-32)
       .map((m) => ({
         role: m.role,
-        content: safeString(m.content).slice(0, 4000),
+        content: safeString((m as any).content).slice(0, 4000),
       }));
 
-    const lastUser = [...trimmed].reverse().find((m) => m.role === "user")?.content ?? "";
+    const lastUser =
+      [...trimmed].reverse().find((m) => m.role === "user")?.content ?? "";
     const isJudge = isFishingJudgeText(lastUser);
     const targetDay = detectTargetDay(lastUser);
 
     const profileMemo: Msg | null =
-      /釣り|サーフ|河口|港|堤防|ルアー|シーバス|ヒラメ|マゴチ|チヌ|アジ|メッキ/.test(lastUser)
+      /釣り|サーフ|河口|港|堤防|ルアー|シーバス|ヒラメ|マゴチ|チヌ|アジ|メッキ/.test(
+        lastUser,
+      )
         ? {
             role: "system",
             content: `
@@ -650,22 +572,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
       : null;
 
+    // ✅ 釣行判断データ（Weatherは client から、Tideは server で）
     let weatherAndTideMemo: Msg | null = null;
     if (isJudge) {
-      const YAIZU = { lat: 34.868, lon: 138.3236 };
       const PC = "22";
       const HC = "15";
 
-      let wText = "";
       let tText = "";
-      let wErr: string | null = null;
       let tErr: string | null = null;
-
-      try {
-        wText = await buildWeatherMemo(YAIZU.lat, YAIZU.lon, targetDay);
-      } catch (e) {
-        wErr = e instanceof Error ? e.message : String(e);
-      }
 
       try {
         tText = await buildTideMemo(PC, HC);
@@ -675,16 +589,34 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
       const parts: string[] = [];
       parts.push(`【釣行判断用データ（焼津周辺）】`);
-      parts.push(`【対象】${targetDay === "tomorrow" ? "明日について判断する" : "今日について判断する"}`);
+      parts.push(
+        `【対象】${
+          targetDay === "tomorrow"
+            ? "明日について判断する"
+            : "今日について判断する"
+        }`,
+      );
       parts.push("");
-      parts.push(wText ? wText : `【Weather】取得失敗（${wErr ?? "unknown"}）`);
+
+      // Weather（クライアント提供を最優先）
+      if (clientWeatherMemo) parts.push(clientWeatherMemo);
+      else parts.push(`【Weather】取得失敗（clientWeatherMemo_not_provided）`);
+
       parts.push("");
-      parts.push(tText ? tText : `【潮（tide736）】取得失敗（${tErr ?? "unknown"}）`);
+
+      // Tide（従来通り）
+      parts.push(
+        tText ? tText : `【潮（tide736）】取得失敗（${tErr ?? "unknown"}）`,
+      );
+
       weatherAndTideMemo = { role: "system", content: parts.join("\n") };
     }
 
     const characterSystem = buildCharacterSystem(character, isJudge);
-    const hintMsgs: Msg[] = systemHints.map((s) => ({ role: "system", content: s }));
+    const hintMsgs: Msg[] = systemHints.map((s) => ({
+      role: "system",
+      content: s,
+    }));
 
     const input: Msg[] = [
       ...(profileMemo ? [profileMemo] : []),
@@ -695,7 +627,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       ...trimmed,
     ];
 
-    const maxOut = clamp(maxOutputByLength(character.replyLength, isJudge), 350, 2600);
+    const maxOut = clamp(
+      maxOutputByLength(character.replyLength, isJudge),
+      350,
+      2600,
+    );
 
     const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 

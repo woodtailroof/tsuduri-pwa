@@ -87,8 +87,8 @@ function safeLoadHistory(roomId: string): Msg[] {
   const out: Msg[] = [];
   for (const item of parsed) {
     if (!isRecordLike(item)) continue;
-    const role = item.role;
-    const content = item.content;
+    const role = (item as any).role;
+    const content = (item as any).content;
     if (role !== "user" && role !== "assistant") continue;
     if (typeof content !== "string") continue;
     out.push({ role: role as "user" | "assistant", content });
@@ -118,8 +118,8 @@ async function readErrorBody(res: Response): Promise<string | null> {
     if (ct.includes("application/json")) {
       const j: unknown = await res.json().catch(() => null);
       if (isRecordLike(j)) {
-        if (typeof j.error === "string") return j.error;
-        if (typeof j.message === "string") return j.message;
+        if (typeof (j as any).error === "string") return (j as any).error;
+        if (typeof (j as any).message === "string") return (j as any).message;
       }
       return JSON.stringify(j);
     }
@@ -130,6 +130,184 @@ async function readErrorBody(res: Response): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * ============================
+ * 釣行判断検知（サーバ側と揃える）
+ * ============================
+ */
+function isFishingJudgeText(text: string) {
+  return /(釣り行く|釣りいく|迷って|釣行判断|今日どう|明日どう|風|雨|波|潮|満潮|干潮|水温|ポイント)/.test(
+    text ?? "",
+  );
+}
+
+function detectTargetDay(text: string): "today" | "tomorrow" {
+  const s = text ?? "";
+  if (/(明日|あした|アシタ|tomorrow|明日の|明日行く|明日どう|明日は)/.test(s))
+    return "tomorrow";
+  return "today";
+}
+
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function dayKey(d: Date) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/**
+ * ============================
+ * Open-Meteo（ブラウザ直叩き）
+ * - “共有IP巻き込み”を避けるため client 側で取得
+ * - Daily endpoint で軽量化
+ * - localStorage キャッシュ（デイキー+TTL）
+ * ============================
+ */
+const WEATHER_CACHE_PREFIX = "tsuduri_openmeteo_daily_v1:";
+const OPENMETEO_TTL_MS = 30 * 60 * 1000; // 30分
+
+type WeatherDailySummary = {
+  tempMin: number;
+  tempMax: number;
+  windMax: number;
+  gustMax: number;
+  rainProbMax: number;
+  rainSum: number;
+};
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function round1(n: number) {
+  return Math.round(n * 10) / 10;
+}
+
+function safeNumber(x: unknown) {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function cacheGet(key: string): { ts: number; text: string } | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const obj = JSON.parse(raw) as any;
+    if (!obj || typeof obj !== "object") return null;
+    if (typeof obj.ts !== "number") return null;
+    if (typeof obj.text !== "string") return null;
+    return { ts: obj.ts, text: obj.text };
+  } catch {
+    return null;
+  }
+}
+
+function cacheSet(key: string, value: { ts: number; text: string }) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore
+  }
+}
+
+async function fetchOpenMeteoDaily(lat: number, lon: number) {
+  const tz = "Asia/Tokyo";
+  const url =
+    `https://api.open-meteo.com/v1/forecast` +
+    `?latitude=${encodeURIComponent(String(lat))}` +
+    `&longitude=${encodeURIComponent(String(lon))}` +
+    `&daily=temperature_2m_min,temperature_2m_max,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max` +
+    `&forecast_days=2` +
+    `&timezone=${encodeURIComponent(tz)}` +
+    `&wind_speed_unit=ms`;
+
+  const res = await fetch(url, { method: "GET" });
+  const text = await res.text().catch(() => "");
+
+  if (!res.ok) {
+    const head = (text || "").replace(/\s+/g, " ").trim().slice(0, 160);
+    if (res.status === 429)
+      throw new Error(`openmeteo_rate_limited_429${head ? `:${head}` : ""}`);
+    throw new Error(`openmeteo_http_${res.status}${head ? `:${head}` : ""}`);
+  }
+
+  let json: any;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(`openmeteo_json_parse_failed:${text.slice(0, 160)}`);
+  }
+  return json;
+}
+
+function summarizeDaily(json: any, day: string): WeatherDailySummary {
+  const d = json?.daily;
+  const times: string[] = d?.time ?? [];
+  const idx = times.findIndex((t) => typeof t === "string" && t === day);
+  if (idx < 0) {
+    return {
+      tempMin: 0,
+      tempMax: 0,
+      windMax: 0,
+      gustMax: 0,
+      rainProbMax: 0,
+      rainSum: 0,
+    };
+  }
+
+  const tmin = safeNumber(d?.temperature_2m_min?.[idx]);
+  const tmax = safeNumber(d?.temperature_2m_max?.[idx]);
+  const pop = safeNumber(d?.precipitation_probability_max?.[idx]);
+  const psum = safeNumber(d?.precipitation_sum?.[idx]);
+  const wmax = safeNumber(d?.wind_speed_10m_max?.[idx]);
+  const gmax = safeNumber(d?.wind_gusts_10m_max?.[idx]);
+
+  return {
+    tempMin: round1(tmin),
+    tempMax: round1(tmax),
+    windMax: round1(wmax),
+    gustMax: round1(gmax),
+    rainProbMax: Math.round(clamp(pop, 0, 100)),
+    rainSum: round1(Math.max(0, psum)),
+  };
+}
+
+async function buildClientWeatherMemo(
+  targetDay: "today" | "tomorrow",
+): Promise<string> {
+  // 焼津周辺（サーバ側と揃える）
+  const YAIZU = { lat: 34.868, lon: 138.3236 };
+
+  const today = new Date();
+  const t = new Date(today);
+  if (targetDay === "tomorrow") t.setDate(t.getDate() + 1);
+
+  const day = dayKey(t);
+  const cacheKey = `${WEATHER_CACHE_PREFIX}${YAIZU.lat},${YAIZU.lon}:${day}`;
+
+  const now = Date.now();
+  const cached = cacheGet(cacheKey);
+  if (cached && now - cached.ts <= OPENMETEO_TTL_MS) {
+    return cached.text;
+  }
+
+  const json = await fetchOpenMeteoDaily(YAIZU.lat, YAIZU.lon);
+  const s = summarizeDaily(json, day);
+
+  const label = targetDay === "tomorrow" ? "明日" : "今日";
+  // dailyなので雨は “日合計” が基本。釣行判断には十分。
+  const memo = `
+【Weather：${label}（焼津周辺の目安 / 単位：風m/s・雨mm/日）】
+- 気温 ${s.tempMin}〜${s.tempMax}℃
+- 風 最大 ${s.windMax}（突風 ${s.gustMax}）m/s
+- 雨 確率最大 ${s.rainProbMax}%（合計 ${s.rainSum}mm）
+`.trim();
+
+  cacheSet(cacheKey, { ts: now, text: memo });
+  return memo;
 }
 
 export default function Chat({ back, goCharacterSettings }: Props) {
@@ -244,6 +422,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
   async function callApiChat(
     payloadMessages: { role: "user" | "assistant"; content: string }[],
     character: CharacterProfileWithColor,
+    clientWeatherMemo: string | null,
   ) {
     const res = await fetch("/api/chat", {
       method: "POST",
@@ -252,6 +431,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         messages: payloadMessages,
         characterProfile: character,
         systemHints: [],
+        clientWeatherMemo, // ✅ 釣行判断の天気はクライアントから渡す
       }),
     });
 
@@ -261,10 +441,10 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     }
 
     const json: unknown = await res.json().catch(() => null);
-    if (!isRecordLike(json) || json.ok !== true) {
+    if (!isRecordLike(json) || (json as any).ok !== true) {
       const err =
-        isRecordLike(json) && typeof json.error === "string"
-          ? json.error
+        isRecordLike(json) && typeof (json as any).error === "string"
+          ? (json as any).error
           : "unknown_error";
       throw new Error(err);
     }
@@ -291,7 +471,24 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         selectedId,
         selectedCharacter,
       );
-      const reply = await callApiChat(thread, currentCharacter);
+
+      // ✅ 釣行判断なら、先にブラウザでOpen-Meteoを取得して“メモ”化
+      let clientWeatherMemo: string | null = null;
+      if (isFishingJudgeText(text)) {
+        const targetDay = detectTargetDay(text);
+        try {
+          clientWeatherMemo = await buildClientWeatherMemo(targetDay);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          clientWeatherMemo = `【Weather】取得失敗（${msg}）`;
+        }
+      }
+
+      const reply = await callApiChat(
+        thread,
+        currentCharacter,
+        clientWeatherMemo,
+      );
       setMessages([...next, { role: "assistant", content: reply }]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -386,7 +583,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         }
       `}</style>
 
-      {/* ✅ 上部貫通対策：ヘッダー高ぶん差し引いた高さに固定 */}
       <div
         style={{
           height: "calc(100dvh - var(--shell-header-h))",
@@ -396,7 +592,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           gap: 12,
         }}
       >
-        {/* 操作群（固定） */}
         <div
           style={{
             display: "flex",
@@ -462,7 +657,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           </button>
         </div>
 
-        {/* 履歴（ここだけスクロール） */}
         <div
           ref={scrollBoxRef}
           className="glass glass-strong"
@@ -530,7 +724,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           )}
         </div>
 
-        {/* クイック（固定） */}
         <div className="chat-quick">
           <button
             type="button"
@@ -567,7 +760,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           </button>
         </div>
 
-        {/* 入力欄（固定） */}
         <div
           className="glass glass-strong"
           style={{ borderRadius: 14, padding: 10 }}
