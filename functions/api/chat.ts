@@ -1,5 +1,6 @@
 // functions/api/chat.ts
 import OpenAI from "openai";
+import type { PagesFunction } from "@cloudflare/workers-types";
 
 type Msg = {
   role: "system" | "user" | "assistant";
@@ -68,7 +69,7 @@ function replyLengthFromVolume(volume: number): ReplyLength {
   return "verylong";
 }
 
-function normalizeReplyLength(x: any): ReplyLength {
+function normalizeReplyLength(x: unknown): ReplyLength {
   const rl = String(x ?? "").trim();
   if (rl === "medium") return "standard";
   if (rl === "short" || rl === "standard" || rl === "long" || rl === "verylong")
@@ -79,6 +80,7 @@ function normalizeReplyLength(x: any): ReplyLength {
 function safeCharacter(raw: unknown): CharacterV2 {
   try {
     if (!raw || typeof raw !== "object") return DEFAULT_CHARACTER;
+
     const r = raw as CharacterV2 & CharacterLegacy;
 
     const id =
@@ -158,6 +160,233 @@ function pad2(n: number) {
 
 function dayKey(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+async function readTextSafe(res: Response) {
+  try {
+    return await res.text();
+  } catch {
+    return "";
+  }
+}
+
+function isRecordLike(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null;
+}
+
+function getObj(x: unknown, key: string): Record<string, unknown> | null {
+  if (!isRecordLike(x)) return null;
+  const v = x[key];
+  return isRecordLike(v) ? v : null;
+}
+
+function getArrStr(x: unknown, key: string): string[] {
+  if (!isRecordLike(x)) return [];
+  const v = x[key];
+  if (!Array.isArray(v)) return [];
+  return v.filter((t) => typeof t === "string") as string[];
+}
+
+function getArrNum(x: unknown, key: string): number[] {
+  if (!isRecordLike(x)) return [];
+  const v = x[key];
+  if (!Array.isArray(v)) return [];
+  const out: number[] = [];
+  for (const it of v) {
+    const n = typeof it === "number" ? it : Number(it);
+    if (Number.isFinite(n)) out.push(n);
+  }
+  return out;
+}
+
+/**
+ * ===== Open-Meteo（天気）=====
+ * ✅ 10分キャッシュ（連打で429踏むのを防ぐ）
+ * ✅ targetDay だけ取る（呼び出し回数削減）
+ * ✅ weather_code を追加して「天気（概況）」を出す
+ */
+const openMeteoCache = new Map<string, { ts: number; text: string }>();
+const OPENMETEO_TTL_MS = 10 * 60 * 1000;
+
+type WeatherSummary = {
+  wx: string; // ✅ 概況（晴れ/くもり/雨/雪/雷雨/霧）
+  tempMin: number;
+  tempMax: number;
+  windAvg: number;
+  windMax: number;
+  gustMax: number;
+  rainMaxProb: number;
+  rainMaxMm: number;
+};
+
+async function fetchOpenMeteoHourly(lat: number, lon: number) {
+  const tz = "Asia/Tokyo";
+  const url =
+    `https://api.open-meteo.com/v1/forecast` +
+    `?latitude=${encodeURIComponent(String(lat))}` +
+    `&longitude=${encodeURIComponent(String(lon))}` +
+    // ✅ weather_code を追加
+    `&hourly=temperature_2m,precipitation,precipitation_probability,wind_speed_10m,wind_gusts_10m,weather_code` +
+    `&forecast_days=2` +
+    `&timezone=${encodeURIComponent(tz)}` +
+    `&wind_speed_unit=ms`;
+
+  const res = await fetch(url);
+  const text = await readTextSafe(res);
+
+  if (!res.ok) {
+    const head = (text || "").replace(/\s+/g, " ").trim().slice(0, 160);
+    if (res.status === 429)
+      throw new Error(`openmeteo_rate_limited_429${head ? `:${head}` : ""}`);
+    throw new Error(`openmeteo_http_${res.status}${head ? `:${head}` : ""}`);
+  }
+
+  let json: unknown;
+  try {
+    json = JSON.parse(text) as unknown;
+  } catch {
+    throw new Error(`openmeteo_json_parse_failed:${text.slice(0, 160)}`);
+  }
+  return json;
+}
+
+type WxKind = "clear" | "cloud" | "fog" | "rain" | "snow" | "thunder";
+
+function wxKindFromCode(code: number): WxKind {
+  // Open-Meteo weathercode: https://open-meteo.com/en/docs
+  if (code === 0) return "clear";
+  if (code === 1 || code === 2) return "cloud"; // 1 mainly clear, 2 partly cloudy
+  if (code === 3) return "cloud"; // overcast
+  if (code === 45 || code === 48) return "fog";
+
+  // drizzle / rain
+  if (code === 51 || code === 53 || code === 55) return "rain";
+  if (code === 56 || code === 57) return "rain"; // freezing drizzle
+  if (code === 61 || code === 63 || code === 65) return "rain";
+  if (code === 66 || code === 67) return "rain"; // freezing rain
+  if (code === 80 || code === 81 || code === 82) return "rain"; // showers
+
+  // snow
+  if (code === 71 || code === 73 || code === 75) return "snow";
+  if (code === 77) return "snow";
+  if (code === 85 || code === 86) return "snow"; // snow showers
+
+  // thunder
+  if (code === 95 || code === 96 || code === 99) return "thunder";
+
+  // unknown → cloud 扱い（安全側）
+  return "cloud";
+}
+
+function wxLabelFromKinds(kinds: WxKind[]): string {
+  // ✅ “シンプル”優先：存在チェックで決める（釣行判断に強い）
+  let hasThunder = false;
+  let hasSnow = false;
+  let hasRain = false;
+  let hasFog = false;
+  let hasCloud = false;
+
+  for (const k of kinds) {
+    if (k === "thunder") hasThunder = true;
+    else if (k === "snow") hasSnow = true;
+    else if (k === "rain") hasRain = true;
+    else if (k === "fog") hasFog = true;
+    else if (k === "cloud") hasCloud = true;
+  }
+
+  if (hasThunder) return "雷雨";
+  if (hasSnow) return "雪";
+  if (hasRain) return "雨";
+  if (hasFog) return "霧";
+  if (hasCloud) return "くもり";
+  return "晴れ";
+}
+
+function summarizeOneDay(json: unknown, day: string): WeatherSummary {
+  const hourly = getObj(json, "hourly");
+  const times = getArrStr(hourly, "time");
+
+  const idxs: number[] = [];
+  for (let i = 0; i < times.length; i++) {
+    const t = times[i];
+    if (typeof t === "string" && t.startsWith(day)) idxs.push(i);
+  }
+
+  const safe: WeatherSummary = {
+    wx: "（未取得）",
+    tempMin: 0,
+    tempMax: 0,
+    windAvg: 0,
+    windMax: 0,
+    gustMax: 0,
+    rainMaxProb: 0,
+    rainMaxMm: 0,
+  };
+  if (!idxs.length) return safe;
+
+  const pickNums = (arr: number[]) =>
+    idxs.map((i) => arr[i]).filter((n) => Number.isFinite(n)) as number[];
+
+  const temp = pickNums(getArrNum(hourly, "temperature_2m"));
+  const prcp = pickNums(getArrNum(hourly, "precipitation"));
+  const pop = pickNums(getArrNum(hourly, "precipitation_probability"));
+  const wind = pickNums(getArrNum(hourly, "wind_speed_10m"));
+  const gust = pickNums(getArrNum(hourly, "wind_gusts_10m"));
+  const wcode = pickNums(getArrNum(hourly, "weather_code"));
+
+  const avg = (xs: number[]) =>
+    xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0;
+  const max = (xs: number[]) =>
+    xs.length ? xs.reduce((m, x) => (x > m ? x : m), xs[0]) : 0;
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+
+  const kinds = wcode.map((c) => wxKindFromCode(c));
+  const wx = wcode.length ? wxLabelFromKinds(kinds) : "（未取得）";
+
+  return {
+    wx,
+    tempMin: temp.length ? round1(Math.min(...temp)) : 0,
+    tempMax: temp.length ? round1(Math.max(...temp)) : 0,
+    windAvg: round1(avg(wind)),
+    windMax: round1(max(wind)),
+    gustMax: round1(max(gust)),
+    rainMaxProb: Math.round(max(pop)),
+    rainMaxMm: round1(max(prcp)),
+  };
+}
+
+async function buildWeatherMemo(
+  lat: number,
+  lon: number,
+  targetDay: "today" | "tomorrow",
+) {
+  const today = new Date();
+  const tomorrow = new Date();
+  tomorrow.setDate(today.getDate() + 1);
+
+  const day = targetDay === "tomorrow" ? dayKey(tomorrow) : dayKey(today);
+  const cacheKey = `openmeteo:${lat},${lon}:${day}`;
+
+  const now = Date.now();
+  const cached = openMeteoCache.get(cacheKey);
+  if (cached && now - cached.ts <= OPENMETEO_TTL_MS) {
+    return cached.text;
+  }
+
+  const json = await fetchOpenMeteoHourly(lat, lon);
+  const s = summarizeOneDay(json, day);
+
+  const label = targetDay === "tomorrow" ? "明日" : "今日";
+  const memo = `
+【Weather：${label}（焼津周辺の目安 / 単位：風m/s・雨mm/h）】
+- 天気：${s.wx}
+- 気温${s.tempMin}〜${s.tempMax}℃
+- 風 平均${s.windAvg} 最大${s.windMax}（突風${s.gustMax}）m/s
+- 雨 最大${s.rainMaxProb}%（${s.rainMaxMm}mm/h）
+`.trim();
+
+  openMeteoCache.set(cacheKey, { ts: now, text: memo });
+  return memo;
 }
 
 /**
@@ -289,41 +518,65 @@ async function fetchTide736JSON(pc: string, hc: string, date: Date) {
   const res = await fetch(url.toString());
   const text = await res.text();
 
-  let json: any;
+  let json: unknown;
   try {
-    json = JSON.parse(text);
+    json = JSON.parse(text) as unknown;
   } catch {
     throw new Error(`tide736_json_parse_failed: ${text.slice(0, 120)}`);
   }
 
   if (!res.ok) throw new Error(`tide736_http_${res.status}`);
-  if (!json?.status) throw new Error(`tide736_status_false`);
+  if (!isRecordLike(json) || !("status" in json) || !json.status)
+    throw new Error(`tide736_status_false`);
 
   return json;
 }
 
-function extractTideSeries(json: any, date: Date): TidePoint[] {
+function extractTideSeries(json: unknown, date: Date): TidePoint[] {
+  if (!isRecordLike(json)) return [];
+  const tide = getObj(json, "tide");
+  if (!tide) return [];
+
+  const direct = tide["tide"];
+  if (Array.isArray(direct) && direct.length > 0) return direct as TidePoint[];
+
   const yr = date.getFullYear();
   const mn = date.getMonth() + 1;
   const dy = date.getDate();
-  const direct = json?.tide?.tide;
-  if (Array.isArray(direct) && direct.length > 0) return direct as TidePoint[];
-
   const key = `${yr}-${pad2(mn)}-${pad2(dy)}`;
-  const chart = json?.tide?.chart?.[key]?.tide;
-  if (Array.isArray(chart) && chart.length > 0) return chart as TidePoint[];
+
+  const chart = getObj(tide, "chart");
+  if (!chart) return [];
+  const dayObj = getObj(chart, key);
+  if (!dayObj) return [];
+  const dayTide = dayObj["tide"];
+  if (Array.isArray(dayTide) && dayTide.length > 0)
+    return dayTide as TidePoint[];
+
   return [];
 }
 
-function extractTideName(json: any, date: Date): string | null {
+function extractTideName(json: unknown, date: Date): string | null {
+  if (!isRecordLike(json)) return null;
+  const tide = getObj(json, "tide");
+  if (!tide) return null;
+
   const yr = date.getFullYear();
   const mn = date.getMonth() + 1;
   const dy = date.getDate();
   const key = `${yr}-${pad2(mn)}-${pad2(dy)}`;
-  const title = json?.tide?.chart?.[key]?.moon?.title;
+
+  const chart = getObj(tide, "chart");
+  const dayObj = chart ? getObj(chart, key) : null;
+  const moon = dayObj ? getObj(dayObj, "moon") : null;
+  const title = moon ? moon["title"] : null;
+
   if (typeof title === "string" && title.length > 0) return title;
-  const fallback = json?.tide?.moon?.title;
+
+  const moon2 = getObj(tide, "moon");
+  const fallback = moon2 ? moon2["title"] : null;
   if (typeof fallback === "string" && fallback.length > 0) return fallback;
+
   return null;
 }
 
@@ -468,11 +721,16 @@ function getClientIp(req: Request) {
   return ip || "unknown";
 }
 
-function checkPasscode(env: Env, body: any, req: Request) {
+function checkPasscode(env: Env, body: unknown, req: Request) {
   const need = env.CHAT_PASSCODE;
   if (!need) return true;
+
   const inHeader = req.headers.get("x-chat-passcode") || "";
-  const inBody = typeof body?.passcode === "string" ? body.passcode : "";
+  const inBody =
+    isRecordLike(body) && typeof body["passcode"] === "string"
+      ? (body["passcode"] as string)
+      : "";
+
   return (inHeader && inHeader === need) || (inBody && inBody === need);
 }
 
@@ -483,7 +741,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       return jsonResponse(500, { ok: false, error: "OPENAI_API_KEY_missing" });
     }
 
-    let body: any = null;
+    let body: unknown = null;
     try {
       body = await context.request.json();
     } catch {
@@ -499,34 +757,40 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       return jsonResponse(429, { ok: false, error: "rate_limited" });
     }
 
-    const messages = body?.messages as Msg[] | undefined;
-    const character = safeCharacter(body?.character ?? body?.characterProfile);
-
-    const systemHints: string[] = Array.isArray(body?.systemHints)
-      ? body.systemHints
-          .map((x: unknown) => safeString(x))
-          .filter((s: string) => !!s.trim())
-          .slice(0, 8)
-      : [];
-
-    // ✅ クライアントから渡される天気メモ（釣行判断で利用）
-    const clientWeatherMemo =
-      typeof body?.clientWeatherMemo === "string" &&
-      body.clientWeatherMemo.trim()
-        ? String(body.clientWeatherMemo).trim().slice(0, 1200)
+    const messagesRaw =
+      isRecordLike(body) && Array.isArray(body["messages"])
+        ? (body["messages"] as unknown[])
         : null;
 
-    if (!Array.isArray(messages) || messages.length === 0) {
+    const characterRaw = isRecordLike(body)
+      ? (body["character"] ?? body["characterProfile"])
+      : null;
+
+    const character = safeCharacter(characterRaw);
+
+    const systemHintsRaw =
+      isRecordLike(body) && Array.isArray(body["systemHints"])
+        ? (body["systemHints"] as unknown[])
+        : [];
+
+    const systemHints: string[] = systemHintsRaw
+      .map((x) => safeString(x))
+      .filter((s) => !!s.trim())
+      .slice(0, 8);
+
+    if (!messagesRaw || messagesRaw.length === 0) {
       return jsonResponse(400, { ok: false, error: "messages_required" });
     }
 
-    const trimmed: Msg[] = messages
-      .filter((m) => m && (m.role === "user" || m.role === "assistant"))
-      .slice(-32)
+    const trimmed: Msg[] = messagesRaw
+      .filter((m) => isRecordLike(m))
       .map((m) => ({
-        role: m.role,
-        content: safeString((m as any).content).slice(0, 4000),
-      }));
+        role: (m["role"] === "user" || m["role"] === "assistant"
+          ? m["role"]
+          : "user") as "user" | "assistant",
+        content: safeString(m["content"]).slice(0, 4000),
+      }))
+      .slice(-32);
 
     const lastUser =
       [...trimmed].reverse().find((m) => m.role === "user")?.content ?? "";
@@ -572,14 +836,22 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
       : null;
 
-    // ✅ 釣行判断データ（Weatherは client から、Tideは server で）
     let weatherAndTideMemo: Msg | null = null;
     if (isJudge) {
+      const YAIZU = { lat: 34.868, lon: 138.3236 };
       const PC = "22";
       const HC = "15";
 
+      let wText = "";
       let tText = "";
+      let wErr: string | null = null;
       let tErr: string | null = null;
+
+      try {
+        wText = await buildWeatherMemo(YAIZU.lat, YAIZU.lon, targetDay);
+      } catch (e) {
+        wErr = e instanceof Error ? e.message : String(e);
+      }
 
       try {
         tText = await buildTideMemo(PC, HC);
@@ -597,18 +869,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }`,
       );
       parts.push("");
-
-      // Weather（クライアント提供を最優先）
-      if (clientWeatherMemo) parts.push(clientWeatherMemo);
-      else parts.push(`【Weather】取得失敗（clientWeatherMemo_not_provided）`);
-
+      parts.push(wText ? wText : `【Weather】取得失敗（${wErr ?? "unknown"}）`);
       parts.push("");
-
-      // Tide（従来通り）
       parts.push(
         tText ? tText : `【潮（tide736）】取得失敗（${tErr ?? "unknown"}）`,
       );
-
       weatherAndTideMemo = { role: "system", content: parts.join("\n") };
     }
 
