@@ -893,7 +893,8 @@ export default function Weather({ back }: Props) {
             style={{
               ...tileStyle,
               padding: 10,
-              minHeight: isDesktop ? 360 : 320,
+              aspectRatio: "16 / 9",
+              minHeight: 0,
               display: "grid",
               alignItems: "center",
             }}
