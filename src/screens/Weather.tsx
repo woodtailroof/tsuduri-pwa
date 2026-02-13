@@ -1,5 +1,11 @@
 // src/screens/Weather.tsx
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { FIXED_PORT } from "../points";
 import TideGraph from "../components/TideGraph";
 import {
@@ -237,8 +243,6 @@ const WEATHER_TTL_MS = 10 * 60 * 1000;
 
 function wmoToJa(code: number): string {
   // WMO weather interpretation codes（ざっくり日本語）
-  // 0: clear, 1-3: mainly clear/partly cloudy/overcast, 45-48: fog
-  // 51-57: drizzle, 61-67: rain, 71-77: snow, 80-82: showers, 95-99: thunderstorm
   if (!Number.isFinite(code)) return "不明";
   if (code === 0) return "快晴";
   if (code === 1) return "晴れ";
@@ -356,8 +360,6 @@ function saveWeatherCache(day: string, summary: WeatherSummary) {
 }
 
 export default function Weather({ back }: Props) {
-  // settings はここでは “参照のみ”
-  // ガラス変数は PageShell が全画面に適用してるので、Weather側で上書きしない
   useAppSettings();
 
   const isMobile = useIsMobile();
@@ -371,6 +373,10 @@ export default function Weather({ back }: Props) {
   );
   const [state, setState] = useState<LoadState>({ status: "idle" });
   const [wState, setWState] = useState<WeatherLoadState>({ status: "idle" });
+
+  // ✅ グラフの「横幅に追従した高さ」を作る（横幅維持しつつアス比を自然に）
+  const graphWrapRef = useRef<HTMLDivElement | null>(null);
+  const [graphHeight, setGraphHeight] = useState<number>(380);
 
   useEffect(() => {
     const onUp = () => setOnline(true);
@@ -401,6 +407,30 @@ export default function Weather({ back }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
+  // ✅ グラフ枠の実寸から「自然な高さ」を決める（16:9 を基準）
+  useEffect(() => {
+    const el = graphWrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+
+    const compute = (w: number) => {
+      // 16:9 基準（横が広がったら縦も増やす）
+      const h = Math.round(w * (9 / 16));
+      // 端末差を吸収（小さすぎ/大きすぎを抑制）
+      return clamp(h, 300, 560);
+    };
+
+    // 初回
+    setGraphHeight(compute(el.getBoundingClientRect().width));
+
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width ?? 0;
+      if (w > 0) setGraphHeight(compute(w));
+    });
+    ro.observe(el);
+
+    return () => ro.disconnect();
+  }, [isDesktop]);
+
   // ===== 天気（Open-Meteo）読み込み =====
   useEffect(() => {
     let cancelled = false;
@@ -408,7 +438,6 @@ export default function Weather({ back }: Props) {
     async function run() {
       const day = dayKeyLocal(targetDate);
       if (!online) {
-        // オフラインならキャッシュだけ試す
         const cached = loadWeatherCache(day);
         if (cached) {
           setWState({
@@ -441,7 +470,6 @@ export default function Weather({ back }: Props) {
         const summary = pickDailySummary(json, day);
         if (!summary) throw new Error("openmeteo_day_not_in_range");
 
-        // ラベル（今日/明日/日付）
         const now = new Date();
         const today = startOfDay(now);
         const tomorrow = startOfDay(now);
@@ -542,7 +570,6 @@ export default function Weather({ back }: Props) {
     </div>
   );
 
-  // ✅ ガラスの見た目は CSS の .glass / .glass-strong に任せる（濃さスライダー追従）
   const tileStyle: CSSProperties = {
     borderRadius: 16,
     padding: 12,
@@ -552,7 +579,6 @@ export default function Weather({ back }: Props) {
     boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
   };
 
-  // ✅ タブボタンも “濃さ” に追従（固定rgbaを撤去）
   const tabBtnBase: CSSProperties = {
     borderRadius: 999,
     padding: "8px 12px",
@@ -610,7 +636,6 @@ export default function Weather({ back }: Props) {
       maxWidth={1100}
       showBack
       onBack={back}
-      // ✅ desktopでもスクロールできるように（クリップ事故の予防）
       scrollY="auto"
     >
       <div
@@ -888,19 +913,22 @@ export default function Weather({ back }: Props) {
             )}
           </div>
 
+          {/* ✅ ここが本命：横幅はそのまま、実寸に合わせて高さを作る */}
           <div
+            ref={graphWrapRef}
             className="glass glass-strong"
             style={{
               ...tileStyle,
               padding: 10,
-              aspectRatio: "16 / 9",
               minHeight: 0,
+              height: graphHeight,
               display: "grid",
               alignItems: "center",
             }}
           >
             <div
               style={{
+                height: "100%",
                 opacity: state.status === "loading" ? 0.65 : 1,
                 transform:
                   state.status === "loading"
