@@ -87,8 +87,8 @@ function safeLoadHistory(roomId: string): Msg[] {
   const out: Msg[] = [];
   for (const item of parsed) {
     if (!isRecordLike(item)) continue;
-    const role = (item as any).role as unknown;
-    const content = (item as any).content as unknown;
+    const role = item.role;
+    const content = item.content;
     if (role !== "user" && role !== "assistant") continue;
     if (typeof content !== "string") continue;
     out.push({ role: role as "user" | "assistant", content });
@@ -118,10 +118,8 @@ async function readErrorBody(res: Response): Promise<string | null> {
     if (ct.includes("application/json")) {
       const j: unknown = await res.json().catch(() => null);
       if (isRecordLike(j)) {
-        const err = (j as any).error;
-        const msg = (j as any).message;
-        if (typeof err === "string") return err;
-        if (typeof msg === "string") return msg;
+        if (typeof j.error === "string") return j.error;
+        if (typeof j.message === "string") return j.message;
       }
       return JSON.stringify(j);
     }
@@ -134,9 +132,11 @@ async function readErrorBody(res: Response): Promise<string | null> {
   }
 }
 
-/* =========================
- * 釣行判断の検出（クライアント側）
- * ========================= */
+/**
+ * ===== 釣行判断判定（Chat側）=====
+ * サーバは Weather を取りに行かない方針なので、
+ * 釣行判断っぽい時だけ Open-Meteo をブラウザから叩いて systemHints に入れる。
+ */
 function isFishingJudgeText(text: string) {
   return /(釣り行く|釣りいく|迷って|釣行判断|今日どう|明日どう|風|雨|波|潮|満潮|干潮|水温|ポイント)/.test(
     text ?? "",
@@ -158,15 +158,6 @@ function dayKey(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-/* =========================
- * Open-Meteo（クライアント直叩き）
- * - Cloudflare を経由しない（巻き込み制限回避）
- * - 10分キャッシュ
- * ========================= */
 type WeatherSummary = {
   tempMin: number;
   tempMax: number;
@@ -177,15 +168,58 @@ type WeatherSummary = {
   rainMaxMm: number;
 };
 
-const openMeteoCache = new Map<string, { ts: number; text: string }>();
 const OPENMETEO_TTL_MS = 10 * 60 * 1000;
+const OPENMETEO_CACHE_KEY_PREFIX = "tsuduri_openmeteo_cache_v1:";
 
-async function readTextSafe(res: Response) {
-  try {
-    return await res.text();
-  } catch {
-    return "";
+function clampNum(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function summarizeOneDay(json: any, day: string): WeatherSummary {
+  const h = json?.hourly;
+  const times: string[] = h?.time ?? [];
+
+  const idxs: number[] = [];
+  for (let i = 0; i < times.length; i++) {
+    const t = times[i];
+    if (typeof t === "string" && t.startsWith(day)) idxs.push(i);
   }
+
+  const safe: WeatherSummary = {
+    tempMin: 0,
+    tempMax: 0,
+    windAvg: 0,
+    windMax: 0,
+    gustMax: 0,
+    rainMaxProb: 0,
+    rainMaxMm: 0,
+  };
+  if (!idxs.length) return safe;
+
+  const pick = (arr: any[]) =>
+    idxs.map((i) => Number(arr?.[i])).filter(Number.isFinite);
+
+  const temp = pick(h?.temperature_2m ?? []);
+  const prcp = pick(h?.precipitation ?? []);
+  const pop = pick(h?.precipitation_probability ?? []);
+  const wind = pick(h?.wind_speed_10m ?? []);
+  const gust = pick(h?.wind_gusts_10m ?? []);
+
+  const avg = (xs: number[]) =>
+    xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0;
+  const max = (xs: number[]) =>
+    xs.length ? xs.reduce((m, x) => (x > m ? x : m), xs[0]) : 0;
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+
+  return {
+    tempMin: temp.length ? round1(Math.min(...temp)) : 0,
+    tempMax: temp.length ? round1(Math.max(...temp)) : 0,
+    windAvg: round1(avg(wind)),
+    windMax: round1(max(wind)),
+    gustMax: round1(max(gust)),
+    rainMaxProb: Math.round(max(pop)),
+    rainMaxMm: round1(max(prcp)),
+  };
 }
 
 async function fetchOpenMeteoHourly(lat: number, lon: number) {
@@ -200,100 +234,66 @@ async function fetchOpenMeteoHourly(lat: number, lon: number) {
     `&wind_speed_unit=ms`;
 
   const res = await fetch(url, { method: "GET" });
-  const text = await readTextSafe(res);
+  const text = await res.text().catch(() => "");
 
   if (!res.ok) {
     const head = (text || "").replace(/\s+/g, " ").trim().slice(0, 160);
-    if (res.status === 429) {
+    if (res.status === 429)
       throw new Error(`openmeteo_rate_limited_429${head ? `:${head}` : ""}`);
-    }
     throw new Error(`openmeteo_http_${res.status}${head ? `:${head}` : ""}`);
   }
 
-  let json: unknown;
+  let json: any;
   try {
-    json = JSON.parse(text) as unknown;
+    json = JSON.parse(text);
   } catch {
     throw new Error(`openmeteo_json_parse_failed:${text.slice(0, 160)}`);
   }
   return json;
 }
 
-function summarizeOneDay(json: unknown, day: string): WeatherSummary {
-  const safe: WeatherSummary = {
-    tempMin: 0,
-    tempMax: 0,
-    windAvg: 0,
-    windMax: 0,
-    gustMax: 0,
-    rainMaxProb: 0,
-    rainMaxMm: 0,
-  };
-
-  if (!isRecordLike(json)) return safe;
-  const hourly = (json as any).hourly as unknown;
-  if (!isRecordLike(hourly)) return safe;
-
-  const times = (hourly as any).time as unknown;
-  if (!Array.isArray(times)) return safe;
-
-  const idxs: number[] = [];
-  for (let i = 0; i < times.length; i++) {
-    const t = times[i];
-    if (typeof t === "string" && t.startsWith(day)) idxs.push(i);
+function loadWeatherCache(
+  cacheKey: string,
+): { ts: number; text: string } | null {
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (!raw) return null;
+    const j = JSON.parse(raw) as any;
+    if (!j || typeof j !== "object") return null;
+    const ts = Number(j.ts);
+    const text = String(j.text ?? "");
+    if (!Number.isFinite(ts) || !text) return null;
+    return { ts, text };
+  } catch {
+    return null;
   }
-  if (!idxs.length) return safe;
-
-  const pick = (arr: unknown) => {
-    if (!Array.isArray(arr)) return [];
-    const xs: number[] = [];
-    for (const i of idxs) {
-      const v = Number(arr[i]);
-      if (Number.isFinite(v)) xs.push(v);
-    }
-    return xs;
-  };
-
-  const temp = pick((hourly as any).temperature_2m);
-  const prcp = pick((hourly as any).precipitation);
-  const pop = pick((hourly as any).precipitation_probability);
-  const wind = pick((hourly as any).wind_speed_10m);
-  const gust = pick((hourly as any).wind_gusts_10m);
-
-  const avg = (xs: number[]) =>
-    xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0;
-
-  const max = (xs: number[]) =>
-    xs.length ? xs.reduce((m, x) => (x > m ? x : m), xs[0]) : 0;
-
-  const round1 = (n: number) => Math.round(n * 10) / 10;
-
-  return {
-    tempMin: temp.length ? round1(Math.min(...temp)) : 0,
-    tempMax: temp.length ? round1(Math.max(...temp)) : 0,
-    windAvg: round1(avg(wind)),
-    windMax: round1(max(wind)),
-    gustMax: round1(max(gust)),
-    rainMaxProb: Math.round(max(pop)),
-    rainMaxMm: round1(max(prcp)),
-  };
 }
 
-async function buildWeatherMemoClient(
+function saveWeatherCache(
+  cacheKey: string,
+  data: { ts: number; text: string },
+) {
+  try {
+    localStorage.setItem(cacheKey, JSON.stringify(data));
+  } catch {
+    // ignore
+  }
+}
+
+async function buildWeatherHint(
+  targetDay: "today" | "tomorrow",
   lat: number,
   lon: number,
-  targetDay: "today" | "tomorrow",
-) {
-  const today = new Date();
-  const tomorrow = new Date();
-  tomorrow.setDate(today.getDate() + 1);
+): Promise<string> {
+  const now = new Date();
+  const tmr = new Date(now);
+  tmr.setDate(now.getDate() + 1);
 
-  const day = targetDay === "tomorrow" ? dayKey(tomorrow) : dayKey(today);
-  const cacheKey = `openmeteo:${lat},${lon}:${day}`;
+  const day = targetDay === "tomorrow" ? dayKey(tmr) : dayKey(now);
+  const cacheKey = `${OPENMETEO_CACHE_KEY_PREFIX}${lat},${lon}:${day}`;
 
-  const now = Date.now();
-  const cached = openMeteoCache.get(cacheKey);
-  if (cached && now - cached.ts <= OPENMETEO_TTL_MS) {
+  const cached = loadWeatherCache(cacheKey);
+  if (cached && Date.now() - cached.ts <= OPENMETEO_TTL_MS) {
     return cached.text;
   }
 
@@ -305,10 +305,10 @@ async function buildWeatherMemoClient(
 【Weather：${label}（焼津周辺の目安 / 単位：風m/s・雨mm/h）】
 - 気温${s.tempMin}〜${s.tempMax}℃
 - 風 平均${s.windAvg} 最大${s.windMax}（突風${s.gustMax}）m/s
-- 雨 最大${s.rainMaxProb}%（${s.rainMaxMm}mm/h）
+- 雨 最大${clampNum(s.rainMaxProb, 0, 100)}%（${Math.max(0, s.rainMaxMm)}mm/h）
 `.trim();
 
-  openMeteoCache.set(cacheKey, { ts: now, text: memo });
+  saveWeatherCache(cacheKey, { ts: Date.now(), text: memo });
   return memo;
 }
 
@@ -445,13 +445,13 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     if (!isRecordLike(json) || (json as any).ok !== true) {
       const err =
         isRecordLike(json) && typeof (json as any).error === "string"
-          ? String((json as any).error)
+          ? (json as any).error
           : "unknown_error";
       throw new Error(err);
     }
 
     const txt =
-      typeof (json as any).text === "string" ? String((json as any).text) : "";
+      typeof (json as any).text === "string" ? (json as any).text : "";
     return String(txt ?? "");
   }
 
@@ -473,28 +473,28 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         selectedCharacter,
       );
 
-      // ✅ 釣行判断の時だけ、端末からOpen-Meteoを取得して systemHints に入れる
-      const lastUserText = text;
-      const judge = isFishingJudgeText(lastUserText);
-      const systemHints: string[] = [];
-
-      if (judge) {
-        const targetDay = detectTargetDay(lastUserText);
+      // ✅ 釣行判断っぽい時だけ Weather hint を作る（焼津固定）
+      const hints: string[] = [];
+      const isJudge = isFishingJudgeText(text);
+      if (isJudge) {
+        const targetDay = detectTargetDay(text);
         const YAIZU = { lat: 34.868, lon: 138.3236 };
+
         try {
-          const wMemo = await buildWeatherMemoClient(
+          const weatherHint = await buildWeatherHint(
+            targetDay,
             YAIZU.lat,
             YAIZU.lon,
-            targetDay,
           );
-          systemHints.push(wMemo);
+          hints.push(weatherHint);
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
-          systemHints.push(`【Weather】取得失敗（${msg}）`);
+          // サーバ側のフォーマット規約に合わせて「取得失敗」を明示できる形で渡す
+          hints.push(`【Weather】取得失敗（${msg}）`);
         }
       }
 
-      const reply = await callApiChat(thread, currentCharacter, systemHints);
+      const reply = await callApiChat(thread, currentCharacter, hints);
       setMessages([...next, { role: "assistant", content: reply }]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
