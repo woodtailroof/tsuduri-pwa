@@ -118,8 +118,8 @@ async function readErrorBody(res: Response): Promise<string | null> {
     if (ct.includes("application/json")) {
       const j: unknown = await res.json().catch(() => null);
       if (isRecordLike(j)) {
-        if (typeof j.error === "string") return j.error;
-        if (typeof j.message === "string") return j.message;
+        if (typeof (j as any).error === "string") return (j as any).error;
+        if (typeof (j as any).message === "string") return (j as any).message;
       }
       return JSON.stringify(j);
     }
@@ -134,8 +134,8 @@ async function readErrorBody(res: Response): Promise<string | null> {
 
 /**
  * ===== 釣行判断判定（Chat側）=====
- * サーバは Weather を取りに行かない方針なので、
- * 釣行判断っぽい時だけ Open-Meteo をブラウザから叩いて systemHints に入れる。
+ * サーバ（Cloudflare Functions）から Open-Meteo を叩かず、
+ * 釣行判断っぽい時だけブラウザから取得して systemHints に入れる。
  */
 function isFishingJudgeText(text: string) {
   return /(釣り行く|釣りいく|迷って|釣行判断|今日どう|明日どう|風|雨|波|潮|満潮|干潮|水温|ポイント)/.test(
@@ -158,6 +158,10 @@ function dayKey(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+function clampNum(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
 type WeatherSummary = {
   tempMin: number;
   tempMax: number;
@@ -166,24 +170,76 @@ type WeatherSummary = {
   gustMax: number;
   rainMaxProb: number;
   rainMaxMm: number;
+  cloudAvg: number;
+  weatherCodeMode: number | null;
+  conditionText: string; // ✅ 概況（晴れ/くもり/雨など）
 };
 
 const OPENMETEO_TTL_MS = 10 * 60 * 1000;
-const OPENMETEO_CACHE_KEY_PREFIX = "tsuduri_openmeteo_cache_v1:";
+const OPENMETEO_CACHE_KEY_PREFIX = "tsuduri_openmeteo_cache_v2:";
 
-function clampNum(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
+// WMO weather_code（Open-Meteo準拠）をざっくり日本語に
+function weatherCodeToJp(code: number): string {
+  if (!Number.isFinite(code)) return "不明";
+  // Thunderstorm
+  if ([95, 96, 99].includes(code)) return "雷";
+  // Drizzle
+  if ([51, 53, 55, 56, 57].includes(code)) return "霧雨";
+  // Rain
+  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "雨";
+  // Freezing rain
+  if ([66, 67].includes(code)) return "凍雨";
+  // Snow
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "雪";
+  // Fog
+  if ([45, 48].includes(code)) return "霧";
+  // Clear / cloudy groups
+  if (code === 0) return "晴れ";
+  if (code === 1) return "晴れ時々くもり";
+  if (code === 2) return "くもり";
+  if (code === 3) return "くもり";
+  return "不明";
 }
 
-function summarizeOneDay(json: any, day: string): WeatherSummary {
-  const h = json?.hourly;
-  const times: string[] = h?.time ?? [];
-
+function pickDayIndexes(times: string[], day: string) {
   const idxs: number[] = [];
   for (let i = 0; i < times.length; i++) {
     const t = times[i];
     if (typeof t === "string" && t.startsWith(day)) idxs.push(i);
   }
+  return idxs;
+}
+
+// 日中(6-18時)のインデックスを優先して概況判定
+function pickDaytimeIndexes(times: string[], idxs: number[]) {
+  const out: number[] = [];
+  for (const i of idxs) {
+    const t = times[i];
+    // "YYYY-MM-DDTHH:mm"
+    const hh = Number((t ?? "").slice(11, 13));
+    if (Number.isFinite(hh) && hh >= 6 && hh <= 18) out.push(i);
+  }
+  return out.length ? out : idxs; // 日中が取れなければ全日
+}
+
+function modeNumber(xs: number[]): number | null {
+  if (!xs.length) return null;
+  const m = new Map<number, number>();
+  for (const x of xs) {
+    if (!Number.isFinite(x)) continue;
+    m.set(x, (m.get(x) ?? 0) + 1);
+  }
+  let best: { k: number; v: number } | null = null;
+  for (const [k, v] of m.entries()) {
+    if (!best || v > best.v) best = { k, v };
+  }
+  return best ? best.k : null;
+}
+
+function summarizeOneDay(json: any, day: string): WeatherSummary {
+  const h = json?.hourly;
+  const times: string[] = h?.time ?? [];
+  const idxsAll = pickDayIndexes(times, day);
 
   const safe: WeatherSummary = {
     tempMin: 0,
@@ -193,17 +249,26 @@ function summarizeOneDay(json: any, day: string): WeatherSummary {
     gustMax: 0,
     rainMaxProb: 0,
     rainMaxMm: 0,
+    cloudAvg: 0,
+    weatherCodeMode: null,
+    conditionText: "不明",
   };
-  if (!idxs.length) return safe;
+  if (!idxsAll.length) return safe;
 
-  const pick = (arr: any[]) =>
-    idxs.map((i) => Number(arr?.[i])).filter(Number.isFinite);
+  const idxs = pickDaytimeIndexes(times, idxsAll);
 
-  const temp = pick(h?.temperature_2m ?? []);
-  const prcp = pick(h?.precipitation ?? []);
-  const pop = pick(h?.precipitation_probability ?? []);
-  const wind = pick(h?.wind_speed_10m ?? []);
-  const gust = pick(h?.wind_gusts_10m ?? []);
+  const pick = (arr: any[], use: number[]) =>
+    use.map((i) => Number(arr?.[i])).filter(Number.isFinite);
+
+  const tempAll = pick(h?.temperature_2m ?? [], idxsAll);
+  const prcpAll = pick(h?.precipitation ?? [], idxsAll);
+  const popAll = pick(h?.precipitation_probability ?? [], idxsAll);
+  const windAll = pick(h?.wind_speed_10m ?? [], idxsAll);
+  const gustAll = pick(h?.wind_gusts_10m ?? [], idxsAll);
+
+  // 概況用（主に日中）
+  const cloudDay = pick(h?.cloud_cover ?? [], idxs);
+  const codeDay = pick(h?.weather_code ?? [], idxs).map((x) => Math.round(x));
 
   const avg = (xs: number[]) =>
     xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0;
@@ -211,14 +276,36 @@ function summarizeOneDay(json: any, day: string): WeatherSummary {
     xs.length ? xs.reduce((m, x) => (x > m ? x : m), xs[0]) : 0;
   const round1 = (n: number) => Math.round(n * 10) / 10;
 
+  const codeMode = modeNumber(codeDay);
+  const codeText = codeMode == null ? "不明" : weatherCodeToJp(codeMode);
+
+  // cloud_cover補正（晴れ/くもり寄せ）
+  const cloudAvg = avg(cloudDay);
+  let condition = codeText;
+  if (condition === "晴れ" && cloudAvg >= 55) condition = "晴れ時々くもり";
+  if (
+    (condition === "くもり" || condition === "晴れ時々くもり") &&
+    cloudAvg < 25
+  )
+    condition = "晴れ";
+  if (condition === "不明") {
+    // 最低限のフォールバック
+    if (max(popAll) >= 60 || max(prcpAll) >= 1) condition = "雨";
+    else if (cloudAvg >= 60) condition = "くもり";
+    else condition = "晴れ";
+  }
+
   return {
-    tempMin: temp.length ? round1(Math.min(...temp)) : 0,
-    tempMax: temp.length ? round1(Math.max(...temp)) : 0,
-    windAvg: round1(avg(wind)),
-    windMax: round1(max(wind)),
-    gustMax: round1(max(gust)),
-    rainMaxProb: Math.round(max(pop)),
-    rainMaxMm: round1(max(prcp)),
+    tempMin: tempAll.length ? round1(Math.min(...tempAll)) : 0,
+    tempMax: tempAll.length ? round1(Math.max(...tempAll)) : 0,
+    windAvg: round1(avg(windAll)),
+    windMax: round1(max(windAll)),
+    gustMax: round1(max(gustAll)),
+    rainMaxProb: Math.round(max(popAll)),
+    rainMaxMm: round1(max(prcpAll)),
+    cloudAvg: round1(cloudAvg),
+    weatherCodeMode: codeMode,
+    conditionText: condition,
   };
 }
 
@@ -228,7 +315,8 @@ async function fetchOpenMeteoHourly(lat: number, lon: number) {
     `https://api.open-meteo.com/v1/forecast` +
     `?latitude=${encodeURIComponent(String(lat))}` +
     `&longitude=${encodeURIComponent(String(lon))}` +
-    `&hourly=temperature_2m,precipitation,precipitation_probability,wind_speed_10m,wind_gusts_10m` +
+    // ✅ 概況用に weather_code / cloud_cover を追加
+    `&hourly=temperature_2m,precipitation,precipitation_probability,wind_speed_10m,wind_gusts_10m,weather_code,cloud_cover` +
     `&forecast_days=2` +
     `&timezone=${encodeURIComponent(tz)}` +
     `&wind_speed_unit=ms`;
@@ -303,6 +391,7 @@ async function buildWeatherHint(
   const label = targetDay === "tomorrow" ? "明日" : "今日";
   const memo = `
 【Weather：${label}（焼津周辺の目安 / 単位：風m/s・雨mm/h）】
+- 概況：${s.conditionText}（雲量平均${s.cloudAvg}% / code:${s.weatherCodeMode ?? "?"}）
 - 気温${s.tempMin}〜${s.tempMax}℃
 - 風 平均${s.windAvg} 最大${s.windMax}（突風${s.gustMax}）m/s
 - 雨 最大${clampNum(s.rainMaxProb, 0, 100)}%（${Math.max(0, s.rainMaxMm)}mm/h）
@@ -489,7 +578,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           hints.push(weatherHint);
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
-          // サーバ側のフォーマット規約に合わせて「取得失敗」を明示できる形で渡す
           hints.push(`【Weather】取得失敗（${msg}）`);
         }
       }
@@ -537,7 +625,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       titleLayout="left"
       scrollY="hidden"
       contentPadding={"clamp(10px, 2vw, 18px)"}
-      displayCharacterId={selectedId} // ✅ 選択キャラと表示キャラをリンク
+      displayCharacterId={selectedId}
     >
       <style>{`
         @keyframes tsuduri-dot-bounce {
@@ -589,7 +677,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         }
       `}</style>
 
-      {/* ✅ 上部貫通対策：ヘッダー高ぶん差し引いた高さに固定 */}
       <div
         style={{
           height: "calc(100dvh - var(--shell-header-h))",
@@ -599,7 +686,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           gap: 12,
         }}
       >
-        {/* 操作群（固定） */}
         <div
           style={{
             display: "flex",
@@ -665,7 +751,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           </button>
         </div>
 
-        {/* 履歴（ここだけスクロール） */}
         <div
           ref={scrollBoxRef}
           className="glass glass-strong"
@@ -733,7 +818,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           )}
         </div>
 
-        {/* クイック（固定） */}
         <div className="chat-quick">
           <button
             type="button"
@@ -770,7 +854,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           </button>
         </div>
 
-        {/* 入力欄（固定） */}
         <div
           className="glass glass-strong"
           style={{ borderRadius: 14, padding: 10 }}
