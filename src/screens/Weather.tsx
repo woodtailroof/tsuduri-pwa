@@ -607,7 +607,7 @@ export default function Weather({ back }: Props) {
       title={titleNode}
       subtitle={subNode}
       titleLayout="left"
-      maxWidth={980}
+      maxWidth={1100}
       showBack
       onBack={back}
       // ✅ desktopでもスクロールできるように（クリップ事故の予防）
