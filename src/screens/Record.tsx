@@ -381,7 +381,7 @@ export default function Record({ back }: Props) {
         </h1>
       }
       titleLayout="left"
-      maxWidth={1200}
+      maxWidth={1100}
       showBack
       onBack={back}
       scrollY="auto"
