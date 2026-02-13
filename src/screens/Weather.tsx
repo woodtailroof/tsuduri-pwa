@@ -174,6 +174,17 @@ type LoadState =
     }
   | { status: "error"; message: string };
 
+type WeatherLoadState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | {
+      status: "ok";
+      dayKey: string;
+      summary: WeatherSummary;
+      source: "fetch" | "cache";
+    }
+  | { status: "error"; message: string };
+
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
@@ -203,6 +214,147 @@ function useIsMobile() {
   return isMobile;
 }
 
+/**
+ * ===== Open-Meteo（日別サマリ）=====
+ * - ブラウザから直叩き（Cloudflare経由のIP共有ガチャを避ける）
+ * - localStorage 10分キャッシュ
+ */
+const YAIZU = { lat: 34.868, lon: 138.3236 }; // 焼津周辺固定
+
+type WeatherSummary = {
+  label: string; // "今日" / "明日" / "yyyy-mm-dd"
+  overview: string; // "晴れ" / "くもり" / "雨" etc.
+  tempMin: number;
+  tempMax: number;
+  windMax: number;
+  gustMax: number;
+  rainProbMax: number;
+  rainSum: number;
+};
+
+const WEATHER_CACHE_PREFIX = "tsuduri_openmeteo_daily_v1:";
+const WEATHER_TTL_MS = 10 * 60 * 1000;
+
+function wmoToJa(code: number): string {
+  // WMO weather interpretation codes（ざっくり日本語）
+  // 0: clear, 1-3: mainly clear/partly cloudy/overcast, 45-48: fog
+  // 51-57: drizzle, 61-67: rain, 71-77: snow, 80-82: showers, 95-99: thunderstorm
+  if (!Number.isFinite(code)) return "不明";
+  if (code === 0) return "快晴";
+  if (code === 1) return "晴れ";
+  if (code === 2) return "晴れ時々くもり";
+  if (code === 3) return "くもり";
+  if (code === 45 || code === 48) return "霧";
+  if (code >= 51 && code <= 57) return "霧雨";
+  if (code >= 61 && code <= 67) return "雨";
+  if (code >= 71 && code <= 77) return "雪";
+  if (code >= 80 && code <= 82) return "にわか雨";
+  if (code >= 95 && code <= 99) return "雷雨";
+  return "天気";
+}
+
+function safeNumber(v: unknown, fallback = 0) {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+async function fetchOpenMeteoDaily(lat: number, lon: number) {
+  const tz = "Asia/Tokyo";
+  const url =
+    `https://api.open-meteo.com/v1/forecast` +
+    `?latitude=${encodeURIComponent(String(lat))}` +
+    `&longitude=${encodeURIComponent(String(lon))}` +
+    `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max` +
+    `&forecast_days=16` +
+    `&timezone=${encodeURIComponent(tz)}` +
+    `&wind_speed_unit=ms`;
+
+  const res = await fetch(url, { method: "GET" });
+  const text = await res.text().catch(() => "");
+  if (!res.ok) {
+    const head = (text || "").replace(/\s+/g, " ").trim().slice(0, 160);
+    if (res.status === 429)
+      throw new Error(`openmeteo_rate_limited_429${head ? `:${head}` : ""}`);
+    throw new Error(`openmeteo_http_${res.status}${head ? `:${head}` : ""}`);
+  }
+
+  let json: any;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(`openmeteo_json_parse_failed:${text.slice(0, 160)}`);
+  }
+  return json;
+}
+
+function pickDailySummary(json: any, day: string): WeatherSummary | null {
+  const d = json?.daily;
+  const times: string[] = Array.isArray(d?.time) ? d.time : [];
+  const idx = times.findIndex((t) => typeof t === "string" && t === day);
+  if (idx < 0) return null;
+
+  const code = safeNumber(d?.weather_code?.[idx], NaN);
+  const tmax = safeNumber(d?.temperature_2m_max?.[idx], 0);
+  const tmin = safeNumber(d?.temperature_2m_min?.[idx], 0);
+  const pop = safeNumber(d?.precipitation_probability_max?.[idx], 0);
+  const psum = safeNumber(d?.precipitation_sum?.[idx], 0);
+  const wmax = safeNumber(d?.wind_speed_10m_max?.[idx], 0);
+  const gmax = safeNumber(d?.wind_gusts_10m_max?.[idx], 0);
+
+  return {
+    label: day,
+    overview: wmoToJa(code),
+    tempMin: Math.round(tmin * 10) / 10,
+    tempMax: Math.round(tmax * 10) / 10,
+    windMax: Math.round(wmax * 10) / 10,
+    gustMax: Math.round(gmax * 10) / 10,
+    rainProbMax: Math.round(pop),
+    rainSum: Math.round(psum * 10) / 10,
+  };
+}
+
+function dayKeyLocal(d: Date) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function loadWeatherCache(
+  day: string,
+): { ts: number; summary: WeatherSummary } | null {
+  try {
+    const raw = localStorage.getItem(`${WEATHER_CACHE_PREFIX}${day}`);
+    if (!raw) return null;
+    const obj = JSON.parse(raw) as any;
+    if (!obj || typeof obj !== "object") return null;
+    const ts = safeNumber(obj.ts, 0);
+    const s = obj.summary;
+    if (!s || typeof s !== "object") return null;
+    const summary: WeatherSummary = {
+      label: String(s.label ?? day),
+      overview: String(s.overview ?? "不明"),
+      tempMin: safeNumber(s.tempMin, 0),
+      tempMax: safeNumber(s.tempMax, 0),
+      windMax: safeNumber(s.windMax, 0),
+      gustMax: safeNumber(s.gustMax, 0),
+      rainProbMax: safeNumber(s.rainProbMax, 0),
+      rainSum: safeNumber(s.rainSum, 0),
+    };
+    return { ts, summary };
+  } catch {
+    return null;
+  }
+}
+
+function saveWeatherCache(day: string, summary: WeatherSummary) {
+  try {
+    localStorage.setItem(
+      `${WEATHER_CACHE_PREFIX}${day}`,
+      JSON.stringify({ ts: Date.now(), summary }),
+    );
+  } catch {
+    // ignore
+  }
+}
+
 export default function Weather({ back }: Props) {
   // settings はここでは “参照のみ”
   // ガラス変数は PageShell が全画面に適用してるので、Weather側で上書きしない
@@ -218,6 +370,7 @@ export default function Weather({ back }: Props) {
     typeof navigator !== "undefined" ? navigator.onLine : true,
   );
   const [state, setState] = useState<LoadState>({ status: "idle" });
+  const [wState, setWState] = useState<WeatherLoadState>({ status: "idle" });
 
   useEffect(() => {
     const onUp = () => setOnline(true);
@@ -248,6 +401,78 @@ export default function Weather({ back }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
+  // ===== 天気（Open-Meteo）読み込み =====
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      const day = dayKeyLocal(targetDate);
+      if (!online) {
+        // オフラインならキャッシュだけ試す
+        const cached = loadWeatherCache(day);
+        if (cached) {
+          setWState({
+            status: "ok",
+            dayKey: day,
+            summary: cached.summary,
+            source: "cache",
+          });
+        } else {
+          setWState({ status: "error", message: "offline_no_cache" });
+        }
+        return;
+      }
+
+      setWState({ status: "loading" });
+
+      const cached = loadWeatherCache(day);
+      if (cached && Date.now() - cached.ts <= WEATHER_TTL_MS) {
+        setWState({
+          status: "ok",
+          dayKey: day,
+          summary: cached.summary,
+          source: "cache",
+        });
+        return;
+      }
+
+      try {
+        const json = await fetchOpenMeteoDaily(YAIZU.lat, YAIZU.lon);
+        const summary = pickDailySummary(json, day);
+        if (!summary) throw new Error("openmeteo_day_not_in_range");
+
+        // ラベル（今日/明日/日付）
+        const now = new Date();
+        const today = startOfDay(now);
+        const tomorrow = startOfDay(now);
+        tomorrow.setDate(today.getDate() + 1);
+
+        const label = sameDay(targetDate, today)
+          ? "今日"
+          : sameDay(targetDate, tomorrow)
+            ? "明日"
+            : day;
+
+        const s: WeatherSummary = { ...summary, label };
+
+        saveWeatherCache(day, s);
+
+        if (!cancelled) {
+          setWState({ status: "ok", dayKey: day, summary: s, source: "fetch" });
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!cancelled) setWState({ status: "error", message: msg });
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [targetDate, online]);
+
+  // ===== 潮（tide736）読み込み =====
   useEffect(() => {
     let cancelled = false;
     async function run() {
@@ -309,7 +534,8 @@ export default function Weather({ back }: Props) {
 
   const subNode = (
     <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-      🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
+      📍 天気：焼津周辺（Open-Meteo） / 🌊 潮汐：{FIXED_PORT.name}（pc:
+      {FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
       {!online && (
         <span style={{ marginLeft: 10, color: "#f6c" }}>📴 オフライン</span>
       )}
@@ -362,6 +588,19 @@ export default function Weather({ back }: Props) {
     padding: "6px 10px",
     maxWidth: "100%",
   };
+
+  function weatherSourceText() {
+    if (wState.status !== "ok") return null;
+    return wState.source === "fetch" ? "取得" : "キャッシュ";
+  }
+
+  function weatherStatusBadge() {
+    if (wState.status === "loading") return { text: "取得中…", color: "#0a6" };
+    if (wState.status === "error")
+      return { text: "取得失敗", color: "#ff7a7a" };
+    const src = weatherSourceText();
+    return src ? { text: src, color: "#6cf" } : null;
+  }
 
   return (
     <PageShell
@@ -431,7 +670,23 @@ export default function Weather({ back }: Props) {
           )}
         </div>
 
-        {/* ステータス */}
+        {/* 天気：ステータス */}
+        {(wState.status === "loading" || wState.status === "error") && (
+          <div
+            className="glass glass-strong"
+            style={{
+              ...tileStyle,
+              fontSize: 12,
+              color: wState.status === "loading" ? "#0a6" : "#ff7a7a",
+            }}
+          >
+            {wState.status === "loading"
+              ? "🌤️ Open-Meteo：取得中…"
+              : `🌤️ Open-Meteo：取得失敗 → ${wState.message}`}
+          </div>
+        )}
+
+        {/* 潮：ステータス */}
         {(state.status === "loading" || state.status === "error") && (
           <div
             className="glass glass-strong"
@@ -447,7 +702,7 @@ export default function Weather({ back }: Props) {
           </div>
         )}
 
-        {/* サマリー */}
+        {/* サマリー（天気＋潮名） */}
         <div className="glass glass-strong" style={tileStyle}>
           <div
             style={{
@@ -464,6 +719,23 @@ export default function Weather({ back }: Props) {
             </div>
 
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              {(() => {
+                const b = weatherStatusBadge();
+                if (!b) return null;
+                return (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: b.color,
+                      whiteSpace: "nowrap",
+                    }}
+                    title="Open-Meteo"
+                  >
+                    🌤️ {b.text}
+                  </div>
+                );
+              })()}
+
               {state.status === "ok" &&
                 (() => {
                   const lab = sourceLabel(state.source, state.isStale);
@@ -481,13 +753,10 @@ export default function Weather({ back }: Props) {
                     </div>
                   );
                 })()}
+
               {!online && (
                 <div
-                  style={{
-                    fontSize: 11,
-                    color: "#f6c",
-                    whiteSpace: "nowrap",
-                  }}
+                  style={{ fontSize: 11, color: "#f6c", whiteSpace: "nowrap" }}
                 >
                   📴 オフライン
                 </div>
@@ -495,7 +764,49 @@ export default function Weather({ back }: Props) {
             </div>
           </div>
 
-          <div style={{ marginTop: 6, fontSize: 12, color: "#6cf" }}>
+          {/* 天気サマリー */}
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>
+              🌤️ 天気（焼津）
+            </div>
+            {wState.status !== "ok" ? (
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                {wState.status === "loading"
+                  ? "データ取得中…"
+                  : !online
+                    ? "📴 オフラインで天気キャッシュが無いよ（オンライン復帰後に取得できる）"
+                    : "天気データが取れなかったよ"}
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                <div style={{ color: "rgba(255,255,255,0.88)" }}>
+                  🧾 概況：{" "}
+                  <span style={{ color: "#fff" }}>
+                    {wState.summary.overview}
+                  </span>
+                  <span
+                    style={{ marginLeft: 8, color: "rgba(255,255,255,0.55)" }}
+                  >
+                    （{wState.summary.label}）
+                  </span>
+                </div>
+                <div style={{ color: "rgba(255,255,255,0.78)" }}>
+                  🌡️ 気温：{wState.summary.tempMin}〜{wState.summary.tempMax}℃
+                </div>
+                <div style={{ color: "rgba(255,255,255,0.78)" }}>
+                  🌬️ 風：最大{wState.summary.windMax}（突風
+                  {wState.summary.gustMax}）m/s
+                </div>
+                <div style={{ color: "rgba(255,255,255,0.78)" }}>
+                  ☔ 雨：最大{wState.summary.rainProbMax}% / 合計
+                  {wState.summary.rainSum}mm
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 潮名 */}
+          <div style={{ marginTop: 12, fontSize: 12, color: "#6cf" }}>
             🌙 潮名：
             {state.status === "ok"
               ? state.tideName
@@ -616,7 +927,18 @@ export default function Weather({ back }: Props) {
               overflowWrap: "anywhere",
             }}
           >
-            key: {FIXED_PORT.pc}:{FIXED_PORT.hc}:{state.dayKey}
+            tide key: {FIXED_PORT.pc}:{FIXED_PORT.hc}:{state.dayKey}
+          </div>
+        )}
+        {wState.status === "ok" && (
+          <div
+            style={{
+              fontSize: 12,
+              color: "rgba(255,255,255,0.50)",
+              overflowWrap: "anywhere",
+            }}
+          >
+            weather key: {YAIZU.lat},{YAIZU.lon}:{wState.dayKey}
           </div>
         )}
       </div>
