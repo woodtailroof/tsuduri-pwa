@@ -87,8 +87,8 @@ function safeLoadHistory(roomId: string): Msg[] {
   const out: Msg[] = [];
   for (const item of parsed) {
     if (!isRecordLike(item)) continue;
-    const role = (item as any).role;
-    const content = (item as any).content;
+    const role = (item as any).role as unknown;
+    const content = (item as any).content as unknown;
     if (role !== "user" && role !== "assistant") continue;
     if (typeof content !== "string") continue;
     out.push({ role: role as "user" | "assistant", content });
@@ -118,8 +118,10 @@ async function readErrorBody(res: Response): Promise<string | null> {
     if (ct.includes("application/json")) {
       const j: unknown = await res.json().catch(() => null);
       if (isRecordLike(j)) {
-        if (typeof (j as any).error === "string") return (j as any).error;
-        if (typeof (j as any).message === "string") return (j as any).message;
+        const err = (j as any).error;
+        const msg = (j as any).message;
+        if (typeof err === "string") return err;
+        if (typeof msg === "string") return msg;
       }
       return JSON.stringify(j);
     }
@@ -132,11 +134,9 @@ async function readErrorBody(res: Response): Promise<string | null> {
   }
 }
 
-/**
- * ============================
- * 釣行判断検知（サーバ側と揃える）
- * ============================
- */
+/* =========================
+ * 釣行判断の検出（クライアント側）
+ * ========================= */
 function isFishingJudgeText(text: string) {
   return /(釣り行く|釣りいく|迷って|釣行判断|今日どう|明日どう|風|雨|波|潮|満潮|干潮|水温|ポイント)/.test(
     text ?? "",
@@ -158,155 +158,157 @@ function dayKey(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-/**
- * ============================
- * Open-Meteo（ブラウザ直叩き）
- * - “共有IP巻き込み”を避けるため client 側で取得
- * - Daily endpoint で軽量化
- * - localStorage キャッシュ（デイキー+TTL）
- * ============================
- */
-const WEATHER_CACHE_PREFIX = "tsuduri_openmeteo_daily_v1:";
-const OPENMETEO_TTL_MS = 30 * 60 * 1000; // 30分
-
-type WeatherDailySummary = {
-  tempMin: number;
-  tempMax: number;
-  windMax: number;
-  gustMax: number;
-  rainProbMax: number;
-  rainSum: number;
-};
-
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-function round1(n: number) {
-  return Math.round(n * 10) / 10;
-}
+/* =========================
+ * Open-Meteo（クライアント直叩き）
+ * - Cloudflare を経由しない（巻き込み制限回避）
+ * - 10分キャッシュ
+ * ========================= */
+type WeatherSummary = {
+  tempMin: number;
+  tempMax: number;
+  windAvg: number;
+  windMax: number;
+  gustMax: number;
+  rainMaxProb: number;
+  rainMaxMm: number;
+};
 
-function safeNumber(x: unknown) {
-  const n = Number(x);
-  return Number.isFinite(n) ? n : 0;
-}
+const openMeteoCache = new Map<string, { ts: number; text: string }>();
+const OPENMETEO_TTL_MS = 10 * 60 * 1000;
 
-function cacheGet(key: string): { ts: number; text: string } | null {
+async function readTextSafe(res: Response) {
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const obj = JSON.parse(raw) as any;
-    if (!obj || typeof obj !== "object") return null;
-    if (typeof obj.ts !== "number") return null;
-    if (typeof obj.text !== "string") return null;
-    return { ts: obj.ts, text: obj.text };
+    return await res.text();
   } catch {
-    return null;
+    return "";
   }
 }
 
-function cacheSet(key: string, value: { ts: number; text: string }) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // ignore
-  }
-}
-
-async function fetchOpenMeteoDaily(lat: number, lon: number) {
+async function fetchOpenMeteoHourly(lat: number, lon: number) {
   const tz = "Asia/Tokyo";
   const url =
     `https://api.open-meteo.com/v1/forecast` +
     `?latitude=${encodeURIComponent(String(lat))}` +
     `&longitude=${encodeURIComponent(String(lon))}` +
-    `&daily=temperature_2m_min,temperature_2m_max,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max` +
+    `&hourly=temperature_2m,precipitation,precipitation_probability,wind_speed_10m,wind_gusts_10m` +
     `&forecast_days=2` +
     `&timezone=${encodeURIComponent(tz)}` +
     `&wind_speed_unit=ms`;
 
   const res = await fetch(url, { method: "GET" });
-  const text = await res.text().catch(() => "");
+  const text = await readTextSafe(res);
 
   if (!res.ok) {
     const head = (text || "").replace(/\s+/g, " ").trim().slice(0, 160);
-    if (res.status === 429)
+    if (res.status === 429) {
       throw new Error(`openmeteo_rate_limited_429${head ? `:${head}` : ""}`);
+    }
     throw new Error(`openmeteo_http_${res.status}${head ? `:${head}` : ""}`);
   }
 
-  let json: any;
+  let json: unknown;
   try {
-    json = JSON.parse(text);
+    json = JSON.parse(text) as unknown;
   } catch {
     throw new Error(`openmeteo_json_parse_failed:${text.slice(0, 160)}`);
   }
   return json;
 }
 
-function summarizeDaily(json: any, day: string): WeatherDailySummary {
-  const d = json?.daily;
-  const times: string[] = d?.time ?? [];
-  const idx = times.findIndex((t) => typeof t === "string" && t === day);
-  if (idx < 0) {
-    return {
-      tempMin: 0,
-      tempMax: 0,
-      windMax: 0,
-      gustMax: 0,
-      rainProbMax: 0,
-      rainSum: 0,
-    };
-  }
+function summarizeOneDay(json: unknown, day: string): WeatherSummary {
+  const safe: WeatherSummary = {
+    tempMin: 0,
+    tempMax: 0,
+    windAvg: 0,
+    windMax: 0,
+    gustMax: 0,
+    rainMaxProb: 0,
+    rainMaxMm: 0,
+  };
 
-  const tmin = safeNumber(d?.temperature_2m_min?.[idx]);
-  const tmax = safeNumber(d?.temperature_2m_max?.[idx]);
-  const pop = safeNumber(d?.precipitation_probability_max?.[idx]);
-  const psum = safeNumber(d?.precipitation_sum?.[idx]);
-  const wmax = safeNumber(d?.wind_speed_10m_max?.[idx]);
-  const gmax = safeNumber(d?.wind_gusts_10m_max?.[idx]);
+  if (!isRecordLike(json)) return safe;
+  const hourly = (json as any).hourly as unknown;
+  if (!isRecordLike(hourly)) return safe;
+
+  const times = (hourly as any).time as unknown;
+  if (!Array.isArray(times)) return safe;
+
+  const idxs: number[] = [];
+  for (let i = 0; i < times.length; i++) {
+    const t = times[i];
+    if (typeof t === "string" && t.startsWith(day)) idxs.push(i);
+  }
+  if (!idxs.length) return safe;
+
+  const pick = (arr: unknown) => {
+    if (!Array.isArray(arr)) return [];
+    const xs: number[] = [];
+    for (const i of idxs) {
+      const v = Number(arr[i]);
+      if (Number.isFinite(v)) xs.push(v);
+    }
+    return xs;
+  };
+
+  const temp = pick((hourly as any).temperature_2m);
+  const prcp = pick((hourly as any).precipitation);
+  const pop = pick((hourly as any).precipitation_probability);
+  const wind = pick((hourly as any).wind_speed_10m);
+  const gust = pick((hourly as any).wind_gusts_10m);
+
+  const avg = (xs: number[]) =>
+    xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0;
+
+  const max = (xs: number[]) =>
+    xs.length ? xs.reduce((m, x) => (x > m ? x : m), xs[0]) : 0;
+
+  const round1 = (n: number) => Math.round(n * 10) / 10;
 
   return {
-    tempMin: round1(tmin),
-    tempMax: round1(tmax),
-    windMax: round1(wmax),
-    gustMax: round1(gmax),
-    rainProbMax: Math.round(clamp(pop, 0, 100)),
-    rainSum: round1(Math.max(0, psum)),
+    tempMin: temp.length ? round1(Math.min(...temp)) : 0,
+    tempMax: temp.length ? round1(Math.max(...temp)) : 0,
+    windAvg: round1(avg(wind)),
+    windMax: round1(max(wind)),
+    gustMax: round1(max(gust)),
+    rainMaxProb: Math.round(max(pop)),
+    rainMaxMm: round1(max(prcp)),
   };
 }
 
-async function buildClientWeatherMemo(
+async function buildWeatherMemoClient(
+  lat: number,
+  lon: number,
   targetDay: "today" | "tomorrow",
-): Promise<string> {
-  // 焼津周辺（サーバ側と揃える）
-  const YAIZU = { lat: 34.868, lon: 138.3236 };
-
+) {
   const today = new Date();
-  const t = new Date(today);
-  if (targetDay === "tomorrow") t.setDate(t.getDate() + 1);
+  const tomorrow = new Date();
+  tomorrow.setDate(today.getDate() + 1);
 
-  const day = dayKey(t);
-  const cacheKey = `${WEATHER_CACHE_PREFIX}${YAIZU.lat},${YAIZU.lon}:${day}`;
+  const day = targetDay === "tomorrow" ? dayKey(tomorrow) : dayKey(today);
+  const cacheKey = `openmeteo:${lat},${lon}:${day}`;
 
   const now = Date.now();
-  const cached = cacheGet(cacheKey);
+  const cached = openMeteoCache.get(cacheKey);
   if (cached && now - cached.ts <= OPENMETEO_TTL_MS) {
     return cached.text;
   }
 
-  const json = await fetchOpenMeteoDaily(YAIZU.lat, YAIZU.lon);
-  const s = summarizeDaily(json, day);
+  const json = await fetchOpenMeteoHourly(lat, lon);
+  const s = summarizeOneDay(json, day);
 
   const label = targetDay === "tomorrow" ? "明日" : "今日";
-  // dailyなので雨は “日合計” が基本。釣行判断には十分。
   const memo = `
-【Weather：${label}（焼津周辺の目安 / 単位：風m/s・雨mm/日）】
-- 気温 ${s.tempMin}〜${s.tempMax}℃
-- 風 最大 ${s.windMax}（突風 ${s.gustMax}）m/s
-- 雨 確率最大 ${s.rainProbMax}%（合計 ${s.rainSum}mm）
+【Weather：${label}（焼津周辺の目安 / 単位：風m/s・雨mm/h）】
+- 気温${s.tempMin}〜${s.tempMax}℃
+- 風 平均${s.windAvg} 最大${s.windMax}（突風${s.gustMax}）m/s
+- 雨 最大${s.rainMaxProb}%（${s.rainMaxMm}mm/h）
 `.trim();
 
-  cacheSet(cacheKey, { ts: now, text: memo });
+  openMeteoCache.set(cacheKey, { ts: now, text: memo });
   return memo;
 }
 
@@ -422,7 +424,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
   async function callApiChat(
     payloadMessages: { role: "user" | "assistant"; content: string }[],
     character: CharacterProfileWithColor,
-    clientWeatherMemo: string | null,
+    systemHints: string[],
   ) {
     const res = await fetch("/api/chat", {
       method: "POST",
@@ -430,8 +432,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       body: JSON.stringify({
         messages: payloadMessages,
         characterProfile: character,
-        systemHints: [],
-        clientWeatherMemo, // ✅ 釣行判断の天気はクライアントから渡す
+        systemHints,
       }),
     });
 
@@ -444,13 +445,13 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     if (!isRecordLike(json) || (json as any).ok !== true) {
       const err =
         isRecordLike(json) && typeof (json as any).error === "string"
-          ? (json as any).error
+          ? String((json as any).error)
           : "unknown_error";
       throw new Error(err);
     }
 
     const txt =
-      typeof (json as any).text === "string" ? (json as any).text : "";
+      typeof (json as any).text === "string" ? String((json as any).text) : "";
     return String(txt ?? "");
   }
 
@@ -472,23 +473,28 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         selectedCharacter,
       );
 
-      // ✅ 釣行判断なら、先にブラウザでOpen-Meteoを取得して“メモ”化
-      let clientWeatherMemo: string | null = null;
-      if (isFishingJudgeText(text)) {
-        const targetDay = detectTargetDay(text);
+      // ✅ 釣行判断の時だけ、端末からOpen-Meteoを取得して systemHints に入れる
+      const lastUserText = text;
+      const judge = isFishingJudgeText(lastUserText);
+      const systemHints: string[] = [];
+
+      if (judge) {
+        const targetDay = detectTargetDay(lastUserText);
+        const YAIZU = { lat: 34.868, lon: 138.3236 };
         try {
-          clientWeatherMemo = await buildClientWeatherMemo(targetDay);
+          const wMemo = await buildWeatherMemoClient(
+            YAIZU.lat,
+            YAIZU.lon,
+            targetDay,
+          );
+          systemHints.push(wMemo);
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
-          clientWeatherMemo = `【Weather】取得失敗（${msg}）`;
+          systemHints.push(`【Weather】取得失敗（${msg}）`);
         }
       }
 
-      const reply = await callApiChat(
-        thread,
-        currentCharacter,
-        clientWeatherMemo,
-      );
+      const reply = await callApiChat(thread, currentCharacter, systemHints);
       setMessages([...next, { role: "assistant", content: reply }]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -583,6 +589,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         }
       `}</style>
 
+      {/* ✅ 上部貫通対策：ヘッダー高ぶん差し引いた高さに固定 */}
       <div
         style={{
           height: "calc(100dvh - var(--shell-header-h))",
@@ -592,6 +599,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           gap: 12,
         }}
       >
+        {/* 操作群（固定） */}
         <div
           style={{
             display: "flex",
@@ -657,6 +665,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           </button>
         </div>
 
+        {/* 履歴（ここだけスクロール） */}
         <div
           ref={scrollBoxRef}
           className="glass glass-strong"
@@ -724,6 +733,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           )}
         </div>
 
+        {/* クイック（固定） */}
         <div className="chat-quick">
           <button
             type="button"
@@ -760,6 +770,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           </button>
         </div>
 
+        {/* 入力欄（固定） */}
         <div
           className="glass glass-strong"
           style={{ borderRadius: 14, padding: 10 }}
