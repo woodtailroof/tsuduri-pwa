@@ -160,6 +160,26 @@ function useMinuteTick() {
   return tick;
 }
 
+function looksLikeImageFilePath(raw: string) {
+  return /\.(png|jpg|jpeg|webp|gif|avif)$/i.test(raw.trim());
+}
+
+function ensureTrailingSlash(p: string) {
+  return p.endsWith("/") ? p : `${p}/`;
+}
+
+function resolveCharacterPreviewSrc(raw: string, key: string) {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return "";
+  const normalized = normalizePublicPath(trimmed);
+  if (!normalized) return "";
+  if (looksLikeImageFilePath(normalized)) return normalized;
+
+  // フォルダ指定想定（末尾/なしでもOKにする）
+  const dir = ensureTrailingSlash(normalized);
+  return normalizePublicPath(`${dir}${key}.png`) || "";
+}
+
 export default function Settings({ back }: Props) {
   const { settings, set, reset } = useAppSettings();
 
@@ -559,7 +579,20 @@ export default function Settings({ back }: Props) {
                       <div style={{ display: "grid", gap: 10 }}>
                         {createdCharacters.map((c) => {
                           const raw = charImageMap[c.id] ?? "";
-                          const p = normalizePublicPath(raw);
+                          const normalized = normalizePublicPath(raw) || "";
+                          const isFile = normalized
+                            ? looksLikeImageFilePath(normalized)
+                            : false;
+
+                          const previewNeutral = resolveCharacterPreviewSrc(
+                            raw,
+                            "neutral",
+                          );
+                          const previewHappy = resolveCharacterPreviewSrc(
+                            raw,
+                            "happy",
+                          );
+
                           return (
                             <div
                               key={c.id}
@@ -624,38 +657,98 @@ export default function Settings({ back }: Props) {
                                   };
                                   setCharImageMap(next);
                                 }}
-                                placeholder="例: /assets/characters/tsuduri.png"
+                                placeholder="例: /assets/characters/tsuduri/  または /assets/characters/tsuduri/neutral.png"
                                 style={fullWidthControl}
                               />
 
                               <div style={help}>
-                                public 配下のパスを指定（例:{" "}
-                                <code>/assets/characters/tsuduri.png</code>）。
-                                固定/ランダム時にこの割り当てが使われるよ。
+                                public 配下のパスを指定。
+                                <br />✅ <b>おすすめ:</b>{" "}
+                                <code>/assets/characters/tsuduri/</code>{" "}
+                                のようにフォルダ指定（中に{" "}
+                                <code>neutral.png</code>, <code>happy.png</code>
+                                … を置く）。
+                                <br />
+                                🛟 旧互換: 単一画像（例{" "}
+                                <code>/assets/characters/tsuduri.png</code>
+                                ）もOK。
                               </div>
 
-                              {p ? (
+                              {raw.trim() ? (
                                 <div
                                   style={{
                                     display: "flex",
-                                    gap: 10,
+                                    gap: 12,
                                     alignItems: "center",
                                     flexWrap: "wrap",
                                   }}
                                 >
-                                  <span style={help}>プレビュー:</span>
-                                  <img
-                                    src={p}
-                                    alt=""
-                                    style={{
-                                      height: 64,
-                                      width: "auto",
-                                      borderRadius: 12,
-                                      border:
-                                        "1px solid rgba(255,255,255,0.18)",
-                                      background: "rgba(0,0,0,0.2)",
-                                    }}
-                                  />
+                                  <span style={help}>
+                                    プレビュー
+                                    {isFile ? "（単一）" : "（フォルダ想定）"}:
+                                  </span>
+
+                                  {previewNeutral ? (
+                                    <div
+                                      style={{
+                                        display: "inline-flex",
+                                        gap: 8,
+                                        alignItems: "center",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          fontSize: 11,
+                                          color: "rgba(255,255,255,0.55)",
+                                        }}
+                                      >
+                                        neutral
+                                      </span>
+                                      <img
+                                        src={previewNeutral}
+                                        alt=""
+                                        style={{
+                                          height: 64,
+                                          width: "auto",
+                                          borderRadius: 12,
+                                          border:
+                                            "1px solid rgba(255,255,255,0.18)",
+                                          background: "rgba(0,0,0,0.2)",
+                                        }}
+                                      />
+                                    </div>
+                                  ) : null}
+
+                                  {!isFile && previewHappy ? (
+                                    <div
+                                      style={{
+                                        display: "inline-flex",
+                                        gap: 8,
+                                        alignItems: "center",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          fontSize: 11,
+                                          color: "rgba(255,255,255,0.55)",
+                                        }}
+                                      >
+                                        happy
+                                      </span>
+                                      <img
+                                        src={previewHappy}
+                                        alt=""
+                                        style={{
+                                          height: 64,
+                                          width: "auto",
+                                          borderRadius: 12,
+                                          border:
+                                            "1px solid rgba(255,255,255,0.18)",
+                                          background: "rgba(0,0,0,0.2)",
+                                        }}
+                                      />
+                                    </div>
+                                  ) : null}
                                 </div>
                               ) : (
                                 <div style={help}>（未設定）</div>

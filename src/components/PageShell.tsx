@@ -53,7 +53,7 @@ type Props = {
   displayCharacterId?: string;
 
   /**
-   * ✅ 表示する表情キー（neutral / thinking / happy ...）
+   * ✅ 表示する表情キー（neutral / think / happy ...）
    * 未指定時は neutral
    */
   displayExpression?: string;
@@ -174,6 +174,14 @@ function loadCharacterImageMap(): CharacterImageMap {
   return map;
 }
 
+function looksLikeImageFilePath(raw: string) {
+  return /\.(png|jpg|jpeg|webp|gif|avif)$/i.test(raw.trim());
+}
+
+function ensureTrailingSlash(p: string) {
+  return p.endsWith("/") ? p : `${p}/`;
+}
+
 export default function PageShell(props: Props) {
   const title = props.title;
   const subtitle = props.subtitle;
@@ -263,10 +271,22 @@ export default function PageShell(props: Props) {
 
   // ✅ 表情対応：/assets/characters/{id}/{expression}.png → neutral.png → 旧互換へ
   // ただし「id がフォルダ名と一致しない（mk...等）」ケースが多いので、
-  // まずは settings のキャラ別画像マップ（mappedSrc）を最優先にする。
-  const mappedSrc = normalizePublicPath(
-    charImageMap[effectiveCharacterId] ?? "",
-  );
+  // 設定のキャラ別画像マップを最優先にする。
+  const mappedRaw = (charImageMap[effectiveCharacterId] ?? "").trim();
+  const mappedNorm = normalizePublicPath(mappedRaw) || "";
+  const mappedIsFile = mappedNorm ? looksLikeImageFilePath(mappedNorm) : false;
+
+  // mapped がフォルダならここから組み立てる（末尾/なしでもOK）
+  const mappedDir =
+    mappedNorm && !mappedIsFile ? ensureTrailingSlash(mappedNorm) : "";
+
+  const mappedExpressionSrc = mappedDir
+    ? normalizePublicPath(`${mappedDir}${displayExpression}.png`)
+    : "";
+  const mappedNeutralSrc = mappedDir
+    ? normalizePublicPath(`${mappedDir}neutral.png`)
+    : "";
+  const mappedSingleSrc = mappedIsFile ? mappedNorm : "";
 
   const expressionSrc = normalizePublicPath(
     `/assets/characters/${effectiveCharacterId}/${displayExpression}.png`,
@@ -278,14 +298,49 @@ export default function PageShell(props: Props) {
     `/assets/characters/${effectiveCharacterId}.png`,
   );
 
-  const characterSrc = normalizePublicPath(
-    characterOverrideSrc ||
-      mappedSrc || // ✅ 最優先：設定画面の「キャラ別パス」
-      expressionSrc ||
-      neutralSrc ||
-      fallbackSrc ||
+  // ✅ 404でも自動で次候補へフォールバック（フォルダ指定を安全にする）
+  const characterCandidates = useMemo(() => {
+    const list = [
+      normalizePublicPath(characterOverrideSrc),
+      // 設定マップ（フォルダなら表情→neutral、単一ならそれ）
+      mappedIsFile ? mappedSingleSrc : mappedExpressionSrc,
+      mappedIsFile ? "" : mappedNeutralSrc,
+      // 従来の推測
+      expressionSrc,
+      neutralSrc,
+      fallbackSrc,
       "/assets/characters/tsuduri.png",
-  );
+    ]
+      .map((x) => (x ?? "").trim())
+      .filter((x) => !!x);
+
+    // 重複排除
+    const seen = new Set<string>();
+    const uniq: string[] = [];
+    for (const s of list) {
+      if (seen.has(s)) continue;
+      seen.add(s);
+      uniq.push(s);
+    }
+    return uniq;
+  }, [
+    characterOverrideSrc,
+    mappedIsFile,
+    mappedSingleSrc,
+    mappedExpressionSrc,
+    mappedNeutralSrc,
+    expressionSrc,
+    neutralSrc,
+    fallbackSrc,
+  ]);
+
+  const [charSrcIndex, setCharSrcIndex] = useState(0);
+
+  useEffect(() => {
+    setCharSrcIndex(0);
+  }, [characterCandidates.join("|")]);
+
+  const characterSrc = characterCandidates[charSrcIndex] ?? "";
 
   // ✅ 表示倍率は 50%〜200% に統一（0.5〜2.0）
   const characterScale = Number.isFinite(settings.characterScale)
@@ -479,7 +534,18 @@ export default function PageShell(props: Props) {
         <div style={bgImageStyle} />
         <div style={bgDimStyle} />
         {characterEnabled && characterSrc ? (
-          <img src={characterSrc} alt="" style={characterStyle} />
+          <img
+            src={characterSrc}
+            alt=""
+            style={characterStyle}
+            onError={() => {
+              // 次候補へ
+              setCharSrcIndex((i) => {
+                const next = i + 1;
+                return next < characterCandidates.length ? next : i;
+              });
+            }}
+          />
         ) : null}
       </div>
 
