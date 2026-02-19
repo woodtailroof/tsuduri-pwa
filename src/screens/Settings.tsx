@@ -85,7 +85,7 @@ function loadCreatedCharacters(): CharacterOption[] {
   return uniq;
 }
 
-/** キャラID -> 画像パス を保存するキー（割り当て用） */
+/** キャラID -> 画像パス/フォルダ を保存するキー（割り当て用） */
 const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
 type CharacterImageMap = Record<string, string>;
 
@@ -179,6 +179,16 @@ function resolveCharacterPreviewSrc(raw: string, key: string) {
   const dir = ensureTrailingSlash(normalized);
   return normalizePublicPath(`${dir}${key}.png`) || "";
 }
+
+/** ✅ 表情キー（プレビュー用） */
+const EXPRESSION_KEYS = [
+  { key: "neutral", label: "neutral" },
+  { key: "happy", label: "happy" },
+  { key: "sad", label: "sad" },
+  { key: "angry", label: "angry" },
+  { key: "surprised", label: "surprised" },
+  { key: "love", label: "love" },
+] as const;
 
 export default function Settings({ back }: Props) {
   const { settings, set, reset } = useAppSettings();
@@ -584,14 +594,18 @@ export default function Settings({ back }: Props) {
                             ? looksLikeImageFilePath(normalized)
                             : false;
 
-                          const previewNeutral = resolveCharacterPreviewSrc(
-                            raw,
-                            "neutral",
-                          );
-                          const previewHappy = resolveCharacterPreviewSrc(
-                            raw,
-                            "happy",
-                          );
+                          // 単一ファイルならそれをそのまま1枚だけ見せる
+                          // フォルダ指定なら表情キー分を全部並べる
+                          const previewSingle = isFile
+                            ? normalizePublicPath(raw)
+                            : "";
+                          const previewList = !isFile
+                            ? EXPRESSION_KEYS.map((x) => ({
+                                key: x.key,
+                                label: x.label,
+                                src: resolveCharacterPreviewSrc(raw, x.key),
+                              }))
+                            : [];
 
                           return (
                             <div
@@ -674,84 +688,98 @@ export default function Settings({ back }: Props) {
                                 ）もOK。
                               </div>
 
-                              {raw.trim() ? (
+                              {!raw.trim() ? (
+                                <div style={help}>（未設定）</div>
+                              ) : isFile ? (
                                 <div
                                   style={{
                                     display: "flex",
-                                    gap: 12,
+                                    gap: 10,
                                     alignItems: "center",
                                     flexWrap: "wrap",
                                   }}
                                 >
-                                  <span style={help}>
-                                    プレビュー
-                                    {isFile ? "（単一）" : "（フォルダ想定）"}:
-                                  </span>
-
-                                  {previewNeutral ? (
-                                    <div
+                                  <span style={help}>プレビュー（単一）:</span>
+                                  {previewSingle ? (
+                                    <img
+                                      src={previewSingle}
+                                      alt=""
                                       style={{
-                                        display: "inline-flex",
-                                        gap: 8,
-                                        alignItems: "center",
+                                        height: 72,
+                                        width: "auto",
+                                        borderRadius: 12,
+                                        border:
+                                          "1px solid rgba(255,255,255,0.18)",
+                                        background: "rgba(0,0,0,0.2)",
                                       }}
-                                    >
-                                      <span
-                                        style={{
-                                          fontSize: 11,
-                                          color: "rgba(255,255,255,0.55)",
-                                        }}
-                                      >
-                                        neutral
-                                      </span>
-                                      <img
-                                        src={previewNeutral}
-                                        alt=""
-                                        style={{
-                                          height: 64,
-                                          width: "auto",
-                                          borderRadius: 12,
-                                          border:
-                                            "1px solid rgba(255,255,255,0.18)",
-                                          background: "rgba(0,0,0,0.2)",
-                                        }}
-                                      />
-                                    </div>
-                                  ) : null}
-
-                                  {!isFile && previewHappy ? (
-                                    <div
-                                      style={{
-                                        display: "inline-flex",
-                                        gap: 8,
-                                        alignItems: "center",
-                                      }}
-                                    >
-                                      <span
-                                        style={{
-                                          fontSize: 11,
-                                          color: "rgba(255,255,255,0.55)",
-                                        }}
-                                      >
-                                        happy
-                                      </span>
-                                      <img
-                                        src={previewHappy}
-                                        alt=""
-                                        style={{
-                                          height: 64,
-                                          width: "auto",
-                                          borderRadius: 12,
-                                          border:
-                                            "1px solid rgba(255,255,255,0.18)",
-                                          background: "rgba(0,0,0,0.2)",
-                                        }}
-                                      />
-                                    </div>
-                                  ) : null}
+                                    />
+                                  ) : (
+                                    <span style={help}>（読めないパス）</span>
+                                  )}
                                 </div>
                               ) : (
-                                <div style={help}>（未設定）</div>
+                                <div style={{ display: "grid", gap: 8 }}>
+                                  <div style={help}>プレビュー（表情）:</div>
+                                  <div
+                                    style={{
+                                      display: "grid",
+                                      gridTemplateColumns:
+                                        "repeat(auto-fit, minmax(120px, 1fr))",
+                                      gap: 10,
+                                      alignItems: "start",
+                                    }}
+                                  >
+                                    {previewList.map((p) => (
+                                      <div
+                                        key={p.key}
+                                        style={{
+                                          display: "grid",
+                                          gap: 6,
+                                          padding: 8,
+                                          borderRadius: 12,
+                                          border:
+                                            "1px solid rgba(255,255,255,0.12)",
+                                          background: "rgba(0,0,0,0.14)",
+                                        }}
+                                      >
+                                        <div
+                                          style={{
+                                            fontSize: 11,
+                                            color: "rgba(255,255,255,0.65)",
+                                            whiteSpace: "nowrap",
+                                            overflow: "hidden",
+                                            textOverflow: "ellipsis",
+                                          }}
+                                          title={p.label}
+                                        >
+                                          {p.label}
+                                        </div>
+                                        {p.src ? (
+                                          <img
+                                            src={p.src}
+                                            alt=""
+                                            style={{
+                                              width: "100%",
+                                              height: "auto",
+                                              borderRadius: 10,
+                                              border:
+                                                "1px solid rgba(255,255,255,0.18)",
+                                              background: "rgba(0,0,0,0.18)",
+                                              objectFit: "contain",
+                                            }}
+                                          />
+                                        ) : (
+                                          <div style={help}>（パス不明）</div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div style={help}>
+                                    ※ 画像が無い表情はブラウザで 404
+                                    になるけど、 PageShell
+                                    側は自動で次候補へフォールバックするよ。
+                                  </div>
+                                </div>
                               )}
                             </div>
                           );
