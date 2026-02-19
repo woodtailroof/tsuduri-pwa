@@ -185,8 +185,8 @@ const EXPRESSION_KEYS = [
   { key: "neutral", label: "neutral" }, // 喜
   { key: "happy", label: "happy" }, // 楽
   { key: "sad", label: "sad" }, // 哀
-  { key: "thinking", label: "thinking" }, // 考
-  { key: "surprised", label: "surprised" }, // 驚
+  { key: "think", label: "think" }, // 考
+  { key: "surprise", label: "surprise" }, // 驚
   { key: "love", label: "love" }, // 好
 ] as const;
 
