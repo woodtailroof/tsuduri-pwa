@@ -1,5 +1,5 @@
 // src/lib/emotion.tsx
-import React, {
+import {
   createContext,
   useCallback,
   useContext,
@@ -74,40 +74,49 @@ export function EmotionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const setEmotion = useCallback((emotion: Emotion, options?: SetEmotionOptions) => {
-    const source = options?.source ?? "unknown";
-    const reason = options?.reason;
+  const setEmotion = useCallback(
+    (emotion: Emotion, options?: SetEmotionOptions) => {
+      const source = options?.source ?? "unknown";
+      const reason = options?.reason;
 
-    clearTtl();
-    ttlTokenRef.current += 1;
-    const myToken = ttlTokenRef.current;
+      clearTtl();
+      ttlTokenRef.current += 1;
+      const myToken = ttlTokenRef.current;
 
-    setState({
-      emotion,
-      source,
-      reason,
-      updatedAt: Date.now(),
-    });
+      setState({
+        emotion,
+        source,
+        reason,
+        updatedAt: Date.now(),
+      });
 
-    const ttlMs = options?.ttlMs;
-    if (typeof ttlMs === "number" && ttlMs > 0) {
-      ttlTimerRef.current = window.setTimeout(() => {
-        // 途中で別感情が入ってたら戻さない
-        if (ttlTokenRef.current !== myToken) return;
+      const ttlMs = options?.ttlMs;
+      if (typeof ttlMs === "number" && ttlMs > 0) {
+        ttlTimerRef.current = window.setTimeout(() => {
+          // 途中で別感情が入ってたら戻さない
+          if (ttlTokenRef.current !== myToken) return;
 
-        setState({
-          emotion: "neutral",
-          source: "system",
-          reason: "ttl-reset",
-          updatedAt: Date.now(),
-        });
-      }, ttlMs);
-    }
-  }, [clearTtl]);
+          setState({
+            emotion: "neutral",
+            source: "system",
+            reason: "ttl-reset",
+            updatedAt: Date.now(),
+          });
+        }, ttlMs);
+      }
+    },
+    [clearTtl],
+  );
 
-  const resetEmotion = useCallback((options?: Omit<SetEmotionOptions, "ttlMs">) => {
-    setEmotion("neutral", { source: options?.source ?? "system", reason: options?.reason ?? "manual-reset" });
-  }, [setEmotion]);
+  const resetEmotion = useCallback(
+    (options?: Omit<SetEmotionOptions, "ttlMs">) => {
+      setEmotion("neutral", {
+        source: options?.source ?? "system",
+        reason: options?.reason ?? "manual-reset",
+      });
+    },
+    [setEmotion],
+  );
 
   useEffect(() => {
     return () => {
@@ -124,7 +133,9 @@ export function EmotionProvider({ children }: { children: ReactNode }) {
     };
   }, [state, setEmotion, resetEmotion]);
 
-  return <EmotionContext.Provider value={value}>{children}</EmotionContext.Provider>;
+  return (
+    <EmotionContext.Provider value={value}>{children}</EmotionContext.Provider>
+  );
 }
 
 export function useEmotion() {
