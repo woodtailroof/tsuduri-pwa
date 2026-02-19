@@ -182,12 +182,12 @@ function resolveCharacterPreviewSrc(raw: string, key: string) {
 
 /** ✅ 表情キー（プレビュー用） */
 const EXPRESSION_KEYS = [
-  { key: "neutral", label: "neutral" },
-  { key: "happy", label: "happy" },
-  { key: "sad", label: "sad" },
-  { key: "angry", label: "angry" },
-  { key: "surprised", label: "surprised" },
-  { key: "love", label: "love" },
+  { key: "neutral", label: "neutral" }, // 喜
+  { key: "happy", label: "happy" }, // 楽
+  { key: "sad", label: "sad" }, // 哀
+  { key: "thinking", label: "thinking" }, // 考
+  { key: "surprised", label: "surprised" }, // 驚
+  { key: "love", label: "love" }, // 好
 ] as const;
 
 export default function Settings({ back }: Props) {
