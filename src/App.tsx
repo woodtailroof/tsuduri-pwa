@@ -7,6 +7,7 @@ import Weather from "./screens/Weather";
 import Chat from "./screens/Chat";
 import Settings from "./screens/Settings";
 import CharacterSettings from "./screens/CharacterSettings";
+import { EmotionProvider } from "./lib/emotion";
 
 type Screen =
   | "home"
@@ -63,51 +64,53 @@ export default function App() {
   }
 
   return (
-    <div
-      id="app-root"
-      style={{
-        width: "100vw",
-        height: "100dvh",
-        overflow: "hidden",
-        position: "relative",
-      }}
-    >
-      {/* ✅ 背景レイヤー（最背面） */}
+    <EmotionProvider>
       <div
-        id="layer-bg"
+        id="app-root"
         style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: Z.bg,
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* ✅ キャラレイヤー（背景の上 / UIの下） */}
-      <div
-        id="layer-character"
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: Z.char,
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* ✅ UIレイヤー（PageShellや各画面の情報は全部ここ） */}
-      <div
-        id="layer-ui"
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: Z.ui,
-          pointerEvents: "auto",
-          // PageShell が 100dvh で設計されてるので、ここも同じ器にする
-          display: "block",
+          width: "100vw",
+          height: "100dvh",
+          overflow: "hidden",
+          position: "relative",
         }}
       >
-        {content}
+        {/* ✅ 背景レイヤー（最背面） */}
+        <div
+          id="layer-bg"
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: Z.bg,
+            pointerEvents: "none",
+          }}
+        />
+
+        {/* ✅ キャラレイヤー（背景の上 / UIの下） */}
+        <div
+          id="layer-character"
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: Z.char,
+            pointerEvents: "none",
+          }}
+        />
+
+        {/* ✅ UIレイヤー（PageShellや各画面の情報は全部ここ） */}
+        <div
+          id="layer-ui"
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: Z.ui,
+            pointerEvents: "auto",
+            // PageShell が 100dvh で設計されてるので、ここも同じ器にする
+            display: "block",
+          }}
+        >
+          {content}
+        </div>
       </div>
-    </div>
+    </EmotionProvider>
   );
 }

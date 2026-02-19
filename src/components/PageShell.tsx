@@ -16,6 +16,7 @@ import {
   useAppSettings,
 } from "../lib/appSettings";
 import { CHARACTERS_STORAGE_KEY } from "../screens/CharacterSettings";
+import { useEmotion, type Emotion } from "../lib/emotion";
 
 type Props = {
   title?: ReactNode;
@@ -54,7 +55,7 @@ type Props = {
 
   /**
    * ✅ 表示する表情キー（neutral / think / happy ...）
-   * 未指定時は neutral
+   * 未指定時は EmotionContext（人格）に従う
    */
   displayExpression?: string;
 };
@@ -182,6 +183,22 @@ function ensureTrailingSlash(p: string) {
   return p.endsWith("/") ? p : `${p}/`;
 }
 
+function normalizeExpression(raw: string): Emotion {
+  const v = (raw ?? "").trim();
+  // 将来増えても、今は採用キーに丸める
+  if (
+    v === "neutral" ||
+    v === "happy" ||
+    v === "sad" ||
+    v === "think" ||
+    v === "surprise" ||
+    v === "love"
+  ) {
+    return v;
+  }
+  return "neutral";
+}
+
 export default function PageShell(props: Props) {
   const title = props.title;
   const subtitle = props.subtitle;
@@ -193,7 +210,13 @@ export default function PageShell(props: Props) {
   const scrollY = props.scrollY ?? "auto";
   const contentPadding = props.contentPadding;
 
-  const displayExpression = (props.displayExpression ?? "neutral").trim();
+  // ✅ 人格（EmotionContext）
+  // props.displayExpression が未指定なら、グローバル感情に従う
+  const { emotion: globalEmotion } = useEmotion();
+  const propExpressionRaw = (props.displayExpression ?? "").trim();
+  const effectiveExpression = normalizeExpression(
+    propExpressionRaw ? propExpressionRaw : globalEmotion,
+  );
 
   const isMobile = useIsMobile();
 
@@ -281,7 +304,7 @@ export default function PageShell(props: Props) {
     mappedNorm && !mappedIsFile ? ensureTrailingSlash(mappedNorm) : "";
 
   const mappedExpressionSrc = mappedDir
-    ? normalizePublicPath(`${mappedDir}${displayExpression}.png`)
+    ? normalizePublicPath(`${mappedDir}${effectiveExpression}.png`)
     : "";
   const mappedNeutralSrc = mappedDir
     ? normalizePublicPath(`${mappedDir}neutral.png`)
@@ -289,7 +312,7 @@ export default function PageShell(props: Props) {
   const mappedSingleSrc = mappedIsFile ? mappedNorm : "";
 
   const expressionSrc = normalizePublicPath(
-    `/assets/characters/${effectiveCharacterId}/${displayExpression}.png`,
+    `/assets/characters/${effectiveCharacterId}/${effectiveExpression}.png`,
   );
   const neutralSrc = normalizePublicPath(
     `/assets/characters/${effectiveCharacterId}/neutral.png`,
