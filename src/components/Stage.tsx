@@ -122,6 +122,13 @@ function readAssetVersion(settings: unknown): string {
   return "";
 }
 
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false
+  );
+}
+
 export default function Stage() {
   const { settings } = useAppSettings();
   const { emotion: globalEmotion } = useEmotion();
@@ -206,7 +213,7 @@ export default function Stage() {
       appendAssetVersion(neutralSrc, assetVersion),
       appendAssetVersion(fallbackSrc, assetVersion),
 
-      // ✅ 最後の保険は「必ず存在する」ファイルへ（ここ超重要）
+      // ✅ 最後の保険は「必ず存在する」ファイルへ
       appendAssetVersion(
         "/assets/characters/tsuduri/neutral.png",
         assetVersion,
@@ -231,17 +238,23 @@ export default function Stage() {
     assetVersion,
   ]);
 
-  // candidates変化判定キー（eslintに優しい）
   const candidatesKey = useMemo(
     () => characterCandidates.join("|"),
     [characterCandidates],
   );
 
+  // ===== クロスフェード状態 =====
   const [frontSrc, setFrontSrc] = useState<string>("");
   const [backSrc, setBackSrc] = useState<string>("");
   const [frontVisible, setFrontVisible] = useState<boolean>(true);
   const [tryIndex, setTryIndex] = useState<number>(0);
-  const loadTokenRef = useRef(0);
+
+  // “最新の切替” を識別するトークン（古いtimeout/thenが新表示を壊さないように）
+  const swapTokenRef = useRef(0);
+  const cleanupTimerRef = useRef<number | null>(null);
+
+  // フェード時間（UIと同じ感覚）
+  const fadeMs = prefersReducedMotion() ? 0 : 500;
 
   useEffect(() => {
     const on = () => setTryIndex(0);
@@ -249,12 +262,11 @@ export default function Stage() {
     return () => window.removeEventListener("tsuduri-settings", on);
   }, []);
 
-  // ✅ 候補が変わったら最初から試す（この用途は正当なのでルールをピンポイントで抑制）
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTryIndex(0);
   }, [candidatesKey]);
 
+  // ✅ 切替本体
   useEffect(() => {
     if (!characterEnabled) return;
 
@@ -264,29 +276,55 @@ export default function Stage() {
     // 既に表示中なら何もしない（無駄なフェード防止）
     if (next === frontSrc || next === backSrc) return;
 
-    const token = ++loadTokenRef.current;
+    const token = ++swapTokenRef.current;
+
+    // 既存の掃除タイマーはキャンセル
+    if (cleanupTimerRef.current != null) {
+      window.clearTimeout(cleanupTimerRef.current);
+      cleanupTimerRef.current = null;
+    }
 
     // “表示を消してからロード”がちらつき原因なので、必ず先にロード
     preloadImage(next)
       .then(() => {
-        if (token !== loadTokenRef.current) return;
+        if (token !== swapTokenRef.current) return;
 
+        // 0ms（reduced motion）の場合は即差し替え
+        if (fadeMs === 0) {
+          setFrontSrc(next);
+          setBackSrc("");
+          setFrontVisible(true);
+          return;
+        }
+
+        // 表示していない方に next を入れて、次フレームで可視側を切替
         if (frontVisible) {
           setBackSrc(next);
           requestAnimationFrame(() => {
-            if (token !== loadTokenRef.current) return;
+            if (token !== swapTokenRef.current) return;
             setFrontVisible(false);
           });
         } else {
           setFrontSrc(next);
           requestAnimationFrame(() => {
-            if (token !== loadTokenRef.current) return;
+            if (token !== swapTokenRef.current) return;
             setFrontVisible(true);
           });
         }
+
+        // フェード完了後、見えない方を片付け（※token一致の時だけ）
+        cleanupTimerRef.current = window.setTimeout(() => {
+          if (token !== swapTokenRef.current) return;
+          if (frontVisible) {
+            // frontVisible=true の状態になっていれば、back を消す
+            setBackSrc("");
+          } else {
+            setFrontSrc("");
+          }
+        }, fadeMs + 30);
       })
       .catch(() => {
-        if (token !== loadTokenRef.current) return;
+        if (token !== swapTokenRef.current) return;
 
         setTryIndex((i) => {
           const n = i + 1;
@@ -300,6 +338,15 @@ export default function Stage() {
           return n;
         });
       });
+
+    return () => {
+      // ここでは token を進めない（then/catch 側で token 判定してるため）
+      // ただ掃除タイマーは止める
+      if (cleanupTimerRef.current != null) {
+        window.clearTimeout(cleanupTimerRef.current);
+        cleanupTimerRef.current = null;
+      }
+    };
   }, [
     characterEnabled,
     characterCandidates,
@@ -307,16 +354,8 @@ export default function Stage() {
     frontSrc,
     backSrc,
     frontVisible,
+    fadeMs,
   ]);
-
-  // フェード完了後、見えない方を片付けて軽量化
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      if (frontVisible) setBackSrc("");
-      else setFrontSrc("");
-    }, 520);
-    return () => window.clearTimeout(t);
-  }, [frontVisible]);
 
   const charWrapStyle: CSSProperties = {
     position: "absolute",
@@ -338,7 +377,7 @@ export default function Stage() {
     width: "100%",
     height: "auto",
     display: "block",
-    transition: "opacity 500ms ease",
+    transition: fadeMs === 0 ? "none" : `opacity ${fadeMs}ms ease`,
     willChange: "opacity",
   };
 

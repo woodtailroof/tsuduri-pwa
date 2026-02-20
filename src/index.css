@@ -357,6 +357,48 @@ select:focus {
   border-color: rgba(255, 77, 109, 0.55);
 }
 
+/* =========================================================
+   🌫️ 画面切替フェード（UIレイヤ）
+   - App.tsx の <FadeSwitch> が使う
+   ========================================================= */
+
+.fade-switch {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  /* 子の固定ヘッダー/スクロールにも悪さしないよう、ここは overflow 触らない */
+  opacity: 1;
+  transform: translateZ(0);
+  will-change: opacity, transform;
+}
+
+.fade-switch[data-phase="exit"] {
+  opacity: 0;
+  transform: translate3d(0, var(--fade-lift, 6px), 0);
+  transition:
+    opacity var(--fade-ms, 220ms) ease,
+    transform var(--fade-ms, 220ms) ease;
+  pointer-events: none;
+}
+
+.fade-switch[data-phase="enter"] {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  transition:
+    opacity var(--fade-ms, 220ms) ease,
+    transform var(--fade-ms, 220ms) ease;
+}
+
+/* 動きが苦手な人は優しく */
+@media (prefers-reduced-motion: reduce) {
+  .fade-switch,
+  .fade-switch[data-phase="exit"],
+  .fade-switch[data-phase="enter"] {
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
 /* 以下は元のまま（使ってないなら消してOK） */
 .logo {
   height: 6em;

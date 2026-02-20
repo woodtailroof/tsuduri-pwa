@@ -14,6 +14,7 @@ import Chat from "./screens/Chat";
 import Settings from "./screens/Settings";
 import CharacterSettings from "./screens/CharacterSettings";
 import Stage from "./components/Stage";
+import FadeSwitch from "./components/FadeSwitch";
 import {
   DEFAULT_SETTINGS,
   getTimeBand,
@@ -184,7 +185,10 @@ function AppInner() {
           display: "block",
         }}
       >
-        {content}
+        {/* 🌫️ ここが “ふわっ” の本体 */}
+        <FadeSwitch activeKey={screen} durationMs={220} liftPx={6}>
+          {content}
+        </FadeSwitch>
       </div>
     </div>
   );
