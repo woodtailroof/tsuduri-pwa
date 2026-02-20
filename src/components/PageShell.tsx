@@ -237,14 +237,16 @@ function appendAssetVersion(url: string, assetVersion: string) {
 function preloadImage(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
     if (typeof window === "undefined") return resolve();
-    const img = new Image();
+
+    const img = new Image() as HTMLImageElement & {
+      decode?: () => Promise<void>;
+    };
+
     img.decoding = "async";
+
     img.onload = async () => {
       try {
-        // decode が使える環境なら、描画直前のチラつき抑止
-        // @ts-expect-error - decode is not always in TS lib
         if (typeof img.decode === "function") {
-          // @ts-expect-error
           await img.decode();
         }
       } catch {
@@ -252,6 +254,7 @@ function preloadImage(src: string): Promise<void> {
       }
       resolve();
     };
+
     img.onerror = () => reject(new Error("image_load_failed"));
     img.src = src;
   });
