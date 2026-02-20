@@ -16,6 +16,7 @@ import {
 import type { TidePoint } from "../db";
 import PageShell from "../components/PageShell";
 import { useAppSettings } from "../lib/appSettings";
+import { decideWeatherEmotion } from "../lib/emotionDeciders/weatherEmotion";
 
 type Props = {
   back: () => void;
@@ -534,6 +535,25 @@ export default function Weather({ back }: Props) {
     };
   }, [targetDate]);
 
+  // ✅ 表情（Weather用・安定型）
+  const weatherEmotion = useMemo(() => {
+    const overview = wState.status === "ok" ? wState.summary.overview : null;
+    const rainProbMax =
+      wState.status === "ok" ? wState.summary.rainProbMax : null;
+    const windMax = wState.status === "ok" ? wState.summary.windMax : null;
+    const gustMax = wState.status === "ok" ? wState.summary.gustMax : null;
+
+    const tideName = state.status === "ok" ? state.tideName : null;
+
+    return decideWeatherEmotion({
+      overview,
+      rainProbMax,
+      windMax,
+      gustMax,
+      tideName,
+    });
+  }, [wState, state]);
+
   const highlightAt = useMemo(() => {
     const now = new Date();
     if (sameDay(targetDate, now)) return now;
@@ -637,6 +657,7 @@ export default function Weather({ back }: Props) {
       showBack
       onBack={back}
       scrollY="auto"
+      displayExpression={weatherEmotion}
     >
       <div
         style={{
