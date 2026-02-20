@@ -100,29 +100,6 @@ export default function PageShell(props: Props) {
   const resolvedFramePadding =
     contentPadding !== undefined ? contentPadding : defaultFramePadding;
 
-  // ✅ 本文スクロール領域（ヘッダー分は常に確保）
-  const contentOuterStyle: CSSProperties = {
-    width: "100%",
-    height: "100%",
-    minHeight: 0,
-    overflowX: "clip",
-    overflowY: scrollY,
-    WebkitOverflowScrolling: "touch",
-    overscrollBehavior: "contain",
-    paddingTop: `${effectiveHeaderH}px`,
-    position: "relative",
-    zIndex: 20, // UIは常に前
-  };
-
-  const frameStyle: CSSProperties = {
-    width: "100%",
-    maxWidth,
-    margin: "0 auto",
-    padding: resolvedFramePadding,
-    position: "relative",
-    minHeight: "100%",
-  };
-
   const onClickBack = useCallback(() => {
     if (onBack) return onBack();
     if (typeof window !== "undefined") window.history.back();
@@ -202,17 +179,46 @@ export default function PageShell(props: Props) {
     flex: "0 0 auto",
   };
 
+  /**
+   * ✅ ここが Chat 崩れの本丸対策：
+   * 親を flex column にして、本文領域を flex:1 + minHeight:0 にする
+   */
+  const shellStyle: CSSProperties = {
+    width: "100%",
+    height: "100%",
+    minHeight: 0,
+    overflow: "hidden",
+    position: "relative",
+    display: "flex",
+    flexDirection: "column",
+  };
+
+  // ✅ 本文スクロール領域（ヘッダー分は常に確保）
+  const contentOuterStyle: CSSProperties = {
+    flex: "1 1 auto",
+    minHeight: 0,
+    overflowX: "clip",
+    overflowY: scrollY,
+    WebkitOverflowScrolling: "touch",
+    overscrollBehavior: "contain",
+    paddingTop: `${effectiveHeaderH}px`,
+    position: "relative",
+    zIndex: 20, // UIは常に前
+  };
+
+  const frameStyle: CSSProperties = {
+    width: "100%",
+    height: "100%",
+    minHeight: 0,
+    maxWidth,
+    margin: "0 auto",
+    padding: resolvedFramePadding,
+    position: "relative",
+    boxSizing: "border-box",
+  };
+
   return (
-    <div
-      className="page-shell"
-      style={{
-        width: "100%",
-        height: "100%",
-        minHeight: 0,
-        overflow: "hidden",
-        position: "relative",
-      }}
-    >
+    <div className="page-shell" style={shellStyle}>
       {/* ✅ ヘッダー（最前面） */}
       {headerVisible ? (
         <div style={headerStyle}>
@@ -236,7 +242,10 @@ export default function PageShell(props: Props) {
       {/* ✅ 本文（UIレイヤ） */}
       <div style={contentOuterStyle}>
         <div style={frameStyle}>
-          <div className="page-shell-inner" style={{ position: "relative" }}>
+          <div
+            className="page-shell-inner"
+            style={{ position: "relative", height: "100%", minHeight: 0 }}
+          >
             {children}
           </div>
         </div>
