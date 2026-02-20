@@ -209,8 +209,7 @@ function appendAssetVersion(url: string, assetVersion: string) {
 }
 
 /**
- * ✅ 画像を「ロード完了してから」扱う
- * - decode があれば decode 待ち（ちらつき軽減）
+ * ✅ 画像を「ロード完了してから」扱う（decodeがあれば待つ）
  */
 function preloadImage(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -236,7 +235,6 @@ function preloadImage(src: string): Promise<void> {
 
 /**
  * ✅ 候補リストから「ロードできる最初の1枚」を選ぶ
- * - 404候補でバタバタしない（表示に出す前に確定）
  */
 async function resolveFirstLoadable(
   candidates: string[],
@@ -376,7 +374,7 @@ export default function PageShell(props: Props) {
     `/assets/characters/${effectiveCharacterId}.png`,
   );
 
-  // ✅ 候補（ここで assetVersion を必ず付与）
+  // ✅ 候補（assetVersion付与）
   const characterCandidates = useMemo(() => {
     const list = [
       appendAssetVersion(
@@ -423,7 +421,7 @@ export default function PageShell(props: Props) {
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
 
-  // ===== UIフェードイン（確実に体感できるやつ） =====
+  // ===== UIフェードイン =====
   const FADE_MS = 500;
   const [uiIn, setUiIn] = useState(false);
   useEffect(() => {
@@ -432,17 +430,38 @@ export default function PageShell(props: Props) {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // ===== キャラ：ロード完了→クロスフェード =====
+  // ===== キャラ：ロード完了→クロスフェード（キャンセル徹底） =====
   const [charCurrent, setCharCurrent] = useState<string>("");
   const [charNext, setCharNext] = useState<string>("");
   const [charFade, setCharFade] = useState(false);
+
+  // 現在値をrefに（async内で最新参照するため）
+  const charCurrentRef = useRef("");
+  useEffect(() => {
+    charCurrentRef.current = charCurrent;
+  }, [charCurrent]);
 
   // 候補解決トークン（途中キャンセル用）
   const resolveTokenRef = useRef(0);
   // フェードトークン（途中キャンセル用）
   const fadeTokenRef = useRef(0);
 
+  // ★ これが肝：前回の rAF / timeout を必ず止める
+  const fadeTimerRef = useRef<number | null>(null);
+  const fadeRafRef = useRef<number | null>(null);
+
   useEffect(() => {
+    // 前回の演出を完全停止（古い確定が刺さってチラつくのを防ぐ）
+    if (fadeTimerRef.current != null) {
+      window.clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = null;
+    }
+    if (fadeRafRef.current != null) {
+      cancelAnimationFrame(fadeRafRef.current);
+      fadeRafRef.current = null;
+    }
+    fadeTokenRef.current++;
+
     if (!characterEnabled) {
       setCharCurrent("");
       setCharNext("");
@@ -451,6 +470,7 @@ export default function PageShell(props: Props) {
     }
 
     const token = ++resolveTokenRef.current;
+    let cancelled = false;
 
     (async () => {
       const picked = await resolveFirstLoadable(
@@ -458,18 +478,16 @@ export default function PageShell(props: Props) {
         token,
         resolveTokenRef,
       );
+      if (cancelled) return;
       if (resolveTokenRef.current !== token) return;
 
-      // 何も見つからない
-      if (!picked) {
-        setCharCurrent("");
-        setCharNext("");
-        setCharFade(false);
-        return;
-      }
+      // 見つからない場合：現状維持（ここで消すと「一瞬消え」になる）
+      if (!picked) return;
+
+      const current = charCurrentRef.current;
 
       // 初回
-      if (!charCurrent) {
+      if (!current) {
         setCharCurrent(picked);
         setCharNext("");
         setCharFade(false);
@@ -477,27 +495,41 @@ export default function PageShell(props: Props) {
       }
 
       // 同じなら何もしない
-      if (picked === charCurrent) return;
+      if (picked === current) return;
 
-      // 次を入れて、次フレームでクロスフェード開始
+      // 次を入れてクロスフェード
       const ftoken = ++fadeTokenRef.current;
+
       setCharNext(picked);
       setCharFade(false);
 
-      requestAnimationFrame(() => {
+      fadeRafRef.current = requestAnimationFrame(() => {
         if (fadeTokenRef.current !== ftoken) return;
         setCharFade(true);
       });
 
-      const t = window.setTimeout(() => {
+      fadeTimerRef.current = window.setTimeout(() => {
         if (fadeTokenRef.current !== ftoken) return;
         setCharCurrent(picked);
         setCharNext("");
         setCharFade(false);
+        fadeTimerRef.current = null;
       }, FADE_MS);
-
-      return () => window.clearTimeout(t);
     })();
+
+    return () => {
+      cancelled = true;
+      // アンマウント/再実行時も止める
+      if (fadeTimerRef.current != null) {
+        window.clearTimeout(fadeTimerRef.current);
+        fadeTimerRef.current = null;
+      }
+      if (fadeRafRef.current != null) {
+        cancelAnimationFrame(fadeRafRef.current);
+        fadeRafRef.current = null;
+      }
+      fadeTokenRef.current++;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [characterCandidates.join("|"), characterEnabled]);
 
