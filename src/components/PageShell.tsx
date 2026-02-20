@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -115,6 +116,27 @@ function useIsMobile() {
   return isMobile;
 }
 
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return (
+      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false
+    );
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (!mql) return;
+
+    const onChange = () => setReduced(mql.matches);
+    mql.addEventListener?.("change", onChange);
+    return () => mql.removeEventListener?.("change", onChange);
+  }, []);
+
+  return reduced;
+}
+
 /** ✅ 1分ごとにUIを更新（自動背景の時間帯追従用） */
 function useMinuteTick() {
   const [tick, setTick] = useState(0);
@@ -204,8 +226,35 @@ function appendAssetVersion(url: string, assetVersion: string) {
   if (!u || !av) return u;
 
   const encoded = encodeURIComponent(av);
-  // 既にクエリがあれば &、無ければ ?
   return u.includes("?") ? `${u}&av=${encoded}` : `${u}?av=${encoded}`;
+}
+
+/**
+ * ✅ 画像を「ロード完了してから」使うためのプリロード
+ * - decode が使えれば decode 待ち
+ * - 失敗したら reject
+ */
+function preloadImage(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined") return resolve();
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = async () => {
+      try {
+        // decode が使える環境なら、描画直前のチラつき抑止
+        // @ts-expect-error - decode is not always in TS lib
+        if (typeof img.decode === "function") {
+          // @ts-expect-error
+          await img.decode();
+        }
+      } catch {
+        // decode失敗は許容（表示はできる）
+      }
+      resolve();
+    };
+    img.onerror = () => reject(new Error("image_load_failed"));
+    img.src = src;
+  });
 }
 
 export default function PageShell(props: Props) {
@@ -227,6 +276,7 @@ export default function PageShell(props: Props) {
   );
 
   const isMobile = useIsMobile();
+  const reducedMotion = usePrefersReducedMotion();
 
   // ✅ ヘッダー高さは全端末で固定（位置ブレの根絶）
   const HEADER_H = 72;
@@ -555,16 +605,169 @@ export default function PageShell(props: Props) {
     background: `rgba(0,0,0,var(--bg-dim))`,
   };
 
-  const characterStyle: CSSProperties = {
+  const characterStyleBase: CSSProperties = {
     position: "absolute",
     right: "env(safe-area-inset-right)",
     bottom: "env(safe-area-inset-bottom)",
-    opacity: clamp(characterOpacity, 0, 1),
     transform: `scale(${clamp(characterScale, 0.5, 2.0)})`,
     transformOrigin: "bottom right",
     filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.45))",
     maxWidth: "min(46vw, 520px)",
     height: "auto",
+    willChange: "opacity",
+  };
+
+  // =========================
+  // ✅ キャラ：クロスフェード制御
+  // =========================
+  const FADE_MS = reducedMotion ? 0 : 260;
+
+  const [shownSrc, setShownSrc] = useState<string>("");
+  const [incomingSrc, setIncomingSrc] = useState<string>("");
+  const [incomingReady, setIncomingReady] = useState<boolean>(false);
+  const fadeTimerRef = useRef<number | null>(null);
+  const lastRequestedRef = useRef<string>("");
+
+  const clearFadeTimer = () => {
+    if (fadeTimerRef.current != null) {
+      window.clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = null;
+    }
+  };
+
+  // 初期表示 or 画像切替要求
+  useEffect(() => {
+    if (!characterEnabled) {
+      clearFadeTimer();
+      setShownSrc("");
+      setIncomingSrc("");
+      setIncomingReady(false);
+      lastRequestedRef.current = "";
+      return;
+    }
+
+    const next = (characterSrc ?? "").trim();
+    if (!next) return;
+
+    // 既に表示中なら何もしない
+    if (next === shownSrc && !incomingSrc) return;
+
+    // 同じ要求が連打されるのを抑止
+    if (next === lastRequestedRef.current) return;
+    lastRequestedRef.current = next;
+
+    // 最初の1枚は即表示（フェード不要）
+    if (!shownSrc) {
+      setShownSrc(next);
+      setIncomingSrc("");
+      setIncomingReady(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIncomingReady(false);
+    setIncomingSrc(next);
+
+    preloadImage(next)
+      .then(() => {
+        if (cancelled) return;
+        setIncomingReady(true);
+
+        clearFadeTimer();
+        fadeTimerRef.current = window.setTimeout(() => {
+          // フェードが終わったらスワップ
+          setShownSrc(next);
+          setIncomingSrc("");
+          setIncomingReady(false);
+          fadeTimerRef.current = null;
+        }, FADE_MS);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // プリロード失敗 → 次候補へ
+        setIncomingSrc("");
+        setIncomingReady(false);
+        lastRequestedRef.current = "";
+        setCharSrcIndex((i) => {
+          const n = i + 1;
+          return n < characterCandidates.length ? n : i;
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    characterEnabled,
+    characterSrc,
+    characterCandidates.length,
+    shownSrc,
+    incomingSrc,
+    FADE_MS,
+  ]);
+
+  // shownSrc が壊れてた場合も次候補へ
+  const onShownError = useCallback(() => {
+    lastRequestedRef.current = "";
+    setCharSrcIndex((i) => {
+      const next = i + 1;
+      return next < characterCandidates.length ? next : i;
+    });
+  }, [characterCandidates.length]);
+
+  const onIncomingError = useCallback(() => {
+    lastRequestedRef.current = "";
+    setIncomingSrc("");
+    setIncomingReady(false);
+    setCharSrcIndex((i) => {
+      const next = i + 1;
+      return next < characterCandidates.length ? next : i;
+    });
+  }, [characterCandidates.length]);
+
+  // =========================
+  // ✅ 画面全体：マウント時フェードイン
+  // =========================
+  const [contentVisible, setContentVisible] = useState(false);
+
+  useEffect(() => {
+    if (reducedMotion) {
+      setContentVisible(true);
+      return;
+    }
+    setContentVisible(false);
+    const raf = window.requestAnimationFrame(() => setContentVisible(true));
+    return () => window.cancelAnimationFrame(raf);
+  }, [
+    reducedMotion,
+    title,
+    subtitle,
+    effectiveCharacterId,
+    effectiveExpression,
+  ]);
+
+  const contentFadeStyle: CSSProperties = reducedMotion
+    ? {}
+    : {
+        opacity: contentVisible ? 1 : 0,
+        transform: contentVisible ? "translateY(0px)" : "translateY(6px)",
+        transition: "opacity 240ms ease, transform 240ms ease",
+        willChange: "opacity, transform",
+      };
+
+  // キャラの見た目（2枚重ね）
+  const shownImgStyle: CSSProperties = {
+    ...characterStyleBase,
+    opacity: incomingSrc && incomingReady ? 0 : clamp(characterOpacity, 0, 1),
+    transition: `opacity ${FADE_MS}ms ease`,
+    pointerEvents: "none",
+  };
+
+  const incomingImgStyle: CSSProperties = {
+    ...characterStyleBase,
+    opacity: incomingSrc && incomingReady ? clamp(characterOpacity, 0, 1) : 0,
+    transition: `opacity ${FADE_MS}ms ease`,
+    pointerEvents: "none",
   };
 
   return (
@@ -573,19 +776,30 @@ export default function PageShell(props: Props) {
       <div style={bgLayerStyle} aria-hidden="true">
         <div style={bgImageStyle} />
         <div style={bgDimStyle} />
-        {characterEnabled && characterSrc ? (
-          <img
-            src={characterSrc}
-            alt=""
-            style={characterStyle}
-            onError={() => {
-              // 次候補へ
-              setCharSrcIndex((i) => {
-                const next = i + 1;
-                return next < characterCandidates.length ? next : i;
-              });
-            }}
-          />
+
+        {/* ✅ キャラ：クロスフェード（2枚重ね） */}
+        {characterEnabled && (shownSrc || incomingSrc) ? (
+          <>
+            {shownSrc ? (
+              <img
+                key={`shown:${shownSrc}`}
+                src={shownSrc}
+                alt=""
+                style={shownImgStyle}
+                onError={onShownError}
+              />
+            ) : null}
+
+            {incomingSrc ? (
+              <img
+                key={`incoming:${incomingSrc}`}
+                src={incomingSrc}
+                alt=""
+                style={incomingImgStyle}
+                onError={onIncomingError}
+              />
+            ) : null}
+          </>
         ) : null}
       </div>
 
@@ -612,7 +826,10 @@ export default function PageShell(props: Props) {
       {/* ✅ 本文（情報レイヤ：キャラより前） */}
       <div style={contentOuterStyle}>
         <div style={frameStyle}>
-          <div className="page-shell-inner" style={{ position: "relative" }}>
+          <div
+            className="page-shell-inner"
+            style={{ position: "relative", ...contentFadeStyle }}
+          >
             {children}
           </div>
         </div>
