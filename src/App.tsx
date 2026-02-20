@@ -158,6 +158,9 @@ function AppInner() {
         height: "100dvh",
         overflow: "hidden",
         position: "relative",
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
         ...appVars,
       }}
     >
@@ -182,12 +185,17 @@ function AppInner() {
           inset: 0,
           zIndex: Z.ui,
           pointerEvents: "auto",
-          display: "block",
+
+          // ★ここが本丸：PageShellのスクロールを成立させる親flex
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
+          overflow: "hidden",
         }}
       >
-        {/* 🌫️ ここが “ふわっ” の本体 */}
         <FadeSwitch activeKey={screen} durationMs={220} liftPx={6}>
-          {content}
+          {/* ★FadeSwitchの中もflexで高さを殺さない */}
+          <div style={{ flex: "1 1 auto", minHeight: 0 }}>{content}</div>
         </FadeSwitch>
       </div>
     </div>

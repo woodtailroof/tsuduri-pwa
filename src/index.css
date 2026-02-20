@@ -203,8 +203,6 @@ h3 {
 
 /* =========================================================
    ✅ 背景レイヤー（全画面共通）
-   - 重要：.page-shell から #app-root に移動
-   - これで Stage(キャラ) が背景の上に出る
    ========================================================= */
 #app-root {
   position: relative;
@@ -240,7 +238,7 @@ h3 {
   transform: translateZ(0);
 }
 
-/* ✅ 暗幕（Settingsのスライダーにリンク） */
+/* ✅ 暗幕 */
 #app-root::after {
   content: "";
   position: fixed;
@@ -267,7 +265,7 @@ h3 {
 }
 
 /* =========================================================
-   ✅ 戻るボタン（右上固定に統一）
+   ✅ 戻るボタン
    ========================================================= */
 .back-button {
   position: fixed;
@@ -305,7 +303,7 @@ h3 {
 }
 
 /* =========================================================
-   ✅ すりガラス：カード/パネルの共通クラス
+   ✅ すりガラス
    ========================================================= */
 .glass,
 .glass-panel {
@@ -322,7 +320,7 @@ h3 {
 }
 
 /* =========================================================
-   ✅ 透過UI（ボタン/入力）も “濃さ” に追従させる
+   ✅ 透過UIも追従
    ========================================================= */
 button {
   border: 1px solid var(--line);
@@ -358,64 +356,44 @@ select:focus {
 }
 
 /* =========================================================
-   🌫️ 画面切替フェード（安定版：スナップショット式）
-   - App.tsx の <FadeSwitch> が使う
+   🌫️ 画面切替フェード（UIレイヤ）
+   - 重要：スクロール破綻防止のため flex + min-height:0 を付与
    ========================================================= */
-.fade-switch3 {
+.fade-switch {
   width: 100%;
   height: 100%;
   min-height: 0;
-  position: relative;
-  isolation: isolate;
-}
 
-.fade-switch3__layer {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
+  display: flex;
+  flex-direction: column;
+
+  opacity: 1;
   transform: translateZ(0);
   will-change: opacity, transform;
 }
 
-/* prev（旧）はフェードアウト */
-.fade-switch3__layer[data-layer="prev"][data-phase="crossfade"] {
+.fade-switch[data-phase="exit"] {
   opacity: 0;
   transform: translate3d(0, var(--fade-lift, 6px), 0);
   transition:
     opacity var(--fade-ms, 220ms) ease,
     transform var(--fade-ms, 220ms) ease;
   pointer-events: none;
-  visibility: hidden;
 }
 
-.fade-switch3__layer[data-layer="prev"][data-phase="idle"] {
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
-}
-
-/* current（新）はフェードイン */
-.fade-switch3__layer[data-layer="current"][data-phase="crossfade"] {
+.fade-switch[data-phase="enter"] {
   opacity: 1;
   transform: translate3d(0, 0, 0);
   transition:
     opacity var(--fade-ms, 220ms) ease,
     transform var(--fade-ms, 220ms) ease;
-  pointer-events: auto;
-  visibility: visible;
 }
 
-.fade-switch3__layer[data-layer="current"][data-phase="idle"] {
-  opacity: 1;
-  transform: translate3d(0, 0, 0);
-  pointer-events: auto;
-  visibility: visible;
-}
-
+/* 動きが苦手な人は優しく */
 @media (prefers-reduced-motion: reduce) {
-  .fade-switch3__layer {
+  .fade-switch,
+  .fade-switch[data-phase="exit"],
+  .fade-switch[data-phase="enter"] {
     transition: none !important;
     transform: none !important;
   }
