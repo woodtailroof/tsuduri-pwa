@@ -116,27 +116,6 @@ function useIsMobile() {
   return isMobile;
 }
 
-function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return (
-      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false
-    );
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mql = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-    if (!mql) return;
-
-    const onChange = () => setReduced(mql.matches);
-    mql.addEventListener?.("change", onChange);
-    return () => mql.removeEventListener?.("change", onChange);
-  }, []);
-
-  return reduced;
-}
-
 /** ✅ 1分ごとにUIを更新（自動背景の時間帯追従用） */
 function useMinuteTick() {
   const [tick, setTick] = useState(0);
@@ -279,7 +258,6 @@ export default function PageShell(props: Props) {
   );
 
   const isMobile = useIsMobile();
-  const reducedMotion = usePrefersReducedMotion();
 
   // ✅ ヘッダー高さは全端末で固定（位置ブレの根絶）
   const HEADER_H = 72;
@@ -392,12 +370,10 @@ export default function PageShell(props: Props) {
         normalizePublicPath(characterOverrideSrc),
         assetVersion,
       ),
-      // 設定マップ（フォルダなら表情→neutral、単一ならそれ）
       mappedIsFile
         ? appendAssetVersion(mappedSingleSrc, assetVersion)
         : appendAssetVersion(mappedExpressionSrc, assetVersion),
       mappedIsFile ? "" : appendAssetVersion(mappedNeutralSrc, assetVersion),
-      // 従来の推測
       appendAssetVersion(expressionSrc, assetVersion),
       appendAssetVersion(neutralSrc, assetVersion),
       appendAssetVersion(fallbackSrc, assetVersion),
@@ -406,7 +382,6 @@ export default function PageShell(props: Props) {
       .map((x) => (x ?? "").trim())
       .filter((x) => !!x);
 
-    // 重複排除
     const seen = new Set<string>();
     const uniq: string[] = [];
     for (const s of list) {
@@ -433,7 +408,7 @@ export default function PageShell(props: Props) {
     setCharSrcIndex(0);
   }, [characterCandidates.join("|")]);
 
-  const characterSrc = characterCandidates[charSrcIndex] ?? "";
+  const desiredCharacterSrc = characterCandidates[charSrcIndex] ?? "";
 
   // ✅ 表示倍率は 50%〜200% に統一（0.5〜2.0）
   const characterScale = Number.isFinite(settings.characterScale)
@@ -442,6 +417,73 @@ export default function PageShell(props: Props) {
   const characterOpacity = Number.isFinite(settings.characterOpacity)
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
+
+  /**
+   * ✅ キャラ画像のクロスフェード
+   * - current を表示し続け
+   * - next をプリロード完了後に重ねてフェードIN
+   * - フェード完了後に current=next に確定
+   */
+  const FADE_MS = 240;
+
+  const [charCurrentSrc, setCharCurrentSrc] = useState<string>(() => {
+    return desiredCharacterSrc;
+  });
+  const [charNextSrc, setCharNextSrc] = useState<string>(""); // フェード中の上レイヤ
+  const [charFading, setCharFading] = useState(false);
+
+  const fadeTokenRef = useRef(0);
+
+  useEffect(() => {
+    // 表示しない設定なら、状態だけ整える
+    if (!characterEnabled || !desiredCharacterSrc) {
+      setCharCurrentSrc("");
+      setCharNextSrc("");
+      setCharFading(false);
+      return;
+    }
+
+    // 初回 or 同一なら何もしない
+    if (!charCurrentSrc) {
+      setCharCurrentSrc(desiredCharacterSrc);
+      setCharNextSrc("");
+      setCharFading(false);
+      return;
+    }
+    if (desiredCharacterSrc === charCurrentSrc) return;
+
+    const token = ++fadeTokenRef.current;
+
+    (async () => {
+      try {
+        await preloadImage(desiredCharacterSrc);
+      } catch {
+        // 読めないなら次候補へ（従来どおり）
+        setCharSrcIndex((i) => {
+          const next = i + 1;
+          return next < characterCandidates.length ? next : i;
+        });
+        return;
+      }
+
+      if (fadeTokenRef.current !== token) return;
+
+      setCharNextSrc(desiredCharacterSrc);
+      // 次フレームでフェード開始（transitionを確実に効かせる）
+      requestAnimationFrame(() => {
+        if (fadeTokenRef.current !== token) return;
+        setCharFading(true);
+      });
+
+      window.setTimeout(() => {
+        if (fadeTokenRef.current !== token) return;
+        setCharCurrentSrc(desiredCharacterSrc);
+        setCharNextSrc("");
+        setCharFading(false);
+      }, FADE_MS);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desiredCharacterSrc, characterEnabled, characterCandidates.length]);
 
   // ✅ root: #app-root が overflow:hidden なので PageShell 内で完結させる
   const rootStyle = useMemo<StyleWithVars>(() => {
@@ -608,169 +650,29 @@ export default function PageShell(props: Props) {
     background: `rgba(0,0,0,var(--bg-dim))`,
   };
 
-  const characterStyleBase: CSSProperties = {
+  const characterBaseStyle: CSSProperties = {
     position: "absolute",
     right: "env(safe-area-inset-right)",
     bottom: "env(safe-area-inset-bottom)",
+    opacity: clamp(characterOpacity, 0, 1),
     transform: `scale(${clamp(characterScale, 0.5, 2.0)})`,
     transformOrigin: "bottom right",
     filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.45))",
     maxWidth: "min(46vw, 520px)",
     height: "auto",
-    willChange: "opacity",
+    willChange: "opacity, transform",
   };
 
-  // =========================
-  // ✅ キャラ：クロスフェード制御
-  // =========================
-  const FADE_MS = reducedMotion ? 0 : 260;
-
-  const [shownSrc, setShownSrc] = useState<string>("");
-  const [incomingSrc, setIncomingSrc] = useState<string>("");
-  const [incomingReady, setIncomingReady] = useState<boolean>(false);
-  const fadeTimerRef = useRef<number | null>(null);
-  const lastRequestedRef = useRef<string>("");
-
-  const clearFadeTimer = () => {
-    if (fadeTimerRef.current != null) {
-      window.clearTimeout(fadeTimerRef.current);
-      fadeTimerRef.current = null;
-    }
-  };
-
-  // 初期表示 or 画像切替要求
-  useEffect(() => {
-    if (!characterEnabled) {
-      clearFadeTimer();
-      setShownSrc("");
-      setIncomingSrc("");
-      setIncomingReady(false);
-      lastRequestedRef.current = "";
-      return;
-    }
-
-    const next = (characterSrc ?? "").trim();
-    if (!next) return;
-
-    // 既に表示中なら何もしない
-    if (next === shownSrc && !incomingSrc) return;
-
-    // 同じ要求が連打されるのを抑止
-    if (next === lastRequestedRef.current) return;
-    lastRequestedRef.current = next;
-
-    // 最初の1枚は即表示（フェード不要）
-    if (!shownSrc) {
-      setShownSrc(next);
-      setIncomingSrc("");
-      setIncomingReady(false);
-      return;
-    }
-
-    let cancelled = false;
-    setIncomingReady(false);
-    setIncomingSrc(next);
-
-    preloadImage(next)
-      .then(() => {
-        if (cancelled) return;
-        setIncomingReady(true);
-
-        clearFadeTimer();
-        fadeTimerRef.current = window.setTimeout(() => {
-          // フェードが終わったらスワップ
-          setShownSrc(next);
-          setIncomingSrc("");
-          setIncomingReady(false);
-          fadeTimerRef.current = null;
-        }, FADE_MS);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        // プリロード失敗 → 次候補へ
-        setIncomingSrc("");
-        setIncomingReady(false);
-        lastRequestedRef.current = "";
-        setCharSrcIndex((i) => {
-          const n = i + 1;
-          return n < characterCandidates.length ? n : i;
-        });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    characterEnabled,
-    characterSrc,
-    characterCandidates.length,
-    shownSrc,
-    incomingSrc,
-    FADE_MS,
-  ]);
-
-  // shownSrc が壊れてた場合も次候補へ
-  const onShownError = useCallback(() => {
-    lastRequestedRef.current = "";
-    setCharSrcIndex((i) => {
-      const next = i + 1;
-      return next < characterCandidates.length ? next : i;
-    });
-  }, [characterCandidates.length]);
-
-  const onIncomingError = useCallback(() => {
-    lastRequestedRef.current = "";
-    setIncomingSrc("");
-    setIncomingReady(false);
-    setCharSrcIndex((i) => {
-      const next = i + 1;
-      return next < characterCandidates.length ? next : i;
-    });
-  }, [characterCandidates.length]);
-
-  // =========================
-  // ✅ 画面全体：マウント時フェードイン
-  // =========================
-  const [contentVisible, setContentVisible] = useState(false);
-
-  useEffect(() => {
-    if (reducedMotion) {
-      setContentVisible(true);
-      return;
-    }
-    setContentVisible(false);
-    const raf = window.requestAnimationFrame(() => setContentVisible(true));
-    return () => window.cancelAnimationFrame(raf);
-  }, [
-    reducedMotion,
-    title,
-    subtitle,
-    effectiveCharacterId,
-    effectiveExpression,
-  ]);
-
-  const contentFadeStyle: CSSProperties = reducedMotion
-    ? {}
-    : {
-        opacity: contentVisible ? 1 : 0,
-        transform: contentVisible ? "translateY(0px)" : "translateY(6px)",
-        transition: "opacity 240ms ease, transform 240ms ease",
-        willChange: "opacity, transform",
-      };
-
-  // キャラの見た目（2枚重ね）
-  const shownImgStyle: CSSProperties = {
-    ...characterStyleBase,
-    opacity: incomingSrc && incomingReady ? 0 : clamp(characterOpacity, 0, 1),
+  const characterUnderStyle: CSSProperties = {
+    ...characterBaseStyle,
+    opacity: clamp(characterOpacity, 0, 1) * (charFading ? 0 : 1),
     transition: `opacity ${FADE_MS}ms ease`,
-    pointerEvents: "none",
   };
 
-  const incomingImgStyle: CSSProperties = {
-    ...characterStyleBase,
-    opacity: incomingSrc && incomingReady ? clamp(characterOpacity, 0, 1) : 0,
+  const characterOverStyle: CSSProperties = {
+    ...characterBaseStyle,
+    opacity: clamp(characterOpacity, 0, 1) * (charFading ? 1 : 0),
     transition: `opacity ${FADE_MS}ms ease`,
-    pointerEvents: "none",
   };
 
   return (
@@ -780,26 +682,38 @@ export default function PageShell(props: Props) {
         <div style={bgImageStyle} />
         <div style={bgDimStyle} />
 
-        {/* ✅ キャラ：クロスフェード（2枚重ね） */}
-        {characterEnabled && (shownSrc || incomingSrc) ? (
+        {characterEnabled && charCurrentSrc ? (
           <>
-            {shownSrc ? (
-              <img
-                key={`shown:${shownSrc}`}
-                src={shownSrc}
-                alt=""
-                style={shownImgStyle}
-                onError={onShownError}
-              />
-            ) : null}
+            {/* 下（現在表示） */}
+            <img
+              src={charCurrentSrc}
+              alt=""
+              style={characterUnderStyle}
+              onError={() => {
+                // current が壊れてたら候補を進める（フェード中でもOK）
+                setCharSrcIndex((i) => {
+                  const next = i + 1;
+                  return next < characterCandidates.length ? next : i;
+                });
+              }}
+            />
 
-            {incomingSrc ? (
+            {/* 上（次に表示） */}
+            {charNextSrc ? (
               <img
-                key={`incoming:${incomingSrc}`}
-                src={incomingSrc}
+                src={charNextSrc}
                 alt=""
-                style={incomingImgStyle}
-                onError={onIncomingError}
+                style={characterOverStyle}
+                onError={() => {
+                  // next が壊れてたら次候補へ（フェードを中止して進める）
+                  fadeTokenRef.current += 1;
+                  setCharNextSrc("");
+                  setCharFading(false);
+                  setCharSrcIndex((i) => {
+                    const next = i + 1;
+                    return next < characterCandidates.length ? next : i;
+                  });
+                }}
               />
             ) : null}
           </>
@@ -829,10 +743,7 @@ export default function PageShell(props: Props) {
       {/* ✅ 本文（情報レイヤ：キャラより前） */}
       <div style={contentOuterStyle}>
         <div style={frameStyle}>
-          <div
-            className="page-shell-inner"
-            style={{ position: "relative", ...contentFadeStyle }}
-          >
+          <div className="page-shell-inner" style={{ position: "relative" }}>
             {children}
           </div>
         </div>
