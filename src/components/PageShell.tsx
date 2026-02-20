@@ -105,7 +105,7 @@ export default function PageShell(props: Props) {
     if (typeof window !== "undefined") window.history.back();
   }, [onBack]);
 
-  // ✅ ヘッダーは常に viewport 基準で固定
+  // ✅ ヘッダーは常に viewport 基準で固定（すりガラス設定に追従）
   const headerStyle: CSSProperties = {
     position: "fixed",
     top: 0,
@@ -113,10 +113,10 @@ export default function PageShell(props: Props) {
     right: 0,
     zIndex: 999,
     height: `${effectiveHeaderH}px`,
-    background: "rgba(0,0,0,0.22)",
+    background: "rgba(0,0,0,var(--glass-alpha, 0.22))",
     borderBottom: "1px solid rgba(255,255,255,0.10)",
-    backdropFilter: "blur(10px)",
-    WebkitBackdropFilter: "blur(10px)",
+    backdropFilter: "blur(var(--glass-blur, 0px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur, 0px))",
   };
 
   const headerInnerStyle: CSSProperties = {
@@ -165,7 +165,7 @@ export default function PageShell(props: Props) {
     borderRadius: 999,
     padding: "10px 14px",
     border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(0,0,0,0.28)",
+    background: "rgba(0,0,0,var(--glass-alpha, 0.22))",
     color: "rgba(255,255,255,0.88)",
     cursor: "pointer",
     userSelect: "none",
@@ -174,8 +174,8 @@ export default function PageShell(props: Props) {
     alignItems: "center",
     gap: 8,
     whiteSpace: "nowrap",
-    backdropFilter: "blur(10px)",
-    WebkitBackdropFilter: "blur(10px)",
+    backdropFilter: "blur(var(--glass-blur, 0px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur, 0px))",
     flex: "0 0 auto",
   };
 
