@@ -358,42 +358,64 @@ select:focus {
 }
 
 /* =========================================================
-   🌫️ 画面切替フェード（UIレイヤ）
+   🌫️ 画面切替フェード（安定版：スナップショット式）
    - App.tsx の <FadeSwitch> が使う
    ========================================================= */
-
-.fade-switch {
+.fade-switch3 {
   width: 100%;
   height: 100%;
   min-height: 0;
-  /* 子の固定ヘッダー/スクロールにも悪さしないよう、ここは overflow 触らない */
-  opacity: 1;
+  position: relative;
+  isolation: isolate;
+}
+
+.fade-switch3__layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
   transform: translateZ(0);
   will-change: opacity, transform;
 }
 
-.fade-switch[data-phase="exit"] {
+/* prev（旧）はフェードアウト */
+.fade-switch3__layer[data-layer="prev"][data-phase="crossfade"] {
   opacity: 0;
   transform: translate3d(0, var(--fade-lift, 6px), 0);
   transition:
     opacity var(--fade-ms, 220ms) ease,
     transform var(--fade-ms, 220ms) ease;
   pointer-events: none;
+  visibility: hidden;
 }
 
-.fade-switch[data-phase="enter"] {
+.fade-switch3__layer[data-layer="prev"][data-phase="idle"] {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+/* current（新）はフェードイン */
+.fade-switch3__layer[data-layer="current"][data-phase="crossfade"] {
   opacity: 1;
   transform: translate3d(0, 0, 0);
   transition:
     opacity var(--fade-ms, 220ms) ease,
     transform var(--fade-ms, 220ms) ease;
+  pointer-events: auto;
+  visibility: visible;
 }
 
-/* 動きが苦手な人は優しく */
+.fade-switch3__layer[data-layer="current"][data-phase="idle"] {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  pointer-events: auto;
+  visibility: visible;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .fade-switch,
-  .fade-switch[data-phase="exit"],
-  .fade-switch[data-phase="enter"] {
+  .fade-switch3__layer {
     transition: none !important;
     transform: none !important;
   }
