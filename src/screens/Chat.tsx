@@ -79,6 +79,16 @@ function isRecordLike(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
 }
 
+function getStringProp(o: Record<string, unknown>, key: string): string | null {
+  const v = o[key];
+  return typeof v === "string" ? v : null;
+}
+
+function getBoolProp(o: Record<string, unknown>, key: string): boolean | null {
+  const v = o[key];
+  return typeof v === "boolean" ? v : null;
+}
+
 function safeLoadHistory(roomId: string): Msg[] {
   const raw = localStorage.getItem(historyKey(roomId));
   const parsed = safeJsonParse<unknown>(raw, []);
@@ -87,11 +97,14 @@ function safeLoadHistory(roomId: string): Msg[] {
   const out: Msg[] = [];
   for (const item of parsed) {
     if (!isRecordLike(item)) continue;
-    const role = (item as any).role;
-    const content = (item as any).content;
+
+    const role = getStringProp(item, "role");
+    const content = getStringProp(item, "content");
+
     if (role !== "user" && role !== "assistant") continue;
     if (typeof content !== "string") continue;
-    out.push({ role: role as "user" | "assistant", content });
+
+    out.push({ role, content });
   }
   return out;
 }
@@ -117,12 +130,18 @@ async function readErrorBody(res: Response): Promise<string | null> {
     const ct = res.headers.get("content-type") || "";
     if (ct.includes("application/json")) {
       const j: unknown = await res.json().catch(() => null);
+
       if (isRecordLike(j)) {
-        if (typeof (j as any).error === "string") return (j as any).error;
-        if (typeof (j as any).message === "string") return (j as any).message;
+        const err = getStringProp(j, "error");
+        if (err) return err;
+
+        const msg = getStringProp(j, "message");
+        if (msg) return msg;
       }
+
       return JSON.stringify(j);
     }
+
     const t = await res.text().catch(() => "");
     const s = (t || "").trim();
     if (!s) return null;
@@ -224,11 +243,22 @@ function modeNumber(xs: number[]): number | null {
   return best ? best.k : null;
 }
 
-function summarizeOneDay(json: any, day: string): WeatherSummary {
-  const h = json?.hourly;
-  const times: string[] = h?.time ?? [];
-  const idxsAll = pickDayIndexes(times, day);
+type OpenMeteoHourly = {
+  time: string[];
+  temperature_2m?: unknown;
+  precipitation?: unknown;
+  precipitation_probability?: unknown;
+  wind_speed_10m?: unknown;
+  wind_gusts_10m?: unknown;
+  weather_code?: unknown;
+  cloud_cover?: unknown;
+};
 
+type OpenMeteoResponse = {
+  hourly?: OpenMeteoHourly;
+};
+
+function summarizeOneDay(json: unknown, day: string): WeatherSummary {
   const safe: WeatherSummary = {
     tempMin: 0,
     tempMax: 0,
@@ -241,21 +271,31 @@ function summarizeOneDay(json: any, day: string): WeatherSummary {
     weatherCodeMode: null,
     conditionText: "不明",
   };
+
+  if (!isRecordLike(json)) return safe;
+
+  const hourly = (json as OpenMeteoResponse).hourly;
+  const times = Array.isArray(hourly?.time) ? hourly?.time : [];
+  const idxsAll = pickDayIndexes(times, day);
   if (!idxsAll.length) return safe;
 
   const idxs = pickDaytimeIndexes(times, idxsAll);
 
-  const pick = (arr: any[], use: number[]) =>
-    use.map((i) => Number(arr?.[i])).filter(Number.isFinite);
+  const pickNums = (arr: unknown, use: number[]) => {
+    const a = Array.isArray(arr) ? arr : [];
+    return use.map((i) => Number(a[i])).filter(Number.isFinite);
+  };
 
-  const tempAll = pick(h?.temperature_2m ?? [], idxsAll);
-  const prcpAll = pick(h?.precipitation ?? [], idxsAll);
-  const popAll = pick(h?.precipitation_probability ?? [], idxsAll);
-  const windAll = pick(h?.wind_speed_10m ?? [], idxsAll);
-  const gustAll = pick(h?.wind_gusts_10m ?? [], idxsAll);
+  const tempAll = pickNums(hourly?.temperature_2m, idxsAll);
+  const prcpAll = pickNums(hourly?.precipitation, idxsAll);
+  const popAll = pickNums(hourly?.precipitation_probability, idxsAll);
+  const windAll = pickNums(hourly?.wind_speed_10m, idxsAll);
+  const gustAll = pickNums(hourly?.wind_gusts_10m, idxsAll);
 
-  const cloudDay = pick(h?.cloud_cover ?? [], idxs);
-  const codeDay = pick(h?.weather_code ?? [], idxs).map((x) => Math.round(x));
+  const cloudDay = pickNums(hourly?.cloud_cover, idxs);
+  const codeDay = pickNums(hourly?.weather_code, idxs).map((x) =>
+    Math.round(x),
+  );
 
   const avg = (xs: number[]) =>
     xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0;
@@ -294,7 +334,10 @@ function summarizeOneDay(json: any, day: string): WeatherSummary {
   };
 }
 
-async function fetchOpenMeteoHourly(lat: number, lon: number) {
+async function fetchOpenMeteoHourly(
+  lat: number,
+  lon: number,
+): Promise<unknown> {
   const tz = "Asia/Tokyo";
   const url =
     `https://api.open-meteo.com/v1/forecast` +
@@ -315,13 +358,11 @@ async function fetchOpenMeteoHourly(lat: number, lon: number) {
     throw new Error(`openmeteo_http_${res.status}${head ? `:${head}` : ""}`);
   }
 
-  let json: any;
   try {
-    json = JSON.parse(text);
+    return JSON.parse(text) as unknown;
   } catch {
     throw new Error(`openmeteo_json_parse_failed:${text.slice(0, 160)}`);
   }
-  return json;
 }
 
 function loadWeatherCache(
@@ -330,11 +371,14 @@ function loadWeatherCache(
   try {
     const raw = localStorage.getItem(cacheKey);
     if (!raw) return null;
-    const j = JSON.parse(raw) as any;
-    if (!j || typeof j !== "object") return null;
+
+    const j: unknown = JSON.parse(raw);
+    if (!isRecordLike(j)) return null;
+
     const ts = Number(j.ts);
-    const text = String(j.text ?? "");
+    const text = typeof j.text === "string" ? j.text : String(j.text ?? "");
     if (!Number.isFinite(ts) || !text) return null;
+
     return { ts, text };
   } catch {
     return null;
@@ -385,10 +429,25 @@ async function buildWeatherHint(
   return memo;
 }
 
+function readApiTextResponse(json: unknown): { ok: true; text: string } | null {
+  if (!isRecordLike(json)) return null;
+  const ok = getBoolProp(json, "ok");
+  if (ok !== true) return null;
+  const text = getStringProp(json, "text");
+  return { ok: true, text: text ?? "" };
+}
+
+function readApiErrorResponse(json: unknown): string | null {
+  if (!isRecordLike(json)) return null;
+  const err = getStringProp(json, "error");
+  return err ?? null;
+}
+
 export default function Chat({ back, goCharacterSettings }: Props) {
   const [characters, setCharacters] = useState<CharacterProfileWithColor[]>(
     () => safeLoadCharacters(),
   );
+
   const fallback = useMemo(
     () => characters[0] ?? safeLoadCharacters()[0],
     [characters],
@@ -450,6 +509,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     setTimeout(run, 80);
   }
 
+  // 他画面でキャラ編集したあと戻ってきたとき反映
   useEffect(() => {
     const onFocus = () => {
       const list = safeLoadCharacters();
@@ -462,6 +522,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     return () => window.removeEventListener("focus", onFocus);
   }, []);
 
+  // キャラ切替で履歴切替
   useEffect(() => {
     setMessages(safeLoadHistory(roomId));
     scrollToBottom("auto");
@@ -512,17 +573,12 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     }
 
     const json: unknown = await res.json().catch(() => null);
-    if (!isRecordLike(json) || (json as any).ok !== true) {
-      const err =
-        isRecordLike(json) && typeof (json as any).error === "string"
-          ? (json as any).error
-          : "unknown_error";
-      throw new Error(err);
-    }
 
-    const txt =
-      typeof (json as any).text === "string" ? (json as any).text : "";
-    return String(txt ?? "");
+    const okText = readApiTextResponse(json);
+    if (okText) return okText.text;
+
+    const err = readApiErrorResponse(json);
+    throw new Error(err ?? "unknown_error");
   }
 
   async function send() {

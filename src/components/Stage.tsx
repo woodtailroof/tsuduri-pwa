@@ -112,11 +112,21 @@ function preloadImage(src: string): Promise<void> {
   });
 }
 
+function readAssetVersion(settings: unknown): string {
+  // any禁止回避：unknown から安全に拾う
+  if (settings && typeof settings === "object" && "assetVersion" in settings) {
+    const v = (settings as { assetVersion?: unknown }).assetVersion;
+    if (typeof v === "string") return v.trim();
+    if (typeof v === "number") return String(v).trim();
+  }
+  return "";
+}
+
 export default function Stage() {
   const { settings } = useAppSettings();
   const { emotion: globalEmotion } = useEmotion();
 
-  const assetVersion = String((settings as any)?.assetVersion ?? "").trim();
+  const assetVersion = readAssetVersion(settings);
 
   const characterEnabled =
     settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
@@ -135,6 +145,7 @@ export default function Stage() {
 
   const effectiveExpression = normalizeExpression(globalEmotion);
 
+  // ✅ 作成キャラ & マップは毎回読む（同一タブ更新にも追従）
   const createdCharacters = loadCreatedCharacters();
   const charImageMap = loadCharacterImageMap();
 
@@ -167,7 +178,7 @@ export default function Stage() {
       : "";
     const mappedSingleSrc = mappedIsFile ? mappedNorm : "";
 
-    // 推測パス（プロジェクトの実配置に合わせて必要なら変更）
+    // 推測パス（実配置：/assets/characters/{id}/{expression}.png）
     const expressionSrc = normalizePublicPath(
       `/assets/characters/${effectiveCharacterId}/${effectiveExpression}.png`,
     );
@@ -184,17 +195,22 @@ export default function Stage() {
         assetVersion,
       ),
 
+      // 設定マップ（フォルダなら表情→neutral、単一ならそれ）
       mappedIsFile
         ? appendAssetVersion(mappedSingleSrc, assetVersion)
         : appendAssetVersion(mappedExpressionSrc, assetVersion),
       mappedIsFile ? "" : appendAssetVersion(mappedNeutralSrc, assetVersion),
 
+      // 従来推測
       appendAssetVersion(expressionSrc, assetVersion),
       appendAssetVersion(neutralSrc, assetVersion),
       appendAssetVersion(fallbackSrc, assetVersion),
 
-      // 最後の保険（ここが実ファイルとズレてると「永遠に出ない」）
-      appendAssetVersion("/assets/characters/tsuduri.png", assetVersion),
+      // ✅ 最後の保険は「必ず存在する」ファイルへ（ここ超重要）
+      appendAssetVersion(
+        "/assets/characters/tsuduri/neutral.png",
+        assetVersion,
+      ),
     ]
       .map((x) => (x ?? "").trim())
       .filter((x) => !!x);
@@ -215,6 +231,12 @@ export default function Stage() {
     assetVersion,
   ]);
 
+  // candidates変化判定キー（eslintに優しい）
+  const candidatesKey = useMemo(
+    () => characterCandidates.join("|"),
+    [characterCandidates],
+  );
+
   const [frontSrc, setFrontSrc] = useState<string>("");
   const [backSrc, setBackSrc] = useState<string>("");
   const [frontVisible, setFrontVisible] = useState<boolean>(true);
@@ -227,23 +249,24 @@ export default function Stage() {
     return () => window.removeEventListener("tsuduri-settings", on);
   }, []);
 
+  // ✅ 候補が変わったら最初から試す（この用途は正当なのでルールをピンポイントで抑制）
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTryIndex(0);
-  }, [characterCandidates.length, characterCandidates[0]]);
+  }, [candidatesKey]);
 
   useEffect(() => {
     if (!characterEnabled) return;
 
     const next = characterCandidates[tryIndex] ?? "";
-    if (!next) {
-      // ここで候補ゼロになってたら、設定 or パスが完全に外れてる
-      return;
-    }
+    if (!next) return;
 
+    // 既に表示中なら何もしない（無駄なフェード防止）
     if (next === frontSrc || next === backSrc) return;
 
     const token = ++loadTokenRef.current;
 
+    // “表示を消してからロード”がちらつき原因なので、必ず先にロード
     preloadImage(next)
       .then(() => {
         if (token !== loadTokenRef.current) return;
@@ -267,13 +290,12 @@ export default function Stage() {
 
         setTryIndex((i) => {
           const n = i + 1;
-          // 全滅したら警告だけ出して止める（無限ループ防止）
           if (n >= characterCandidates.length) {
             console.warn(
               "[Stage] character image load failed for all candidates:",
               characterCandidates,
             );
-            return i;
+            return i; // これ以上進めない（無限ループ防止）
           }
           return n;
         });
@@ -287,6 +309,7 @@ export default function Stage() {
     frontVisible,
   ]);
 
+  // フェード完了後、見えない方を片付けて軽量化
   useEffect(() => {
     const t = window.setTimeout(() => {
       if (frontVisible) setBackSrc("");
