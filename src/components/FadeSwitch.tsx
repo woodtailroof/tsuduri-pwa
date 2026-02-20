@@ -1,5 +1,12 @@
 // src/components/FadeSwitch.tsx
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 type Props = {
   /** 切替トリガーになるキー（screen名など） */
@@ -17,7 +24,9 @@ type Props = {
 
 function prefersReducedMotion(): boolean {
   if (typeof window === "undefined") return false;
-  return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+  return (
+    window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false
+  );
 }
 
 export default function FadeSwitch(props: Props) {
@@ -28,79 +37,118 @@ export default function FadeSwitch(props: Props) {
     return prefersReducedMotion() ? 0 : Math.max(0, Math.floor(durationMsRaw));
   }, [durationMsRaw]);
 
-  const [shownKey, setShownKey] = useState(props.activeKey);
-  const [shownChildren, setShownChildren] = useState<ReactNode>(props.children);
+  // 表示レイヤー（prev / next）
+  const [prevKey, setPrevKey] = useState(props.activeKey);
+  const [prevChildren, setPrevChildren] = useState<ReactNode>(props.children);
 
-  // "enter" | "exit"
-  const [phase, setPhase] = useState<"enter" | "exit">("enter");
-  const pendingTimer = useRef<number | null>(null);
-  const raf = useRef<number | null>(null);
+  const [nextKey, setNextKey] = useState(props.activeKey);
+  const [nextChildren, setNextChildren] = useState<ReactNode>(props.children);
 
-  // 初回マウント時にふわっと出す（いきなり1にならないように）
+  // next を前面にするか（クロスフェード制御）
+  const [showNext, setShowNext] = useState(true);
+
+  // 最新の children はここに保持（切替確定時に使う）
+  const latestChildrenRef = useRef<ReactNode>(props.children);
   useEffect(() => {
-    // 0msの場合は何もしない
-    if (durationMs === 0) return;
+    latestChildrenRef.current = props.children;
+  }, [props.children]);
 
-    setPhase("exit");
-    raf.current = window.requestAnimationFrame(() => {
-      setPhase("enter");
-    });
+  const tokenRef = useRef(0);
+  const timerRef = useRef<number | null>(null);
+  const rafRef = useRef<number | null>(null);
 
-    return () => {
-      if (raf.current != null) window.cancelAnimationFrame(raf.current);
-      raf.current = null;
-    };
+  // 初回はそのまま表示（ふわっと出したい場合は showNext を false→true にしてもOK）
+  useEffect(() => {
+    setPrevKey(props.activeKey);
+    setPrevChildren(props.children);
+    setNextKey(props.activeKey);
+    setNextChildren(props.children);
+    setShowNext(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (props.activeKey === shownKey) return;
-
-    // 切替中のタイマーを掃除
-    if (pendingTimer.current != null) window.clearTimeout(pendingTimer.current);
-    pendingTimer.current = null;
-
-    if (durationMs === 0) {
-      setShownKey(props.activeKey);
-      setShownChildren(props.children);
-      setPhase("enter");
+    if (props.activeKey === nextKey) {
+      // 同じ画面なら何もしない（子が変わってもフェードは発生させない）
       return;
     }
 
-    // まずフェードアウト
-    setPhase("exit");
+    const token = ++tokenRef.current;
 
-    // 終わったら差し替えてフェードイン
-    pendingTimer.current = window.setTimeout(() => {
-      setShownKey(props.activeKey);
-      setShownChildren(props.children);
+    // 後始末
+    if (timerRef.current != null) window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+    if (rafRef.current != null) window.cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
 
-      // 1フレーム挟んで enter にする（確実にトランジションが走る）
-      raf.current = window.requestAnimationFrame(() => {
-        setPhase("enter");
-      });
-    }, durationMs);
+    // reduced motion なら即座に差し替え
+    if (durationMs === 0) {
+      const ch = latestChildrenRef.current;
+      setPrevKey(props.activeKey);
+      setPrevChildren(ch);
+      setNextKey(props.activeKey);
+      setNextChildren(ch);
+      setShowNext(true);
+      return;
+    }
+
+    // いま見えてる方を prev として固定
+    // showNext=true の時：next が表示中なので、それを prev に落としてから新しい next を作る
+    // showNext=false の時：prev が表示中なので、そのまま prev を使う
+    if (showNext) {
+      setPrevKey(nextKey);
+      setPrevChildren(nextChildren);
+    }
+
+    // 新しい next をセット（最新 children を使う）
+    const ch = latestChildrenRef.current;
+    setNextKey(props.activeKey);
+    setNextChildren(ch);
+
+    // 次フレームで showNext=true にしてクロスフェード開始
+    setShowNext(false);
+    rafRef.current = window.requestAnimationFrame(() => {
+      if (token !== tokenRef.current) return;
+      setShowNext(true);
+    });
+
+    // フェード完了後に prev を next と同じに揃えて軽量化
+    timerRef.current = window.setTimeout(() => {
+      if (token !== tokenRef.current) return;
+      setPrevKey(props.activeKey);
+      setPrevChildren(latestChildrenRef.current);
+    }, durationMs + 30);
 
     return () => {
-      if (pendingTimer.current != null) window.clearTimeout(pendingTimer.current);
-      pendingTimer.current = null;
-      if (raf.current != null) window.cancelAnimationFrame(raf.current);
-      raf.current = null;
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+      if (rafRef.current != null) window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     };
-  }, [props.activeKey, props.children, shownKey, durationMs]);
+  }, [props.activeKey, durationMs, nextKey, nextChildren, showNext]);
+
+  const vars: CSSProperties & Record<`--${string}`, string> = {
+    "--fade-ms": `${durationMs}ms`,
+    "--fade-lift": `${liftPx}px`,
+  };
 
   return (
-    <div
-      className="fade-switch"
-      data-phase={phase}
-      style={
-        {
-          "--fade-ms": `${durationMs}ms`,
-          "--fade-lift": `${liftPx}px`,
-        } as React.CSSProperties
-      }
-    >
-      {shownChildren}
+    <div className="fade-switch2" style={vars}>
+      <div
+        className="fade-switch2__layer"
+        data-side="prev"
+        data-show={showNext ? "hide" : "show"}
+      >
+        {prevChildren}
+      </div>
+
+      <div
+        className="fade-switch2__layer"
+        data-side="next"
+        data-show={showNext ? "show" : "hide"}
+      >
+        {nextChildren}
+      </div>
     </div>
   );
 }
