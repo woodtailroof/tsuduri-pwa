@@ -2,6 +2,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -36,8 +37,14 @@ type Props = {
   /** ✅ 旧コード互換：Settings 側が渡してても落ちないよう受け口だけ残す */
   showTestCharacter?: boolean;
 
-  /** 旧互換受け口 */
+  /**
+   * ✅ 互換受け口だけ残す（実際のキャラ表示は Stage が担当）
+   */
   displayCharacterId?: string;
+
+  /**
+   * ✅ 互換受け口だけ残す（実際の表情反映は Stage が担当）
+   */
   displayExpression?: string;
 };
 
@@ -83,26 +90,21 @@ export default function PageShell(props: Props) {
 
   const isMobile = useIsMobile();
 
+  // ✅ ヘッダー高さは全端末で固定（位置ブレの根絶）
   const HEADER_H = 72;
 
+  // ✅ Homeのように title/subtitle/back が全部無い画面はヘッダー自体を消す（= 上に詰める）
   const headerVisible = !!title || !!subtitle || showBack;
   const effectiveHeaderH = headerVisible ? HEADER_H : 0;
-
-  // ✅ UIフェード（画面の質感アップ）
-  const FADE_MS = 500;
-  const [uiIn, setUiIn] = useState(false);
-  useEffect(() => {
-    setUiIn(false);
-    const raf = requestAnimationFrame(() => setUiIn(true));
-    return () => cancelAnimationFrame(raf);
-  }, []);
 
   const defaultFramePadding = isMobile ? "14px 14px 18px" : "18px 18px 20px";
   const resolvedFramePadding =
     contentPadding !== undefined ? contentPadding : defaultFramePadding;
 
+  // ✅ 本文スクロール領域（ヘッダー分は常に確保）
   const contentOuterStyle: CSSProperties = {
-    flex: "1 1 auto",
+    width: "100%",
+    height: "100%",
     minHeight: 0,
     overflowX: "clip",
     overflowY: scrollY,
@@ -110,7 +112,7 @@ export default function PageShell(props: Props) {
     overscrollBehavior: "contain",
     paddingTop: `${effectiveHeaderH}px`,
     position: "relative",
-    zIndex: 20,
+    zIndex: 20, // UIは常に前
   };
 
   const frameStyle: CSSProperties = {
@@ -127,13 +129,14 @@ export default function PageShell(props: Props) {
     if (typeof window !== "undefined") window.history.back();
   }, [onBack]);
 
+  // ✅ ヘッダーは常に viewport 基準で固定
   const headerStyle: CSSProperties = {
     position: "fixed",
     top: 0,
     left: 0,
     right: 0,
     zIndex: 999,
-    height: effectiveHeaderH,
+    height: `${effectiveHeaderH}px`,
     background: "rgba(0,0,0,0.22)",
     borderBottom: "1px solid rgba(255,255,255,0.10)",
     backdropFilter: "blur(10px)",
@@ -200,13 +203,6 @@ export default function PageShell(props: Props) {
     flex: "0 0 auto",
   };
 
-  const uiWrapStyle: CSSProperties = {
-    opacity: uiIn ? 1 : 0,
-    transform: uiIn ? "translateY(0px)" : "translateY(6px)",
-    transition: `opacity ${FADE_MS}ms ease, transform ${FADE_MS}ms ease`,
-    willChange: "opacity, transform",
-  };
-
   return (
     <div
       className="page-shell"
@@ -215,11 +211,10 @@ export default function PageShell(props: Props) {
         height: "100%",
         minHeight: 0,
         overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
         position: "relative",
       }}
     >
+      {/* ✅ ヘッダー（最前面） */}
       {headerVisible ? (
         <div style={headerStyle}>
           <div style={headerInnerStyle}>
@@ -239,9 +234,10 @@ export default function PageShell(props: Props) {
         </div>
       ) : null}
 
+      {/* ✅ 本文（UIレイヤ） */}
       <div style={contentOuterStyle}>
         <div style={frameStyle}>
-          <div className="page-shell-inner" style={uiWrapStyle}>
+          <div className="page-shell-inner" style={{ position: "relative" }}>
             {children}
           </div>
         </div>

@@ -22,6 +22,7 @@ import {
   type BgMode,
   useAppSettings,
 } from "./lib/appSettings";
+import { EmotionProvider } from "./lib/emotion";
 
 type Screen =
   | "home"
@@ -67,7 +68,7 @@ function useMinuteTick() {
   return tick;
 }
 
-export default function App() {
+function AppInner() {
   const [screen, setScreen] = useState<Screen>("home");
   const { settings } = useAppSettings();
   const minuteTick = useMinuteTick();
@@ -186,5 +187,13 @@ export default function App() {
         {content}
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <EmotionProvider>
+      <AppInner />
+    </EmotionProvider>
   );
 }
