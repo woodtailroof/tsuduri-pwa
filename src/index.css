@@ -51,12 +51,12 @@ body {
 
   /**
    * ✅ 背景画像（デフォルト）
-   * - PageShell が style で --bg-image を上書きする前提
-   * - 背景OFFのときは PageShell が --bg-image: none を入れる
+   * - App.tsx が style で --bg-image を上書きする前提
+   * - 背景OFFのときは App.tsx が --bg-image: none を入れる
    */
   --bg-image: url("/assets/bg/ui-check.png");
 
-  /* ✅ 背景のぼかし＆暗幕（PageShellが毎画面上書き） */
+  /* ✅ 背景のぼかし＆暗幕（Appが毎画面上書き） */
   --bg-blur: 0px;
   --bg-dim: 0.25;
 
@@ -202,15 +202,17 @@ h3 {
 }
 
 /* =========================================================
-   ✅ PageShell背景レイヤー（全画面共通）
+   ✅ 背景レイヤー（全画面共通）
+   - 重要：.page-shell から #app-root に移動
+   - これで Stage(キャラ) が背景の上に出る
    ========================================================= */
-.page-shell {
+#app-root {
   position: relative;
   isolation: isolate;
 }
 
 /* 背景画像＋空気 */
-.page-shell::before {
+#app-root::before {
   content: "";
   position: fixed;
   inset: 0;
@@ -239,7 +241,7 @@ h3 {
 }
 
 /* ✅ 暗幕（Settingsのスライダーにリンク） */
-.page-shell::after {
+#app-root::after {
   content: "";
   position: fixed;
   inset: 0;
@@ -304,10 +306,7 @@ h3 {
 
 /* =========================================================
    ✅ すりガラス：カード/パネルの共通クラス
-   - ここで「濃さ」が全画面スライダーに追従する
    ========================================================= */
-
-/* 互換：Settings.tsx などで使っている glass/glass-strong を正式化 */
 .glass,
 .glass-panel {
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -328,13 +327,9 @@ h3 {
 button {
   border: 1px solid var(--line);
   color: rgba(255, 255, 255, 0.9);
-
-  /* ✅ 固定rgbaをやめて、設定スライダーに追従 */
   background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
-
   backdrop-filter: blur(var(--glass-blur, 0px));
   -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
-
   border-radius: 14px;
   padding: 10px 14px;
 }
@@ -348,13 +343,9 @@ textarea,
 select {
   border: 1px solid var(--line);
   color: rgba(255, 255, 255, 0.92);
-
-  /* ✅ 入力も追従（やや濃い方を使う） */
   background: rgba(17, 17, 17, var(--glass-alpha-strong, 0.35));
-
   backdrop-filter: blur(var(--glass-blur, 0px));
   -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
-
   border-radius: 12px;
   padding: 10px 12px;
   outline: none;

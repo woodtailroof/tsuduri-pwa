@@ -87,8 +87,8 @@ function safeLoadHistory(roomId: string): Msg[] {
   const out: Msg[] = [];
   for (const item of parsed) {
     if (!isRecordLike(item)) continue;
-    const role = item.role;
-    const content = item.content;
+    const role = (item as any).role;
+    const content = (item as any).content;
     if (role !== "user" && role !== "assistant") continue;
     if (typeof content !== "string") continue;
     out.push({ role: role as "user" | "assistant", content });
@@ -134,8 +134,6 @@ async function readErrorBody(res: Response): Promise<string | null> {
 
 /**
  * ===== 釣行判断判定（Chat側）=====
- * サーバ（Cloudflare Functions）から Open-Meteo を叩かず、
- * 釣行判断っぽい時だけブラウザから取得して systemHints に入れる。
  */
 function isFishingJudgeText(text: string) {
   return /(釣り行く|釣りいく|迷って|釣行判断|今日どう|明日どう|風|雨|波|潮|満潮|干潮|水温|ポイント)/.test(
@@ -172,28 +170,20 @@ type WeatherSummary = {
   rainMaxMm: number;
   cloudAvg: number;
   weatherCodeMode: number | null;
-  conditionText: string; // ✅ 概況（晴れ/くもり/雨など）
+  conditionText: string;
 };
 
 const OPENMETEO_TTL_MS = 10 * 60 * 1000;
 const OPENMETEO_CACHE_KEY_PREFIX = "tsuduri_openmeteo_cache_v2:";
 
-// WMO weather_code（Open-Meteo準拠）をざっくり日本語に
 function weatherCodeToJp(code: number): string {
   if (!Number.isFinite(code)) return "不明";
-  // Thunderstorm
   if ([95, 96, 99].includes(code)) return "雷";
-  // Drizzle
   if ([51, 53, 55, 56, 57].includes(code)) return "霧雨";
-  // Rain
   if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "雨";
-  // Freezing rain
   if ([66, 67].includes(code)) return "凍雨";
-  // Snow
   if ([71, 73, 75, 77, 85, 86].includes(code)) return "雪";
-  // Fog
   if ([45, 48].includes(code)) return "霧";
-  // Clear / cloudy groups
   if (code === 0) return "晴れ";
   if (code === 1) return "晴れ時々くもり";
   if (code === 2) return "くもり";
@@ -210,16 +200,14 @@ function pickDayIndexes(times: string[], day: string) {
   return idxs;
 }
 
-// 日中(6-18時)のインデックスを優先して概況判定
 function pickDaytimeIndexes(times: string[], idxs: number[]) {
   const out: number[] = [];
   for (const i of idxs) {
     const t = times[i];
-    // "YYYY-MM-DDTHH:mm"
     const hh = Number((t ?? "").slice(11, 13));
     if (Number.isFinite(hh) && hh >= 6 && hh <= 18) out.push(i);
   }
-  return out.length ? out : idxs; // 日中が取れなければ全日
+  return out.length ? out : idxs;
 }
 
 function modeNumber(xs: number[]): number | null {
@@ -266,7 +254,6 @@ function summarizeOneDay(json: any, day: string): WeatherSummary {
   const windAll = pick(h?.wind_speed_10m ?? [], idxsAll);
   const gustAll = pick(h?.wind_gusts_10m ?? [], idxsAll);
 
-  // 概況用（主に日中）
   const cloudDay = pick(h?.cloud_cover ?? [], idxs);
   const codeDay = pick(h?.weather_code ?? [], idxs).map((x) => Math.round(x));
 
@@ -279,7 +266,6 @@ function summarizeOneDay(json: any, day: string): WeatherSummary {
   const codeMode = modeNumber(codeDay);
   const codeText = codeMode == null ? "不明" : weatherCodeToJp(codeMode);
 
-  // cloud_cover補正（晴れ/くもり寄せ）
   const cloudAvg = avg(cloudDay);
   let condition = codeText;
   if (condition === "晴れ" && cloudAvg >= 55) condition = "晴れ時々くもり";
@@ -289,7 +275,6 @@ function summarizeOneDay(json: any, day: string): WeatherSummary {
   )
     condition = "晴れ";
   if (condition === "不明") {
-    // 最低限のフォールバック
     if (max(popAll) >= 60 || max(prcpAll) >= 1) condition = "雨";
     else if (cloudAvg >= 60) condition = "くもり";
     else condition = "晴れ";
@@ -315,7 +300,6 @@ async function fetchOpenMeteoHourly(lat: number, lon: number) {
     `https://api.open-meteo.com/v1/forecast` +
     `?latitude=${encodeURIComponent(String(lat))}` +
     `&longitude=${encodeURIComponent(String(lon))}` +
-    // ✅ 概況用に weather_code / cloud_cover を追加
     `&hourly=temperature_2m,precipitation,precipitation_probability,wind_speed_10m,wind_gusts_10m,weather_code,cloud_cover` +
     `&forecast_days=2` +
     `&timezone=${encodeURIComponent(tz)}` +
@@ -419,7 +403,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     [selectedId, fallback],
   );
 
-  // 単体チャット：履歴キーはキャラID
   const roomId = selectedId;
 
   const [messages, setMessages] = useState<Msg[]>(() =>
@@ -467,7 +450,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     setTimeout(run, 80);
   }
 
-  // 他画面でキャラ編集したあと戻ってきたとき反映
   useEffect(() => {
     const onFocus = () => {
       const list = safeLoadCharacters();
@@ -480,7 +462,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     return () => window.removeEventListener("focus", onFocus);
   }, []);
 
-  // キャラ切替で履歴切替
   useEffect(() => {
     setMessages(safeLoadHistory(roomId));
     scrollToBottom("auto");
@@ -562,7 +543,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         selectedCharacter,
       );
 
-      // ✅ 釣行判断っぽい時だけ Weather hint を作る（焼津固定）
       const hints: string[] = [];
       const isJudge = isFishingJudgeText(text);
       if (isJudge) {
@@ -679,7 +659,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
       <div
         style={{
-          height: "calc(100dvh - var(--shell-header-h))",
+          height: "100%",
           minHeight: 0,
           display: "flex",
           flexDirection: "column",

@@ -116,33 +116,8 @@ export default function Stage() {
   const { settings } = useAppSettings();
   const { emotion: globalEmotion } = useEmotion();
 
-  // assetVersion は型がまだ無い可能性があるので安全に読む
   const assetVersion = String((settings as any)?.assetVersion ?? "").trim();
 
-  // ===== 背景は App.tsx のCSS変数で描く（ここでは触らない） =====
-  const bgLayerStyle: CSSProperties = {
-    position: "absolute",
-    inset: 0,
-    pointerEvents: "none",
-  };
-
-  const bgImageStyle: CSSProperties = {
-    position: "absolute",
-    inset: 0,
-    backgroundImage: "var(--bg-image)",
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    filter: "blur(var(--bg-blur))",
-    transform: "scale(1.03)",
-  };
-
-  const bgDimStyle: CSSProperties = {
-    position: "absolute",
-    inset: 0,
-    background: "rgba(0,0,0,var(--bg-dim))",
-  };
-
-  // ===== キャラ設定 =====
   const characterEnabled =
     settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
   const characterMode =
@@ -158,10 +133,8 @@ export default function Stage() {
 
   const characterOverrideSrc = (settings.characterOverrideSrc ?? "").trim();
 
-  // ✅ 表情（基本は globalEmotion）
   const effectiveExpression = normalizeExpression(globalEmotion);
 
-  // ✅ 作成キャラ & マップは毎回読む（同一タブ更新にも追従）
   const createdCharacters = loadCreatedCharacters();
   const charImageMap = loadCharacterImageMap();
 
@@ -175,17 +148,14 @@ export default function Stage() {
   const fixedCharacterId = settings.fixedCharacterId ?? "tsuduri";
   const pickCharacterId =
     characterMode === "fixed" ? fixedCharacterId : randomPickedId;
-
   const effectiveCharacterId = (pickCharacterId ?? "").trim() || "tsuduri";
 
-  // ===== 候補URLリスト（PageShellのロジックを移植） =====
   const characterCandidates = useMemo(() => {
     const mappedRaw = (charImageMap[effectiveCharacterId] ?? "").trim();
     const mappedNorm = normalizePublicPath(mappedRaw) || "";
     const mappedIsFile = mappedNorm
       ? looksLikeImageFilePath(mappedNorm)
       : false;
-
     const mappedDir =
       mappedNorm && !mappedIsFile ? ensureTrailingSlash(mappedNorm) : "";
 
@@ -197,6 +167,7 @@ export default function Stage() {
       : "";
     const mappedSingleSrc = mappedIsFile ? mappedNorm : "";
 
+    // 推測パス（プロジェクトの実配置に合わせて必要なら変更）
     const expressionSrc = normalizePublicPath(
       `/assets/characters/${effectiveCharacterId}/${effectiveExpression}.png`,
     );
@@ -213,17 +184,16 @@ export default function Stage() {
         assetVersion,
       ),
 
-      // 設定マップ（フォルダなら表情→neutral、単一ならそれ）
       mappedIsFile
         ? appendAssetVersion(mappedSingleSrc, assetVersion)
         : appendAssetVersion(mappedExpressionSrc, assetVersion),
       mappedIsFile ? "" : appendAssetVersion(mappedNeutralSrc, assetVersion),
 
-      // 従来推測
       appendAssetVersion(expressionSrc, assetVersion),
       appendAssetVersion(neutralSrc, assetVersion),
       appendAssetVersion(fallbackSrc, assetVersion),
 
+      // 最後の保険（ここが実ファイルとズレてると「永遠に出ない」）
       appendAssetVersion("/assets/characters/tsuduri.png", assetVersion),
     ]
       .map((x) => (x ?? "").trim())
@@ -245,51 +215,41 @@ export default function Stage() {
     assetVersion,
   ]);
 
-  // ===== クロスフェード用の2枚運用（ちらつき防止） =====
   const [frontSrc, setFrontSrc] = useState<string>("");
   const [backSrc, setBackSrc] = useState<string>("");
   const [frontVisible, setFrontVisible] = useState<boolean>(true);
-
-  // いま試している候補インデックス
   const [tryIndex, setTryIndex] = useState<number>(0);
-
-  // “切替処理が二重に走って古いロードが勝つ”のを防ぐトークン
   const loadTokenRef = useRef(0);
 
-  // 設定画面のマップ更新イベント（同一タブ）にも追従したいので再評価
   useEffect(() => {
-    const on = () => {
-      // candidates依存は useMemo が吸うが、念のため「再試行」だけ発火させる
-      setTryIndex(0);
-    };
+    const on = () => setTryIndex(0);
     window.addEventListener("tsuduri-settings", on);
     return () => window.removeEventListener("tsuduri-settings", on);
   }, []);
 
-  // candidatesが変わったら最初から試行
   useEffect(() => {
     setTryIndex(0);
-  }, [characterCandidates.join("|")]);
+  }, [characterCandidates.length, characterCandidates[0]]);
 
   useEffect(() => {
     if (!characterEnabled) return;
-    const next = characterCandidates[tryIndex] ?? "";
-    if (!next) return;
 
-    // 既に表示中なら何もしない（無駄なフェードを防ぐ）
+    const next = characterCandidates[tryIndex] ?? "";
+    if (!next) {
+      // ここで候補ゼロになってたら、設定 or パスが完全に外れてる
+      return;
+    }
+
     if (next === frontSrc || next === backSrc) return;
 
     const token = ++loadTokenRef.current;
 
-    // “表示を消してからロード”がちらつき原因なので、必ず先にロードする
     preloadImage(next)
       .then(() => {
         if (token !== loadTokenRef.current) return;
 
-        // いま front が見えてるなら、裏に next を差してクロスフェード
         if (frontVisible) {
           setBackSrc(next);
-          // 次フレームでトランジションが効くように
           requestAnimationFrame(() => {
             if (token !== loadTokenRef.current) return;
             setFrontVisible(false);
@@ -304,22 +264,34 @@ export default function Stage() {
       })
       .catch(() => {
         if (token !== loadTokenRef.current) return;
-        // 次候補へ（ただし画面は消さない）
+
         setTryIndex((i) => {
           const n = i + 1;
-          return n < characterCandidates.length ? n : i;
+          // 全滅したら警告だけ出して止める（無限ループ防止）
+          if (n >= characterCandidates.length) {
+            console.warn(
+              "[Stage] character image load failed for all candidates:",
+              characterCandidates,
+            );
+            return i;
+          }
+          return n;
         });
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [characterEnabled, characterCandidates, tryIndex]);
+  }, [
+    characterEnabled,
+    characterCandidates,
+    tryIndex,
+    frontSrc,
+    backSrc,
+    frontVisible,
+  ]);
 
-  // フェードが完了したら、見えなくなった方をクリアして軽量化
   useEffect(() => {
     const t = window.setTimeout(() => {
-      // frontVisible=true なら back は見えてない
       if (frontVisible) setBackSrc("");
       else setFrontSrc("");
-    }, 520); // 0.5s + α
+    }, 520);
     return () => window.clearTimeout(t);
   }, [frontVisible]);
 
@@ -349,34 +321,21 @@ export default function Stage() {
 
   return (
     <div style={{ position: "absolute", inset: 0 }} aria-hidden="true">
-      <div style={bgLayerStyle}>
-        <div style={bgImageStyle} />
-        <div style={bgDimStyle} />
-      </div>
-
       {characterEnabled ? (
         <div style={charWrapStyle}>
-          {/* front */}
           {frontSrc ? (
             <img
               src={frontSrc}
               alt=""
-              style={{
-                ...imgCommon,
-                opacity: frontVisible ? 1 : 0,
-              }}
+              style={{ ...imgCommon, opacity: frontVisible ? 1 : 0 }}
             />
           ) : null}
 
-          {/* back */}
           {backSrc ? (
             <img
               src={backSrc}
               alt=""
-              style={{
-                ...imgCommon,
-                opacity: frontVisible ? 0 : 1,
-              }}
+              style={{ ...imgCommon, opacity: frontVisible ? 0 : 1 }}
             />
           ) : null}
         </div>

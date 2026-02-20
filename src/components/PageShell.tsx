@@ -180,10 +180,14 @@ export default function PageShell(props: Props) {
   };
 
   /**
-   * ✅ ここが Chat 崩れの本丸対策：
+   * ✅ Chat 崩れ対策の本丸：
    * 親を flex column にして、本文領域を flex:1 + minHeight:0 にする
+   *
+   * ✅ さらに重要：
+   * Chat.tsx が参照してる --shell-header-h をここで定義する
    */
-  const shellStyle: CSSProperties = {
+  type CSSVars = Record<`--${string}`, string>;
+  const shellStyle: CSSProperties & CSSVars = {
     width: "100%",
     height: "100%",
     minHeight: 0,
@@ -191,6 +195,7 @@ export default function PageShell(props: Props) {
     position: "relative",
     display: "flex",
     flexDirection: "column",
+    "--shell-header-h": `${effectiveHeaderH}px`,
   };
 
   // ✅ 本文スクロール領域（ヘッダー分は常に確保）
