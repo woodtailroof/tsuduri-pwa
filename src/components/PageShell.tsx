@@ -209,8 +209,8 @@ function appendAssetVersion(url: string, assetVersion: string) {
 }
 
 /**
- * ✅ 画像を「ロード完了してから」使うためのプリロード
- * - decode が使えれば decode 待ち
+ * ✅ 画像を「ロード完了してから」扱う
+ * - decode があれば decode 待ち（ちらつき軽減）
  */
 function preloadImage(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -234,10 +234,26 @@ function preloadImage(src: string): Promise<void> {
   });
 }
 
-/** ✅ 画面判定キー（ルータ不問の簡易版） */
-function getViewKey() {
-  if (typeof window === "undefined") return "ssr";
-  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+/**
+ * ✅ 候補リストから「ロードできる最初の1枚」を選ぶ
+ * - 404候補でバタバタしない（表示に出す前に確定）
+ */
+async function resolveFirstLoadable(
+  candidates: string[],
+  token: number,
+  tokenRef: React.MutableRefObject<number>,
+): Promise<string> {
+  for (const src of candidates) {
+    if (tokenRef.current !== token) return "";
+    try {
+      await preloadImage(src);
+      if (tokenRef.current !== token) return "";
+      return src;
+    } catch {
+      // 次候補へ
+    }
+  }
+  return "";
 }
 
 export default function PageShell(props: Props) {
@@ -335,12 +351,10 @@ export default function PageShell(props: Props) {
 
   const characterOverrideSrc = (settings.characterOverrideSrc ?? "").trim();
 
-  // ✅ 表情対応：/assets/characters/{id}/{expression}.png → neutral.png → 旧互換へ
-  // 設定のキャラ別画像マップを最優先にする。
+  // 設定マップ優先
   const mappedRaw = (charImageMap[effectiveCharacterId] ?? "").trim();
   const mappedNorm = normalizePublicPath(mappedRaw) || "";
   const mappedIsFile = mappedNorm ? looksLikeImageFilePath(mappedNorm) : false;
-
   const mappedDir =
     mappedNorm && !mappedIsFile ? ensureTrailingSlash(mappedNorm) : "";
 
@@ -362,6 +376,7 @@ export default function PageShell(props: Props) {
     `/assets/characters/${effectiveCharacterId}.png`,
   );
 
+  // ✅ 候補（ここで assetVersion を必ず付与）
   const characterCandidates = useMemo(() => {
     const list = [
       appendAssetVersion(
@@ -400,37 +415,6 @@ export default function PageShell(props: Props) {
     fallbackSrc,
   ]);
 
-  /**
-   * ✅ 「候補の解決」自体は変化しても、クロスフェードは
-   * “最終的に確定した src” で1回だけ起こす
-   */
-  const [charResolvedSrc, setCharResolvedSrc] = useState<string>("");
-
-  // 候補が変わったら最初から解決し直し（プリロードで見つかった最初の1枚を採用）
-  const resolveTokenRef = useRef(0);
-  useEffect(() => {
-    if (!characterEnabled) {
-      setCharResolvedSrc("");
-      return;
-    }
-    const token = ++resolveTokenRef.current;
-
-    (async () => {
-      for (const src of characterCandidates) {
-        try {
-          await preloadImage(src);
-          if (resolveTokenRef.current !== token) return;
-          setCharResolvedSrc(src);
-          return;
-        } catch {
-          // 次候補へ
-        }
-      }
-      if (resolveTokenRef.current !== token) return;
-      setCharResolvedSrc("");
-    })();
-  }, [characterCandidates.join("|"), characterEnabled]);
-
   // ✅ 表示倍率は 50%〜200% に統一（0.5〜2.0）
   const characterScale = Number.isFinite(settings.characterScale)
     ? settings.characterScale
@@ -439,96 +423,83 @@ export default function PageShell(props: Props) {
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
 
-  // ===== UIクロスフェード / キャラクロスフェード 共通 =====
+  // ===== UIフェードイン（確実に体感できるやつ） =====
   const FADE_MS = 500;
+  const [uiIn, setUiIn] = useState(false);
+  useEffect(() => {
+    setUiIn(false);
+    const raf = requestAnimationFrame(() => setUiIn(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
-  // ===== キャラ：クロスフェード（resolvedSrc が変わったら） =====
-  const [charCurrentSrc, setCharCurrentSrc] = useState<string>("");
-  const [charNextSrc, setCharNextSrc] = useState<string>("");
-  const [charFadeOn, setCharFadeOn] = useState(false);
-  const charFadeTokenRef = useRef(0);
+  // ===== キャラ：ロード完了→クロスフェード =====
+  const [charCurrent, setCharCurrent] = useState<string>("");
+  const [charNext, setCharNext] = useState<string>("");
+  const [charFade, setCharFade] = useState(false);
+
+  // 候補解決トークン（途中キャンセル用）
+  const resolveTokenRef = useRef(0);
+  // フェードトークン（途中キャンセル用）
+  const fadeTokenRef = useRef(0);
 
   useEffect(() => {
-    if (!characterEnabled || !charResolvedSrc) {
-      setCharCurrentSrc("");
-      setCharNextSrc("");
-      setCharFadeOn(false);
+    if (!characterEnabled) {
+      setCharCurrent("");
+      setCharNext("");
+      setCharFade(false);
       return;
     }
 
-    // 初回
-    if (!charCurrentSrc) {
-      setCharCurrentSrc(charResolvedSrc);
-      setCharNextSrc("");
-      setCharFadeOn(false);
-      return;
-    }
+    const token = ++resolveTokenRef.current;
 
-    // 同一なら何もしない
-    if (charResolvedSrc === charCurrentSrc) return;
+    (async () => {
+      const picked = await resolveFirstLoadable(
+        characterCandidates,
+        token,
+        resolveTokenRef,
+      );
+      if (resolveTokenRef.current !== token) return;
 
-    const token = ++charFadeTokenRef.current;
+      // 何も見つからない
+      if (!picked) {
+        setCharCurrent("");
+        setCharNext("");
+        setCharFade(false);
+        return;
+      }
 
-    // next をセットしてから、次フレームでfade開始
-    setCharNextSrc(charResolvedSrc);
-    setCharFadeOn(false);
+      // 初回
+      if (!charCurrent) {
+        setCharCurrent(picked);
+        setCharNext("");
+        setCharFade(false);
+        return;
+      }
 
-    requestAnimationFrame(() => {
-      if (charFadeTokenRef.current !== token) return;
-      setCharFadeOn(true);
-    });
+      // 同じなら何もしない
+      if (picked === charCurrent) return;
 
-    const t = window.setTimeout(() => {
-      if (charFadeTokenRef.current !== token) return;
-      setCharCurrentSrc(charResolvedSrc);
-      setCharNextSrc("");
-      setCharFadeOn(false);
-    }, FADE_MS);
+      // 次を入れて、次フレームでクロスフェード開始
+      const ftoken = ++fadeTokenRef.current;
+      setCharNext(picked);
+      setCharFade(false);
 
-    return () => window.clearTimeout(t);
+      requestAnimationFrame(() => {
+        if (fadeTokenRef.current !== ftoken) return;
+        setCharFade(true);
+      });
+
+      const t = window.setTimeout(() => {
+        if (fadeTokenRef.current !== ftoken) return;
+        setCharCurrent(picked);
+        setCharNext("");
+        setCharFade(false);
+      }, FADE_MS);
+
+      return () => window.clearTimeout(t);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [charResolvedSrc, characterEnabled]);
-
-  // ===== UI：クロスフェード（画面キーが変わったら） =====
-  const [uiViewKey, setUiViewKey] = useState(() => getViewKey());
-  const [uiCurrentChildren, setUiCurrentChildren] =
-    useState<ReactNode>(children);
-  const [uiNextChildren, setUiNextChildren] = useState<ReactNode>(null);
-  const [uiFadeOn, setUiFadeOn] = useState(false);
-  const uiTokenRef = useRef(0);
-
-  // children は毎回変わり得るので、画面キー基準で「切替」を検出
-  useEffect(() => {
-    const nextKey = getViewKey();
-    if (nextKey === uiViewKey) {
-      // 同一画面内の再レンダは current を更新（クロスフェードしない）
-      setUiCurrentChildren(children);
-      return;
-    }
-
-    const token = ++uiTokenRef.current;
-    setUiViewKey(nextKey);
-
-    // next 層に新しい children を置く
-    setUiNextChildren(children);
-    setUiFadeOn(false);
-
-    // 次フレームでfade開始
-    requestAnimationFrame(() => {
-      if (uiTokenRef.current !== token) return;
-      setUiFadeOn(true);
-    });
-
-    const t = window.setTimeout(() => {
-      if (uiTokenRef.current !== token) return;
-      setUiCurrentChildren(children);
-      setUiNextChildren(null);
-      setUiFadeOn(false);
-    }, FADE_MS);
-
-    return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [children]);
+  }, [characterCandidates.join("|"), characterEnabled]);
 
   // ✅ root: #app-root が overflow:hidden なので PageShell 内で完結させる
   const rootStyle = useMemo<StyleWithVars>(() => {
@@ -695,6 +666,7 @@ export default function PageShell(props: Props) {
     background: `rgba(0,0,0,var(--bg-dim))`,
   };
 
+  // キャラ共通スタイル
   const characterBaseStyle: CSSProperties = {
     position: "absolute",
     right: "env(safe-area-inset-right)",
@@ -707,35 +679,24 @@ export default function PageShell(props: Props) {
     willChange: "opacity",
   };
 
-  const characterUnderStyle: CSSProperties = {
+  const charUnderStyle: CSSProperties = {
     ...characterBaseStyle,
-    opacity: clamp(characterOpacity, 0, 1) * (charFadeOn ? 0 : 1),
+    opacity: clamp(characterOpacity, 0, 1) * (charFade ? 0 : 1),
     transition: `opacity ${FADE_MS}ms ease`,
   };
 
-  const characterOverStyle: CSSProperties = {
+  const charOverStyle: CSSProperties = {
     ...characterBaseStyle,
-    opacity: clamp(characterOpacity, 0, 1) * (charFadeOn ? 1 : 0),
+    opacity: clamp(characterOpacity, 0, 1) * (charFade ? 1 : 0),
     transition: `opacity ${FADE_MS}ms ease`,
   };
 
-  // ✅ UIクロスフェード用（本文だけ）
-  const uiLayerBase: CSSProperties = {
-    position: "absolute",
-    inset: 0,
-  };
-
-  const uiUnderStyle: CSSProperties = {
-    ...uiLayerBase,
-    opacity: uiFadeOn ? 0 : 1,
-    transition: `opacity ${FADE_MS}ms ease`,
-  };
-
-  const uiOverStyle: CSSProperties = {
-    ...uiLayerBase,
-    opacity: uiFadeOn ? 1 : 0,
-    transition: `opacity ${FADE_MS}ms ease`,
-    pointerEvents: uiFadeOn ? "auto" : "none",
+  // UIフェードイン（本文だけ）
+  const uiWrapStyle: CSSProperties = {
+    opacity: uiIn ? 1 : 0,
+    transform: uiIn ? "translateY(0px)" : "translateY(6px)",
+    transition: `opacity ${FADE_MS}ms ease, transform ${FADE_MS}ms ease`,
+    willChange: "opacity, transform",
   };
 
   return (
@@ -745,11 +706,11 @@ export default function PageShell(props: Props) {
         <div style={bgImageStyle} />
         <div style={bgDimStyle} />
 
-        {characterEnabled && charCurrentSrc ? (
+        {characterEnabled && charCurrent ? (
           <>
-            <img src={charCurrentSrc} alt="" style={characterUnderStyle} />
-            {charNextSrc ? (
-              <img src={charNextSrc} alt="" style={characterOverStyle} />
+            <img src={charCurrent} alt="" style={charUnderStyle} />
+            {charNext ? (
+              <img src={charNext} alt="" style={charOverStyle} />
             ) : null}
           </>
         ) : null}
@@ -778,15 +739,8 @@ export default function PageShell(props: Props) {
       {/* ✅ 本文（情報レイヤ：キャラより前） */}
       <div style={contentOuterStyle}>
         <div style={frameStyle}>
-          {/* ここで本文を2枚重ねクロスフェード */}
-          <div
-            className="page-shell-inner"
-            style={{ position: "relative", minHeight: "100%" }}
-          >
-            <div style={uiUnderStyle}>{uiCurrentChildren}</div>
-            {uiNextChildren != null ? (
-              <div style={uiOverStyle}>{uiNextChildren}</div>
-            ) : null}
+          <div className="page-shell-inner" style={uiWrapStyle}>
+            {children}
           </div>
         </div>
       </div>
