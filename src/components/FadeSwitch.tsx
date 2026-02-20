@@ -37,81 +37,72 @@ export default function FadeSwitch(props: Props) {
     return prefersReducedMotion() ? 0 : Math.max(0, Math.floor(durationMsRaw));
   }, [durationMsRaw]);
 
-  // 表示レイヤー（prev / next）
-  const [prevChildren, setPrevChildren] = useState<ReactNode>(props.children);
-  const [nextChildren, setNextChildren] = useState<ReactNode>(props.children);
+  // 表示データは ref で握る（stateのタイミングズレで二重表示しないため）
+  const prevRef = useRef<ReactNode>(props.children);
+  const nextRef = useRef<ReactNode>(props.children);
 
-  // next を前面にするか（クロスフェード制御）
+  // どっちを前面に出すか
   const [showNext, setShowNext] = useState(true);
 
-  // 現在表示中のキー（これだけで判定する）
+  // 「今の画面キー（切替済み扱い）」を保持
   const [shownKey, setShownKey] = useState(props.activeKey);
-
-  // 最新 children を保持（切替確定時に使う）
-  const latestChildrenRef = useRef<ReactNode>(props.children);
-  useEffect(() => {
-    latestChildrenRef.current = props.children;
-  }, [props.children]);
 
   const tokenRef = useRef(0);
   const timerRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
 
+  // 最新の children は常に nextRef に入れておく（切替時に使う）
+  useEffect(() => {
+    nextRef.current = props.children;
+  }, [props.children]);
+
   // 初期化
   useEffect(() => {
-    setPrevChildren(props.children);
-    setNextChildren(props.children);
+    prevRef.current = props.children;
+    nextRef.current = props.children;
     setShowNext(true);
     setShownKey(props.activeKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (props.activeKey === shownKey) {
-      // 同じ画面なら何もしない（子が更新されてもフェードさせない）
-      return;
-    }
+    if (props.activeKey === shownKey) return;
 
     const token = ++tokenRef.current;
 
-    // 後始末
     if (timerRef.current != null) window.clearTimeout(timerRef.current);
     timerRef.current = null;
     if (rafRef.current != null) window.cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
 
-    // reduced motion なら即座に差し替え
+    // reduced motion は即差し替え
     if (durationMs === 0) {
-      const ch = latestChildrenRef.current;
-      setPrevChildren(ch);
-      setNextChildren(ch);
+      prevRef.current = nextRef.current;
       setShowNext(true);
       setShownKey(props.activeKey);
       return;
     }
 
-    // いま表示中のレイヤーを prev として固定
-    // showNext=true の時は next が見えているので、それを prev に落とす
+    // いま「表示されている側」を prev に確定
+    // showNext=true → next が見えてるので nextRef を prev に落とす
+    // showNext=false → prev が見えてるので prevRef はそのまま
     if (showNext) {
-      setPrevChildren(nextChildren);
+      prevRef.current = nextRef.current;
     }
-    // showNext=false の時は prev が見えているので、そのままでOK
 
-    // 新しい next をセット（最新 children を使う）
-    const ch = latestChildrenRef.current;
-    setNextChildren(ch);
-
-    // クロスフェード開始
+    // 次に見せる内容は nextRef.current（最新 children が入ってる）
+    // 一度 prev を見せてから、次フレームで next を前に
     setShowNext(false);
+
     rafRef.current = window.requestAnimationFrame(() => {
       if (token !== tokenRef.current) return;
       setShowNext(true);
     });
 
-    // フェード完了後、prev を next と同じに揃えて軽量化 & shownKey 更新
+    // フェード完了後：prev を next に揃えて軽量化＋shownKey 更新
     timerRef.current = window.setTimeout(() => {
       if (token !== tokenRef.current) return;
-      setPrevChildren(latestChildrenRef.current);
+      prevRef.current = nextRef.current;
       setShownKey(props.activeKey);
     }, durationMs + 30);
 
@@ -121,7 +112,7 @@ export default function FadeSwitch(props: Props) {
       if (rafRef.current != null) window.cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     };
-  }, [props.activeKey, durationMs, shownKey, showNext, nextChildren]);
+  }, [props.activeKey, shownKey, durationMs, showNext]);
 
   const vars: CSSProperties & Record<`--${string}`, string> = {
     "--fade-ms": `${durationMs}ms`,
@@ -135,7 +126,7 @@ export default function FadeSwitch(props: Props) {
         data-side="prev"
         data-show={showNext ? "hide" : "show"}
       >
-        {prevChildren}
+        {prevRef.current}
       </div>
 
       <div
@@ -143,7 +134,7 @@ export default function FadeSwitch(props: Props) {
         data-side="next"
         data-show={showNext ? "show" : "hide"}
       >
-        {nextChildren}
+        {nextRef.current}
       </div>
     </div>
   );
