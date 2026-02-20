@@ -180,6 +180,14 @@ function resolveCharacterPreviewSrc(raw: string, key: string) {
   return normalizePublicPath(`${dir}${key}.png`) || "";
 }
 
+function appendAssetVersion(url: string, assetVersion: string) {
+  const u = (url ?? "").trim();
+  const av = (assetVersion ?? "").trim();
+  if (!u || !av) return u;
+  const encoded = encodeURIComponent(av);
+  return u.includes("?") ? `${u}&av=${encoded}` : `${u}?av=${encoded}`;
+}
+
 /** ✅ 表情キー（プレビュー用） */
 const EXPRESSION_KEYS = [
   { key: "neutral", label: "neutral" }, // 喜
@@ -393,6 +401,9 @@ export default function Settings({ back }: Props) {
     ? settings.glassBlur
     : DEFAULT_SETTINGS.glassBlur;
 
+  // ✅ assetVersion（Cloudflare immutable 対策）
+  const assetVersion = (settings.assetVersion ?? "").trim();
+
   // ===== ✅ 背景 =====
   const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
   const autoBgSet =
@@ -416,6 +427,14 @@ export default function Settings({ back }: Props) {
     if (bgMode === "fixed") return fixedBgSrc;
     return autoPreviewSrc;
   }, [bgMode, fixedBgSrc, autoPreviewSrc]);
+
+  const effectivePreviewSrcWithAv = useMemo(() => {
+    return appendAssetVersion(effectivePreviewSrc, assetVersion);
+  }, [effectivePreviewSrc, assetVersion]);
+
+  const autoPreviewSrcWithAv = useMemo(() => {
+    return appendAssetVersion(autoPreviewSrc, assetVersion);
+  }, [autoPreviewSrc, assetVersion]);
 
   const isCharControlsDisabled = !characterEnabled;
   const isFixedDisabled =
@@ -460,6 +479,65 @@ export default function Settings({ back }: Props) {
               <h2 style={sectionTitle}>👧 キャラクター</h2>
 
               <div style={formGrid}>
+                {/* ✅ assetVersion */}
+                <div style={row}>
+                  <div style={label}>assetVersion</div>
+                  <div style={rowStack}>
+                    <div style={help}>
+                      Cloudflare の <code>immutable</code> キャッシュ対策。
+                      ここを変えると画像URLに <code>?av=...</code>{" "}
+                      が付いて強制更新されるよ。
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <input
+                        value={assetVersion}
+                        onChange={(e) => set({ assetVersion: e.target.value })}
+                        placeholder='例: "2" / "20260219a"'
+                        style={{ ...fullWidthControl, maxWidth: 420 }}
+                      />
+
+                      <button
+                        type="button"
+                        style={pillBase}
+                        onClick={() => {
+                          const next = String(Date.now());
+                          set({ assetVersion: next });
+                          alert(`assetVersion を更新したよ\n${next}`);
+                        }}
+                      >
+                        ⏱ 今の時刻に更新
+                      </button>
+
+                      <button
+                        type="button"
+                        style={pillBase}
+                        onClick={() => {
+                          set({ assetVersion: "" });
+                          alert("assetVersion を空にしたよ（無効）");
+                        }}
+                      >
+                        🚫 無効化
+                      </button>
+                    </div>
+
+                    <div style={help}>
+                      画像を差し替えたら{" "}
+                      <b style={{ color: "rgba(255,255,255,0.88)" }}>
+                        ⏱ 今の時刻に更新
+                      </b>{" "}
+                      を押すのが一番ラク。
+                    </div>
+                  </div>
+                </div>
+
                 <div style={row}>
                   <div style={label}>表示</div>
                   <label
@@ -597,14 +675,23 @@ export default function Settings({ back }: Props) {
                           // 単一ファイルならそれをそのまま1枚だけ見せる
                           // フォルダ指定なら表情キー分を全部並べる
                           const previewSingle = isFile
-                            ? normalizePublicPath(raw)
+                            ? appendAssetVersion(
+                                normalizePublicPath(raw),
+                                assetVersion,
+                              )
                             : "";
                           const previewList = !isFile
-                            ? EXPRESSION_KEYS.map((x) => ({
-                                key: x.key,
-                                label: x.label,
-                                src: resolveCharacterPreviewSrc(raw, x.key),
-                              }))
+                            ? EXPRESSION_KEYS.map((x) => {
+                                const base = resolveCharacterPreviewSrc(
+                                  raw,
+                                  x.key,
+                                );
+                                return {
+                                  key: x.key,
+                                  label: x.label,
+                                  src: appendAssetVersion(base, assetVersion),
+                                };
+                              })
                             : [];
 
                           return (
@@ -937,7 +1024,7 @@ export default function Settings({ back }: Props) {
                               ? "夕"
                               : "夜"}
                       </b>{" "}
-                      / 自動の参照: <code>{autoPreviewSrc}</code>
+                      / 自動の参照: <code>{autoPreviewSrcWithAv}</code>
                     </div>
 
                     <div
@@ -999,11 +1086,11 @@ export default function Settings({ back }: Props) {
                     ) : (
                       <>
                         <div style={help}>
-                          表示予定: <code>{effectivePreviewSrc}</code>
+                          表示予定: <code>{effectivePreviewSrcWithAv}</code>
                         </div>
-                        {!!effectivePreviewSrc && (
+                        {!!effectivePreviewSrcWithAv && (
                           <img
-                            src={effectivePreviewSrc}
+                            src={effectivePreviewSrcWithAv}
                             alt=""
                             style={{
                               width: "100%",

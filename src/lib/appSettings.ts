@@ -24,6 +24,13 @@ export type AppSettings = {
   /** public 配下の画像パスでキャラ画像を上書き（空ならデフォルト） */
   characterOverrideSrc: string;
 
+  /**
+   * ✅ 静的アセット用のキャッシュバスター（Cloudflare immutable 対策）
+   * 空なら何もしない。値が入ると画像URLに ?av=... を付ける。
+   * 例: "20260219a" / "2" / Date.now().toString()
+   */
+  assetVersion: string;
+
   // ===== 背景 =====
   bgMode: BgMode;
   autoBgSet: string;
@@ -67,6 +74,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   characterScale: 1,
   characterOpacity: 1,
   characterOverrideSrc: "",
+
+  // ✅ assetVersion（空=無効）
+  assetVersion: "",
 
   // 背景
   bgMode: "auto",
@@ -188,6 +198,9 @@ function normalizeSettings(
   merged.autoBgSet =
     (merged.autoBgSet ?? "").trim() || DEFAULT_SETTINGS.autoBgSet;
   merged.fixedBgSrc = (merged.fixedBgSrc ?? "").trim();
+
+  // ✅ assetVersion 正規化
+  merged.assetVersion = String(merged.assetVersion ?? "").trim();
 
   return merged;
 }

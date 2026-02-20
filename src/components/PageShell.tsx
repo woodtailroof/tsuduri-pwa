@@ -185,7 +185,6 @@ function ensureTrailingSlash(p: string) {
 
 function normalizeExpression(raw: string): Emotion {
   const v = (raw ?? "").trim();
-  // 将来増えても、今は採用キーに丸める
   if (
     v === "neutral" ||
     v === "happy" ||
@@ -197,6 +196,16 @@ function normalizeExpression(raw: string): Emotion {
     return v;
   }
   return "neutral";
+}
+
+function appendAssetVersion(url: string, assetVersion: string) {
+  const u = (url ?? "").trim();
+  const av = (assetVersion ?? "").trim();
+  if (!u || !av) return u;
+
+  const encoded = encodeURIComponent(av);
+  // 既にクエリがあれば &、無ければ ?
+  return u.includes("?") ? `${u}&av=${encoded}` : `${u}?av=${encoded}`;
 }
 
 export default function PageShell(props: Props) {
@@ -211,7 +220,6 @@ export default function PageShell(props: Props) {
   const contentPadding = props.contentPadding;
 
   // ✅ 人格（EmotionContext）
-  // props.displayExpression が未指定なら、グローバル感情に従う
   const { emotion: globalEmotion } = useEmotion();
   const propExpressionRaw = (props.displayExpression ?? "").trim();
   const effectiveExpression = normalizeExpression(
@@ -229,6 +237,9 @@ export default function PageShell(props: Props) {
 
   const { settings } = useAppSettings();
   const minuteTick = useMinuteTick();
+
+  // ✅ 画像キャッシュバスター（Cloudflare immutable 対策）
+  const assetVersion = (settings.assetVersion ?? "").trim();
 
   // ===== 背景 =====
   const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
@@ -324,15 +335,20 @@ export default function PageShell(props: Props) {
   // ✅ 404でも自動で次候補へフォールバック（フォルダ指定を安全にする）
   const characterCandidates = useMemo(() => {
     const list = [
-      normalizePublicPath(characterOverrideSrc),
+      appendAssetVersion(
+        normalizePublicPath(characterOverrideSrc),
+        assetVersion,
+      ),
       // 設定マップ（フォルダなら表情→neutral、単一ならそれ）
-      mappedIsFile ? mappedSingleSrc : mappedExpressionSrc,
-      mappedIsFile ? "" : mappedNeutralSrc,
+      mappedIsFile
+        ? appendAssetVersion(mappedSingleSrc, assetVersion)
+        : appendAssetVersion(mappedExpressionSrc, assetVersion),
+      mappedIsFile ? "" : appendAssetVersion(mappedNeutralSrc, assetVersion),
       // 従来の推測
-      expressionSrc,
-      neutralSrc,
-      fallbackSrc,
-      "/assets/characters/tsuduri.png",
+      appendAssetVersion(expressionSrc, assetVersion),
+      appendAssetVersion(neutralSrc, assetVersion),
+      appendAssetVersion(fallbackSrc, assetVersion),
+      appendAssetVersion("/assets/characters/tsuduri.png", assetVersion),
     ]
       .map((x) => (x ?? "").trim())
       .filter((x) => !!x);
@@ -348,6 +364,7 @@ export default function PageShell(props: Props) {
     return uniq;
   }, [
     characterOverrideSrc,
+    assetVersion,
     mappedIsFile,
     mappedSingleSrc,
     mappedExpressionSrc,
