@@ -3,21 +3,10 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
-import {
-  DEFAULT_SETTINGS,
-  getTimeBand,
-  normalizePublicPath,
-  resolveAutoBackgroundSrc,
-  type BgMode,
-  useAppSettings,
-} from "../lib/appSettings";
-import { CHARACTERS_STORAGE_KEY } from "../screens/CharacterSettings";
-import { useEmotion, type Emotion } from "../lib/emotion";
 
 type Props = {
   title?: ReactNode;
@@ -48,44 +37,10 @@ type Props = {
   /** ✅ 旧コード互換：Settings 側が渡してても落ちないよう受け口だけ残す */
   showTestCharacter?: boolean;
 
-  /**
-   * ✅ この画面で表示するキャラIDを強制したいとき（Chatの選択キャラと表示キャラを一致させる等）
-   * 未指定なら settings（fixed/random）に従う
-   */
+  /** 旧互換受け口 */
   displayCharacterId?: string;
-
-  /**
-   * ✅ 表示する表情キー（neutral / think / happy ...）
-   * 未指定時は EmotionContext（人格）に従う
-   */
   displayExpression?: string;
 };
-
-// CSS変数（--xxx）を style に安全に入れるための型
-type CSSVars = Record<`--${string}`, string>;
-type StyleWithVars = CSSProperties & CSSVars;
-
-const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
-type CharacterImageMap = Record<string, string>;
-
-type StoredCharacterLike = {
-  id?: unknown;
-  name?: unknown; // v2
-  label?: unknown; // v1
-};
-
-function safeJsonParse<T>(raw: string | null, fallback: T): T {
-  try {
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState<boolean>(() => {
@@ -116,144 +71,6 @@ function useIsMobile() {
   return isMobile;
 }
 
-/** ✅ 1分ごとにUIを更新（自動背景の時間帯追従用） */
-function useMinuteTick() {
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    let timer: number | null = null;
-
-    const arm = () => {
-      const now = Date.now();
-      const msToNextMinute = 60_000 - (now % 60_000) + 5;
-      timer = window.setTimeout(() => {
-        setTick((v) => v + 1);
-        arm();
-      }, msToNextMinute);
-    };
-
-    arm();
-    return () => {
-      if (timer != null) window.clearTimeout(timer);
-    };
-  }, []);
-
-  return tick;
-}
-
-function loadCreatedCharacters(): { id: string; label: string }[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(CHARACTERS_STORAGE_KEY);
-  const list = safeJsonParse<StoredCharacterLike[]>(raw, []);
-  const normalized = list
-    .map((c) => {
-      const id = typeof c?.id === "string" ? c.id : "";
-      const label =
-        typeof c?.name === "string"
-          ? c.name
-          : typeof c?.label === "string"
-            ? c.label
-            : "";
-      return { id, label };
-    })
-    .filter((x) => !!x.id && !!x.label);
-
-  const seen = new Set<string>();
-  const uniq: { id: string; label: string }[] = [];
-  for (const c of normalized) {
-    if (seen.has(c.id)) continue;
-    seen.add(c.id);
-    uniq.push(c);
-  }
-  return uniq;
-}
-
-function loadCharacterImageMap(): CharacterImageMap {
-  if (typeof window === "undefined") return {};
-  const raw = localStorage.getItem(CHARACTER_IMAGE_MAP_KEY);
-  const map = safeJsonParse<CharacterImageMap>(raw, {});
-  if (!map || typeof map !== "object") return {};
-  return map;
-}
-
-function looksLikeImageFilePath(raw: string) {
-  return /\.(png|jpg|jpeg|webp|gif|avif)$/i.test(raw.trim());
-}
-
-function ensureTrailingSlash(p: string) {
-  return p.endsWith("/") ? p : `${p}/`;
-}
-
-function normalizeExpression(raw: string): Emotion {
-  const v = (raw ?? "").trim();
-  if (
-    v === "neutral" ||
-    v === "happy" ||
-    v === "sad" ||
-    v === "think" ||
-    v === "surprise" ||
-    v === "love"
-  ) {
-    return v;
-  }
-  return "neutral";
-}
-
-function appendAssetVersion(url: string, assetVersion: string) {
-  const u = (url ?? "").trim();
-  const av = (assetVersion ?? "").trim();
-  if (!u || !av) return u;
-
-  const encoded = encodeURIComponent(av);
-  return u.includes("?") ? `${u}&av=${encoded}` : `${u}?av=${encoded}`;
-}
-
-/**
- * ✅ 画像を「ロード完了してから」扱う（decodeがあれば待つ）
- */
-function preloadImage(src: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (typeof window === "undefined") return resolve();
-
-    const img = new Image() as HTMLImageElement & {
-      decode?: () => Promise<void>;
-    };
-    img.decoding = "async";
-
-    img.onload = async () => {
-      try {
-        if (typeof img.decode === "function") await img.decode();
-      } catch {
-        // decode失敗は許容
-      }
-      resolve();
-    };
-    img.onerror = () => reject(new Error("image_load_failed"));
-    img.src = src;
-  });
-}
-
-/**
- * ✅ 候補リストから「ロードできる最初の1枚」を選ぶ
- */
-async function resolveFirstLoadable(
-  candidates: string[],
-  token: number,
-  tokenRef: React.MutableRefObject<number>,
-): Promise<string> {
-  for (const src of candidates) {
-    if (tokenRef.current !== token) return "";
-    try {
-      await preloadImage(src);
-      if (tokenRef.current !== token) return "";
-      return src;
-    } catch {
-      // 次候補へ
-    }
-  }
-  return "";
-}
-
 export default function PageShell(props: Props) {
   const title = props.title;
   const subtitle = props.subtitle;
@@ -265,163 +82,14 @@ export default function PageShell(props: Props) {
   const scrollY = props.scrollY ?? "auto";
   const contentPadding = props.contentPadding;
 
-  // ✅ 人格（EmotionContext）
-  const { emotion: globalEmotion } = useEmotion();
-  const propExpressionRaw = (props.displayExpression ?? "").trim();
-  const effectiveExpression = normalizeExpression(
-    propExpressionRaw ? propExpressionRaw : globalEmotion,
-  );
-
   const isMobile = useIsMobile();
 
-  // ✅ ヘッダー高さは全端末で固定（位置ブレの根絶）
   const HEADER_H = 72;
 
-  // ✅ Homeのように title/subtitle/back が全部無い画面はヘッダー自体を消す（= 上に詰める）
   const headerVisible = !!title || !!subtitle || showBack;
   const effectiveHeaderH = headerVisible ? HEADER_H : 0;
 
-  const { settings } = useAppSettings();
-  const minuteTick = useMinuteTick();
-
-  // ✅ 画像キャッシュバスター（Cloudflare immutable 対策）
-  const assetVersion = (settings.assetVersion ?? "").trim();
-
-  // ===== 背景 =====
-  const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
-  const autoBgSet =
-    (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
-    DEFAULT_SETTINGS.autoBgSet;
-  const fixedBgSrcRaw = settings.fixedBgSrc ?? DEFAULT_SETTINGS.fixedBgSrc;
-  const fixedBgSrc =
-    normalizePublicPath(fixedBgSrcRaw) || "/assets/bg/ui-check.png";
-
-  const autoPreviewSrc = useMemo(() => {
-    const band = getTimeBand(new Date());
-    return resolveAutoBackgroundSrc(autoBgSet, band);
-  }, [autoBgSet, minuteTick]);
-
-  const effectiveBgSrc = useMemo(() => {
-    if (bgMode === "off") return "";
-    if (bgMode === "fixed") return fixedBgSrc;
-    return autoPreviewSrc;
-  }, [bgMode, fixedBgSrc, autoPreviewSrc]);
-
-  // ===== ガラス =====
-  const bgDim = Number.isFinite(settings.bgDim)
-    ? settings.bgDim
-    : DEFAULT_SETTINGS.bgDim;
-  const bgBlur = Number.isFinite(settings.bgBlur)
-    ? settings.bgBlur
-    : DEFAULT_SETTINGS.bgBlur;
-
-  const glassAlpha = Number.isFinite(settings.glassAlpha)
-    ? settings.glassAlpha
-    : DEFAULT_SETTINGS.glassAlpha;
-  const glassBlur = Number.isFinite(settings.glassBlur)
-    ? settings.glassBlur
-    : DEFAULT_SETTINGS.glassBlur;
-
-  // ===== キャラ =====
-  const characterEnabled =
-    settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
-  const characterMode =
-    settings.characterMode ?? DEFAULT_SETTINGS.characterMode;
-
-  // ✅ ここは「毎回読む」方式に（設定で更新したマップを即反映したい）
-  const createdCharacters = loadCreatedCharacters();
-  const charImageMap = loadCharacterImageMap();
-
-  const [randomPickedId] = useState<string>(() => {
-    if (typeof window === "undefined") return "";
-    if (!createdCharacters.length) return "tsuduri";
-    const i = Math.floor(Math.random() * createdCharacters.length);
-    return createdCharacters[i]?.id ?? createdCharacters[0].id;
-  });
-
-  const fixedCharacterId = settings.fixedCharacterId ?? "tsuduri";
-  const pickCharacterId =
-    characterMode === "fixed" ? fixedCharacterId : randomPickedId;
-
-  // ✅ 画面側からの指定があればそれを最優先
-  const displayCharacterId = (props.displayCharacterId ?? "").trim();
-  const effectiveCharacterId = displayCharacterId || pickCharacterId;
-
-  const characterOverrideSrc = (settings.characterOverrideSrc ?? "").trim();
-
-  // 設定マップ優先
-  const mappedRaw = (charImageMap[effectiveCharacterId] ?? "").trim();
-  const mappedNorm = normalizePublicPath(mappedRaw) || "";
-  const mappedIsFile = mappedNorm ? looksLikeImageFilePath(mappedNorm) : false;
-  const mappedDir =
-    mappedNorm && !mappedIsFile ? ensureTrailingSlash(mappedNorm) : "";
-
-  const mappedExpressionSrc = mappedDir
-    ? normalizePublicPath(`${mappedDir}${effectiveExpression}.png`)
-    : "";
-  const mappedNeutralSrc = mappedDir
-    ? normalizePublicPath(`${mappedDir}neutral.png`)
-    : "";
-  const mappedSingleSrc = mappedIsFile ? mappedNorm : "";
-
-  const expressionSrc = normalizePublicPath(
-    `/assets/characters/${effectiveCharacterId}/${effectiveExpression}.png`,
-  );
-  const neutralSrc = normalizePublicPath(
-    `/assets/characters/${effectiveCharacterId}/neutral.png`,
-  );
-  const fallbackSrc = normalizePublicPath(
-    `/assets/characters/${effectiveCharacterId}.png`,
-  );
-
-  // ✅ 候補（assetVersion付与）
-  const characterCandidates = useMemo(() => {
-    const list = [
-      appendAssetVersion(
-        normalizePublicPath(characterOverrideSrc),
-        assetVersion,
-      ),
-      mappedIsFile
-        ? appendAssetVersion(mappedSingleSrc, assetVersion)
-        : appendAssetVersion(mappedExpressionSrc, assetVersion),
-      mappedIsFile ? "" : appendAssetVersion(mappedNeutralSrc, assetVersion),
-      appendAssetVersion(expressionSrc, assetVersion),
-      appendAssetVersion(neutralSrc, assetVersion),
-      appendAssetVersion(fallbackSrc, assetVersion),
-      appendAssetVersion("/assets/characters/tsuduri.png", assetVersion),
-    ]
-      .map((x) => (x ?? "").trim())
-      .filter((x) => !!x);
-
-    const seen = new Set<string>();
-    const uniq: string[] = [];
-    for (const s of list) {
-      if (seen.has(s)) continue;
-      seen.add(s);
-      uniq.push(s);
-    }
-    return uniq;
-  }, [
-    characterOverrideSrc,
-    assetVersion,
-    mappedIsFile,
-    mappedSingleSrc,
-    mappedExpressionSrc,
-    mappedNeutralSrc,
-    expressionSrc,
-    neutralSrc,
-    fallbackSrc,
-  ]);
-
-  // ✅ 表示倍率は 50%〜200% に統一（0.5〜2.0）
-  const characterScale = Number.isFinite(settings.characterScale)
-    ? settings.characterScale
-    : DEFAULT_SETTINGS.characterScale;
-  const characterOpacity = Number.isFinite(settings.characterOpacity)
-    ? settings.characterOpacity
-    : DEFAULT_SETTINGS.characterOpacity;
-
-  // ===== UIフェードイン =====
+  // ✅ UIフェード（画面の質感アップ）
   const FADE_MS = 500;
   const [uiIn, setUiIn] = useState(false);
   useEffect(() => {
@@ -430,148 +98,10 @@ export default function PageShell(props: Props) {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // ===== キャラ：ロード完了→クロスフェード（キャンセル徹底） =====
-  const [charCurrent, setCharCurrent] = useState<string>("");
-  const [charNext, setCharNext] = useState<string>("");
-  const [charFade, setCharFade] = useState(false);
-
-  // 現在値をrefに（async内で最新参照するため）
-  const charCurrentRef = useRef("");
-  useEffect(() => {
-    charCurrentRef.current = charCurrent;
-  }, [charCurrent]);
-
-  // 候補解決トークン（途中キャンセル用）
-  const resolveTokenRef = useRef(0);
-  // フェードトークン（途中キャンセル用）
-  const fadeTokenRef = useRef(0);
-
-  // ★ これが肝：前回の rAF / timeout を必ず止める
-  const fadeTimerRef = useRef<number | null>(null);
-  const fadeRafRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    // 前回の演出を完全停止（古い確定が刺さってチラつくのを防ぐ）
-    if (fadeTimerRef.current != null) {
-      window.clearTimeout(fadeTimerRef.current);
-      fadeTimerRef.current = null;
-    }
-    if (fadeRafRef.current != null) {
-      cancelAnimationFrame(fadeRafRef.current);
-      fadeRafRef.current = null;
-    }
-    fadeTokenRef.current++;
-
-    if (!characterEnabled) {
-      setCharCurrent("");
-      setCharNext("");
-      setCharFade(false);
-      return;
-    }
-
-    const token = ++resolveTokenRef.current;
-    let cancelled = false;
-
-    (async () => {
-      const picked = await resolveFirstLoadable(
-        characterCandidates,
-        token,
-        resolveTokenRef,
-      );
-      if (cancelled) return;
-      if (resolveTokenRef.current !== token) return;
-
-      // 見つからない場合：現状維持（ここで消すと「一瞬消え」になる）
-      if (!picked) return;
-
-      const current = charCurrentRef.current;
-
-      // 初回
-      if (!current) {
-        setCharCurrent(picked);
-        setCharNext("");
-        setCharFade(false);
-        return;
-      }
-
-      // 同じなら何もしない
-      if (picked === current) return;
-
-      // 次を入れてクロスフェード
-      const ftoken = ++fadeTokenRef.current;
-
-      setCharNext(picked);
-      setCharFade(false);
-
-      fadeRafRef.current = requestAnimationFrame(() => {
-        if (fadeTokenRef.current !== ftoken) return;
-        setCharFade(true);
-      });
-
-      fadeTimerRef.current = window.setTimeout(() => {
-        if (fadeTokenRef.current !== ftoken) return;
-        setCharCurrent(picked);
-        setCharNext("");
-        setCharFade(false);
-        fadeTimerRef.current = null;
-      }, FADE_MS);
-    })();
-
-    return () => {
-      cancelled = true;
-      // アンマウント/再実行時も止める
-      if (fadeTimerRef.current != null) {
-        window.clearTimeout(fadeTimerRef.current);
-        fadeTimerRef.current = null;
-      }
-      if (fadeRafRef.current != null) {
-        cancelAnimationFrame(fadeRafRef.current);
-        fadeRafRef.current = null;
-      }
-      fadeTokenRef.current++;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [characterCandidates.join("|"), characterEnabled]);
-
-  // ✅ root: #app-root が overflow:hidden なので PageShell 内で完結させる
-  const rootStyle = useMemo<StyleWithVars>(() => {
-    const bgImage =
-      effectiveBgSrc && bgMode !== "off" ? `url("${effectiveBgSrc}")` : "none";
-
-    return {
-      width: "100%",
-      height: "100%",
-      minHeight: 0,
-      overflow: "hidden",
-      display: "flex",
-      flexDirection: "column",
-      position: "relative",
-
-      "--shell-header-h": `${effectiveHeaderH}px`,
-
-      "--bg-image": bgImage,
-      "--bg-blur": `${Math.round(clamp(bgBlur, 0, 60))}px`,
-      "--bg-dim": `${clamp(bgDim, 0, 1)}`,
-
-      "--glass-blur": `${Math.round(clamp(glassBlur, 0, 60))}px`,
-      "--glass-alpha": `${clamp(glassAlpha, 0, 1)}`,
-      "--glass-alpha-strong": `${clamp(glassAlpha + 0.13, 0, 1)}`,
-    };
-  }, [
-    effectiveHeaderH,
-    effectiveBgSrc,
-    bgMode,
-    bgBlur,
-    bgDim,
-    glassBlur,
-    glassAlpha,
-  ]);
-
   const defaultFramePadding = isMobile ? "14px 14px 18px" : "18px 18px 20px";
   const resolvedFramePadding =
     contentPadding !== undefined ? contentPadding : defaultFramePadding;
 
-  // ✅ 本文スクロール領域（ヘッダー分は常に確保）
   const contentOuterStyle: CSSProperties = {
     flex: "1 1 auto",
     minHeight: 0,
@@ -579,9 +109,9 @@ export default function PageShell(props: Props) {
     overflowY: scrollY,
     WebkitOverflowScrolling: "touch",
     overscrollBehavior: "contain",
-    paddingTop: "var(--shell-header-h)",
+    paddingTop: `${effectiveHeaderH}px`,
     position: "relative",
-    zIndex: 20, // ✅ 情報レイヤは常に前
+    zIndex: 20,
   };
 
   const frameStyle: CSSProperties = {
@@ -598,14 +128,13 @@ export default function PageShell(props: Props) {
     if (typeof window !== "undefined") window.history.back();
   }, [onBack]);
 
-  // ✅ ヘッダーは常に viewport 基準で固定
   const headerStyle: CSSProperties = {
     position: "fixed",
     top: 0,
     left: 0,
     right: 0,
     zIndex: 999,
-    height: "var(--shell-header-h)",
+    height: effectiveHeaderH,
     background: "rgba(0,0,0,0.22)",
     borderBottom: "1px solid rgba(255,255,255,0.10)",
     backdropFilter: "blur(10px)",
@@ -672,58 +201,6 @@ export default function PageShell(props: Props) {
     flex: "0 0 auto",
   };
 
-  /**
-   * ✅ レイヤ順を「DOMとスタッキングコンテキスト」で安定化
-   */
-  const bgLayerStyle: CSSProperties = {
-    position: "fixed",
-    inset: 0,
-    zIndex: 0,
-    pointerEvents: "none",
-  };
-
-  const bgImageStyle: CSSProperties = {
-    position: "absolute",
-    inset: 0,
-    backgroundImage: "var(--bg-image)",
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    filter: `blur(var(--bg-blur))`,
-    transform: "scale(1.03)",
-  };
-
-  const bgDimStyle: CSSProperties = {
-    position: "absolute",
-    inset: 0,
-    background: `rgba(0,0,0,var(--bg-dim))`,
-  };
-
-  // キャラ共通スタイル
-  const characterBaseStyle: CSSProperties = {
-    position: "absolute",
-    right: "env(safe-area-inset-right)",
-    bottom: "env(safe-area-inset-bottom)",
-    transform: `scale(${clamp(characterScale, 0.5, 2.0)})`,
-    transformOrigin: "bottom right",
-    filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.45))",
-    maxWidth: "min(46vw, 520px)",
-    height: "auto",
-    willChange: "opacity",
-  };
-
-  const charUnderStyle: CSSProperties = {
-    ...characterBaseStyle,
-    opacity: clamp(characterOpacity, 0, 1) * (charFade ? 0 : 1),
-    transition: `opacity ${FADE_MS}ms ease`,
-  };
-
-  const charOverStyle: CSSProperties = {
-    ...characterBaseStyle,
-    opacity: clamp(characterOpacity, 0, 1) * (charFade ? 1 : 0),
-    transition: `opacity ${FADE_MS}ms ease`,
-  };
-
-  // UIフェードイン（本文だけ）
   const uiWrapStyle: CSSProperties = {
     opacity: uiIn ? 1 : 0,
     transform: uiIn ? "translateY(0px)" : "translateY(6px)",
@@ -732,23 +209,18 @@ export default function PageShell(props: Props) {
   };
 
   return (
-    <div className="page-shell" style={rootStyle}>
-      {/* ✅ 背景レイヤ（最背面） */}
-      <div style={bgLayerStyle} aria-hidden="true">
-        <div style={bgImageStyle} />
-        <div style={bgDimStyle} />
-
-        {characterEnabled && charCurrent ? (
-          <>
-            <img src={charCurrent} alt="" style={charUnderStyle} />
-            {charNext ? (
-              <img src={charNext} alt="" style={charOverStyle} />
-            ) : null}
-          </>
-        ) : null}
-      </div>
-
-      {/* ✅ ヘッダー（最前面） */}
+    <div
+      className="page-shell"
+      style={{
+        width: "100%",
+        height: "100%",
+        minHeight: 0,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        position: "relative",
+      }}
+    >
       {headerVisible ? (
         <div style={headerStyle}>
           <div style={headerInnerStyle}>
@@ -768,7 +240,6 @@ export default function PageShell(props: Props) {
         </div>
       ) : null}
 
-      {/* ✅ 本文（情報レイヤ：キャラより前） */}
       <div style={contentOuterStyle}>
         <div style={frameStyle}>
           <div className="page-shell-inner" style={uiWrapStyle}>
