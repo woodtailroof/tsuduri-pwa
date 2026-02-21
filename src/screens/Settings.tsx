@@ -390,11 +390,7 @@ export default function Settings({ back }: Props) {
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
 
-<<<<<<< HEAD
-  // ✅ 3要素のみ（bgDim は廃止）
-=======
-  // ✅ 表示
->>>>>>> rollback-6523600
+  // ✅ 表示（bgDim は撤去）
   const bgBlur = Number.isFinite(settings.bgBlur)
     ? settings.bgBlur
     : DEFAULT_SETTINGS.bgBlur;
@@ -1119,7 +1115,7 @@ export default function Settings({ back }: Props) {
               </div>
             </div>
 
-            {/* 🪟 表示（3要素） */}
+            {/* 🪟 表示（bgDim撤去） */}
             <div className={cardClass} style={card}>
               <h2 style={sectionTitle}>🪟 表示</h2>
 

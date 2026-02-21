@@ -35,11 +35,7 @@ export type AppSettings = {
   autoBgSet: string;
   fixedBgSrc: string;
 
-<<<<<<< HEAD
-  // ===== 表示（3要素のみ）=====
-=======
   // ===== 表示 =====
->>>>>>> rollback-6523600
   /** 背景ぼかし(px) */
   bgBlur: number;
 
@@ -51,8 +47,6 @@ export type AppSettings = {
   // ===== 旧互換（過去に保存してた可能性があるキー） =====
   bgAutoSet?: string;
   bgFixedSrc?: string;
-
-  // ✅ bgDim は廃止（保存データに残ってても無視する）
 };
 
 /* =========================
@@ -86,11 +80,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoBgSet: "surf",
   fixedBgSrc: "",
 
-<<<<<<< HEAD
-  // 表示（3要素のみ）
-=======
   // 表示
->>>>>>> rollback-6523600
   bgBlur: 0,
 
   // ガラス
@@ -104,12 +94,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 /**
  * ✅ string / "10px" / number を全部受ける数値化
-<<<<<<< HEAD
- * - "10" -> 10
- * - "10px" -> 10
- * - "" / null / NaN -> fallback
-=======
->>>>>>> rollback-6523600
  */
 function toNumberLike(v: unknown, fallback: number): number {
   if (typeof v === "number") return Number.isFinite(v) ? v : fallback;
@@ -169,10 +153,6 @@ export function resolveCharacterSrc(
   const id = (characterId ?? "").trim();
   if (!id) return "/assets/character-test.png";
 
-<<<<<<< HEAD
-  // 既定：/assets/characters/{id}.png を想定（無ければ最終的に表示側のフォールバックに落ちる）
-=======
->>>>>>> rollback-6523600
   return normalizePublicPath(`/assets/characters/${id}.png`);
 }
 

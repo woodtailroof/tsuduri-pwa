@@ -14,7 +14,6 @@ import Chat from "./screens/Chat";
 import Settings from "./screens/Settings";
 import CharacterSettings from "./screens/CharacterSettings";
 import Stage from "./components/Stage";
-import FadeSwitch from "./components/FadeSwitch";
 import {
   DEFAULT_SETTINGS,
   getTimeBand,
@@ -34,18 +33,15 @@ type Screen =
   | "settings"
   | "characterSettings";
 
-/** ✅ レイヤー順（背面→前面） */
 const Z = {
-  bg: 0,
-  stage: 1,
-  ui: 2,
+  stage: 0,
+  ui: 20,
 } as const;
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-/** ✅ 1分ごとに更新（背景の時間帯追従） */
 function useMinuteTick() {
   const [tick, setTick] = useState(0);
 
@@ -68,14 +64,6 @@ function useMinuteTick() {
   }, []);
 
   return tick;
-}
-
-function appendAssetVersion(url: string, assetVersion: string) {
-  const u = (url ?? "").trim();
-  const av = (assetVersion ?? "").trim();
-  if (!u || !av) return u;
-  const encoded = encodeURIComponent(av);
-  return u.includes("?") ? `${u}&av=${encoded}` : `${u}?av=${encoded}`;
 }
 
 function AppInner() {
@@ -109,20 +97,14 @@ function AppInner() {
     content = <Home go={goFromHome} />;
   }
 
-<<<<<<< HEAD
-  // ✅ 見た目変数（全画面共通）
-=======
-  // ✅ 見た目変数を App で付与して全画面に効かせる
->>>>>>> rollback-6523600
   const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
   const autoBgSet =
     (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
     DEFAULT_SETTINGS.autoBgSet;
+
   const fixedBgSrcRaw = settings.fixedBgSrc ?? DEFAULT_SETTINGS.fixedBgSrc;
   const fixedBgSrc =
     normalizePublicPath(fixedBgSrcRaw) || "/assets/bg/ui-check.png";
-
-  const assetVersion = (settings.assetVersion ?? "").trim();
 
   const autoPreviewSrc = useMemo(() => {
     const band = getTimeBand(new Date());
@@ -135,14 +117,6 @@ function AppInner() {
     return autoPreviewSrc;
   }, [bgMode, fixedBgSrc, autoPreviewSrc]);
 
-<<<<<<< HEAD
-  const effectiveBgSrcWithAv = useMemo(() => {
-    return appendAssetVersion(effectiveBgSrc, assetVersion);
-  }, [effectiveBgSrc, assetVersion]);
-
-  // ✅ 表示（3要素）
-=======
->>>>>>> rollback-6523600
   const bgBlur = Number.isFinite(settings.bgBlur)
     ? settings.bgBlur
     : DEFAULT_SETTINGS.bgBlur;
@@ -157,31 +131,18 @@ function AppInner() {
 
   type CSSVars = Record<`--${string}`, string>;
   const appVars: CSSProperties & CSSVars = useMemo(() => {
-    const gb = Math.round(clamp(bgBlur, 0, 60));
-    const ga = clamp(glassAlpha, 0, 1);
-    const gblur = Math.round(clamp(glassBlur, 0, 60)); // unitless
-
     return {
       "--bg-image":
-        effectiveBgSrcWithAv && bgMode !== "off"
-          ? `url("${effectiveBgSrcWithAv}")`
+        effectiveBgSrc && bgMode !== "off"
+          ? `url("${effectiveBgSrc}")`
           : "none",
-<<<<<<< HEAD
-      "--bg-blur": `${gb}px`,
-      "--glass-blur": `${gblur}`, // unitless
-      "--glass-alpha": `${ga}`,
-      "--glass-alpha-strong": `${clamp(ga + 0.13, 0, 1)}`,
-    };
-  }, [effectiveBgSrcWithAv, bgMode, bgBlur, glassBlur, glassAlpha]);
-=======
       "--bg-blur": `${Math.round(clamp(bgBlur, 0, 60))}px`,
-
+      "--bg-dim": "0", // 完全無効固定
       "--glass-blur": `${Math.round(clamp(glassBlur, 0, 60))}px`,
       "--glass-alpha": `${clamp(glassAlpha, 0, 1)}`,
       "--glass-alpha-strong": `${clamp(glassAlpha + 0.13, 0, 1)}`,
     };
   }, [effectiveBgSrc, bgMode, bgBlur, glassBlur, glassAlpha]);
->>>>>>> rollback-6523600
 
   return (
     <div
@@ -194,18 +155,6 @@ function AppInner() {
         ...appVars,
       }}
     >
-      {/* ✅ 背景レイヤー（実体DOMにする：backdrop-filterが確実に効く土台） */}
-      <div
-        id="layer-bg"
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: Z.bg,
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* ✅ キャラ（常駐） */}
       <div
         id="layer-stage"
         style={{
@@ -218,7 +167,6 @@ function AppInner() {
         <Stage />
       </div>
 
-      {/* ✅ UI（画面だけ切り替わる） */}
       <div
         id="layer-ui"
         style={{
@@ -226,10 +174,9 @@ function AppInner() {
           inset: 0,
           zIndex: Z.ui,
           pointerEvents: "auto",
-          display: "block",
         }}
       >
-        <FadeSwitch activeKey={screen}>{content}</FadeSwitch>
+        {content}
       </div>
     </div>
   );
