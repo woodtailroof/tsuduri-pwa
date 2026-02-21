@@ -49,21 +49,16 @@ body {
   --bg-base-1: #0b0d13;
   --bg-accent: rgba(255, 77, 109, 0.18);
 
-  /**
-   * ✅ 背景画像（デフォルト）
-   * - App.tsx が style で --bg-image を上書きする前提
-   * - 背景OFFのときは App.tsx が --bg-image: none を入れる
-   */
+  /* 背景画像（App.tsxが上書き） */
   --bg-image: url("/assets/bg/ui-check.png");
 
-  /* ✅ 背景のぼかし＆暗幕（Appが毎画面上書き） */
+  /* 背景のぼかし（App.tsxが上書き） */
   --bg-blur: 0px;
-  --bg-dim: 0.25;
 
-  /* ✅ すりガラス（全UIで統一して参照） */
-  --glass-blur: 10px; /* 0pxで完全オフ */
-  --glass-alpha: 0.22; /* 0〜1（濃さ） */
-  --glass-alpha-strong: 0.35; /* “少し濃い”用 */
+  /* すりガラス（unitlessで保持） */
+  --glass-blur: 10; /* 0で完全オフ */
+  --glass-alpha: 0.22; /* 0〜1 */
+  --glass-alpha-strong: 0.35;
 }
 
 body {
@@ -202,24 +197,23 @@ h3 {
 }
 
 /* =========================================================
-   ✅ 背景レイヤー（全画面共通）
-   - 重要：.page-shell から #app-root に移動
-   - これで Stage(キャラ) が背景の上に出る
+   ✅ 背景レイヤー（実体DOM）
    ========================================================= */
+
 #app-root {
   position: relative;
   isolation: isolate;
 }
 
-/* 背景画像＋空気 */
-#app-root::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -3;
-
+/* ✅ これが背面の本体（以前の ::before を移植） */
+#layer-bg {
   background:
     var(--bg-image, none),
+    radial-gradient(
+      800px 500px at 50% 30%,
+      rgba(255, 255, 255, 0.06),
+      transparent 65%
+    ),
     radial-gradient(
       1000px 700px at 20% -10%,
       rgba(255, 77, 109, 0.18),
@@ -240,70 +234,6 @@ h3 {
   transform: translateZ(0);
 }
 
-/* ✅ 暗幕（Settingsのスライダーにリンク） */
-#app-root::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-
-  background:
-    linear-gradient(
-      180deg,
-      rgba(0, 0, 0, calc(var(--bg-dim, 0.35) + 0.1)),
-      rgba(0, 0, 0, var(--bg-dim, 0.35))
-    ),
-    radial-gradient(
-      800px 500px at 50% 30%,
-      rgba(255, 255, 255, 0.06),
-      transparent 65%
-    );
-  pointer-events: none;
-}
-
-.page-shell-inner {
-  position: relative;
-  z-index: 0;
-}
-
-/* =========================================================
-   ✅ 戻るボタン（右上固定に統一）
-   ========================================================= */
-.back-button {
-  position: fixed;
-  z-index: 50;
-
-  top: max(10px, env(safe-area-inset-top));
-  right: max(10px, env(safe-area-inset-right));
-  left: auto;
-
-  width: auto;
-  max-width: calc(100vw - 20px);
-
-  border: 1px solid var(--line);
-  border-radius: 999px;
-
-  padding: 8px 12px;
-  line-height: 1;
-  white-space: nowrap;
-
-  color: rgba(255, 255, 255, 0.92);
-  background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
-
-  backdrop-filter: blur(var(--glass-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
-
-  cursor: pointer;
-}
-
-.back-button:active {
-  transform: translateY(1px);
-}
-
-.with-back-button {
-  padding-top: 44px;
-}
-
 /* =========================================================
    ✅ すりガラス：カード/パネルの共通クラス
    ========================================================= */
@@ -312,8 +242,8 @@ h3 {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
   background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
-  backdrop-filter: blur(var(--glass-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
+  backdrop-filter: blur(calc(var(--glass-blur, 0) * 1px));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur, 0) * 1px));
 }
 
 .glass-strong,
@@ -321,15 +251,13 @@ h3 {
   background: rgba(17, 17, 17, var(--glass-alpha-strong, 0.35));
 }
 
-/* =========================================================
-   ✅ 透過UI（ボタン/入力）も “濃さ” に追従させる
-   ========================================================= */
+/* 透過UI（ボタン/入力）も追従 */
 button {
   border: 1px solid var(--line);
   color: rgba(255, 255, 255, 0.9);
   background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
-  backdrop-filter: blur(var(--glass-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
+  backdrop-filter: blur(calc(var(--glass-blur, 0) * 1px));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur, 0) * 1px));
   border-radius: 14px;
   padding: 10px 14px;
 }
@@ -344,8 +272,8 @@ select {
   border: 1px solid var(--line);
   color: rgba(255, 255, 255, 0.92);
   background: rgba(17, 17, 17, var(--glass-alpha-strong, 0.35));
-  backdrop-filter: blur(var(--glass-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
+  backdrop-filter: blur(calc(var(--glass-blur, 0) * 1px));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur, 0) * 1px));
   border-radius: 12px;
   padding: 10px 12px;
   outline: none;
@@ -357,39 +285,38 @@ select:focus {
   border-color: rgba(255, 77, 109, 0.55);
 }
 
-/* 以下は元のまま（使ってないなら消してOK） */
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+/* フェード（opacityのみ） */
+.fade-switch {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  opacity: 1;
+  will-change: opacity;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+.fade-switch[data-phase="exit"] {
+  opacity: 0;
+  transition: opacity var(--fade-ms, 220ms) ease;
+  pointer-events: none;
+}
+
+.fade-switch[data-phase="enter"] {
+  opacity: 1;
+  transition: opacity var(--fade-ms, 220ms) ease;
+}
+
+.fade-switch[data-phase="idle"] {
+  opacity: 1;
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-switch,
+  .fade-switch[data-phase="exit"],
+  .fade-switch[data-phase="enter"],
+  .fade-switch[data-phase="idle"] {
+    transition: none !important;
   }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
-}
-
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
 }

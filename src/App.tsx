@@ -99,7 +99,7 @@ function AppInner() {
     content = <Home go={goFromHome} />;
   }
 
-  // ✅ PageShellが持ってた「見た目変数」をAppで付与して全画面に効かせる
+  // ✅ 見た目変数を App で付与して全画面に効かせる
   const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
   const autoBgSet =
     (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
@@ -119,7 +119,6 @@ function AppInner() {
     return autoPreviewSrc;
   }, [bgMode, fixedBgSrc, autoPreviewSrc]);
 
-  // ✅ 暗幕（bgDim）は廃止：互換のためCSS変数は残すが、常に 0 で無効化する
   const bgBlur = Number.isFinite(settings.bgBlur)
     ? settings.bgBlur
     : DEFAULT_SETTINGS.bgBlur;
@@ -139,9 +138,6 @@ function AppInner() {
           ? `url("${effectiveBgSrc}")`
           : "none",
       "--bg-blur": `${Math.round(clamp(bgBlur, 0, 60))}px`,
-
-      // ✅ 暗幕を常に無効化
-      "--bg-dim": "0",
 
       "--glass-blur": `${Math.round(clamp(glassBlur, 0, 60))}px`,
       "--glass-alpha": `${clamp(glassAlpha, 0, 1)}`,

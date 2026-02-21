@@ -223,6 +223,9 @@ export default function Settings({ back }: Props) {
   );
   const [charImageMap, setCharImageMapState] = useState<CharacterImageMap>({});
 
+  // ✅ unitless の --glass-blur を px に変換して使う（inline style 用）
+  const glassBlurCss = "blur(calc(var(--glass-blur, 0) * 1px))";
+
   const sectionTitle: CSSProperties = {
     margin: 0,
     fontSize: 16,
@@ -307,8 +310,8 @@ export default function Settings({ back }: Props) {
     alignItems: "center",
     gap: 8,
     whiteSpace: "nowrap",
-    backdropFilter: "blur(var(--glass-blur, 0px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur, 0px))",
+    backdropFilter: glassBlurCss,
+    WebkitBackdropFilter: glassBlurCss,
   };
 
   const pillDisabled: CSSProperties = {
@@ -387,9 +390,7 @@ export default function Settings({ back }: Props) {
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
 
-  const bgDim = Number.isFinite(settings.bgDim)
-    ? settings.bgDim
-    : DEFAULT_SETTINGS.bgDim;
+  // ✅ 表示
   const bgBlur = Number.isFinite(settings.bgBlur)
     ? settings.bgBlur
     : DEFAULT_SETTINGS.bgBlur;
@@ -442,7 +443,7 @@ export default function Settings({ back }: Props) {
     characterMode !== "fixed" ||
     createdCharacters.length === 0;
 
-  // ✅ Settingsカードのクラスを index.css に合わせる（ここが “濃さが効かない” 本丸）
+  // ✅ Settingsカードのクラスを index.css に合わせる
   const cardClass = "glass-panel strong";
 
   return (
@@ -672,8 +673,6 @@ export default function Settings({ back }: Props) {
                             ? looksLikeImageFilePath(normalized)
                             : false;
 
-                          // 単一ファイルならそれをそのまま1枚だけ見せる
-                          // フォルダ指定なら表情キー分を全部並べる
                           const previewSingle = isFile
                             ? appendAssetVersion(
                                 normalizePublicPath(raw),
@@ -705,9 +704,8 @@ export default function Settings({ back }: Props) {
                                 padding: 10,
                                 display: "grid",
                                 gap: 8,
-                                backdropFilter: "blur(var(--glass-blur, 0px))",
-                                WebkitBackdropFilter:
-                                  "blur(var(--glass-blur, 0px))",
+                                backdropFilter: glassBlurCss,
+                                WebkitBackdropFilter: glassBlurCss,
                               }}
                             >
                               <div
@@ -1123,27 +1121,6 @@ export default function Settings({ back }: Props) {
 
               <div style={formGrid}>
                 <div style={row}>
-                  <div style={label}>背景の暗幕</div>
-                  <div style={rowStack}>
-                    <div style={controlLine}>
-                      <span style={help}>背景を暗くして文字を読みやすく</span>
-                      <span style={help}>{Math.round(bgDim * 100)}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.02}
-                      value={bgDim}
-                      onChange={(e) =>
-                        set({ bgDim: clamp(Number(e.target.value), 0, 1) })
-                      }
-                      style={fullWidthControl}
-                    />
-                  </div>
-                </div>
-
-                <div style={row}>
                   <div style={label}>背景ぼかし</div>
                   <div style={rowStack}>
                     <div style={controlLine}>
@@ -1350,8 +1327,8 @@ export default function Settings({ back }: Props) {
                           padding: 10,
                           display: "grid",
                           gap: 8,
-                          backdropFilter: "blur(var(--glass-blur, 0px))",
-                          WebkitBackdropFilter: "blur(var(--glass-blur, 0px))",
+                          backdropFilter: glassBlurCss,
+                          WebkitBackdropFilter: glassBlurCss,
                         }}
                       >
                         <div

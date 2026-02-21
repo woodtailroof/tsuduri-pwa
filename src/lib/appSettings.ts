@@ -27,7 +27,6 @@ export type AppSettings = {
   /**
    * ✅ 静的アセット用のキャッシュバスター（Cloudflare immutable 対策）
    * 空なら何もしない。値が入ると画像URLに ?av=... を付ける。
-   * 例: "20260219a" / "2" / Date.now().toString()
    */
   assetVersion: string;
 
@@ -37,8 +36,6 @@ export type AppSettings = {
   fixedBgSrc: string;
 
   // ===== 表示 =====
-  /** 背景暗幕 0〜1 */
-  bgDim: number;
   /** 背景ぼかし(px) */
   bgBlur: number;
 
@@ -75,7 +72,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   characterOpacity: 1,
   characterOverrideSrc: "",
 
-  // ✅ assetVersion（空=無効）
+  // assetVersion（空=無効）
   assetVersion: "",
 
   // 背景
@@ -84,7 +81,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fixedBgSrc: "",
 
   // 表示
-  bgDim: 0.25,
   bgBlur: 0,
 
   // ガラス
@@ -96,8 +92,22 @@ export const DEFAULT_SETTINGS: AppSettings = {
  * util
  * ========================= */
 
-function clamp(n: number, min: number, max: number) {
-  if (!Number.isFinite(n)) return min;
+/**
+ * ✅ string / "10px" / number を全部受ける数値化
+ */
+function toNumberLike(v: unknown, fallback: number): number {
+  if (typeof v === "number") return Number.isFinite(v) ? v : fallback;
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return fallback;
+    const n = Number.parseFloat(s); // "10px" も 10 になる
+    return Number.isFinite(n) ? n : fallback;
+  }
+  return fallback;
+}
+
+function clamp(v: unknown, min: number, max: number) {
+  const n = toNumberLike(v, min);
   return Math.max(min, Math.min(max, n));
 }
 
@@ -112,13 +122,6 @@ export function normalizePublicPath(p: string): string {
  * 背景解決
  * ========================= */
 
-/**
- * ✅ 4枚運用：
- * /assets/bg/{setId}_morning.png
- * /assets/bg/{setId}_day.png
- * /assets/bg/{setId}_evening.png
- * /assets/bg/{setId}_night.png
- */
 export function resolveAutoBackgroundSrc(
   setId: string,
   band: BgTimeBand,
@@ -140,11 +143,6 @@ export function getTimeBand(d: Date): BgTimeBand {
  * キャラ画像
  * ========================= */
 
-/**
- * ✅ PageShell が1引数で呼べるようにする（TS2554対策）
- * - overrideSrc があればそれを優先
- * - 無ければキャラIDから既定パスを組み立てる（最低限の互換）
- */
 export function resolveCharacterSrc(
   characterId: string,
   overrideSrc?: string,
@@ -155,7 +153,6 @@ export function resolveCharacterSrc(
   const id = (characterId ?? "").trim();
   if (!id) return "/assets/character-test.png";
 
-  // 既定：/assets/characters/{id}.png を想定（無ければ最終的にPageShell側のフォールバックに落ちる）
   return normalizePublicPath(`/assets/characters/${id}.png`);
 }
 
@@ -179,7 +176,7 @@ function normalizeSettings(
     merged.fixedBgSrc = String(merged.bgFixedSrc);
   }
 
-  // もし過去に bgMode:"off" が入ってても型内なのでOK。null/変な値は補正
+  // bgMode の補正
   if (
     merged.bgMode !== "auto" &&
     merged.bgMode !== "fixed" &&
@@ -190,7 +187,7 @@ function normalizeSettings(
 
   merged.characterScale = clamp(merged.characterScale, 0.7, 5.0);
   merged.characterOpacity = clamp(merged.characterOpacity, 0, 1);
-  merged.bgDim = clamp(merged.bgDim, 0, 1);
+
   merged.bgBlur = clamp(merged.bgBlur, 0, 24);
   merged.glassAlpha = clamp(merged.glassAlpha, 0, 0.6);
   merged.glassBlur = clamp(merged.glassBlur, 0, 40);
@@ -199,7 +196,7 @@ function normalizeSettings(
     (merged.autoBgSet ?? "").trim() || DEFAULT_SETTINGS.autoBgSet;
   merged.fixedBgSrc = (merged.fixedBgSrc ?? "").trim();
 
-  // ✅ assetVersion 正規化
+  // assetVersion 正規化
   merged.assetVersion = String(merged.assetVersion ?? "").trim();
 
   return merged;
