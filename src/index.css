@@ -49,23 +49,16 @@ body {
   --bg-base-1: #0b0d13;
   --bg-accent: rgba(255, 77, 109, 0.18);
 
-  /**
-   * ✅ 背景画像（デフォルト）
-   * - App.tsx が style で --bg-image を上書きする前提
-   * - 背景OFFのときは App.tsx が --bg-image: none を入れる
-   */
+  /* 背景画像（App.tsxが上書き） */
   --bg-image: url("/assets/bg/ui-check.png");
 
-  /* ✅ 背景のぼかし（Appが毎画面上書き） */
+  /* 背景のぼかし（App.tsxが上書き） */
   --bg-blur: 0px;
 
-  /* ✅ すりガラス（全UIで統一して参照）
-     - --glass-blur は unitless（数値）で持つ
-     - 使う側で calc(... * 1px) にする
-  */
+  /* すりガラス（unitlessで保持） */
   --glass-blur: 10; /* 0で完全オフ */
-  --glass-alpha: 0.22; /* 0〜1（濃さ） */
-  --glass-alpha-strong: 0.35; /* “少し濃い”用 */
+  --glass-alpha: 0.22; /* 0〜1 */
+  --glass-alpha-strong: 0.35;
 }
 
 body {
@@ -204,9 +197,8 @@ h3 {
 }
 
 /* =========================================================
-   ✅ 背景レイヤー（全画面共通）
-   - 暗幕は完全廃止
-   - 背景画像 + 空気感 だけ
+   ✅ 背景レイヤー（実体DOM）
+   - backdrop-filterが“確実に参照できる背面”を作る
    ========================================================= */
 
 #app-root {
@@ -214,22 +206,15 @@ h3 {
   isolation: isolate;
 }
 
-/* 背景画像＋空気（暗幕なし） */
-#app-root::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -3;
-
+/* ✅ これが背面の本体（以前の ::before を移植） */
+#layer-bg {
   background:
-    /* 1) 背景画像 */
     var(--bg-image, none),
-    /* 2) 空気感（薄い光） */
     radial-gradient(
-        800px 500px at 50% 30%,
-        rgba(255, 255, 255, 0.06),
-        transparent 65%
-      ),
+      800px 500px at 50% 30%,
+      rgba(255, 255, 255, 0.06),
+      transparent 65%
+    ),
     radial-gradient(
       1000px 700px at 20% -10%,
       rgba(255, 77, 109, 0.18),
@@ -246,53 +231,8 @@ h3 {
   background-position: center;
   background-repeat: no-repeat;
 
-  /* 背景ぼかし（Settingsのスライダーにリンク） */
   filter: blur(var(--bg-blur, 0px));
   transform: translateZ(0);
-  pointer-events: none;
-}
-
-.page-shell-inner {
-  position: relative;
-  z-index: 0;
-}
-
-/* =========================================================
-   ✅ 戻るボタン（右上固定に統一）
-   ========================================================= */
-.back-button {
-  position: fixed;
-  z-index: 50;
-
-  top: max(10px, env(safe-area-inset-top));
-  right: max(10px, env(safe-area-inset-right));
-  left: auto;
-
-  width: auto;
-  max-width: calc(100vw - 20px);
-
-  border: 1px solid var(--line);
-  border-radius: 999px;
-
-  padding: 8px 12px;
-  line-height: 1;
-  white-space: nowrap;
-
-  color: rgba(255, 255, 255, 0.92);
-  background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
-
-  backdrop-filter: blur(calc(var(--glass-blur, 0) * 1px));
-  -webkit-backdrop-filter: blur(calc(var(--glass-blur, 0) * 1px));
-
-  cursor: pointer;
-}
-
-.back-button:active {
-  transform: translateY(1px);
-}
-
-.with-back-button {
-  padding-top: 44px;
 }
 
 /* =========================================================
@@ -312,9 +252,7 @@ h3 {
   background: rgba(17, 17, 17, var(--glass-alpha-strong, 0.35));
 }
 
-/* =========================================================
-   ✅ 透過UI（ボタン/入力）も “濃さ” に追従させる
-   ========================================================= */
+/* 透過UI（ボタン/入力）も追従 */
 button {
   border: 1px solid var(--line);
   color: rgba(255, 255, 255, 0.9);
@@ -348,11 +286,7 @@ select:focus {
   border-color: rgba(255, 77, 109, 0.55);
 }
 
-/* =========================================================
-   🌫️ 画面切替フェード（UIレイヤ）
-   - ✅ opacity のみ（transform完全撤去）
-   - これで iOS Safari の backdrop-filter 死亡を避ける
-   ========================================================= */
+/* フェード（opacityのみ） */
 .fade-switch {
   width: 100%;
   height: 100%;
@@ -379,7 +313,6 @@ select:focus {
   transition: none;
 }
 
-/* 動きが苦手な人は優しく */
 @media (prefers-reduced-motion: reduce) {
   .fade-switch,
   .fade-switch[data-phase="exit"],
@@ -387,41 +320,4 @@ select:focus {
   .fade-switch[data-phase="idle"] {
     transition: none !important;
   }
-}
-
-/* 以下は元のまま（使ってないなら消してOK） */
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
-
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
-}
-
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
 }

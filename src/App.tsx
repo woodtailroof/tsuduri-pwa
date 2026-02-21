@@ -36,6 +36,7 @@ type Screen =
 
 /** ✅ レイヤー順（背面→前面） */
 const Z = {
+  bg: 0,
   stage: 1,
   ui: 2,
 } as const;
@@ -134,7 +135,7 @@ function AppInner() {
     return appendAssetVersion(effectiveBgSrc, assetVersion);
   }, [effectiveBgSrc, assetVersion]);
 
-  // ✅ 3要素のみ（bgDimは廃止）
+  // ✅ 表示（3要素）
   const bgBlur = Number.isFinite(settings.bgBlur)
     ? settings.bgBlur
     : DEFAULT_SETTINGS.bgBlur;
@@ -142,6 +143,7 @@ function AppInner() {
   const glassAlpha = Number.isFinite(settings.glassAlpha)
     ? settings.glassAlpha
     : DEFAULT_SETTINGS.glassAlpha;
+
   const glassBlur = Number.isFinite(settings.glassBlur)
     ? settings.glassBlur
     : DEFAULT_SETTINGS.glassBlur;
@@ -149,9 +151,8 @@ function AppInner() {
   type CSSVars = Record<`--${string}`, string>;
   const appVars: CSSProperties & CSSVars = useMemo(() => {
     const gb = Math.round(clamp(bgBlur, 0, 60));
-
     const ga = clamp(glassAlpha, 0, 1);
-    const gblur = Math.round(clamp(glassBlur, 0, 60)); // ✅ unitless（数値）
+    const gblur = Math.round(clamp(glassBlur, 0, 60)); // unitless
 
     return {
       "--bg-image":
@@ -159,9 +160,7 @@ function AppInner() {
           ? `url("${effectiveBgSrcWithAv}")`
           : "none",
       "--bg-blur": `${gb}px`,
-
-      // ✅ unitless（数値）に統一して、CSS側で px にする
-      "--glass-blur": `${gblur}`,
+      "--glass-blur": `${gblur}`, // unitless
       "--glass-alpha": `${ga}`,
       "--glass-alpha-strong": `${clamp(ga + 0.13, 0, 1)}`,
     };
@@ -178,7 +177,18 @@ function AppInner() {
         ...appVars,
       }}
     >
-      {/* ✅ 背景 + キャラ（常駐） */}
+      {/* ✅ 背景レイヤー（実体DOMにする：backdrop-filterが確実に効く土台） */}
+      <div
+        id="layer-bg"
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: Z.bg,
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* ✅ キャラ（常駐） */}
       <div
         id="layer-stage"
         style={{
@@ -202,7 +212,6 @@ function AppInner() {
           display: "block",
         }}
       >
-        {/* ✅ ここが本丸：screenキーでフェード切替 */}
         <FadeSwitch activeKey={screen}>{content}</FadeSwitch>
       </div>
     </div>
