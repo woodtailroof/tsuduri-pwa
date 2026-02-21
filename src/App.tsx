@@ -14,7 +14,6 @@ import Chat from "./screens/Chat";
 import Settings from "./screens/Settings";
 import CharacterSettings from "./screens/CharacterSettings";
 import Stage from "./components/Stage";
-import FadeSwitch from "./components/FadeSwitch";
 import {
   DEFAULT_SETTINGS,
   getTimeBand,
@@ -36,22 +35,12 @@ type Screen =
 
 /** ✅ レイヤー順（背面→前面） */
 const Z = {
-  stage: 0,
-  ui: 20,
+  stage: 1,
+  ui: 2,
 } as const;
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
-}
-
-/** ✅ number/ "12" / "12.3" を安全に number 化 */
-function toNumber(v: unknown): number | null {
-  if (typeof v === "number") return Number.isFinite(v) ? v : null;
-  if (typeof v === "string") {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
 }
 
 /** ✅ 1分ごとに更新（背景の時間帯追従） */
@@ -110,7 +99,7 @@ function AppInner() {
     content = <Home go={goFromHome} />;
   }
 
-  // ✅ PageShellが持ってた「見た目変数」をAppで付与して全画面に効かせる
+  // ✅ 見た目変数（全画面共通）
   const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
   const autoBgSet =
     (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
@@ -130,45 +119,42 @@ function AppInner() {
     return autoPreviewSrc;
   }, [bgMode, fixedBgSrc, autoPreviewSrc]);
 
-  // ✅ ここが今回の修正ポイント：文字列でも拾って数値化
-  const bgDim = toNumber(settings.bgDim);
-  const bgBlur = toNumber(settings.bgBlur);
-  const glassAlpha = toNumber(settings.glassAlpha);
-  const glassBlur = toNumber(settings.glassBlur);
+  const bgDim = Number.isFinite(settings.bgDim)
+    ? settings.bgDim
+    : DEFAULT_SETTINGS.bgDim;
+  const bgBlur = Number.isFinite(settings.bgBlur)
+    ? settings.bgBlur
+    : DEFAULT_SETTINGS.bgBlur;
 
-  const effectiveBgDim =
-    bgDim != null ? bgDim : DEFAULT_SETTINGS.bgDim;
-  const effectiveBgBlur =
-    bgBlur != null ? bgBlur : DEFAULT_SETTINGS.bgBlur;
-
-  const effectiveGlassAlpha =
-    glassAlpha != null ? glassAlpha : DEFAULT_SETTINGS.glassAlpha;
-  const effectiveGlassBlur =
-    glassBlur != null ? glassBlur : DEFAULT_SETTINGS.glassBlur;
+  const glassAlpha = Number.isFinite(settings.glassAlpha)
+    ? settings.glassAlpha
+    : DEFAULT_SETTINGS.glassAlpha;
+  const glassBlur = Number.isFinite(settings.glassBlur)
+    ? settings.glassBlur
+    : DEFAULT_SETTINGS.glassBlur;
 
   type CSSVars = Record<`--${string}`, string>;
   const appVars: CSSProperties & CSSVars = useMemo(() => {
-    const ga = clamp(effectiveGlassAlpha, 0, 1);
+    const gb = Math.round(clamp(bgBlur, 0, 60));
+    const dim = clamp(bgDim, 0, 1);
+
+    const ga = clamp(glassAlpha, 0, 1);
+    const gblur = Math.round(clamp(glassBlur, 0, 60)); // ✅ unitless 数値
+
     return {
       "--bg-image":
         effectiveBgSrc && bgMode !== "off"
           ? `url("${effectiveBgSrc}")`
           : "none",
-      "--bg-blur": `${Math.round(clamp(effectiveBgBlur, 0, 60))}px`,
-      "--bg-dim": `${clamp(effectiveBgDim, 0, 1)}`,
+      "--bg-blur": `${gb}px`,
+      "--bg-dim": `${dim}`,
 
-      "--glass-blur": `${Math.round(clamp(effectiveGlassBlur, 0, 60))}px`,
+      // ✅ unitless（数値）に統一して、CSS側で px にする
+      "--glass-blur": `${gblur}`,
       "--glass-alpha": `${ga}`,
       "--glass-alpha-strong": `${clamp(ga + 0.13, 0, 1)}`,
     };
-  }, [
-    effectiveBgSrc,
-    bgMode,
-    effectiveBgBlur,
-    effectiveBgDim,
-    effectiveGlassBlur,
-    effectiveGlassAlpha,
-  ]);
+  }, [effectiveBgSrc, bgMode, bgBlur, bgDim, glassBlur, glassAlpha]);
 
   return (
     <div
@@ -178,9 +164,6 @@ function AppInner() {
         height: "100dvh",
         overflow: "hidden",
         position: "relative",
-        display: "flex",
-        flexDirection: "column",
-        minHeight: 0,
         ...appVars,
       }}
     >
@@ -205,15 +188,10 @@ function AppInner() {
           inset: 0,
           zIndex: Z.ui,
           pointerEvents: "auto",
-          display: "flex",
-          flexDirection: "column",
-          minHeight: 0,
-          overflow: "hidden",
+          display: "block",
         }}
       >
-        <FadeSwitch activeKey={screen} durationMs={220} liftPx={6}>
-          <div style={{ flex: "1 1 auto", minHeight: 0 }}>{content}</div>
-        </FadeSwitch>
+        {content}
       </div>
     </div>
   );

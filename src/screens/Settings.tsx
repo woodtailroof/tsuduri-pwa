@@ -223,6 +223,10 @@ export default function Settings({ back }: Props) {
   );
   const [charImageMap, setCharImageMapState] = useState<CharacterImageMap>({});
 
+  // ✅ ガラスぼかしは「数値」運用に統一している前提
+  // blur(var(--glass-blur)) だと unitless が無効になるので calc で必ず px 化
+  const glassBlurExpr = "blur(calc(var(--glass-blur, 0) * 1px))";
+
   const sectionTitle: CSSProperties = {
     margin: 0,
     fontSize: 16,
@@ -307,8 +311,8 @@ export default function Settings({ back }: Props) {
     alignItems: "center",
     gap: 8,
     whiteSpace: "nowrap",
-    backdropFilter: "blur(var(--glass-blur, 0px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur, 0px))",
+    backdropFilter: glassBlurExpr,
+    WebkitBackdropFilter: glassBlurExpr,
   };
 
   const pillDisabled: CSSProperties = {
@@ -672,8 +676,6 @@ export default function Settings({ back }: Props) {
                             ? looksLikeImageFilePath(normalized)
                             : false;
 
-                          // 単一ファイルならそれをそのまま1枚だけ見せる
-                          // フォルダ指定なら表情キー分を全部並べる
                           const previewSingle = isFile
                             ? appendAssetVersion(
                                 normalizePublicPath(raw),
@@ -705,9 +707,8 @@ export default function Settings({ back }: Props) {
                                 padding: 10,
                                 display: "grid",
                                 gap: 8,
-                                backdropFilter: "blur(var(--glass-blur, 0px))",
-                                WebkitBackdropFilter:
-                                  "blur(var(--glass-blur, 0px))",
+                                backdropFilter: glassBlurExpr,
+                                WebkitBackdropFilter: glassBlurExpr,
                               }}
                             >
                               <div
@@ -728,9 +729,7 @@ export default function Settings({ back }: Props) {
                                 >
                                   {c.label}{" "}
                                   <span
-                                    style={{
-                                      color: "rgba(255,255,255,0.55)",
-                                    }}
+                                    style={{ color: "rgba(255,255,255,0.55)" }}
                                   >
                                     （id: {c.id}）
                                   </span>
@@ -1350,8 +1349,8 @@ export default function Settings({ back }: Props) {
                           padding: 10,
                           display: "grid",
                           gap: 8,
-                          backdropFilter: "blur(var(--glass-blur, 0px))",
-                          WebkitBackdropFilter: "blur(var(--glass-blur, 0px))",
+                          backdropFilter: glassBlurExpr,
+                          WebkitBackdropFilter: glassBlurExpr,
                         }}
                       >
                         <div

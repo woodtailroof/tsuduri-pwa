@@ -96,8 +96,25 @@ export const DEFAULT_SETTINGS: AppSettings = {
  * util
  * ========================= */
 
-function clamp(n: number, min: number, max: number) {
-  if (!Number.isFinite(n)) return min;
+/**
+ * ✅ string / "10px" / number を全部受ける数値化
+ * - "10" -> 10
+ * - "10px" -> 10
+ * - "" / null / NaN -> fallback
+ */
+function toNumberLike(v: unknown, fallback: number): number {
+  if (typeof v === "number") return Number.isFinite(v) ? v : fallback;
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return fallback;
+    const n = Number.parseFloat(s); // "10px" も 10 になる
+    return Number.isFinite(n) ? n : fallback;
+  }
+  return fallback;
+}
+
+function clamp(v: unknown, min: number, max: number) {
+  const n = toNumberLike(v, min);
   return Math.max(min, Math.min(max, n));
 }
 
