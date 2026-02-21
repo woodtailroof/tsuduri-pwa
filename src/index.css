@@ -59,11 +59,12 @@ body {
   /* ✅ 背景のぼかし＆暗幕（Appが毎画面上書き） */
   --bg-blur: 0px;
   --bg-dim: 0.25;
+  --bg-dim-strong: 0.35; /* ✅ 追加（calc撤去のため） */
 
   /* ✅ すりガラス（全UIで統一して参照） */
-  --glass-blur: 10; /* ✅ unitless（数値）に統一 */
-  --glass-alpha: 0.22; /* 0〜1（濃さ） */
-  --glass-alpha-strong: 0.35; /* “少し濃い”用 */
+  --glass-blur: 10; /* unitless */
+  --glass-alpha: 0.22;
+  --glass-alpha-strong: 0.35;
 }
 
 body {
@@ -217,17 +218,20 @@ h3 {
   z-index: -3;
 
   background:
+    /* 1) 背景画像 */
     var(--bg-image, none),
+    /* 2) 暗幕（calc撤去。Safariでも確実に効く） */
     linear-gradient(
-      180deg,
-      rgba(0, 0, 0, calc(var(--bg-dim, 0.35) + 0.1)),
-      rgba(0, 0, 0, var(--bg-dim, 0.35))
-    ),
+        180deg,
+        rgba(0, 0, 0, var(--bg-dim-strong, 0.45)),
+        rgba(0, 0, 0, var(--bg-dim, 0.35))
+      ),
+    /* 3) 空気感（薄い光） */
     radial-gradient(
-      800px 500px at 50% 30%,
-      rgba(255, 255, 255, 0.06),
-      transparent 65%
-    ),
+        800px 500px at 50% 30%,
+        rgba(255, 255, 255, 0.06),
+        transparent 65%
+      ),
     radial-gradient(
       1000px 700px at 20% -10%,
       rgba(255, 77, 109, 0.18),
@@ -244,6 +248,7 @@ h3 {
   background-position: center;
   background-repeat: no-repeat;
 
+  /* 背景ぼかし（Settingsのスライダーにリンク） */
   filter: blur(var(--bg-blur, 0px));
   transform: translateZ(0);
   pointer-events: none;
@@ -369,7 +374,6 @@ select:focus {
   transition: opacity var(--fade-ms, 220ms) ease;
 }
 
-/* 動きが苦手な人は優しく */
 @media (prefers-reduced-motion: reduce) {
   .fade-switch,
   .fade-switch[data-phase="exit"],

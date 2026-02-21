@@ -14,6 +14,7 @@ import Chat from "./screens/Chat";
 import Settings from "./screens/Settings";
 import CharacterSettings from "./screens/CharacterSettings";
 import Stage from "./components/Stage";
+import FadeSwitch from "./components/FadeSwitch";
 import {
   DEFAULT_SETTINGS,
   getTimeBand,
@@ -137,9 +138,10 @@ function AppInner() {
   const appVars: CSSProperties & CSSVars = useMemo(() => {
     const gb = Math.round(clamp(bgBlur, 0, 60));
     const dim = clamp(bgDim, 0, 1);
+    const dimStrong = clamp(dim + 0.1, 0, 1);
 
     const ga = clamp(glassAlpha, 0, 1);
-    const gblur = Math.round(clamp(glassBlur, 0, 60)); // ✅ unitless 数値
+    const gblur = Math.round(clamp(glassBlur, 0, 60)); // unitless
 
     return {
       "--bg-image":
@@ -148,8 +150,9 @@ function AppInner() {
           : "none",
       "--bg-blur": `${gb}px`,
       "--bg-dim": `${dim}`,
+      "--bg-dim-strong": `${dimStrong}`,
 
-      // ✅ unitless（数値）に統一して、CSS側で px にする
+      // unitless（数値）に統一して、CSS側で px にする
       "--glass-blur": `${gblur}`,
       "--glass-alpha": `${ga}`,
       "--glass-alpha-strong": `${clamp(ga + 0.13, 0, 1)}`,
@@ -191,7 +194,8 @@ function AppInner() {
           display: "block",
         }}
       >
-        {content}
+        {/* ✅ ここが本丸：screenキーでフェード切替 */}
+        <FadeSwitch activeKey={screen}>{content}</FadeSwitch>
       </div>
     </div>
   );
