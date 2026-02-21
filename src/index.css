@@ -350,7 +350,8 @@ select:focus {
 
 /* =========================================================
    🌫️ 画面切替フェード（UIレイヤ）
-   - opacity + translateY のみ（backdrop-filter を殺しやすい transform を親で使わない）
+   - ✅ opacity のみ（transform完全撤去）
+   - これで iOS Safari の backdrop-filter 死亡を避ける
    ========================================================= */
 .fade-switch {
   width: 100%;
@@ -359,34 +360,32 @@ select:focus {
   display: flex;
   flex-direction: column;
   opacity: 1;
-  will-change: opacity, transform;
-  transform: translateY(0);
+  will-change: opacity;
 }
 
 .fade-switch[data-phase="exit"] {
   opacity: 0;
-  transform: translateY(var(--fade-lift, 6px));
-  transition:
-    opacity var(--fade-ms, 220ms) ease,
-    transform var(--fade-ms, 220ms) ease;
+  transition: opacity var(--fade-ms, 220ms) ease;
   pointer-events: none;
 }
 
 .fade-switch[data-phase="enter"] {
   opacity: 1;
-  transform: translateY(0);
-  transition:
-    opacity var(--fade-ms, 220ms) ease,
-    transform var(--fade-ms, 220ms) ease;
+  transition: opacity var(--fade-ms, 220ms) ease;
+}
+
+.fade-switch[data-phase="idle"] {
+  opacity: 1;
+  transition: none;
 }
 
 /* 動きが苦手な人は優しく */
 @media (prefers-reduced-motion: reduce) {
   .fade-switch,
   .fade-switch[data-phase="exit"],
-  .fade-switch[data-phase="enter"] {
+  .fade-switch[data-phase="enter"],
+  .fade-switch[data-phase="idle"] {
     transition: none !important;
-    transform: none !important;
   }
 }
 

@@ -8,8 +8,6 @@ type Props = {
   children: ReactNode;
   /** ms（デフォルト: 220） */
   durationMs?: number;
-  /** ほんの少しだけ動かす（デフォルト: 6） */
-  liftPx?: number;
 };
 
 function prefersReducedMotion(): boolean {
@@ -23,7 +21,6 @@ type Phase = "enter" | "exit" | "idle";
 
 export default function FadeSwitch(props: Props) {
   const durationMsRaw = props.durationMs ?? 220;
-  const liftPx = props.liftPx ?? 6;
 
   const durationMs = useMemo(() => {
     return prefersReducedMotion() ? 0 : Math.max(0, Math.floor(durationMsRaw));
@@ -75,7 +72,7 @@ export default function FadeSwitch(props: Props) {
       return;
     }
 
-    // 1) まずフェードアウト開始
+    // 1) まずフェードアウト開始（opacityのみ）
     setPhase("exit");
 
     // 2) duration後に中身を差し替えてフェードイン
@@ -107,10 +104,9 @@ export default function FadeSwitch(props: Props) {
 
   const style = {
     ["--fade-ms" as any]: `${durationMs}ms`,
-    ["--fade-lift" as any]: `${liftPx}px`,
   };
 
-  const dataPhase: "exit" | "enter" = phase === "exit" ? "exit" : "enter";
+  const dataPhase: "exit" | "enter" | "idle" = phase;
 
   return (
     <div className="fade-switch" data-phase={dataPhase} style={style}>
