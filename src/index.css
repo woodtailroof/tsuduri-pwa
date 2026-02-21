@@ -221,20 +221,18 @@ h3 {
   background:
     /* 1) 背景画像 */
     var(--bg-image, none),
-
     /* 2) 暗幕（Settingsのスライダーにリンク） */
     linear-gradient(
-      180deg,
-      rgba(0, 0, 0, calc(var(--bg-dim, 0.35) + 0.1)),
-      rgba(0, 0, 0, var(--bg-dim, 0.35))
-    ),
-
+        180deg,
+        rgba(0, 0, 0, calc(var(--bg-dim, 0.35) + 0.1)),
+        rgba(0, 0, 0, var(--bg-dim, 0.35))
+      ),
     /* 3) 空気感（薄い光） */
     radial-gradient(
-      800px 500px at 50% 30%,
-      rgba(255, 255, 255, 0.06),
-      transparent 65%
-    ),
+        800px 500px at 50% 30%,
+        rgba(255, 255, 255, 0.06),
+        transparent 65%
+      ),
     radial-gradient(
       1000px 700px at 20% -10%,
       rgba(255, 77, 109, 0.18),
