@@ -30,32 +30,20 @@ body {
   margin: 0;
 }
 
-/* React root (Vite) */
 #root {
   height: 100%;
 }
 
 /* =========================
  * App root: background system
- * =========================
- * App.tsx が #app-root に CSS変数を付与する前提:
- *  --bg-image: url("...") or none
- *  --bg-blur: "12px" 等
- *  --bg-dim : 0〜1
- *  --glass-blur: "10px" 等
- *  --glass-alpha: 0〜1
- *  --glass-alpha-strong: 0〜1
- *
- * 重要:
- * 背景は #app-root の ::before / ::after で描画し、
- * Stage/UI は z-index > 0 にする
- */
+ * ========================= */
 
 #app-root {
   position: relative;
   height: 100dvh;
   width: 100vw;
   overflow: hidden;
+
   color: rgba(255, 255, 255, 0.92);
 
   /* 変数の安全デフォルト（JSが壊れても最低限見える） */
@@ -67,47 +55,43 @@ body {
   --glass-alpha: 0.22;
   --glass-alpha-strong: 0.35;
 
-  /* iOSのスクロール/合成の変な挙動を抑える */
   -webkit-overflow-scrolling: touch;
 }
 
-/* 背景画像レイヤー */
+/* ✅ 背景画像 + 暗幕 を“同じレイヤー”に統合（ここが本丸）
+   - 暗幕を ::after で別レイヤーにすると、背後がベタ色になり
+     backdrop-filter の「ぼかし」が見えなくなることがある
+*/
 #app-root::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: 0;
 
-  background-image: var(--bg-image);
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+  background:
+    /* 1) 背景画像 */
+    var(--bg-image),
+    /* 2) 暗幕（Settingsのスライダーにリンク） */
+    linear-gradient(rgba(0, 0, 0, var(--bg-dim)), rgba(0, 0, 0, var(--bg-dim)));
 
-  /* 背景ぼかし */
+  background-size: cover, cover;
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+
+  /* 背景ぼかし（画像＋暗幕まとめてぼかす） */
   filter: blur(var(--bg-blur));
   transform: scale(1.03); /* ぼかし端の欠け対策 */
   will-change: filter, transform;
   pointer-events: none;
 }
 
-/* 暗幕レイヤー（ここが “背景の暗幕” の本体） */
-#app-root::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-
-  background: rgba(0, 0, 0, var(--bg-dim));
-  pointer-events: none;
-}
+/* ✅ 暗幕専用の ::after は “作らない” */
+/* #app-root::after { ... } は不要 */
 
 /* =========================
  * Glass panel (frosted UI)
  * ========================= */
 
-/* backdrop-filter は “背景が背後に存在” して初めて効く。
- * なので必ず z-index:1以上の要素に使うこと。
- */
 .glass-panel {
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -122,10 +106,7 @@ body {
 
 /* =========================
  * FadeSwitch
- * =========================
- * FadeSwitch.tsx は .fade-switch + data-phase を使う前提。
- * これが無いと「フェードが効かない」。
- */
+ * ========================= */
 
 .fade-switch {
   width: 100%;
@@ -140,13 +121,11 @@ body {
   will-change: opacity, transform;
 }
 
-/* exit: 消える */
 .fade-switch[data-phase="exit"] {
   opacity: 0;
   transform: translateY(var(--fade-lift, 6px));
 }
 
-/* enter: 出る（idleに戻す前提なので、ここは一瞬だけ使われる） */
 .fade-switch[data-phase="enter"] {
   opacity: 1;
   transform: translateY(0);
