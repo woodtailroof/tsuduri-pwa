@@ -105,8 +105,8 @@ export default function PageShell(props: Props) {
     if (typeof window !== "undefined") window.history.back();
   }, [onBack]);
 
-  // ✅ unitless で渡される前提なので、ここで px 化
-  const glassBlurExpr = "blur(calc(var(--glass-blur, 0) * 1px))";
+  // ✅ unitless の --glass-blur を px に変換して使う
+  const glassBlurCss = "blur(calc(var(--glass-blur, 0) * 1px))";
 
   // ✅ ヘッダーは常に viewport 基準で固定（すりガラス設定に追従）
   const headerStyle: CSSProperties = {
@@ -118,8 +118,8 @@ export default function PageShell(props: Props) {
     height: `${effectiveHeaderH}px`,
     background: "rgba(0,0,0,var(--glass-alpha, 0.22))",
     borderBottom: "1px solid rgba(255,255,255,0.10)",
-    backdropFilter: glassBlurExpr,
-    WebkitBackdropFilter: glassBlurExpr,
+    backdropFilter: glassBlurCss,
+    WebkitBackdropFilter: glassBlurCss,
   };
 
   const headerInnerStyle: CSSProperties = {
@@ -177,11 +177,18 @@ export default function PageShell(props: Props) {
     alignItems: "center",
     gap: 8,
     whiteSpace: "nowrap",
-    backdropFilter: glassBlurExpr,
-    WebkitBackdropFilter: glassBlurExpr,
+    backdropFilter: glassBlurCss,
+    WebkitBackdropFilter: glassBlurCss,
     flex: "0 0 auto",
   };
 
+  /**
+   * ✅ Chat 崩れ対策の本丸：
+   * 親を flex column にして、本文領域を flex:1 + minHeight:0 にする
+   *
+   * ✅ さらに重要：
+   * Chat.tsx が参照してる --shell-header-h をここで定義する
+   */
   type CSSVars = Record<`--${string}`, string>;
   const shellStyle: CSSProperties & CSSVars = {
     width: "100%",

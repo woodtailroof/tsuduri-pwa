@@ -223,9 +223,8 @@ export default function Settings({ back }: Props) {
   );
   const [charImageMap, setCharImageMapState] = useState<CharacterImageMap>({});
 
-  // ✅ ガラスぼかしは「数値」運用に統一している前提
-  // blur(var(--glass-blur)) だと unitless が無効になるので calc で必ず px 化
-  const glassBlurExpr = "blur(calc(var(--glass-blur, 0) * 1px))";
+  // ✅ unitless の --glass-blur を px に変換して使う（inline style 用）
+  const glassBlurCss = "blur(calc(var(--glass-blur, 0) * 1px))";
 
   const sectionTitle: CSSProperties = {
     margin: 0,
@@ -311,8 +310,8 @@ export default function Settings({ back }: Props) {
     alignItems: "center",
     gap: 8,
     whiteSpace: "nowrap",
-    backdropFilter: glassBlurExpr,
-    WebkitBackdropFilter: glassBlurExpr,
+    backdropFilter: glassBlurCss,
+    WebkitBackdropFilter: glassBlurCss,
   };
 
   const pillDisabled: CSSProperties = {
@@ -446,7 +445,7 @@ export default function Settings({ back }: Props) {
     characterMode !== "fixed" ||
     createdCharacters.length === 0;
 
-  // ✅ Settingsカードのクラスを index.css に合わせる（ここが “濃さが効かない” 本丸）
+  // ✅ Settingsカードのクラスを index.css に合わせる
   const cardClass = "glass-panel strong";
 
   return (
@@ -707,8 +706,8 @@ export default function Settings({ back }: Props) {
                                 padding: 10,
                                 display: "grid",
                                 gap: 8,
-                                backdropFilter: glassBlurExpr,
-                                WebkitBackdropFilter: glassBlurExpr,
+                                backdropFilter: glassBlurCss,
+                                WebkitBackdropFilter: glassBlurCss,
                               }}
                             >
                               <div
@@ -729,7 +728,9 @@ export default function Settings({ back }: Props) {
                                 >
                                   {c.label}{" "}
                                   <span
-                                    style={{ color: "rgba(255,255,255,0.55)" }}
+                                    style={{
+                                      color: "rgba(255,255,255,0.55)",
+                                    }}
                                   >
                                     （id: {c.id}）
                                   </span>
@@ -1349,8 +1350,8 @@ export default function Settings({ back }: Props) {
                           padding: 10,
                           display: "grid",
                           gap: 8,
-                          backdropFilter: glassBlurExpr,
-                          WebkitBackdropFilter: glassBlurExpr,
+                          backdropFilter: glassBlurCss,
+                          WebkitBackdropFilter: glassBlurCss,
                         }}
                       >
                         <div
