@@ -119,9 +119,7 @@ function AppInner() {
     return autoPreviewSrc;
   }, [bgMode, fixedBgSrc, autoPreviewSrc]);
 
-  const bgDim = Number.isFinite(settings.bgDim)
-    ? settings.bgDim
-    : DEFAULT_SETTINGS.bgDim;
+  // ✅ 暗幕（bgDim）は廃止：互換のためCSS変数は残すが、常に 0 で無効化する
   const bgBlur = Number.isFinite(settings.bgBlur)
     ? settings.bgBlur
     : DEFAULT_SETTINGS.bgBlur;
@@ -141,13 +139,15 @@ function AppInner() {
           ? `url("${effectiveBgSrc}")`
           : "none",
       "--bg-blur": `${Math.round(clamp(bgBlur, 0, 60))}px`,
-      "--bg-dim": `${clamp(bgDim, 0, 1)}`,
+
+      // ✅ 暗幕を常に無効化
+      "--bg-dim": "0",
 
       "--glass-blur": `${Math.round(clamp(glassBlur, 0, 60))}px`,
       "--glass-alpha": `${clamp(glassAlpha, 0, 1)}`,
       "--glass-alpha-strong": `${clamp(glassAlpha + 0.13, 0, 1)}`,
     };
-  }, [effectiveBgSrc, bgMode, bgBlur, bgDim, glassBlur, glassAlpha]);
+  }, [effectiveBgSrc, bgMode, bgBlur, glassBlur, glassAlpha]);
 
   return (
     <div
