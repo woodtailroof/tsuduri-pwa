@@ -390,7 +390,11 @@ export default function Settings({ back }: Props) {
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
 
+<<<<<<< HEAD
   // ✅ 3要素のみ（bgDim は廃止）
+=======
+  // ✅ 表示
+>>>>>>> rollback-6523600
   const bgBlur = Number.isFinite(settings.bgBlur)
     ? settings.bgBlur
     : DEFAULT_SETTINGS.bgBlur;

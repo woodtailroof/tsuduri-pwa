@@ -109,7 +109,11 @@ function AppInner() {
     content = <Home go={goFromHome} />;
   }
 
+<<<<<<< HEAD
   // ✅ 見た目変数（全画面共通）
+=======
+  // ✅ 見た目変数を App で付与して全画面に効かせる
+>>>>>>> rollback-6523600
   const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
   const autoBgSet =
     (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
@@ -131,11 +135,14 @@ function AppInner() {
     return autoPreviewSrc;
   }, [bgMode, fixedBgSrc, autoPreviewSrc]);
 
+<<<<<<< HEAD
   const effectiveBgSrcWithAv = useMemo(() => {
     return appendAssetVersion(effectiveBgSrc, assetVersion);
   }, [effectiveBgSrc, assetVersion]);
 
   // ✅ 表示（3要素）
+=======
+>>>>>>> rollback-6523600
   const bgBlur = Number.isFinite(settings.bgBlur)
     ? settings.bgBlur
     : DEFAULT_SETTINGS.bgBlur;
@@ -159,12 +166,22 @@ function AppInner() {
         effectiveBgSrcWithAv && bgMode !== "off"
           ? `url("${effectiveBgSrcWithAv}")`
           : "none",
+<<<<<<< HEAD
       "--bg-blur": `${gb}px`,
       "--glass-blur": `${gblur}`, // unitless
       "--glass-alpha": `${ga}`,
       "--glass-alpha-strong": `${clamp(ga + 0.13, 0, 1)}`,
     };
   }, [effectiveBgSrcWithAv, bgMode, bgBlur, glassBlur, glassAlpha]);
+=======
+      "--bg-blur": `${Math.round(clamp(bgBlur, 0, 60))}px`,
+
+      "--glass-blur": `${Math.round(clamp(glassBlur, 0, 60))}px`,
+      "--glass-alpha": `${clamp(glassAlpha, 0, 1)}`,
+      "--glass-alpha-strong": `${clamp(glassAlpha + 0.13, 0, 1)}`,
+    };
+  }, [effectiveBgSrc, bgMode, bgBlur, glassBlur, glassAlpha]);
+>>>>>>> rollback-6523600
 
   return (
     <div

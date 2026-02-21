@@ -27,7 +27,6 @@ export type AppSettings = {
   /**
    * ✅ 静的アセット用のキャッシュバスター（Cloudflare immutable 対策）
    * 空なら何もしない。値が入ると画像URLに ?av=... を付ける。
-   * 例: "20260219a" / "2" / Date.now().toString()
    */
   assetVersion: string;
 
@@ -36,7 +35,11 @@ export type AppSettings = {
   autoBgSet: string;
   fixedBgSrc: string;
 
+<<<<<<< HEAD
   // ===== 表示（3要素のみ）=====
+=======
+  // ===== 表示 =====
+>>>>>>> rollback-6523600
   /** 背景ぼかし(px) */
   bgBlur: number;
 
@@ -75,7 +78,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   characterOpacity: 1,
   characterOverrideSrc: "",
 
-  // ✅ assetVersion（空=無効）
+  // assetVersion（空=無効）
   assetVersion: "",
 
   // 背景
@@ -83,7 +86,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoBgSet: "surf",
   fixedBgSrc: "",
 
+<<<<<<< HEAD
   // 表示（3要素のみ）
+=======
+  // 表示
+>>>>>>> rollback-6523600
   bgBlur: 0,
 
   // ガラス
@@ -97,9 +104,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 /**
  * ✅ string / "10px" / number を全部受ける数値化
+<<<<<<< HEAD
  * - "10" -> 10
  * - "10px" -> 10
  * - "" / null / NaN -> fallback
+=======
+>>>>>>> rollback-6523600
  */
 function toNumberLike(v: unknown, fallback: number): number {
   if (typeof v === "number") return Number.isFinite(v) ? v : fallback;
@@ -128,13 +138,6 @@ export function normalizePublicPath(p: string): string {
  * 背景解決
  * ========================= */
 
-/**
- * ✅ 4枚運用：
- * /assets/bg/{setId}_morning.png
- * /assets/bg/{setId}_day.png
- * /assets/bg/{setId}_evening.png
- * /assets/bg/{setId}_night.png
- */
 export function resolveAutoBackgroundSrc(
   setId: string,
   band: BgTimeBand,
@@ -156,11 +159,6 @@ export function getTimeBand(d: Date): BgTimeBand {
  * キャラ画像
  * ========================= */
 
-/**
- * ✅ PageShell が1引数で呼べるようにする（TS2554対策）
- * - overrideSrc があればそれを優先
- * - 無ければキャラIDから既定パスを組み立てる（最低限の互換）
- */
 export function resolveCharacterSrc(
   characterId: string,
   overrideSrc?: string,
@@ -171,7 +169,10 @@ export function resolveCharacterSrc(
   const id = (characterId ?? "").trim();
   if (!id) return "/assets/character-test.png";
 
+<<<<<<< HEAD
   // 既定：/assets/characters/{id}.png を想定（無ければ最終的に表示側のフォールバックに落ちる）
+=======
+>>>>>>> rollback-6523600
   return normalizePublicPath(`/assets/characters/${id}.png`);
 }
 
@@ -215,7 +216,7 @@ function normalizeSettings(
     (merged.autoBgSet ?? "").trim() || DEFAULT_SETTINGS.autoBgSet;
   merged.fixedBgSrc = (merged.fixedBgSrc ?? "").trim();
 
-  // ✅ assetVersion 正規化
+  // assetVersion 正規化
   merged.assetVersion = String(merged.assetVersion ?? "").trim();
 
   return merged;
