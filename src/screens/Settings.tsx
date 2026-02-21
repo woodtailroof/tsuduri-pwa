@@ -390,9 +390,7 @@ export default function Settings({ back }: Props) {
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
 
-  const bgDim = Number.isFinite(settings.bgDim)
-    ? settings.bgDim
-    : DEFAULT_SETTINGS.bgDim;
+  // ✅ 3要素のみ（bgDim は廃止）
   const bgBlur = Number.isFinite(settings.bgBlur)
     ? settings.bgBlur
     : DEFAULT_SETTINGS.bgBlur;
@@ -1117,32 +1115,11 @@ export default function Settings({ back }: Props) {
               </div>
             </div>
 
-            {/* 🪟 表示 */}
+            {/* 🪟 表示（3要素） */}
             <div className={cardClass} style={card}>
               <h2 style={sectionTitle}>🪟 表示</h2>
 
               <div style={formGrid}>
-                <div style={row}>
-                  <div style={label}>背景の暗幕</div>
-                  <div style={rowStack}>
-                    <div style={controlLine}>
-                      <span style={help}>背景を暗くして文字を読みやすく</span>
-                      <span style={help}>{Math.round(bgDim * 100)}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.02}
-                      value={bgDim}
-                      onChange={(e) =>
-                        set({ bgDim: clamp(Number(e.target.value), 0, 1) })
-                      }
-                      style={fullWidthControl}
-                    />
-                  </div>
-                </div>
-
                 <div style={row}>
                   <div style={label}>背景ぼかし</div>
                   <div style={rowStack}>

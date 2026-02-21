@@ -56,12 +56,14 @@ body {
    */
   --bg-image: url("/assets/bg/ui-check.png");
 
-  /* ✅ 背景のぼかし＆暗幕（Appが毎画面上書き） */
+  /* ✅ 背景のぼかし（Appが毎画面上書き） */
   --bg-blur: 0px;
-  --bg-dim: 0.25;
 
-  /* ✅ すりガラス（全UIで統一して参照） */
-  --glass-blur: 10px; /* 0pxで完全オフ */
+  /* ✅ すりガラス（全UIで統一して参照）
+     - --glass-blur は unitless（数値）で持つ
+     - 使う側で calc(... * 1px) にする
+  */
+  --glass-blur: 10; /* 0で完全オフ */
   --glass-alpha: 0.22; /* 0〜1（濃さ） */
   --glass-alpha-strong: 0.35; /* “少し濃い”用 */
 }
@@ -203,8 +205,8 @@ h3 {
 
 /* =========================================================
    ✅ 背景レイヤー（全画面共通）
-   - 暗幕(::after)を廃止し、::before の background に統合
-   - これで backdrop-filter の “ぼかし” が視覚的に効く
+   - 暗幕は完全廃止
+   - 背景画像 + 空気感 だけ
    ========================================================= */
 
 #app-root {
@@ -212,7 +214,7 @@ h3 {
   isolation: isolate;
 }
 
-/* 背景画像＋空気＋暗幕（全部ここに統合） */
+/* 背景画像＋空気（暗幕なし） */
 #app-root::before {
   content: "";
   position: fixed;
@@ -222,13 +224,7 @@ h3 {
   background:
     /* 1) 背景画像 */
     var(--bg-image, none),
-    /* 2) 暗幕（Settingsのスライダーにリンク） */
-    linear-gradient(
-        180deg,
-        rgba(0, 0, 0, calc(var(--bg-dim, 0.35) + 0.1)),
-        rgba(0, 0, 0, var(--bg-dim, 0.35))
-      ),
-    /* 3) 空気感（薄い光） */
+    /* 2) 空気感（薄い光） */
     radial-gradient(
         800px 500px at 50% 30%,
         rgba(255, 255, 255, 0.06),
@@ -255,9 +251,6 @@ h3 {
   transform: translateZ(0);
   pointer-events: none;
 }
-
-/* ✅ 暗幕の ::after は廃止（ここ重要） */
-/* #app-root::after { ... } は作らない */
 
 .page-shell-inner {
   position: relative;
@@ -288,8 +281,8 @@ h3 {
   color: rgba(255, 255, 255, 0.92);
   background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
 
-  backdrop-filter: blur(var(--glass-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
+  backdrop-filter: blur(calc(var(--glass-blur, 0) * 1px));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur, 0) * 1px));
 
   cursor: pointer;
 }
@@ -310,8 +303,8 @@ h3 {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
   background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
-  backdrop-filter: blur(var(--glass-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
+  backdrop-filter: blur(calc(var(--glass-blur, 0) * 1px));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur, 0) * 1px));
 }
 
 .glass-strong,
@@ -326,8 +319,8 @@ button {
   border: 1px solid var(--line);
   color: rgba(255, 255, 255, 0.9);
   background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
-  backdrop-filter: blur(var(--glass-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
+  backdrop-filter: blur(calc(var(--glass-blur, 0) * 1px));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur, 0) * 1px));
   border-radius: 14px;
   padding: 10px 14px;
 }
@@ -342,8 +335,8 @@ select {
   border: 1px solid var(--line);
   color: rgba(255, 255, 255, 0.92);
   background: rgba(17, 17, 17, var(--glass-alpha-strong, 0.35));
-  backdrop-filter: blur(var(--glass-blur, 0px));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 0px));
+  backdrop-filter: blur(calc(var(--glass-blur, 0) * 1px));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur, 0) * 1px));
   border-radius: 12px;
   padding: 10px 12px;
   outline: none;

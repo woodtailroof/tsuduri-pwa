@@ -36,9 +36,7 @@ export type AppSettings = {
   autoBgSet: string;
   fixedBgSrc: string;
 
-  // ===== 表示 =====
-  /** 背景暗幕 0〜1 */
-  bgDim: number;
+  // ===== 表示（3要素のみ）=====
   /** 背景ぼかし(px) */
   bgBlur: number;
 
@@ -50,6 +48,8 @@ export type AppSettings = {
   // ===== 旧互換（過去に保存してた可能性があるキー） =====
   bgAutoSet?: string;
   bgFixedSrc?: string;
+
+  // ✅ bgDim は廃止（保存データに残ってても無視する）
 };
 
 /* =========================
@@ -83,8 +83,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoBgSet: "surf",
   fixedBgSrc: "",
 
-  // 表示
-  bgDim: 0.25,
+  // 表示（3要素のみ）
   bgBlur: 0,
 
   // ガラス
@@ -172,7 +171,7 @@ export function resolveCharacterSrc(
   const id = (characterId ?? "").trim();
   if (!id) return "/assets/character-test.png";
 
-  // 既定：/assets/characters/{id}.png を想定（無ければ最終的にPageShell側のフォールバックに落ちる）
+  // 既定：/assets/characters/{id}.png を想定（無ければ最終的に表示側のフォールバックに落ちる）
   return normalizePublicPath(`/assets/characters/${id}.png`);
 }
 
@@ -196,7 +195,7 @@ function normalizeSettings(
     merged.fixedBgSrc = String(merged.bgFixedSrc);
   }
 
-  // もし過去に bgMode:"off" が入ってても型内なのでOK。null/変な値は補正
+  // bgMode の補正
   if (
     merged.bgMode !== "auto" &&
     merged.bgMode !== "fixed" &&
@@ -207,7 +206,7 @@ function normalizeSettings(
 
   merged.characterScale = clamp(merged.characterScale, 0.7, 5.0);
   merged.characterOpacity = clamp(merged.characterOpacity, 0, 1);
-  merged.bgDim = clamp(merged.bgDim, 0, 1);
+
   merged.bgBlur = clamp(merged.bgBlur, 0, 24);
   merged.glassAlpha = clamp(merged.glassAlpha, 0, 0.6);
   merged.glassBlur = clamp(merged.glassBlur, 0, 40);

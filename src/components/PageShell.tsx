@@ -105,7 +105,11 @@ export default function PageShell(props: Props) {
     if (typeof window !== "undefined") window.history.back();
   }, [onBack]);
 
-  // ✅ unitless の --glass-blur を px に変換して使う
+  /**
+   * ✅ 重要：
+   * --glass-blur は unitless（数値）運用に統一する。
+   * 使う側で px 化する（= 更新/HMRで backdrop-filter が死ににくい）
+   */
   const glassBlurCss = "blur(calc(var(--glass-blur, 0) * 1px))";
 
   // ✅ ヘッダーは常に viewport 基準で固定（すりガラス設定に追従）
