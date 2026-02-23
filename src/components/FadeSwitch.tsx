@@ -1,4 +1,4 @@
-// src/components/FadeSwitch.tsx
+// src/components/CrossFadeSwitch.tsx
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 type Props = {
@@ -8,12 +8,6 @@ type Props = {
   children: ReactNode;
   /** ms（デフォルト: 260） */
   durationMs?: number;
-  /**
-   * ✅ 幕の濃さ（0〜1）
-   * 0.65〜0.85 あたりが「切替が見えにくくて自然」になりやすい
-   * デフォルト: 0.78
-   */
-  coverAlpha?: number;
 };
 
 function prefersReducedMotion(): boolean {
@@ -23,112 +17,120 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-type Phase = "idle" | "fadeOut" | "fadeIn";
-
 /**
- * ✅ backdrop-filter を殺しにくいフェード方式
- * - コンテンツ側の opacity を触らない
- * - 上に「幕(overlay)」を被せてフェード
- * - 幕が最も濃い瞬間に中身を差し替える（切替が見えない）
+ * ✅ 2枚重ねのクロスフェード
+ * - A(旧) を opacity:1→0
+ * - B(新) を opacity:0→1
+ * - フェード完了後に旧を破棄
+ *
+ * 注意:
+ * - opacity は compositor 事情で backdrop-filter に影響しうる。
+ *   まずは「試す」目的で実装。
  */
-export default function FadeSwitch(props: Props) {
+export default function CrossFadeSwitch(props: Props) {
   const durationMsRaw = props.durationMs ?? 260;
-  const coverAlphaRaw = props.coverAlpha ?? 0.78;
 
   const durationMs = useMemo(() => {
     return prefersReducedMotion() ? 0 : Math.max(0, Math.floor(durationMsRaw));
   }, [durationMsRaw]);
 
-  const coverAlpha = useMemo(() => {
-    const v = Number(coverAlphaRaw);
-    if (!Number.isFinite(v)) return 0.78;
-    return Math.max(0, Math.min(1, v));
-  }, [coverAlphaRaw]);
+  const [frontKey, setFrontKey] = useState(props.activeKey);
+  const [frontChildren, setFrontChildren] = useState<ReactNode>(props.children);
 
-  // 半分ずつ（暗転→差替→復帰）
-  const halfMs = useMemo(
-    () => Math.max(0, Math.floor(durationMs / 2)),
-    [durationMs],
-  );
+  // 旧レイヤ（フェードアウト中のみ存在）
+  const [backKey, setBackKey] = useState<string | null>(null);
+  const [backChildren, setBackChildren] = useState<ReactNode>(null);
 
-  const [shownKey, setShownKey] = useState(props.activeKey);
-  const [shownChildren, setShownChildren] = useState<ReactNode>(props.children);
-  const [phase, setPhase] = useState<Phase>("idle");
-
-  // 最新のchildrenを保持
-  const latestChildrenRef = useRef<ReactNode>(props.children);
-  useEffect(() => {
-    latestChildrenRef.current = props.children;
-  }, [props.children]);
+  // front が見える（true=frontが1、false=frontが0）
+  const [frontVisible, setFrontVisible] = useState(true);
 
   const tokenRef = useRef(0);
-  const timerRef = useRef<number | null>(null);
+  const cleanupTimerRef = useRef<number | null>(null);
 
-  // 同一キーなら中身だけ追従（フェード無し）
+  // 同一キーなら中身だけ更新（アニメ無し）
   useEffect(() => {
-    if (props.activeKey === shownKey) {
-      setShownChildren(props.children);
+    if (props.activeKey === frontKey && backKey == null) {
+      setFrontChildren(props.children);
     }
-  }, [props.activeKey, props.children, shownKey]);
+    // backKeyが存在する間は、表示確定までは front の中身を不用意に差し替えない
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.activeKey, props.children]);
 
   useEffect(() => {
-    if (props.activeKey === shownKey) return;
+    if (props.activeKey === frontKey) return;
 
     const token = ++tokenRef.current;
 
-    if (timerRef.current != null) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
+    if (cleanupTimerRef.current != null) {
+      window.clearTimeout(cleanupTimerRef.current);
+      cleanupTimerRef.current = null;
     }
 
-    // reduced motion / 短すぎる場合は即差替え
-    if (durationMs === 0 || halfMs === 0) {
-      setShownKey(props.activeKey);
-      setShownChildren(latestChildrenRef.current);
-      setPhase("idle");
+    // reduced motion: 即差し替え
+    if (durationMs === 0) {
+      setBackKey(null);
+      setBackChildren(null);
+      setFrontKey(props.activeKey);
+      setFrontChildren(props.children);
+      setFrontVisible(true);
       return;
     }
 
-    // 1) 暗転開始（幕を濃く）
-    setPhase("fadeOut");
+    // いま見えてる front を back に退避
+    setBackKey(frontKey);
+    setBackChildren(frontChildren);
 
-    // 2) 暗転が最大になったタイミングで差し替え
-    timerRef.current = window.setTimeout(() => {
+    // 新しい画面を front としてセット（ただし最初は透明）
+    setFrontKey(props.activeKey);
+    setFrontChildren(props.children);
+
+    // 次フレームでクロスフェード開始
+    requestAnimationFrame(() => {
       if (token !== tokenRef.current) return;
-
-      setShownKey(props.activeKey);
-      setShownChildren(latestChildrenRef.current);
-
-      // 3) 次フレームから復帰（明転）
+      setFrontVisible(false); // back=1, front=0 の状態を作る
       requestAnimationFrame(() => {
         if (token !== tokenRef.current) return;
-
-        setPhase("fadeIn");
-
-        timerRef.current = window.setTimeout(() => {
-          if (token !== tokenRef.current) return;
-          setPhase("idle");
-        }, halfMs);
+        setFrontVisible(true); // front=1へ（=クロスフェード完了形）
       });
-    }, halfMs);
+    });
+
+    // フェード完了後に back を破棄
+    cleanupTimerRef.current = window.setTimeout(() => {
+      if (token !== tokenRef.current) return;
+      setBackKey(null);
+      setBackChildren(null);
+    }, durationMs + 40);
 
     return () => {
-      if (timerRef.current != null) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = null;
+      if (cleanupTimerRef.current != null) {
+        window.clearTimeout(cleanupTimerRef.current);
+        cleanupTimerRef.current = null;
       }
     };
-  }, [props.activeKey, shownKey, durationMs, halfMs]);
+  }, [props.activeKey, frontKey, frontChildren, props.children, durationMs]);
 
-  // overlay（幕）の見え方
-  const overlayOpacity = phase === "fadeOut" || phase === "fadeIn" ? 1 : 0;
+  const commonLayerStyle: React.CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    minHeight: 0,
+  };
 
-  // 暗転は ease-in、明転は ease-out にすると自然
-  const easing =
-    phase === "fadeOut" ? "cubic-bezier(.4,0,1,1)" : "cubic-bezier(0,0,.2,1)";
+  // opacityの切替を2レイヤで行う
+  const frontStyle: React.CSSProperties = {
+    ...commonLayerStyle,
+    opacity: frontVisible ? 1 : 0,
+    transition: `opacity ${durationMs}ms ease`,
+    pointerEvents: frontVisible ? "auto" : "none",
+  };
 
-  const overlayTransition =
-    durationMs === 0 || halfMs === 0 ? "none" : `opacity ${halfMs}ms ${easing}`;
+  const backStyle: React.CSSProperties = {
+    ...commonLayerStyle,
+    opacity: frontVisible ? 0 : 1,
+    transition: `opacity ${durationMs}ms ease`,
+    pointerEvents: "none",
+  };
 
   return (
     <div
@@ -139,28 +141,8 @@ export default function FadeSwitch(props: Props) {
         minHeight: 0,
       }}
     >
-      {/* コンテンツは常に不透明（backdrop-filterを守る） */}
-      <div style={{ width: "100%", height: "100%", minHeight: 0 }}>
-        {shownChildren}
-      </div>
-
-      {/* 幕（これだけがフェードする） */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none",
-          opacity: overlayOpacity,
-          transition: overlayTransition,
-
-          // ✅ 重要：切替を完全に隠すため「幕の濃さ」を強めに
-          background: `rgba(0,0,0,${coverAlpha})`,
-
-          // ほんの少しだけハイライトを足して“質感”を出す（好みで）
-          // background: `linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.00)), rgba(0,0,0,${coverAlpha})`,
-        }}
-      />
+      {backKey != null ? <div style={backStyle}>{backChildren}</div> : null}
+      <div style={frontStyle}>{frontChildren}</div>
     </div>
   );
 }

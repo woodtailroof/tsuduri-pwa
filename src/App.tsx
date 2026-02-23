@@ -14,7 +14,7 @@ import Chat from "./screens/Chat";
 import Settings from "./screens/Settings";
 import CharacterSettings from "./screens/CharacterSettings";
 import Stage from "./components/Stage";
-import FadeSwitch from "./components/FadeSwitch";
+import CrossFadeSwitch from "./components/CrossFadeSwitch";
 import {
   DEFAULT_SETTINGS,
   getTimeBand,
@@ -35,8 +35,7 @@ type Screen =
   | "characterSettings";
 
 const Z = {
-  bg: 0,
-  stage: 10,
+  stage: 0,
   ui: 20,
 } as const;
 
@@ -99,7 +98,6 @@ function AppInner() {
     content = <Home go={goFromHome} />;
   }
 
-  // ===== 背景解決 =====
   const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
   const autoBgSet =
     (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
@@ -134,22 +132,16 @@ function AppInner() {
 
   type CSSVars = Record<`--${string}`, string>;
   const appVars: CSSProperties & CSSVars = useMemo(() => {
-    // ✅ ぼかしは「数値(unitless)」と「px」を両方セットして、参照側をpxに寄せる
-    const gb = Math.round(clamp(glassBlur, 0, 60));
-    const gbUnitless = String(gb);
-    const gbPx = `${gb}px`;
-
     return {
       "--bg-image":
         effectiveBgSrc && bgMode !== "off"
           ? `url("${effectiveBgSrc}")`
           : "none",
       "--bg-blur": `${Math.round(clamp(bgBlur, 0, 60))}px`,
-
-      // 互換・参照用
-      "--glass-blur": gbUnitless,
-      "--glass-blur-px": gbPx,
-
+      "--bg-dim": "0",
+      // index.css は blur(var(--glass-blur-px)) を参照する
+      "--glass-blur": `${Math.round(clamp(glassBlur, 0, 60))}`,
+      "--glass-blur-px": `${Math.round(clamp(glassBlur, 0, 60))}px`,
       "--glass-alpha": `${clamp(glassAlpha, 0, 1)}`,
       "--glass-alpha-strong": `${clamp(glassAlpha + 0.13, 0, 1)}`,
     };
@@ -166,15 +158,8 @@ function AppInner() {
         ...appVars,
       }}
     >
-      <div
-        id="layer-bg"
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: Z.bg,
-          pointerEvents: "none",
-        }}
-      />
+      {/* ✅ 背景は実体DOM（index.css の #layer-bg が担当） */}
+      <div id="layer-bg" />
 
       <div
         id="layer-stage"
@@ -185,7 +170,7 @@ function AppInner() {
           pointerEvents: "none",
         }}
       >
-        <Stage activeKey={screen} />
+        <Stage />
       </div>
 
       <div
@@ -197,7 +182,9 @@ function AppInner() {
           pointerEvents: "auto",
         }}
       >
-        <FadeSwitch activeKey={screen}>{content}</FadeSwitch>
+        <CrossFadeSwitch activeKey={screen} durationMs={260}>
+          {content}
+        </CrossFadeSwitch>
       </div>
     </div>
   );
