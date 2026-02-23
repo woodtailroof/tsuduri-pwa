@@ -11,6 +11,66 @@ type Msg = {
 type ReplyLength = "short" | "standard" | "long" | "verylong";
 
 /**
+ * ✅ emotion（Stageで扱ってる6種に合わせる）
+ */
+type Emotion = "neutral" | "happy" | "sad" | "think" | "surprise" | "love";
+const ALLOWED_EMOTIONS: Emotion[] = [
+  "neutral",
+  "happy",
+  "sad",
+  "think",
+  "surprise",
+  "love",
+];
+
+function normalizeEmotion(v: unknown): Emotion {
+  if (typeof v === "string" && (ALLOWED_EMOTIONS as string[]).includes(v)) {
+    return v as Emotion;
+  }
+  return "neutral";
+}
+
+/**
+ * GPTの返答が
+ *  - 普通の本文だけ
+ *  - 末尾にJSONを付けてくる
+ * どちらでも安全に拾う
+ *
+ * 期待形：
+ * {
+ *   "text": "本文...",
+ *   "emotion": "neutral|happy|sad|think|surprise|love"
+ * }
+ */
+function extractTextAndEmotion(raw: string): {
+  text: string;
+  emotion: Emotion;
+} {
+  const s = String(raw ?? "").trim();
+  if (!s) return { text: "", emotion: "neutral" };
+
+  // 末尾のJSONらしきものを拾う（最後の { ... }）
+  // ※厳密パースで失敗したら本文扱い
+  try {
+    const m = s.match(/\{[\s\S]*\}$/);
+    if (!m) return { text: s, emotion: "neutral" };
+
+    const parsed = JSON.parse(m[0]) as { text?: unknown; emotion?: unknown };
+
+    const text =
+      typeof parsed.text === "string" && parsed.text.trim()
+        ? parsed.text.trim()
+        : // textが空なら、JSONを除いた部分を本文として採用
+          s.replace(m[0], "").trim() || s;
+
+    const emotion = normalizeEmotion(parsed.emotion);
+    return { text, emotion };
+  } catch {
+    return { text: s, emotion: "neutral" };
+  }
+}
+
+/**
  * 新フォーマット（推奨）
  */
 type CharacterV2 = {
@@ -430,6 +490,12 @@ function lengthRules(replyLength: ReplyLength, isJudge: boolean) {
 
 function buildCharacterSystem(ch: CharacterV2, isJudge: boolean): Msg {
   const r = lengthRules(ch.replyLength, isJudge);
+
+  // ✅ judgeのときは表情をブレさせない（必要なら後で解除できる）
+  const emotionRule = isJudge
+    ? `- emotion は必ず "think" を指定する（釣行判断モード固定）`
+    : `- emotion は必ず次の6種類のどれか：${ALLOWED_EMOTIONS.join(" / ")}`;
+
   return {
     role: "system",
     content: `
@@ -448,6 +514,16 @@ function buildCharacterSystem(ch: CharacterV2, isJudge: boolean): Msg {
 
 【キャラ設定（自由記述）※最重要】
 ${(ch.prompt ?? "").trim() || "（未設定）"}
+
+【出力形式（最重要）】
+最後に必ず JSON を1つだけ出力する（JSON以外は末尾に置かない）：
+
+{
+  "text": "本文（ユーザーに見せる文章）",
+  "emotion": "neutral|happy|sad|think|surprise|love"
+}
+
+${emotionRule}
 
 【禁止】
 - 冷たい断定、説教、威圧
@@ -635,6 +711,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     const characterSystem = buildCharacterSystem(character, isJudge);
+
+    // （systemHintsは今のまま。将来の拡張に使える）
     const hintMsgs: Msg[] = systemHints.map((s) => ({
       role: "system",
       content: s,
@@ -664,11 +742,20 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       max_output_tokens: maxOut,
     });
 
-    const text =
+    const raw =
       (r.output_text && String(r.output_text)) ||
       `${character.callUser}…ごめん、ちょっと言葉が絡まった。もう一回聞いて？`;
 
-    return jsonResponse(200, { ok: true, text });
+    const parsed = extractTextAndEmotion(raw);
+
+    // ✅ isJudge はブレ抑制。味で揺らしたいならここを parsed.emotion に戻せる
+    const finalEmotion: Emotion = isJudge ? "think" : parsed.emotion;
+
+    return jsonResponse(200, {
+      ok: true,
+      text: parsed.text,
+      emotion: finalEmotion,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return jsonResponse(500, { ok: false, error: msg });

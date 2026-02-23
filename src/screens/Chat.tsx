@@ -12,6 +12,7 @@ import {
   SELECTED_CHARACTER_ID_KEY,
 } from "./CharacterSettings";
 import PageShell from "../components/PageShell";
+import { useEmotion, type Emotion } from "../lib/emotion";
 
 type Props = {
   back: () => void;
@@ -429,12 +430,22 @@ async function buildWeatherHint(
   return memo;
 }
 
-function readApiTextResponse(json: unknown): { ok: true; text: string } | null {
+/**
+ * ✅ APIレスポンス（emotionを追加で受ける）
+ */
+function readApiTextResponse(
+  json: unknown,
+): { ok: true; text: string; emotion?: Emotion } | null {
   if (!isRecordLike(json)) return null;
   const ok = getBoolProp(json, "ok");
   if (ok !== true) return null;
-  const text = getStringProp(json, "text");
-  return { ok: true, text: text ?? "" };
+
+  const text = getStringProp(json, "text") ?? "";
+
+  const rawEmotion = getStringProp(json, "emotion");
+  const emotion = normalizeEmotion(rawEmotion);
+
+  return { ok: true, text, emotion };
 }
 
 function readApiErrorResponse(json: unknown): string | null {
@@ -443,7 +454,27 @@ function readApiErrorResponse(json: unknown): string | null {
   return err ?? null;
 }
 
+/**
+ * ✅ 受け取ったemotionをStage互換のEmotionに寄せる
+ */
+function normalizeEmotion(raw: string | null): Emotion | undefined {
+  const v = (raw ?? "").trim();
+  if (
+    v === "neutral" ||
+    v === "happy" ||
+    v === "sad" ||
+    v === "think" ||
+    v === "surprise" ||
+    v === "love"
+  ) {
+    return v;
+  }
+  return undefined;
+}
+
 export default function Chat({ back, goCharacterSettings }: Props) {
+  const { setEmotion } = useEmotion();
+
   const [characters, setCharacters] = useState<CharacterProfileWithColor[]>(
     () => safeLoadCharacters(),
   );
@@ -556,7 +587,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     payloadMessages: { role: "user" | "assistant"; content: string }[],
     character: CharacterProfileWithColor,
     systemHints: string[],
-  ) {
+  ): Promise<{ text: string; emotion?: Emotion }> {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -575,7 +606,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     const json: unknown = await res.json().catch(() => null);
 
     const okText = readApiTextResponse(json);
-    if (okText) return okText.text;
+    if (okText) return { text: okText.text, emotion: okText.emotion };
 
     const err = readApiErrorResponse(json);
     throw new Error(err ?? "unknown_error");
@@ -601,6 +632,8 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
       const hints: string[] = [];
       const isJudge = isFishingJudgeText(text);
+
+      // ✅ judgeの時は、サーバ側にWeather hintを渡す（潮はサーバでtide736）
       if (isJudge) {
         const targetDay = detectTargetDay(text);
         const YAIZU = { lat: 34.868, lon: 138.3236 };
@@ -619,13 +652,23 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       }
 
       const reply = await callApiChat(thread, currentCharacter, hints);
-      setMessages([...next, { role: "assistant", content: reply }]);
+
+      setMessages([...next, { role: "assistant", content: reply.text }]);
+
+      // ✅ 表情反映（サーバが emotion を返した時だけ）
+      if (reply.emotion) {
+        setEmotion(reply.emotion);
+      } else if (isJudge) {
+        // judgeは安定運用ならthink固定でもOK（任意）
+        setEmotion("think");
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setMessages([
         ...next,
         { role: "assistant", content: `ごめん…🥺\n理由：${msg}` },
       ]);
+      setEmotion("sad");
     } finally {
       setLoading(false);
       focusInput();
