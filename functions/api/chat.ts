@@ -491,10 +491,22 @@ function lengthRules(replyLength: ReplyLength, isJudge: boolean) {
 function buildCharacterSystem(ch: CharacterV2, isJudge: boolean): Msg {
   const r = lengthRules(ch.replyLength, isJudge);
 
-  // ✅ judgeのときは表情をブレさせない（必要なら後で解除できる）
   const emotionRule = isJudge
     ? `- emotion は必ず "think" を指定する（釣行判断モード固定）`
-    : `- emotion は必ず次の6種類のどれか：${ALLOWED_EMOTIONS.join(" / ")}`;
+    : `
+【emotion決定ルール（重要）】
+emotion は UI演出制御タグであり、本文の感情トーンと必ず一致させること。
+
+- 嬉しい・楽しい・前向き・成功・ワクワク → "happy"
+- 落胆・失敗・寂しい・心配・しょんぼり → "sad"
+- 迷い・相談・分析・考察・判断中 → "think"
+- 驚き・予想外・テンション急上昇 → "surprise"
+- 愛情・好意・「好き」・甘え・恋愛ニュアンス → "love"
+- 上記に明確に当てはまらない場合のみ "neutral"
+
+neutral は消極的選択肢。多用しないこと。
+emotion は必ず 1つだけ選ぶ。
+`;
 
   return {
     role: "system",
@@ -515,17 +527,20 @@ function buildCharacterSystem(ch: CharacterV2, isJudge: boolean): Msg {
 【キャラ設定（自由記述）※最重要】
 ${(ch.prompt ?? "").trim() || "（未設定）"}
 
+${emotionRule}
+
 【出力形式（最重要）】
 最後に必ず JSON を1つだけ出力する（JSON以外は末尾に置かない）：
 
 {
-  "text": "本文（ユーザーに見せる文章）",
+  "text": "ユーザーに見せる本文",
   "emotion": "neutral|happy|sad|think|surprise|love"
 }
 
-${emotionRule}
-
 【禁止】
+- emotion を省略すること
+- JSONを2個以上出力すること
+- 本文の感情と emotion を不一致にすること
 - 冷たい断定、説教、威圧
 - 過度な性的表現
 - 個人情報の聞き出し
