@@ -36,7 +36,10 @@ export default function CrossFadeSwitch(props: Props) {
 
   const tokenRef = useRef(0);
   const cleanupTimerRef = useRef<number | null>(null);
-  const rafRef = useRef<number | null>(null);
+  const raf1Ref = useRef<number | null>(null);
+  const raf2Ref = useRef<number | null>(null);
+
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   // 同一キーなら中身だけ更新（フェードさせない）
   useEffect(() => {
@@ -55,9 +58,13 @@ export default function CrossFadeSwitch(props: Props) {
       window.clearTimeout(cleanupTimerRef.current);
       cleanupTimerRef.current = null;
     }
-    if (rafRef.current != null) {
-      window.cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
+    if (raf1Ref.current != null) {
+      window.cancelAnimationFrame(raf1Ref.current);
+      raf1Ref.current = null;
+    }
+    if (raf2Ref.current != null) {
+      window.cancelAnimationFrame(raf2Ref.current);
+      raf2Ref.current = null;
     }
 
     // reduced motion は即差し替え
@@ -70,7 +77,7 @@ export default function CrossFadeSwitch(props: Props) {
       return;
     }
 
-    // 旧frontをbackに退避（＝旧画面はこの瞬間から残る）
+    // 旧frontをbackに退避
     setBackKey(frontKey);
     setBackChildren(frontChildren);
 
@@ -78,21 +85,32 @@ export default function CrossFadeSwitch(props: Props) {
     setFrontKey(props.activeKey);
     setFrontChildren(props.children);
 
-    // ✅ prep: 見えてる旧画面(back)は押せる、透明な新画面(front)は押せない
+    // ✅ prep: ここで「開始状態」を確定させる（transition無し）
     setPhase("prep");
 
-    // 次フレームで run にして transition 発火
-    rafRef.current = window.requestAnimationFrame(() => {
+    // ① 次フレーム：DOM反映を待つ
+    raf1Ref.current = window.requestAnimationFrame(() => {
       if (token !== tokenRef.current) return;
 
-      setPhase("run");
+      // ✅ reflow を1回読んで「prep状態」を確定させる（ここが肝）
+      // これが無いと、ブラウザが変更をまとめて「瞬間切替」にすることがある
+      if (rootRef.current) {
+        rootRef.current.getBoundingClientRect();
+      }
 
-      cleanupTimerRef.current = window.setTimeout(() => {
+      // ② さらに次フレーム：runに入って transition 発火
+      raf2Ref.current = window.requestAnimationFrame(() => {
         if (token !== tokenRef.current) return;
-        setBackKey(null);
-        setBackChildren(null);
-        setPhase("stable");
-      }, durationMs + 60);
+
+        setPhase("run");
+
+        cleanupTimerRef.current = window.setTimeout(() => {
+          if (token !== tokenRef.current) return;
+          setBackKey(null);
+          setBackChildren(null);
+          setPhase("stable");
+        }, durationMs + 60);
+      });
     });
 
     return () => {
@@ -100,9 +118,13 @@ export default function CrossFadeSwitch(props: Props) {
         window.clearTimeout(cleanupTimerRef.current);
         cleanupTimerRef.current = null;
       }
-      if (rafRef.current != null) {
-        window.cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
+      if (raf1Ref.current != null) {
+        window.cancelAnimationFrame(raf1Ref.current);
+        raf1Ref.current = null;
+      }
+      if (raf2Ref.current != null) {
+        window.cancelAnimationFrame(raf2Ref.current);
+        raf2Ref.current = null;
       }
     };
   }, [props.activeKey, props.children, durationMs, frontKey, frontChildren]);
@@ -132,6 +154,7 @@ export default function CrossFadeSwitch(props: Props) {
 
   return (
     <div
+      ref={rootRef}
       style={{
         position: "relative",
         width: "100%",

@@ -35,8 +35,7 @@ type Screen =
   | "characterSettings";
 
 const Z = {
-  bg: 0,
-  stage: 10,
+  stage: 0,
   ui: 20,
 } as const;
 
@@ -74,11 +73,13 @@ function AppInner() {
   const minuteTick = useMinuteTick();
 
   const backHome = () => setScreen("home");
+
   const goFromHome = (
     s: "record" | "recordHistory" | "weather" | "chat" | "settings",
   ) => setScreen(s);
 
   let content: ReactNode;
+
   if (screen === "record") content = <Record back={backHome} />;
   else if (screen === "recordHistory")
     content = <RecordHistory back={backHome} />;
@@ -97,6 +98,7 @@ function AppInner() {
     content = <Home go={goFromHome} />;
   }
 
+  // ===== 背景URL 解決 =====
   const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
   const autoBgSet =
     (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
@@ -117,35 +119,45 @@ function AppInner() {
     return autoPreviewSrc;
   }, [bgMode, fixedBgSrc, autoPreviewSrc]);
 
+  // ===== 表示設定 =====
   const bgBlur = Number.isFinite(settings.bgBlur)
     ? settings.bgBlur
     : DEFAULT_SETTINGS.bgBlur;
+
   const glassAlpha = Number.isFinite(settings.glassAlpha)
     ? settings.glassAlpha
     : DEFAULT_SETTINGS.glassAlpha;
+
   const glassBlur = Number.isFinite(settings.glassBlur)
     ? settings.glassBlur
     : DEFAULT_SETTINGS.glassBlur;
 
+  /**
+   * ✅ 重要：
+   * --glass-blur は unitless（10）に統一
+   * --glass-blur-px は px（10px）で併設
+   *
+   * これを崩すと「濃さだけ効く / ぼかしだけ死ぬ」が復活する。
+   */
   type CSSVars = Record<`--${string}`, string>;
   const appVars: CSSProperties & CSSVars = useMemo(() => {
-    const gb = Math.round(clamp(bgBlur, 0, 60));
-    const gBlur = Math.round(clamp(glassBlur, 0, 60));
-    const gAlpha = clamp(glassAlpha, 0, 1);
-    const gAlphaStrong = clamp(glassAlpha + 0.13, 0, 1);
+    const bgBlurPx = Math.round(clamp(bgBlur, 0, 60));
+    const glassBlurUnitless = Math.round(clamp(glassBlur, 0, 60));
+    const ga = clamp(glassAlpha, 0, 1);
+    const gas = clamp(glassAlpha + 0.13, 0, 1);
 
     return {
       "--bg-image":
         effectiveBgSrc && bgMode !== "off"
           ? `url("${effectiveBgSrc}")`
           : "none",
-      "--bg-blur": `${gb}px`,
+      "--bg-blur": `${bgBlurPx}px`,
 
-      // ✅ ここが超重要：ガラスは unitless と px の両方を出す
-      "--glass-blur": `${gBlur}`, // unitless（10）
-      "--glass-blur-px": `${gBlur}px`, // px（10px）
-      "--glass-alpha": `${gAlpha}`,
-      "--glass-alpha-strong": `${gAlphaStrong}`,
+      "--glass-blur": `${glassBlurUnitless}`, // unitless
+      "--glass-blur-px": `${glassBlurUnitless}px`, // px
+
+      "--glass-alpha": `${ga}`,
+      "--glass-alpha-strong": `${gas}`,
     };
   }, [effectiveBgSrc, bgMode, bgBlur, glassBlur, glassAlpha]);
 
@@ -160,17 +172,6 @@ function AppInner() {
         ...appVars,
       }}
     >
-      {/* ✅ 背景レイヤー（index.css の #layer-bg を成立させる） */}
-      <div
-        id="layer-bg"
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: Z.bg,
-          pointerEvents: "none",
-        }}
-      />
-
       <div
         id="layer-stage"
         style={{
@@ -192,7 +193,6 @@ function AppInner() {
           pointerEvents: "auto",
         }}
       >
-        {/* ✅ 画面遷移はここでクロスフェード */}
         <CrossFadeSwitch activeKey={screen} durationMs={500}>
           {content}
         </CrossFadeSwitch>
