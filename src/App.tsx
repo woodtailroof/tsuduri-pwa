@@ -14,6 +14,7 @@ import Chat from "./screens/Chat";
 import Settings from "./screens/Settings";
 import CharacterSettings from "./screens/CharacterSettings";
 import Stage from "./components/Stage";
+import FadeSwitch from "./components/FadeSwitch";
 import {
   DEFAULT_SETTINGS,
   getTimeBand,
@@ -34,7 +35,8 @@ type Screen =
   | "characterSettings";
 
 const Z = {
-  stage: 0,
+  bg: 0,
+  stage: 10,
   ui: 20,
 } as const;
 
@@ -97,6 +99,7 @@ function AppInner() {
     content = <Home go={goFromHome} />;
   }
 
+  // ===== 背景解決 =====
   const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
   const autoBgSet =
     (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
@@ -131,14 +134,16 @@ function AppInner() {
 
   type CSSVars = Record<`--${string}`, string>;
   const appVars: CSSProperties & CSSVars = useMemo(() => {
+    // ✅ --glass-blur は unitless（数値）運用に統一（px禁止）
+    const glassBlurUnitless = String(Math.round(clamp(glassBlur, 0, 60)));
+
     return {
       "--bg-image":
         effectiveBgSrc && bgMode !== "off"
           ? `url("${effectiveBgSrc}")`
           : "none",
       "--bg-blur": `${Math.round(clamp(bgBlur, 0, 60))}px`,
-      "--bg-dim": "0", // 完全無効固定
-      "--glass-blur": `${Math.round(clamp(glassBlur, 0, 60))}px`,
+      "--glass-blur": glassBlurUnitless,
       "--glass-alpha": `${clamp(glassAlpha, 0, 1)}`,
       "--glass-alpha-strong": `${clamp(glassAlpha + 0.13, 0, 1)}`,
     };
@@ -155,6 +160,17 @@ function AppInner() {
         ...appVars,
       }}
     >
+      {/* ✅ 背景レイヤ（index.css の #layer-bg を生かす実体DOM） */}
+      <div
+        id="layer-bg"
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: Z.bg,
+          pointerEvents: "none",
+        }}
+      />
+
       <div
         id="layer-stage"
         style={{
@@ -164,7 +180,8 @@ function AppInner() {
           pointerEvents: "none",
         }}
       >
-        <Stage />
+        {/* ✅ 画面遷移キーを渡して「ランダム（画面遷移ごと）」を成立させる */}
+        <Stage activeKey={screen} />
       </div>
 
       <div
@@ -176,7 +193,8 @@ function AppInner() {
           pointerEvents: "auto",
         }}
       >
-        {content}
+        {/* ✅ 画面遷移にフェードを噛ませる（UIフェード復活） */}
+        <FadeSwitch activeKey={screen}>{content}</FadeSwitch>
       </div>
     </div>
   );

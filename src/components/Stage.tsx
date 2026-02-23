@@ -14,6 +14,11 @@ import {
 import { CHARACTERS_STORAGE_KEY } from "../screens/CharacterSettings";
 import { useEmotion, type Emotion } from "../lib/emotion";
 
+type Props = {
+  /** ✅ 画面遷移キー（ランダムを画面遷移ごとに成立させる） */
+  activeKey?: string;
+};
+
 type StoredCharacterLike = {
   id?: unknown;
   name?: unknown; // v2
@@ -113,7 +118,6 @@ function preloadImage(src: string): Promise<void> {
 }
 
 function readAssetVersion(settings: unknown): string {
-  // any禁止回避：unknown から安全に拾う
   if (settings && typeof settings === "object" && "assetVersion" in settings) {
     const v = (settings as { assetVersion?: unknown }).assetVersion;
     if (typeof v === "string") return v.trim();
@@ -129,7 +133,13 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-export default function Stage() {
+function pickRandomId(list: { id: string }[]): string {
+  if (!list.length) return "tsuduri";
+  const i = Math.floor(Math.random() * list.length);
+  return list[i]?.id ?? list[0].id;
+}
+
+export default function Stage(props: Props) {
   const { settings } = useAppSettings();
   const { emotion: globalEmotion } = useEmotion();
 
@@ -156,12 +166,18 @@ export default function Stage() {
   const createdCharacters = loadCreatedCharacters();
   const charImageMap = loadCharacterImageMap();
 
-  const [randomPickedId] = useState<string>(() => {
+  // ✅ ランダム：画面遷移ごとに変えたいので activeKey で更新する
+  const [randomPickedId, setRandomPickedId] = useState<string>(() => {
     if (typeof window === "undefined") return "";
-    if (!createdCharacters.length) return "tsuduri";
-    const i = Math.floor(Math.random() * createdCharacters.length);
-    return createdCharacters[i]?.id ?? createdCharacters[0].id;
+    return pickRandomId(createdCharacters);
   });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (characterMode !== "random") return;
+    setRandomPickedId(pickRandomId(createdCharacters));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.activeKey, characterMode]);
 
   const fixedCharacterId = settings.fixedCharacterId ?? "tsuduri";
   const pickCharacterId =
@@ -202,18 +218,15 @@ export default function Stage() {
         assetVersion,
       ),
 
-      // 設定マップ（フォルダなら表情→neutral、単一ならそれ）
       mappedIsFile
         ? appendAssetVersion(mappedSingleSrc, assetVersion)
         : appendAssetVersion(mappedExpressionSrc, assetVersion),
       mappedIsFile ? "" : appendAssetVersion(mappedNeutralSrc, assetVersion),
 
-      // 従来推測
       appendAssetVersion(expressionSrc, assetVersion),
       appendAssetVersion(neutralSrc, assetVersion),
       appendAssetVersion(fallbackSrc, assetVersion),
 
-      // ✅ 最後の保険は「必ず存在する」ファイルへ
       appendAssetVersion(
         "/assets/characters/tsuduri/neutral.png",
         assetVersion,
@@ -247,13 +260,16 @@ export default function Stage() {
   const [frontSrc, setFrontSrc] = useState<string>("");
   const [backSrc, setBackSrc] = useState<string>("");
   const [frontVisible, setFrontVisible] = useState<boolean>(true);
+  const frontVisibleRef = useRef(frontVisible);
+  useEffect(() => {
+    frontVisibleRef.current = frontVisible;
+  }, [frontVisible]);
+
   const [tryIndex, setTryIndex] = useState<number>(0);
 
-  // “最新の切替” を識別するトークン（古いtimeout/thenが新表示を壊さないように）
   const swapTokenRef = useRef(0);
   const cleanupTimerRef = useRef<number | null>(null);
 
-  // フェード時間（UIと同じ感覚）
   const fadeMs = prefersReducedMotion() ? 0 : 500;
 
   useEffect(() => {
@@ -266,30 +282,25 @@ export default function Stage() {
     setTryIndex(0);
   }, [candidatesKey]);
 
-  // ✅ 切替本体
   useEffect(() => {
     if (!characterEnabled) return;
 
     const next = characterCandidates[tryIndex] ?? "";
     if (!next) return;
 
-    // 既に表示中なら何もしない（無駄なフェード防止）
     if (next === frontSrc || next === backSrc) return;
 
     const token = ++swapTokenRef.current;
 
-    // 既存の掃除タイマーはキャンセル
     if (cleanupTimerRef.current != null) {
       window.clearTimeout(cleanupTimerRef.current);
       cleanupTimerRef.current = null;
     }
 
-    // “表示を消してからロード”がちらつき原因なので、必ず先にロード
     preloadImage(next)
       .then(() => {
         if (token !== swapTokenRef.current) return;
 
-        // 0ms（reduced motion）の場合は即差し替え
         if (fadeMs === 0) {
           setFrontSrc(next);
           setBackSrc("");
@@ -298,7 +309,7 @@ export default function Stage() {
         }
 
         // 表示していない方に next を入れて、次フレームで可視側を切替
-        if (frontVisible) {
+        if (frontVisibleRef.current) {
           setBackSrc(next);
           requestAnimationFrame(() => {
             if (token !== swapTokenRef.current) return;
@@ -312,11 +323,10 @@ export default function Stage() {
           });
         }
 
-        // フェード完了後、見えない方を片付け（※token一致の時だけ）
+        // ✅ stale state で消し間違いしない（refで現在の可視側を判定）
         cleanupTimerRef.current = window.setTimeout(() => {
           if (token !== swapTokenRef.current) return;
-          if (frontVisible) {
-            // frontVisible=true の状態になっていれば、back を消す
+          if (frontVisibleRef.current) {
             setBackSrc("");
           } else {
             setFrontSrc("");
@@ -333,15 +343,13 @@ export default function Stage() {
               "[Stage] character image load failed for all candidates:",
               characterCandidates,
             );
-            return i; // これ以上進めない（無限ループ防止）
+            return i;
           }
           return n;
         });
       });
 
     return () => {
-      // ここでは token を進めない（then/catch 側で token 判定してるため）
-      // ただ掃除タイマーは止める
       if (cleanupTimerRef.current != null) {
         window.clearTimeout(cleanupTimerRef.current);
         cleanupTimerRef.current = null;
@@ -353,7 +361,6 @@ export default function Stage() {
     tryIndex,
     frontSrc,
     backSrc,
-    frontVisible,
     fadeMs,
   ]);
 

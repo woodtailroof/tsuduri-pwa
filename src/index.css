@@ -207,6 +207,10 @@ h3 {
 
 /* ✅ これが背面の本体（以前の ::before を移植） */
 #layer-bg {
+  /* ✅ 重要：絶対配置して全面に敷く（高さ0問題を根絶） */
+  position: absolute;
+  inset: 0;
+
   background:
     var(--bg-image, none),
     radial-gradient(

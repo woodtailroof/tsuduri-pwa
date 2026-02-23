@@ -40,7 +40,18 @@ export default function FadeSwitch(props: Props) {
   // ✅ 進行中の切替を識別（古いタイマーが新しい状態を壊さない）
   const tokenRef = useRef(0);
   const exitTimerRef = useRef<number | null>(null);
-  const enterRafRef = useRef<number | null>(null);
+  const enterTimerRef = useRef<number | null>(null);
+
+  function clearTimers() {
+    if (exitTimerRef.current != null) {
+      window.clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    }
+    if (enterTimerRef.current != null) {
+      window.clearTimeout(enterTimerRef.current);
+      enterTimerRef.current = null;
+    }
+  }
 
   // ✅ 同一キーなら中身だけ追従（フェードさせない）
   useEffect(() => {
@@ -54,15 +65,7 @@ export default function FadeSwitch(props: Props) {
 
     const token = ++tokenRef.current;
 
-    // 後始末（新しい切替が来たら古いのは必ず殺す）
-    if (exitTimerRef.current != null) {
-      window.clearTimeout(exitTimerRef.current);
-      exitTimerRef.current = null;
-    }
-    if (enterRafRef.current != null) {
-      window.cancelAnimationFrame(enterRafRef.current);
-      enterRafRef.current = null;
-    }
+    clearTimers();
 
     // reduced motion は即差し替え
     if (durationMs === 0) {
@@ -82,23 +85,17 @@ export default function FadeSwitch(props: Props) {
       setShownKey(props.activeKey);
       setShownChildren(latestChildrenRef.current);
 
-      // enter を1フレーム挟んで確実に効かせる
+      // ✅ enter は 1フレームで剥がさない。duration維持してから idleへ
       setPhase("enter");
-      enterRafRef.current = window.requestAnimationFrame(() => {
+
+      enterTimerRef.current = window.setTimeout(() => {
         if (token !== tokenRef.current) return;
         setPhase("idle");
-      });
+      }, durationMs);
     }, durationMs);
 
     return () => {
-      if (exitTimerRef.current != null) {
-        window.clearTimeout(exitTimerRef.current);
-        exitTimerRef.current = null;
-      }
-      if (enterRafRef.current != null) {
-        window.cancelAnimationFrame(enterRafRef.current);
-        enterRafRef.current = null;
-      }
+      clearTimers();
     };
   }, [props.activeKey, shownKey, durationMs]);
 
@@ -106,10 +103,8 @@ export default function FadeSwitch(props: Props) {
     ["--fade-ms" as any]: `${durationMs}ms`,
   };
 
-  const dataPhase: "exit" | "enter" | "idle" = phase;
-
   return (
-    <div className="fade-switch" data-phase={dataPhase} style={style}>
+    <div className="fade-switch" data-phase={phase} style={style}>
       {shownChildren}
     </div>
   );
