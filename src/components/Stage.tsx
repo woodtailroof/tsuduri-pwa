@@ -288,7 +288,65 @@ export default function Stage(props: Props) {
     const next = characterCandidates[tryIndex] ?? "";
     if (!next) return;
 
-    if (next === frontSrc || next === backSrc) return;
+    // ✅ ここがポイント：同じURLでも「裏側にいる」なら可視側だけ切り替える
+    if (next === frontSrc || next === backSrc) {
+      if (fadeMs === 0) {
+        // 0msなら単純にfrontに固定
+        if (next !== frontSrc) setFrontSrc(next);
+        setBackSrc("");
+        setFrontVisible(true);
+        return;
+      }
+
+      // next が back にいて front が見えてるなら back を見せる
+      if (next === backSrc && frontVisibleRef.current) {
+        const token = ++swapTokenRef.current;
+
+        if (cleanupTimerRef.current != null) {
+          window.clearTimeout(cleanupTimerRef.current);
+          cleanupTimerRef.current = null;
+        }
+
+        requestAnimationFrame(() => {
+          if (token !== swapTokenRef.current) return;
+          setFrontVisible(false);
+        });
+
+        cleanupTimerRef.current = window.setTimeout(() => {
+          if (token !== swapTokenRef.current) return;
+          // back が見えているので front を掃除
+          if (!frontVisibleRef.current) setFrontSrc("");
+        }, fadeMs + 30);
+
+        return;
+      }
+
+      // next が front にいて back が見えてるなら front を見せる
+      if (next === frontSrc && !frontVisibleRef.current) {
+        const token = ++swapTokenRef.current;
+
+        if (cleanupTimerRef.current != null) {
+          window.clearTimeout(cleanupTimerRef.current);
+          cleanupTimerRef.current = null;
+        }
+
+        requestAnimationFrame(() => {
+          if (token !== swapTokenRef.current) return;
+          setFrontVisible(true);
+        });
+
+        cleanupTimerRef.current = window.setTimeout(() => {
+          if (token !== swapTokenRef.current) return;
+          // front が見えているので back を掃除
+          if (frontVisibleRef.current) setBackSrc("");
+        }, fadeMs + 30);
+
+        return;
+      }
+
+      // 同じURLで、すでに正しい側が見えてるなら何もしない
+      return;
+    }
 
     const token = ++swapTokenRef.current;
 
