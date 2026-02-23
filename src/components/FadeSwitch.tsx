@@ -17,8 +17,14 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-type Phase = "enter" | "exit" | "idle";
+type Phase = "idle" | "fadeOut" | "fadeIn";
 
+/**
+ * ✅ backdrop-filter を殺しにくいフェード方式
+ * - コンテンツ側の opacity を触らない
+ * - 上に「幕(overlay)」を被せてフェード
+ * - 幕が最大になった瞬間に中身を差し替える
+ */
 export default function FadeSwitch(props: Props) {
   const durationMsRaw = props.durationMs ?? 220;
 
@@ -26,34 +32,24 @@ export default function FadeSwitch(props: Props) {
     return prefersReducedMotion() ? 0 : Math.max(0, Math.floor(durationMsRaw));
   }, [durationMsRaw]);
 
-  // ✅ いま表示している（確定済み）のキー/中身
+  const halfMs = useMemo(
+    () => Math.max(0, Math.floor(durationMs / 2)),
+    [durationMs],
+  );
+
   const [shownKey, setShownKey] = useState(props.activeKey);
   const [shownChildren, setShownChildren] = useState<ReactNode>(props.children);
   const [phase, setPhase] = useState<Phase>("idle");
 
-  // ✅ 最新のchildrenはrefで常に保持（切替確定タイミングで読む）
   const latestChildrenRef = useRef<ReactNode>(props.children);
   useEffect(() => {
     latestChildrenRef.current = props.children;
   }, [props.children]);
 
-  // ✅ 進行中の切替を識別（古いタイマーが新しい状態を壊さない）
   const tokenRef = useRef(0);
-  const exitTimerRef = useRef<number | null>(null);
-  const enterTimerRef = useRef<number | null>(null);
+  const timerRef = useRef<number | null>(null);
 
-  function clearTimers() {
-    if (exitTimerRef.current != null) {
-      window.clearTimeout(exitTimerRef.current);
-      exitTimerRef.current = null;
-    }
-    if (enterTimerRef.current != null) {
-      window.clearTimeout(enterTimerRef.current);
-      enterTimerRef.current = null;
-    }
-  }
-
-  // ✅ 同一キーなら中身だけ追従（フェードさせない）
+  // 同一キーなら中身だけ追従（フェード無し）
   useEffect(() => {
     if (props.activeKey === shownKey) {
       setShownChildren(props.children);
@@ -65,47 +61,90 @@ export default function FadeSwitch(props: Props) {
 
     const token = ++tokenRef.current;
 
-    clearTimers();
+    if (timerRef.current != null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
 
-    // reduced motion は即差し替え
-    if (durationMs === 0) {
+    if (durationMs === 0 || halfMs === 0) {
       setShownKey(props.activeKey);
       setShownChildren(latestChildrenRef.current);
       setPhase("idle");
       return;
     }
 
-    // 1) まずフェードアウト開始（opacityのみ）
-    setPhase("exit");
+    // 1) 幕を濃くする
+    setPhase("fadeOut");
 
-    // 2) duration後に中身を差し替えてフェードイン
-    exitTimerRef.current = window.setTimeout(() => {
+    // 2) 半分経ったら差し替え + 幕を薄くする
+    timerRef.current = window.setTimeout(() => {
       if (token !== tokenRef.current) return;
 
       setShownKey(props.activeKey);
       setShownChildren(latestChildrenRef.current);
 
-      // ✅ enter は 1フレームで剥がさない。duration維持してから idleへ
-      setPhase("enter");
-
-      enterTimerRef.current = window.setTimeout(() => {
+      // 次フレームで fadeIn に入れる（CSS反映を確実に）
+      requestAnimationFrame(() => {
         if (token !== tokenRef.current) return;
-        setPhase("idle");
-      }, durationMs);
-    }, durationMs);
+        setPhase("fadeIn");
+
+        // 3) 残り半分で idle
+        timerRef.current = window.setTimeout(() => {
+          if (token !== tokenRef.current) return;
+          setPhase("idle");
+        }, halfMs);
+      });
+    }, halfMs);
 
     return () => {
-      clearTimers();
+      if (timerRef.current != null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
     };
-  }, [props.activeKey, shownKey, durationMs]);
+  }, [props.activeKey, shownKey, durationMs, halfMs]);
 
-  const style = {
-    ["--fade-ms" as any]: `${durationMs}ms`,
-  };
+  // overlay の不透明度
+  const overlayOpacity = phase === "fadeOut" ? 1 : phase === "fadeIn" ? 0 : 0;
+
+  // overlay のトランジション
+  const overlayTransition =
+    durationMs === 0
+      ? "none"
+      : phase === "fadeOut"
+        ? `opacity ${halfMs}ms ease`
+        : phase === "fadeIn"
+          ? `opacity ${halfMs}ms ease`
+          : "none";
 
   return (
-    <div className="fade-switch" data-phase={phase} style={style}>
-      {shownChildren}
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
+      {/* コンテンツは常に不透明（backdrop-filterを守る） */}
+      <div style={{ width: "100%", height: "100%", minHeight: 0 }}>
+        {shownChildren}
+      </div>
+
+      {/* 幕（これだけが opacity 変化する） */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          opacity: overlayOpacity,
+          transition: overlayTransition,
+          // “暗転”は真っ黒だと強いので、ほんのりガラスっぽく
+          background:
+            "linear-gradient(180deg, rgba(0,0,0,0.26), rgba(0,0,0,0.26))",
+        }}
+      />
     </div>
   );
 }

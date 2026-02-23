@@ -25,40 +25,38 @@ body,
   height: 100%;
 }
 
-/* ✅ 微妙な横はみ出しを根絶（iOS含む） */
+/* 横はみ出し防止 */
 html,
 body {
   margin: 0;
   overflow-x: hidden;
 }
 
-/* iOSの1pxスクロール対策の保険 */
 body {
   position: relative;
 }
 
-/* ===== ベースの見た目（土台） ===== */
+/* =========================================================
+   ベースカラー
+   ========================================================= */
+
 :root {
   color-scheme: dark;
   --text: rgba(255, 255, 255, 0.92);
   --muted: rgba(255, 255, 255, 0.68);
   --line: rgba(255, 255, 255, 0.14);
 
-  /* 背景の“空気” */
   --bg-base-0: #07080b;
   --bg-base-1: #0b0d13;
   --bg-accent: rgba(255, 77, 109, 0.18);
 
-  /* 背景画像（App.tsxが上書き） */
   --bg-image: url("/assets/bg/ui-check.png");
-
-  /* 背景のぼかし（App.tsxが上書き） */
   --bg-blur: 0px;
 
-  /* すりガラス */
-  --glass-blur: 10; /* unitless（互換） */
-  --glass-blur-px: 10px; /* App.tsx が上書きする */
-  --glass-alpha: 0.22; /* 0〜1 */
+  /* ガラス */
+  --glass-blur: 10; /* unitless互換 */
+  --glass-blur-px: 10px; /* ← blur()はこれを参照 */
+  --glass-alpha: 0.22;
   --glass-alpha-strong: 0.35;
 }
 
@@ -88,7 +86,7 @@ body {
     sans-serif;
 }
 
-/* Viteテンプレ由来のroot縛りを解除（PageShellに任せる） */
+/* root制限解除 */
 #root {
   width: 100%;
   max-width: none;
@@ -97,7 +95,7 @@ body {
   text-align: initial;
 }
 
-/* スマホで崩れやすい要素を守る */
+/* メディア崩れ防止 */
 img,
 svg,
 canvas,
@@ -111,23 +109,19 @@ code {
   overflow-x: auto;
 }
 
-/* 見出し：スマホ最優先 */
+/* 見出し */
 h1 {
   font-size: clamp(22px, 7vw, 40px);
-  line-height: 1.1;
   margin: 0 0 10px;
-  letter-spacing: -0.02em;
 }
 
 h2 {
   font-size: clamp(18px, 5.8vw, 28px);
-  line-height: 1.15;
   margin: 0 0 10px;
 }
 
 h3 {
   font-size: clamp(16px, 4.8vw, 22px);
-  line-height: 1.2;
   margin: 0 0 8px;
 }
 
@@ -137,68 +131,8 @@ li {
   line-height: 1.6;
 }
 
-/* 入力は16px以上（buttonも揃える） */
-input,
-textarea,
-select,
-button {
-  font-size: 16px;
-}
-
-/* ✅ 入力のはみ出し特効薬セット */
-input,
-textarea,
-select {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-}
-
-/* ボタンもはみ出し抑制 */
-button {
-  max-width: 100%;
-  min-width: 0;
-}
-
-/* 長いテキストが横に突き抜けるのを防ぐ */
-p,
-li,
-div,
-span,
-label,
-h1,
-h2,
-h3 {
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-/* ✅ 横スワイプ用の汎用クラス（Recordの一覧に当てる） */
-.horizontal-scroll {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  width: 100%;
-  max-width: 100%;
-  padding: 6px 2px 10px;
-  -webkit-overflow-scrolling: touch;
-  scroll-snap-type: x mandatory;
-}
-
-.horizontal-scroll > * {
-  flex: 0 0 min(84vw, 360px);
-  scroll-snap-align: start;
-  min-width: 0;
-}
-
-/* safe-area対応（iPhone下のホームバー回避） */
-.safe-area-bottom {
-  padding-bottom: max(16px, env(safe-area-inset-bottom));
-}
-
 /* =========================================================
-   ✅ 背景レイヤー（実体DOM）
+   背景レイヤ
    ========================================================= */
 
 #app-root {
@@ -234,84 +168,38 @@ h3 {
   background-repeat: no-repeat;
 
   filter: blur(var(--bg-blur, 0px));
-  transform: translateZ(0);
 }
 
 /* =========================================================
-   ✅ すりガラス：疑似ブラー方式（backdrop-filterに依存しない）
+   🌫️ 本来のガラス（backdrop-filter方式）
    ========================================================= */
 
-/* ガラス共通 */
 .glass,
 .glass-panel,
 .glass-header {
   position: relative;
-  overflow: hidden; /* 擬似背景のはみ出し隠し */
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
+
   background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
+
+  /* ここが本命 */
+  backdrop-filter: blur(var(--glass-blur-px, 0px));
+  -webkit-backdrop-filter: blur(var(--glass-blur-px, 0px));
 }
 
-/* 擬似的な「背面写り込み」 */
-.glass::before,
-.glass-panel::before,
-.glass-header::before {
-  content: "";
-  position: absolute;
-  inset: -24px; /* blurで端が欠けるの防止 */
-  z-index: 0;
-
-  /* ✅ #layer-bg と同じ背景を“ガラスの中に再描画”する */
-  background:
-    var(--bg-image, none),
-    radial-gradient(
-      800px 500px at 50% 30%,
-      rgba(255, 255, 255, 0.06),
-      transparent 65%
-    ),
-    radial-gradient(
-      1000px 700px at 20% -10%,
-      rgba(255, 77, 109, 0.18),
-      transparent 55%
-    ),
-    radial-gradient(
-      900px 600px at 110% 10%,
-      rgba(110, 207, 255, 0.1),
-      transparent 60%
-    ),
-    linear-gradient(180deg, rgba(7, 8, 11, 0.55), rgba(11, 13, 19, 0.55));
-
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-
-  /* ✅ ここがスライダーで確実に動く */
-  filter: blur(var(--glass-blur-px, 0px));
-
-  /* ぼかした層を少し拡大して境界を自然に */
-  transform: scale(1.06);
-  opacity: 1;
-}
-
-/* ガラスの中身は擬似背景より上へ */
-.glass > *,
-.glass-panel > *,
-.glass-header > * {
-  position: relative;
-  z-index: 1;
-}
-
-/* 強め */
 .glass-strong,
 .glass-panel.strong {
   background: rgba(17, 17, 17, var(--glass-alpha-strong, 0.35));
 }
 
-/* 透過UI（ボタン/入力）も雰囲気を合わせる（※ここは疑似背景まではやらない） */
+/* ボタン */
 button {
   border: 1px solid var(--line);
   color: rgba(255, 255, 255, 0.9);
   background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
+  backdrop-filter: blur(var(--glass-blur-px, 0px));
+  -webkit-backdrop-filter: blur(var(--glass-blur-px, 0px));
   border-radius: 14px;
   padding: 10px 14px;
 }
@@ -320,55 +208,26 @@ button:disabled {
   opacity: 0.55;
 }
 
+/* 入力 */
 input,
 textarea,
 select {
   border: 1px solid var(--line);
   color: rgba(255, 255, 255, 0.92);
   background: rgba(17, 17, 17, var(--glass-alpha-strong, 0.35));
+  backdrop-filter: blur(var(--glass-blur-px, 0px));
+  -webkit-backdrop-filter: blur(var(--glass-blur-px, 0px));
   border-radius: 12px;
   padding: 10px 12px;
   outline: none;
 }
 
-input:focus,
-textarea:focus,
-select:focus {
-  border-color: rgba(255, 77, 109, 0.55);
-}
+/* =========================================================
+   フェードはもう opacity を触らない（旧方式は無効）
+   ========================================================= */
 
-/* フェード（opacityのみ） */
 .fade-switch {
   width: 100%;
   height: 100%;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  opacity: 1;
-  will-change: opacity;
-}
-
-.fade-switch[data-phase="exit"] {
-  opacity: 0;
-  transition: opacity var(--fade-ms, 220ms) ease;
-  pointer-events: none;
-}
-
-.fade-switch[data-phase="enter"] {
-  opacity: 1;
-  transition: opacity var(--fade-ms, 220ms) ease;
-}
-
-.fade-switch[data-phase="idle"] {
-  opacity: 1;
-  transition: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .fade-switch,
-  .fade-switch[data-phase="exit"],
-  .fade-switch[data-phase="enter"],
-  .fade-switch[data-phase="idle"] {
-    transition: none !important;
-  }
 }
