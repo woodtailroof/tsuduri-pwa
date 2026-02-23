@@ -2,11 +2,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 type Props = {
-  /** 切替トリガーになるキー（screen名など） */
   activeKey: string;
-  /** 表示したい中身 */
   children: ReactNode;
-  /** ms（デフォルト: 260） */
   durationMs?: number;
 };
 
@@ -17,125 +14,123 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-/**
- * ✅ 2枚重ねのクロスフェード
- * - A(旧) を opacity:1→0
- * - B(新) を opacity:0→1
- * - フェード完了後に旧を破棄
- *
- * 注意:
- * - opacity は compositor 事情で backdrop-filter に影響しうる。
- *   まずは「試す」目的で実装。
- */
 export default function CrossFadeSwitch(props: Props) {
-  const durationMsRaw = props.durationMs ?? 260;
-
+  const durationRaw = props.durationMs ?? 500; // ★ 0.5秒
   const durationMs = useMemo(() => {
-    return prefersReducedMotion() ? 0 : Math.max(0, Math.floor(durationMsRaw));
-  }, [durationMsRaw]);
+    return prefersReducedMotion() ? 0 : Math.max(0, durationRaw);
+  }, [durationRaw]);
 
   const [frontKey, setFrontKey] = useState(props.activeKey);
   const [frontChildren, setFrontChildren] = useState<ReactNode>(props.children);
 
-  // 旧レイヤ（フェードアウト中のみ存在）
   const [backKey, setBackKey] = useState<string | null>(null);
   const [backChildren, setBackChildren] = useState<ReactNode>(null);
 
-  // front が見える（true=frontが1、false=frontが0）
-  const [frontVisible, setFrontVisible] = useState(true);
+  const [running, setRunning] = useState(false);
 
   const tokenRef = useRef(0);
-  const cleanupTimerRef = useRef<number | null>(null);
+  const timerRef = useRef<number | null>(null);
 
-  // 同一キーなら中身だけ更新（アニメ無し）
   useEffect(() => {
-    if (props.activeKey === frontKey && backKey == null) {
-      setFrontChildren(props.children);
+    if (props.activeKey === frontKey) {
+      if (!running) {
+        setFrontChildren(props.children);
+      }
+      return;
     }
-    // backKeyが存在する間は、表示確定までは front の中身を不用意に差し替えない
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.activeKey, props.children]);
-
-  useEffect(() => {
-    if (props.activeKey === frontKey) return;
 
     const token = ++tokenRef.current;
 
-    if (cleanupTimerRef.current != null) {
-      window.clearTimeout(cleanupTimerRef.current);
-      cleanupTimerRef.current = null;
+    if (timerRef.current != null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
 
-    // reduced motion: 即差し替え
     if (durationMs === 0) {
       setBackKey(null);
       setBackChildren(null);
       setFrontKey(props.activeKey);
       setFrontChildren(props.children);
-      setFrontVisible(true);
+      setRunning(false);
       return;
     }
 
-    // いま見えてる front を back に退避
+    // 現在のfrontをbackへ
     setBackKey(frontKey);
     setBackChildren(frontChildren);
 
-    // 新しい画面を front としてセット（ただし最初は透明）
+    // 新しい画面をfrontへ（最初は透明）
     setFrontKey(props.activeKey);
     setFrontChildren(props.children);
 
-    // 次フレームでクロスフェード開始
+    // クロスフェード開始
     requestAnimationFrame(() => {
       if (token !== tokenRef.current) return;
-      setFrontVisible(false); // back=1, front=0 の状態を作る
-      requestAnimationFrame(() => {
-        if (token !== tokenRef.current) return;
-        setFrontVisible(true); // front=1へ（=クロスフェード完了形）
-      });
+      setRunning(true);
     });
 
-    // フェード完了後に back を破棄
-    cleanupTimerRef.current = window.setTimeout(() => {
+    // 終了処理
+    timerRef.current = window.setTimeout(() => {
       if (token !== tokenRef.current) return;
       setBackKey(null);
       setBackChildren(null);
-    }, durationMs + 40);
+      setRunning(false);
+    }, durationMs);
 
     return () => {
-      if (cleanupTimerRef.current != null) {
-        window.clearTimeout(cleanupTimerRef.current);
-        cleanupTimerRef.current = null;
+      if (timerRef.current != null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
       }
     };
-  }, [props.activeKey, frontKey, frontChildren, props.children, durationMs]);
+  }, [
+    props.activeKey,
+    props.children,
+    durationMs,
+    frontKey,
+    frontChildren,
+    running,
+  ]);
 
-  const commonLayerStyle: React.CSSProperties = {
+  const common: React.CSSProperties = {
     position: "absolute",
     inset: 0,
     width: "100%",
     height: "100%",
     minHeight: 0,
-  };
-
-  // opacityの切替を2レイヤで行う
-  const frontStyle: React.CSSProperties = {
-    ...commonLayerStyle,
-    opacity: frontVisible ? 1 : 0,
-    transition: `opacity ${durationMs}ms ease`,
-    pointerEvents: frontVisible ? "auto" : "none",
-  };
-
-  const backStyle: React.CSSProperties = {
-    ...commonLayerStyle,
-    opacity: frontVisible ? 0 : 1,
-    transition: `opacity ${durationMs}ms ease`,
-    pointerEvents: "none",
+    transition: `opacity ${durationMs}ms ease-in-out`,
   };
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%", minHeight: 0 }}>
-      {backKey != null ? <div style={backStyle}>{backChildren}</div> : null}
-      <div style={frontStyle}>{frontChildren}</div>
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        minHeight: 0,
+      }}
+    >
+      {backKey != null && (
+        <div
+          style={{
+            ...common,
+            opacity: running ? 0 : 1,
+            pointerEvents: "none",
+          }}
+        >
+          {backChildren}
+        </div>
+      )}
+
+      <div
+        style={{
+          ...common,
+          opacity: running ? 1 : 1,
+          pointerEvents: "auto",
+        }}
+      >
+        {frontChildren}
+      </div>
     </div>
   );
 }
