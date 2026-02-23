@@ -23,13 +23,11 @@ export default function CrossFadeSwitch({
 
     const prev = items[items.length - 1];
 
-    // 前画面を残して新画面を追加
     setItems([prev, { key: activeKey, node: children }]);
 
     prevKeyRef.current = activeKey;
 
     const t = setTimeout(() => {
-      // 新画面だけ残す
       setItems([{ key: activeKey, node: children }]);
     }, durationMs);
 
@@ -59,4 +57,3 @@ export default function CrossFadeSwitch({
     </div>
   );
 }
-s;
