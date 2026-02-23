@@ -2,8 +2,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 type Props = {
+  /** 切替トリガーになるキー（screen名など） */
   activeKey: string;
+  /** 表示したい中身 */
   children: ReactNode;
+  /** ms（デフォルト: 500） */
   durationMs?: number;
 };
 
@@ -14,11 +17,21 @@ function prefersReducedMotion(): boolean {
   );
 }
 
+type Phase = "stable" | "prep" | "run";
+
+/**
+ * ✅ 2枚重ねのクロスフェード（確実に opacity トランジションが走る版）
+ * - stable: front=1 / back=なし
+ * - prep  : front=0 / back=1（transition無しで1フレーム確定）
+ * - run   : front 0→1, back 1→0（transition有り）
+ * - 完了後 stable に戻して back を破棄
+ */
 export default function CrossFadeSwitch(props: Props) {
-  const durationRaw = props.durationMs ?? 500; // ★ 0.5秒
+  const durationMsRaw = props.durationMs ?? 500;
+
   const durationMs = useMemo(() => {
-    return prefersReducedMotion() ? 0 : Math.max(0, durationRaw);
-  }, [durationRaw]);
+    return prefersReducedMotion() ? 0 : Math.max(0, Math.floor(durationMsRaw));
+  }, [durationMsRaw]);
 
   const [frontKey, setFrontKey] = useState(props.activeKey);
   const [frontChildren, setFrontChildren] = useState<ReactNode>(props.children);
@@ -26,80 +39,109 @@ export default function CrossFadeSwitch(props: Props) {
   const [backKey, setBackKey] = useState<string | null>(null);
   const [backChildren, setBackChildren] = useState<ReactNode>(null);
 
-  const [running, setRunning] = useState(false);
+  const [phase, setPhase] = useState<Phase>("stable");
 
   const tokenRef = useRef(0);
-  const timerRef = useRef<number | null>(null);
+  const cleanupTimerRef = useRef<number | null>(null);
+  const raf1Ref = useRef<number | null>(null);
+  const raf2Ref = useRef<number | null>(null);
+
+  // 同一キーなら中身だけ更新（フェードさせない）
+  useEffect(() => {
+    if (props.activeKey === frontKey && backKey == null && phase === "stable") {
+      setFrontChildren(props.children);
+    }
+  }, [props.activeKey, props.children, frontKey, backKey, phase]);
 
   useEffect(() => {
-    if (props.activeKey === frontKey) {
-      if (!running) {
-        setFrontChildren(props.children);
-      }
-      return;
-    }
+    if (props.activeKey === frontKey) return;
 
     const token = ++tokenRef.current;
 
-    if (timerRef.current != null) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
+    // 後始末
+    if (cleanupTimerRef.current != null) {
+      window.clearTimeout(cleanupTimerRef.current);
+      cleanupTimerRef.current = null;
+    }
+    if (raf1Ref.current != null) {
+      window.cancelAnimationFrame(raf1Ref.current);
+      raf1Ref.current = null;
+    }
+    if (raf2Ref.current != null) {
+      window.cancelAnimationFrame(raf2Ref.current);
+      raf2Ref.current = null;
     }
 
+    // reduced motion は即差し替え
     if (durationMs === 0) {
       setBackKey(null);
       setBackChildren(null);
       setFrontKey(props.activeKey);
       setFrontChildren(props.children);
-      setRunning(false);
+      setPhase("stable");
       return;
     }
 
-    // 現在のfrontをbackへ
+    // 旧frontをbackに退避
     setBackKey(frontKey);
     setBackChildren(frontChildren);
 
-    // 新しい画面をfrontへ（最初は透明）
+    // 新しい画面をfrontにセット
     setFrontKey(props.activeKey);
     setFrontChildren(props.children);
 
-    // クロスフェード開始
-    requestAnimationFrame(() => {
+    // ① prep: front=0 / back=1 を「確定」させる（transition無し）
+    setPhase("prep");
+
+    // ② 次フレームでrunにして transition を走らせる
+    raf1Ref.current = window.requestAnimationFrame(() => {
       if (token !== tokenRef.current) return;
-      setRunning(true);
+
+      raf2Ref.current = window.requestAnimationFrame(() => {
+        if (token !== tokenRef.current) return;
+
+        setPhase("run");
+
+        // ③ duration後にback破棄して stable に戻す
+        cleanupTimerRef.current = window.setTimeout(() => {
+          if (token !== tokenRef.current) return;
+          setBackKey(null);
+          setBackChildren(null);
+          setPhase("stable");
+        }, durationMs + 60);
+      });
     });
 
-    // 終了処理
-    timerRef.current = window.setTimeout(() => {
-      if (token !== tokenRef.current) return;
-      setBackKey(null);
-      setBackChildren(null);
-      setRunning(false);
-    }, durationMs);
-
     return () => {
-      if (timerRef.current != null) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = null;
+      if (cleanupTimerRef.current != null) {
+        window.clearTimeout(cleanupTimerRef.current);
+        cleanupTimerRef.current = null;
+      }
+      if (raf1Ref.current != null) {
+        window.cancelAnimationFrame(raf1Ref.current);
+        raf1Ref.current = null;
+      }
+      if (raf2Ref.current != null) {
+        window.cancelAnimationFrame(raf2Ref.current);
+        raf2Ref.current = null;
       }
     };
-  }, [
-    props.activeKey,
-    props.children,
-    durationMs,
-    frontKey,
-    frontChildren,
-    running,
-  ]);
+  }, [props.activeKey, props.children, durationMs, frontKey, frontChildren]);
 
-  const common: React.CSSProperties = {
+  const commonLayerStyle: React.CSSProperties = {
     position: "absolute",
     inset: 0,
     width: "100%",
     height: "100%",
     minHeight: 0,
-    transition: `opacity ${durationMs}ms ease-in-out`,
   };
+
+  const transition =
+    phase === "run" ? `opacity ${durationMs}ms ease-in-out` : "none";
+
+  // prep中は front=0 / back=1、run中は front=1 / back=0
+  const frontOpacity = phase === "prep" ? 0 : 1;
+  const backOpacity = phase === "prep" ? 1 : 0;
 
   return (
     <div
@@ -110,22 +152,24 @@ export default function CrossFadeSwitch(props: Props) {
         minHeight: 0,
       }}
     >
-      {backKey != null && (
+      {backKey != null ? (
         <div
           style={{
-            ...common,
-            opacity: running ? 0 : 1,
+            ...commonLayerStyle,
+            opacity: backOpacity,
+            transition,
             pointerEvents: "none",
           }}
         >
           {backChildren}
         </div>
-      )}
+      ) : null}
 
       <div
         style={{
-          ...common,
-          opacity: running ? 1 : 1,
+          ...commonLayerStyle,
+          opacity: backKey != null ? frontOpacity : 1,
+          transition,
           pointerEvents: "auto",
         }}
       >
