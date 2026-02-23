@@ -106,11 +106,9 @@ export default function PageShell(props: Props) {
   }, [onBack]);
 
   /**
-   * ✅ 重要：
-   * --glass-blur は unitless（数値）運用に統一する。
-   * 使う側で px 化する（= 更新/HMRで backdrop-filter が死ににくい）
+   * ✅ backdrop-filter は px のCSS変数を参照（更新反映の安定化）
    */
-  const glassBlurCss = "blur(calc(var(--glass-blur, 0) * 1px))";
+  const glassBlurCss = "blur(var(--glass-blur-px, 0px))";
 
   // ✅ ヘッダーは常に viewport 基準で固定（すりガラス設定に追従）
   const headerStyle: CSSProperties = {

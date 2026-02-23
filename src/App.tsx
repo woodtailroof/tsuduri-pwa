@@ -134,8 +134,10 @@ function AppInner() {
 
   type CSSVars = Record<`--${string}`, string>;
   const appVars: CSSProperties & CSSVars = useMemo(() => {
-    // ✅ --glass-blur は unitless（数値）運用に統一（px禁止）
-    const glassBlurUnitless = String(Math.round(clamp(glassBlur, 0, 60)));
+    // ✅ ぼかしは「数値(unitless)」と「px」を両方セットして、参照側をpxに寄せる
+    const gb = Math.round(clamp(glassBlur, 0, 60));
+    const gbUnitless = String(gb);
+    const gbPx = `${gb}px`;
 
     return {
       "--bg-image":
@@ -143,7 +145,11 @@ function AppInner() {
           ? `url("${effectiveBgSrc}")`
           : "none",
       "--bg-blur": `${Math.round(clamp(bgBlur, 0, 60))}px`,
-      "--glass-blur": glassBlurUnitless,
+
+      // 互換・参照用
+      "--glass-blur": gbUnitless,
+      "--glass-blur-px": gbPx,
+
       "--glass-alpha": `${clamp(glassAlpha, 0, 1)}`,
       "--glass-alpha-strong": `${clamp(glassAlpha + 0.13, 0, 1)}`,
     };
@@ -160,7 +166,6 @@ function AppInner() {
         ...appVars,
       }}
     >
-      {/* ✅ 背景レイヤ（index.css の #layer-bg を生かす実体DOM） */}
       <div
         id="layer-bg"
         style={{
@@ -180,7 +185,6 @@ function AppInner() {
           pointerEvents: "none",
         }}
       >
-        {/* ✅ 画面遷移キーを渡して「ランダム（画面遷移ごと）」を成立させる */}
         <Stage activeKey={screen} />
       </div>
 
@@ -193,7 +197,6 @@ function AppInner() {
           pointerEvents: "auto",
         }}
       >
-        {/* ✅ 画面遷移にフェードを噛ませる（UIフェード復活） */}
         <FadeSwitch activeKey={screen}>{content}</FadeSwitch>
       </div>
     </div>
