@@ -19,13 +19,6 @@ function prefersReducedMotion(): boolean {
 
 type Phase = "stable" | "prep" | "run";
 
-/**
- * ✅ 2枚重ねのクロスフェード（確実に opacity トランジションが走る版）
- * - stable: front=1 / back=なし
- * - prep  : front=0 / back=1（transition無しで1フレーム確定）
- * - run   : front 0→1, back 1→0（transition有り）
- * - 完了後 stable に戻して back を破棄
- */
 export default function CrossFadeSwitch(props: Props) {
   const durationMsRaw = props.durationMs ?? 500;
 
@@ -43,8 +36,7 @@ export default function CrossFadeSwitch(props: Props) {
 
   const tokenRef = useRef(0);
   const cleanupTimerRef = useRef<number | null>(null);
-  const raf1Ref = useRef<number | null>(null);
-  const raf2Ref = useRef<number | null>(null);
+  const rafRef = useRef<number | null>(null);
 
   // 同一キーなら中身だけ更新（フェードさせない）
   useEffect(() => {
@@ -63,13 +55,9 @@ export default function CrossFadeSwitch(props: Props) {
       window.clearTimeout(cleanupTimerRef.current);
       cleanupTimerRef.current = null;
     }
-    if (raf1Ref.current != null) {
-      window.cancelAnimationFrame(raf1Ref.current);
-      raf1Ref.current = null;
-    }
-    if (raf2Ref.current != null) {
-      window.cancelAnimationFrame(raf2Ref.current);
-      raf2Ref.current = null;
+    if (rafRef.current != null) {
+      window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     }
 
     // reduced motion は即差し替え
@@ -82,34 +70,29 @@ export default function CrossFadeSwitch(props: Props) {
       return;
     }
 
-    // 旧frontをbackに退避
+    // 旧frontをbackに退避（＝旧画面はこの瞬間から残る）
     setBackKey(frontKey);
     setBackChildren(frontChildren);
 
-    // 新しい画面をfrontにセット
+    // 新しい画面をfrontにセット（prep中は透明）
     setFrontKey(props.activeKey);
     setFrontChildren(props.children);
 
-    // ① prep: front=0 / back=1 を「確定」させる（transition無し）
+    // ✅ prep: 見えてる旧画面(back)は押せる、透明な新画面(front)は押せない
     setPhase("prep");
 
-    // ② 次フレームでrunにして transition を走らせる
-    raf1Ref.current = window.requestAnimationFrame(() => {
+    // 次フレームで run にして transition 発火
+    rafRef.current = window.requestAnimationFrame(() => {
       if (token !== tokenRef.current) return;
 
-      raf2Ref.current = window.requestAnimationFrame(() => {
+      setPhase("run");
+
+      cleanupTimerRef.current = window.setTimeout(() => {
         if (token !== tokenRef.current) return;
-
-        setPhase("run");
-
-        // ③ duration後にback破棄して stable に戻す
-        cleanupTimerRef.current = window.setTimeout(() => {
-          if (token !== tokenRef.current) return;
-          setBackKey(null);
-          setBackChildren(null);
-          setPhase("stable");
-        }, durationMs + 60);
-      });
+        setBackKey(null);
+        setBackChildren(null);
+        setPhase("stable");
+      }, durationMs + 60);
     });
 
     return () => {
@@ -117,31 +100,35 @@ export default function CrossFadeSwitch(props: Props) {
         window.clearTimeout(cleanupTimerRef.current);
         cleanupTimerRef.current = null;
       }
-      if (raf1Ref.current != null) {
-        window.cancelAnimationFrame(raf1Ref.current);
-        raf1Ref.current = null;
-      }
-      if (raf2Ref.current != null) {
-        window.cancelAnimationFrame(raf2Ref.current);
-        raf2Ref.current = null;
+      if (rafRef.current != null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
       }
     };
   }, [props.activeKey, props.children, durationMs, frontKey, frontChildren]);
 
-  const commonLayerStyle: React.CSSProperties = {
+  const common: React.CSSProperties = {
     position: "absolute",
     inset: 0,
     width: "100%",
     height: "100%",
     minHeight: 0,
+    willChange: "opacity",
   };
 
   const transition =
     phase === "run" ? `opacity ${durationMs}ms ease-in-out` : "none";
 
-  // prep中は front=0 / back=1、run中は front=1 / back=0
+  // 見た目（opacity）
   const frontOpacity = phase === "prep" ? 0 : 1;
   const backOpacity = phase === "prep" ? 1 : 0;
+
+  // ✅ 入力（pointer-events）
+  // prep中は back（旧画面）だけ触れる。run/ stable は front を触れる。
+  const backPE: React.CSSProperties["pointerEvents"] =
+    phase === "prep" ? "auto" : "none";
+  const frontPE: React.CSSProperties["pointerEvents"] =
+    backKey != null ? (phase === "prep" ? "none" : "auto") : "auto";
 
   return (
     <div
@@ -155,10 +142,10 @@ export default function CrossFadeSwitch(props: Props) {
       {backKey != null ? (
         <div
           style={{
-            ...commonLayerStyle,
+            ...common,
             opacity: backOpacity,
             transition,
-            pointerEvents: "none",
+            pointerEvents: backPE,
           }}
         >
           {backChildren}
@@ -167,10 +154,10 @@ export default function CrossFadeSwitch(props: Props) {
 
       <div
         style={{
-          ...commonLayerStyle,
+          ...common,
           opacity: backKey != null ? frontOpacity : 1,
           transition,
-          pointerEvents: "auto",
+          pointerEvents: frontPE,
         }}
       >
         {frontChildren}
