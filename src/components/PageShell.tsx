@@ -105,12 +105,7 @@ export default function PageShell(props: Props) {
     if (typeof window !== "undefined") window.history.back();
   }, [onBack]);
 
-  /**
-   * ✅ backdrop-filter は px のCSS変数を参照（更新反映の安定化）
-   */
-  const glassBlurCss = "blur(var(--glass-blur-px, 0px))";
-
-  // ✅ ヘッダーは常に viewport 基準で固定（すりガラス設定に追従）
+  // ✅ ヘッダー（classで疑似ブラー）
   const headerStyle: CSSProperties = {
     position: "fixed",
     top: 0,
@@ -118,10 +113,9 @@ export default function PageShell(props: Props) {
     right: 0,
     zIndex: 999,
     height: `${effectiveHeaderH}px`,
-    background: "rgba(0,0,0,var(--glass-alpha, 0.22))",
     borderBottom: "1px solid rgba(255,255,255,0.10)",
-    backdropFilter: glassBlurCss,
-    WebkitBackdropFilter: glassBlurCss,
+    borderRadius: 0, // ヘッダーは角丸しない
+    background: "rgba(0,0,0,var(--glass-alpha, 0.22))",
   };
 
   const headerInnerStyle: CSSProperties = {
@@ -179,18 +173,9 @@ export default function PageShell(props: Props) {
     alignItems: "center",
     gap: 8,
     whiteSpace: "nowrap",
-    backdropFilter: glassBlurCss,
-    WebkitBackdropFilter: glassBlurCss,
     flex: "0 0 auto",
   };
 
-  /**
-   * ✅ Chat 崩れ対策の本丸：
-   * 親を flex column にして、本文領域を flex:1 + minHeight:0 にする
-   *
-   * ✅ さらに重要：
-   * Chat.tsx が参照してる --shell-header-h をここで定義する
-   */
   type CSSVars = Record<`--${string}`, string>;
   const shellStyle: CSSProperties & CSSVars = {
     width: "100%",
@@ -203,7 +188,6 @@ export default function PageShell(props: Props) {
     "--shell-header-h": `${effectiveHeaderH}px`,
   };
 
-  // ✅ 本文スクロール領域（ヘッダー分は常に確保）
   const contentOuterStyle: CSSProperties = {
     flex: "1 1 auto",
     minHeight: 0,
@@ -213,7 +197,7 @@ export default function PageShell(props: Props) {
     overscrollBehavior: "contain",
     paddingTop: `${effectiveHeaderH}px`,
     position: "relative",
-    zIndex: 20, // UIは常に前
+    zIndex: 20,
   };
 
   const frameStyle: CSSProperties = {
@@ -229,9 +213,8 @@ export default function PageShell(props: Props) {
 
   return (
     <div className="page-shell" style={shellStyle}>
-      {/* ✅ ヘッダー（最前面） */}
       {headerVisible ? (
-        <div style={headerStyle}>
+        <div className="glass-header" style={headerStyle}>
           <div style={headerInnerStyle}>
             <div style={titleSlotStyle}>
               {title ? <div style={titleClampStyle}>{title}</div> : null}
@@ -249,7 +232,6 @@ export default function PageShell(props: Props) {
         </div>
       ) : null}
 
-      {/* ✅ 本文（UIレイヤ） */}
       <div style={contentOuterStyle}>
         <div style={frameStyle}>
           <div

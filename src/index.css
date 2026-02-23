@@ -55,9 +55,9 @@ body {
   /* 背景のぼかし（App.tsxが上書き） */
   --bg-blur: 0px;
 
-  /* すりガラス（互換で残す） */
-  --glass-blur: 10; /* unitless */
-  --glass-blur-px: 10px; /* ✅ App.tsx が上書きする */
+  /* すりガラス */
+  --glass-blur: 10; /* unitless（互換） */
+  --glass-blur-px: 10px; /* App.tsx が上書きする */
   --glass-alpha: 0.22; /* 0〜1 */
   --glass-alpha-strong: 0.35;
 }
@@ -238,29 +238,80 @@ h3 {
 }
 
 /* =========================================================
-   ✅ すりガラス：カード/パネルの共通クラス
+   ✅ すりガラス：疑似ブラー方式（backdrop-filterに依存しない）
    ========================================================= */
+
+/* ガラス共通 */
 .glass,
-.glass-panel {
+.glass-panel,
+.glass-header {
+  position: relative;
+  overflow: hidden; /* 擬似背景のはみ出し隠し */
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
   background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
-  backdrop-filter: blur(var(--glass-blur-px, 0px));
-  -webkit-backdrop-filter: blur(var(--glass-blur-px, 0px));
 }
 
+/* 擬似的な「背面写り込み」 */
+.glass::before,
+.glass-panel::before,
+.glass-header::before {
+  content: "";
+  position: absolute;
+  inset: -24px; /* blurで端が欠けるの防止 */
+  z-index: 0;
+
+  /* ✅ #layer-bg と同じ背景を“ガラスの中に再描画”する */
+  background:
+    var(--bg-image, none),
+    radial-gradient(
+      800px 500px at 50% 30%,
+      rgba(255, 255, 255, 0.06),
+      transparent 65%
+    ),
+    radial-gradient(
+      1000px 700px at 20% -10%,
+      rgba(255, 77, 109, 0.18),
+      transparent 55%
+    ),
+    radial-gradient(
+      900px 600px at 110% 10%,
+      rgba(110, 207, 255, 0.1),
+      transparent 60%
+    ),
+    linear-gradient(180deg, rgba(7, 8, 11, 0.55), rgba(11, 13, 19, 0.55));
+
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+
+  /* ✅ ここがスライダーで確実に動く */
+  filter: blur(var(--glass-blur-px, 0px));
+
+  /* ぼかした層を少し拡大して境界を自然に */
+  transform: scale(1.06);
+  opacity: 1;
+}
+
+/* ガラスの中身は擬似背景より上へ */
+.glass > *,
+.glass-panel > *,
+.glass-header > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* 強め */
 .glass-strong,
 .glass-panel.strong {
   background: rgba(17, 17, 17, var(--glass-alpha-strong, 0.35));
 }
 
-/* 透過UI（ボタン/入力）も追従 */
+/* 透過UI（ボタン/入力）も雰囲気を合わせる（※ここは疑似背景まではやらない） */
 button {
   border: 1px solid var(--line);
   color: rgba(255, 255, 255, 0.9);
   background: rgba(17, 17, 17, var(--glass-alpha, 0.22));
-  backdrop-filter: blur(var(--glass-blur-px, 0px));
-  -webkit-backdrop-filter: blur(var(--glass-blur-px, 0px));
   border-radius: 14px;
   padding: 10px 14px;
 }
@@ -275,8 +326,6 @@ select {
   border: 1px solid var(--line);
   color: rgba(255, 255, 255, 0.92);
   background: rgba(17, 17, 17, var(--glass-alpha-strong, 0.35));
-  backdrop-filter: blur(var(--glass-blur-px, 0px));
-  -webkit-backdrop-filter: blur(var(--glass-blur-px, 0px));
   border-radius: 12px;
   padding: 10px 12px;
   outline: none;
