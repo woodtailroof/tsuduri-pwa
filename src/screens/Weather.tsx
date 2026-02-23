@@ -17,6 +17,7 @@ import type { TidePoint } from "../db";
 import PageShell from "../components/PageShell";
 import { useAppSettings } from "../lib/appSettings";
 import { decideWeatherEmotion } from "../lib/emotionDeciders/weatherEmotion";
+import { useEmotion } from "../lib/emotion"; // ✅ 追加
 
 type Props = {
   back: () => void;
@@ -363,6 +364,8 @@ function saveWeatherCache(day: string, summary: WeatherSummary) {
 export default function Weather({ back }: Props) {
   useAppSettings();
 
+  const { emitEmotion, clearEmotion } = useEmotion(); // ✅ 追加
+
   const isMobile = useIsMobile();
   const isDesktop = !isMobile;
 
@@ -553,6 +556,25 @@ export default function Weather({ back }: Props) {
       tideName,
     });
   }, [wState, state]);
+
+  // ✅ ここが本命：Weatherの感情を “weather source” として発火
+  useEffect(() => {
+    // Weatherは「ころころ変えない」方向が良いので、ttlは長め（例：30分）
+    // priorityは chat より弱く（例：10）
+    emitEmotion({
+      source: "weather",
+      emotion: weatherEmotion,
+      priority: 10,
+      ttlMs: 30 * 60 * 1000,
+    });
+  }, [emitEmotion, weatherEmotion]);
+
+  // ✅ 画面を離れたら weather の感情は消す（他のsourceに戻せる）
+  useEffect(() => {
+    return () => {
+      clearEmotion("weather");
+    };
+  }, [clearEmotion]);
 
   const highlightAt = useMemo(() => {
     const now = new Date();
