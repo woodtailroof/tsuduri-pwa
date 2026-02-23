@@ -431,30 +431,6 @@ async function buildWeatherHint(
 }
 
 /**
- * ✅ APIレスポンス（emotionを追加で受ける）
- */
-function readApiTextResponse(
-  json: unknown,
-): { ok: true; text: string; emotion?: Emotion } | null {
-  if (!isRecordLike(json)) return null;
-  const ok = getBoolProp(json, "ok");
-  if (ok !== true) return null;
-
-  const text = getStringProp(json, "text") ?? "";
-
-  const rawEmotion = getStringProp(json, "emotion");
-  const emotion = normalizeEmotion(rawEmotion);
-
-  return { ok: true, text, emotion };
-}
-
-function readApiErrorResponse(json: unknown): string | null {
-  if (!isRecordLike(json)) return null;
-  const err = getStringProp(json, "error");
-  return err ?? null;
-}
-
-/**
  * ✅ 受け取ったemotionをStage互換のEmotionに寄せる
  */
 function normalizeEmotion(raw: string | null): Emotion | undefined {
@@ -472,8 +448,39 @@ function normalizeEmotion(raw: string | null): Emotion | undefined {
   return undefined;
 }
 
+/**
+ * ✅ APIレスポンス（emotionを追加で受ける）
+ */
+function readApiTextResponse(
+  json: unknown,
+): { ok: true; text: string; emotion?: Emotion } | null {
+  if (!isRecordLike(json)) return null;
+  const ok = getBoolProp(json, "ok");
+  if (ok !== true) return null;
+
+  const text = getStringProp(json, "text") ?? "";
+  const rawEmotion = getStringProp(json, "emotion");
+  const emotion = normalizeEmotion(rawEmotion);
+
+  return { ok: true, text, emotion };
+}
+
+function readApiErrorResponse(json: unknown): string | null {
+  if (!isRecordLike(json)) return null;
+  const err = getStringProp(json, "error");
+  return err ?? null;
+}
+
 export default function Chat({ back, goCharacterSettings }: Props) {
-  const { setEmotion } = useEmotion();
+  // ✅ Chatは “manual固定” を使わない。source="chat" で投げて、離脱時に消す
+  const { emitEmotion, clearEmotion } = useEmotion();
+
+  // ✅ 画面離脱（アンマウント）で chat 由来の表情を消す
+  useEffect(() => {
+    return () => {
+      clearEmotion("chat");
+    };
+  }, [clearEmotion]);
 
   const [characters, setCharacters] = useState<CharacterProfileWithColor[]>(
     () => safeLoadCharacters(),
@@ -655,12 +662,16 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
       setMessages([...next, { role: "assistant", content: reply.text }]);
 
-      // ✅ 表情反映（サーバが emotion を返した時だけ）
-      if (reply.emotion) {
-        setEmotion(reply.emotion);
-      } else if (isJudge) {
-        // judgeは安定運用ならthink固定でもOK（任意）
-        setEmotion("think");
+      // ✅ 表情反映：chat source で流す（manual固定しない）
+      const nextEmotion: Emotion | undefined =
+        reply.emotion ?? (isJudge ? "think" : undefined);
+      if (nextEmotion) {
+        emitEmotion({
+          source: "chat",
+          emotion: nextEmotion,
+          priority: 30,
+          ttlMs: null, // Chat内では次の発言トリガーで上書きされる想定
+        });
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -668,7 +679,13 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         ...next,
         { role: "assistant", content: `ごめん…🥺\n理由：${msg}` },
       ]);
-      setEmotion("sad");
+
+      emitEmotion({
+        source: "chat",
+        emotion: "sad",
+        priority: 30,
+        ttlMs: null,
+      });
     } finally {
       setLoading(false);
       focusInput();
