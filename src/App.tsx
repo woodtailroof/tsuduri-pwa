@@ -35,7 +35,8 @@ type Screen =
   | "characterSettings";
 
 const Z = {
-  stage: 0,
+  bg: 0,
+  stage: 10,
   ui: 20,
 } as const;
 
@@ -134,10 +135,9 @@ function AppInner() {
 
   /**
    * ✅ 重要：
-   * --glass-blur は unitless（10）に統一
-   * --glass-blur-px は px（10px）で併設
-   *
-   * これを崩すと「濃さだけ効く / ぼかしだけ死ぬ」が復活する。
+   * --glass-blur は unitless
+   * --glass-blur-px は px
+   * index.css の疑似ブラー / ガラス両方がこれを参照する
    */
   type CSSVars = Record<`--${string}`, string>;
   const appVars: CSSProperties & CSSVars = useMemo(() => {
@@ -153,8 +153,8 @@ function AppInner() {
           : "none",
       "--bg-blur": `${bgBlurPx}px`,
 
-      "--glass-blur": `${glassBlurUnitless}`, // unitless
-      "--glass-blur-px": `${glassBlurUnitless}px`, // px
+      "--glass-blur": `${glassBlurUnitless}`,
+      "--glass-blur-px": `${glassBlurUnitless}px`,
 
       "--glass-alpha": `${ga}`,
       "--glass-alpha-strong": `${gas}`,
@@ -172,6 +172,17 @@ function AppInner() {
         ...appVars,
       }}
     >
+      {/* ✅ 背景レイヤー：index.css の #layer-bg を実際に描画する */}
+      <div
+        id="layer-bg"
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: Z.bg,
+          pointerEvents: "none",
+        }}
+      />
+
       <div
         id="layer-stage"
         style={{
