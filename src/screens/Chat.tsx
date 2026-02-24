@@ -449,6 +449,35 @@ function normalizeEmotion(raw: string | null): Emotion | undefined {
 }
 
 /**
+ * ✅ サーバが neutral 寄りでも “返答本文” から軽く推定して彩りを戻す
+ * ※雑談の表情を出しやすくするための救済ルール
+ */
+function inferEmotionFromAssistantText(text: string): Emotion | undefined {
+  const s = (text ?? "").trim();
+  if (!s) return undefined;
+
+  // THINK（判断/検討/作戦っぽい）
+  if (/(結論|根拠|作戦|判断|様子見|検討|プラン|整理|要点)/.test(s))
+    return "think";
+
+  // LOVE（好意/照れ/大好き）
+  if (/(好き|大好き|愛|惚|きゅん|尊い|付き合|結婚|抱きしめ|ぎゅ|ちゅ)/.test(s))
+    return "love";
+
+  // SURPRISE（驚き/びっくり）
+  if (/(えっ|まじ|マジ|！？|びっくり|驚|すご|ヤバ|なんで)/.test(s))
+    return "surprise";
+
+  // SAD（謝罪/残念/つらい）
+  if (/(ごめん|すま|残念|つら|悲|しんど|無理|だめ|失敗)/.test(s)) return "sad";
+
+  // HAPPY（喜/成功/やった）
+  if (/(やった|いいね|最高|うれし|嬉|ナイス|完璧|勝ち)/.test(s)) return "happy";
+
+  return undefined;
+}
+
+/**
  * ✅ APIレスポンス（emotionを追加で受ける）
  */
 function readApiTextResponse(
@@ -459,6 +488,7 @@ function readApiTextResponse(
   if (ok !== true) return null;
 
   const text = getStringProp(json, "text") ?? "";
+
   const rawEmotion = getStringProp(json, "emotion");
   const emotion = normalizeEmotion(rawEmotion);
 
@@ -472,10 +502,10 @@ function readApiErrorResponse(json: unknown): string | null {
 }
 
 export default function Chat({ back, goCharacterSettings }: Props) {
-  // ✅ Chatは “manual固定” を使わない。source="chat" で投げて、離脱時に消す
+  // ✅ chat由来の感情は「chatソース」として扱い、画面離脱で消す
   const { emitEmotion, clearEmotion } = useEmotion();
 
-  // ✅ 画面離脱（アンマウント）で chat 由来の表情を消す
+  // Chat画面を出たら “chat” を消す（他画面へ持ち越さない）
   useEffect(() => {
     return () => {
       clearEmotion("chat");
@@ -619,6 +649,17 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     throw new Error(err ?? "unknown_error");
   }
 
+  function applyChatEmotion(nextEmotion: Emotion) {
+    // ✅ chatの表情は「次の発話」で上書きされる前提
+    // ただし画面離脱まで残っても困るので、unmountでclearする
+    emitEmotion({
+      source: "chat",
+      emotion: nextEmotion,
+      priority: 30,
+      ttlMs: null, // chat画面に居る間は保持、離脱で消す
+    });
+  }
+
   async function send() {
     const text = input.trim();
     if (!text || loading) return;
@@ -659,19 +700,20 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       }
 
       const reply = await callApiChat(thread, currentCharacter, hints);
-
       setMessages([...next, { role: "assistant", content: reply.text }]);
 
-      // ✅ 表情反映：chat source で流す（manual固定しない）
-      const nextEmotion: Emotion | undefined =
-        reply.emotion ?? (isJudge ? "think" : undefined);
-      if (nextEmotion) {
-        emitEmotion({
-          source: "chat",
-          emotion: nextEmotion,
-          priority: 30,
-          ttlMs: null, // Chat内では次の発言トリガーで上書きされる想定
-        });
+      // ✅ 表情反映
+      if (isJudge) {
+        // 釣行判断は安定運用：think固定
+        applyChatEmotion("think");
+      } else if (reply.emotion && reply.emotion !== "neutral") {
+        // サーバがちゃんと出してきたら採用
+        applyChatEmotion(reply.emotion);
+      } else {
+        // neutral/未指定なら “返答本文” から救済推定
+        const inferred = inferEmotionFromAssistantText(reply.text);
+        if (inferred) applyChatEmotion(inferred);
+        else applyChatEmotion("neutral");
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -679,13 +721,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         ...next,
         { role: "assistant", content: `ごめん…🥺\n理由：${msg}` },
       ]);
-
-      emitEmotion({
-        source: "chat",
-        emotion: "sad",
-        priority: 30,
-        ttlMs: null,
-      });
+      applyChatEmotion("sad");
     } finally {
       setLoading(false);
       focusInput();
