@@ -3,7 +3,23 @@
     {
       "id": "tsuduri/sailor",
       "title": "つづり：セーラー",
-      "thumb": "/assets/slides/tsuduri/sailor/001.png"
+      "thumb": "/assets/slides/tsuduri/sailor/001.png",
+      "characterId": "tsuduri",
+      "tags": ["tsuduri", "sailor"]
+    },
+    {
+      "id": "matsuri/sailor",
+      "title": "まつり：セーラー",
+      "thumb": "/assets/slides/matsuri/sailor/001.png",
+      "characterId": "matsuri",
+      "tags": ["matsuri", "sailor"]
+    },
+    {
+      "id": "kokoro/sailor",
+      "title": "こころ：セーラー",
+      "thumb": "/assets/slides/kokoro/sailor/001.png",
+      "characterId": "kokoro",
+      "tags": ["kokoro", "sailor"]
     }
   ]
 }
