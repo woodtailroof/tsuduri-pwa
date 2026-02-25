@@ -14,6 +14,7 @@ import Chat from "./screens/Chat";
 import Settings from "./screens/Settings";
 import CharacterSettings from "./screens/CharacterSettings";
 import AlbumPicker from "./screens/AlbumPicker";
+import AlbumViewer from "./screens/AlbumViewer";
 import Stage from "./components/Stage";
 import CrossFadeSwitch from "./components/CrossFadeSwitch";
 import {
@@ -34,7 +35,8 @@ type Screen =
   | "chat"
   | "settings"
   | "characterSettings"
-  | "albumPicker";
+  | "albumPicker"
+  | "albumViewer";
 
 const Z = {
   bg: 0,
@@ -75,11 +77,21 @@ function AppInner() {
   const { settings } = useAppSettings();
   const minuteTick = useMinuteTick();
 
+  // ✅ アルバム選択 → ビューアで使う
+  const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
+  const [selectedAlbumTitle, setSelectedAlbumTitle] = useState<string>("");
+
   const backHome = () => setScreen("home");
 
   const goFromHome = (
     s: "record" | "recordHistory" | "weather" | "chat" | "settings",
   ) => setScreen(s);
+
+  const openAlbum = (albumId: string, title?: string) => {
+    setSelectedAlbumId(albumId);
+    setSelectedAlbumTitle(title ?? "");
+    setScreen("albumViewer");
+  };
 
   let content: ReactNode;
 
@@ -98,11 +110,22 @@ function AppInner() {
   } else if (screen === "characterSettings") {
     content = <CharacterSettings back={() => setScreen("chat")} />;
   } else if (screen === "albumPicker") {
-    content = <AlbumPicker back={backHome} />;
-  } else {
     content = (
-      <Home go={goFromHome} goSecret={() => setScreen("albumPicker")} />
+      <AlbumPicker
+        back={backHome}
+        openAlbum={(albumId, title) => openAlbum(albumId, title)}
+      />
     );
+  } else if (screen === "albumViewer") {
+    content = (
+      <AlbumViewer
+        back={() => setScreen("albumPicker")}
+        albumId={selectedAlbumId ?? ""}
+        albumTitleHint={selectedAlbumTitle}
+      />
+    );
+  } else {
+    content = <Home go={goFromHome} goSecret={() => setScreen("albumPicker")} />;
   }
 
   // ===== 背景URL 解決 =====

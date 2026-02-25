@@ -4,6 +4,7 @@ import PageShell from "../components/PageShell";
 
 type Props = {
   back: () => void;
+  openAlbum: (albumId: string, title?: string) => void;
 };
 
 type AlbumIndex = {
@@ -17,7 +18,6 @@ type AlbumItem = {
   title: string;
   /** サムネURL（public配下の絶対パス想定） */
   thumb?: string;
-  /** 任意: キャラやタグで後から絞り込みできる */
   characterId?: string;
   tags?: string[];
 };
@@ -66,8 +66,7 @@ export default function AlbumPicker(props: Props) {
     if (!q) return items;
 
     return items.filter((a) => {
-      const hay =
-        `${a.title} ${a.id} ${(a.tags ?? []).join(" ")}`.toLowerCase();
+      const hay = `${a.title} ${a.id} ${(a.tags ?? []).join(" ")}`.toLowerCase();
       return hay.includes(q);
     });
   }, [items, query]);
@@ -125,10 +124,7 @@ export default function AlbumPicker(props: Props) {
           {filtered.map((a) => (
             <button
               key={a.id}
-              onClick={() => {
-                // 次のステップで「スライド画面」に遷移させる
-                alert(`選択: ${a.title}\n(id: ${a.id})`);
-              }}
+              onClick={() => props.openAlbum(a.id, a.title)}
               style={{
                 textAlign: "left",
                 padding: 12,
