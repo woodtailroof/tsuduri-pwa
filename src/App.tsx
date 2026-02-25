@@ -13,6 +13,7 @@ import Weather from "./screens/Weather";
 import Chat from "./screens/Chat";
 import Settings from "./screens/Settings";
 import CharacterSettings from "./screens/CharacterSettings";
+import AlbumPicker from "./screens/AlbumPicker";
 import Stage from "./components/Stage";
 import CrossFadeSwitch from "./components/CrossFadeSwitch";
 import {
@@ -32,7 +33,8 @@ type Screen =
   | "weather"
   | "chat"
   | "settings"
-  | "characterSettings";
+  | "characterSettings"
+  | "albumPicker";
 
 const Z = {
   bg: 0,
@@ -95,8 +97,12 @@ function AppInner() {
     );
   } else if (screen === "characterSettings") {
     content = <CharacterSettings back={() => setScreen("chat")} />;
+  } else if (screen === "albumPicker") {
+    content = <AlbumPicker back={backHome} />;
   } else {
-    content = <Home go={goFromHome} />;
+    content = (
+      <Home go={goFromHome} goSecret={() => setScreen("albumPicker")} />
+    );
   }
 
   // ===== 背景URL 解決 =====
@@ -172,7 +178,6 @@ function AppInner() {
         ...appVars,
       }}
     >
-      {/* ✅ 背景レイヤー：index.css の #layer-bg を実際に描画する */}
       <div
         id="layer-bg"
         style={{

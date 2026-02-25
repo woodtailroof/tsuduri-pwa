@@ -7,11 +7,15 @@ import {
   type CSSProperties,
 } from "react";
 import PageShell from "../components/PageShell";
+import SecretPortalHotspot from "../components/SecretPortalHotspot";
 
 type Props = {
   go: (
     screen: "record" | "recordHistory" | "weather" | "chat" | "settings",
   ) => void;
+
+  /** 秘密入口（あれば使う） */
+  goSecret?: () => void;
 };
 
 const APP_LOCK_PASS_KEY = "tsuduri_app_pass_v1";
@@ -72,8 +76,7 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-export default function Home({ go }: Props) {
-  // ✅ 初期値で確定できるので、effectでのsetState不要
+export default function Home({ go, goSecret }: Props) {
   const [unlocked, setUnlockedState] = useState<boolean>(() => isUnlocked());
   const [pass, setPass] = useState<string>(() => loadSavedPass());
   const [error, setError] = useState<string>("");
@@ -190,7 +193,6 @@ export default function Home({ go }: Props) {
           }
         }
 
-        /* ✅ フィット外枠（ここが available領域） */
         .home-fit{
           height:100%;
           width:100%;
@@ -198,24 +200,18 @@ export default function Home({ go }: Props) {
           min-width:0;
           overflow:hidden;
           display:grid;
-
-          /* ここがポイント：PCはセンターでOK */
           place-items:center;
-
           padding:
             max(4px, env(safe-area-inset-top))
             max(8px, env(safe-area-inset-right))
             max(8px, env(safe-area-inset-bottom))
             max(8px, env(safe-area-inset-left));
-
           box-sizing:border-box;
         }
 
-        /* ✅ スマホ：縦センターをやめて上寄せにする（タイトルが上がる本命） */
         @media (max-width:720px){
           .home-fit{
             place-items: start center;
-            /* 微調整用：+で下げ、-で上げ */
             --home-top-nudge: -10px;
             padding-top: calc(max(2px, env(safe-area-inset-top)) + var(--home-top-nudge));
           }
@@ -251,6 +247,7 @@ export default function Home({ go }: Props) {
           width:min(96vw,1320px);
           height:clamp(140px,28dvh,300px);
           min-height:0;
+          position:relative; /* ✅ ここに秘密入口を重ねる */
         }
         @media (max-width:720px){
           .home-logo-box{
@@ -259,6 +256,7 @@ export default function Home({ go }: Props) {
             margin:0 auto;
           }
         }
+
         .home-logo{
           width:100%;
           height:100%;
@@ -392,6 +390,17 @@ export default function Home({ go }: Props) {
                     src={logoSrc}
                     alt="釣嫁ぷろじぇくと"
                   />
+
+                  {/* ✅ 秘密入口: ロゴの上にだけ当たり判定を重ねる */}
+                  {typeof goSecret === "function" && (
+                    <SecretPortalHotspot
+                      onUnlock={goSecret}
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                      }}
+                    />
+                  )}
                 </div>
               </div>
 
