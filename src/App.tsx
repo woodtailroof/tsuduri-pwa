@@ -77,7 +77,6 @@ function AppInner() {
   const { settings } = useAppSettings();
   const minuteTick = useMinuteTick();
 
-  // ✅ アルバム選択 → ビューアで使う
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
   const [selectedAlbumTitle, setSelectedAlbumTitle] = useState<string>("");
 
@@ -162,20 +161,16 @@ function AppInner() {
     ? settings.glassBlur
     : DEFAULT_SETTINGS.glassBlur;
 
-  /**
-   * ✅ 重要：
-   * --glass-blur は unitless
-   * --glass-blur-px は px
-   * index.css の疑似ブラー / ガラス両方がこれを参照する
-   */
   type CSSVars = Record<`--${string}`, string>;
+
   const appVars: CSSProperties & CSSVars = useMemo(() => {
     const bgBlurPx = Math.round(clamp(bgBlur, 0, 60));
     const glassBlurUnitless = Math.round(clamp(glassBlur, 0, 60));
     const ga = clamp(glassAlpha, 0, 1);
     const gas = clamp(glassAlpha + 0.13, 0, 1);
 
-    return {
+    // 通常
+    const vars: CSSProperties & CSSVars = {
       "--bg-image":
         effectiveBgSrc && bgMode !== "off"
           ? `url("${effectiveBgSrc}")`
@@ -188,7 +183,17 @@ function AppInner() {
       "--glass-alpha": `${ga}`,
       "--glass-alpha-strong": `${gas}`,
     };
-  }, [effectiveBgSrc, bgMode, bgBlur, glassBlur, glassAlpha]);
+
+    // ✅ スライド中は落ち着かせる（背景なし + ブラーなし）
+    if (screen === "albumViewer") {
+      vars["--bg-image"] = "none";
+      vars["--bg-blur"] = "0px";
+    }
+
+    return vars;
+  }, [effectiveBgSrc, bgMode, bgBlur, glassBlur, glassAlpha, screen]);
+
+  const isCalmViewer = screen === "albumViewer";
 
   return (
     <div
@@ -198,6 +203,7 @@ function AppInner() {
         height: "100dvh",
         overflow: "hidden",
         position: "relative",
+        backgroundColor: isCalmViewer ? "rgba(0,0,0,0.86)" : undefined,
         ...appVars,
       }}
     >
@@ -211,17 +217,20 @@ function AppInner() {
         }}
       />
 
-      <div
-        id="layer-stage"
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: Z.stage,
-          pointerEvents: "none",
-        }}
-      >
-        <Stage />
-      </div>
+      {/* ✅ albumViewer の時は Stage を出さない（キャラも消える） */}
+      {screen !== "albumViewer" && (
+        <div
+          id="layer-stage"
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: Z.stage,
+            pointerEvents: "none",
+          }}
+        >
+          <Stage />
+        </div>
+      )}
 
       <div
         id="layer-ui"

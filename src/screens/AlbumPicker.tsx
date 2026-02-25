@@ -12,10 +12,10 @@ type AlbumIndex = {
 };
 
 type AlbumItem = {
-  id: string; // "tsuduri/sailor" など
+  id: string;
   title: string;
   thumb?: string;
-  characterId?: string; // "tsuduri" | "matsuri" | "kokoro" など
+  characterId?: string;
   tags?: string[];
 };
 
@@ -79,7 +79,6 @@ export default function AlbumPicker(props: Props) {
       by[key].push(a);
     }
 
-    // 各グループ内はタイトル順（お好みでid順でもOK）
     for (const k of Object.keys(by)) {
       by[k].sort((x, y) =>
         (x.title ?? x.id).localeCompare(y.title ?? y.id, "ja", {
@@ -89,7 +88,6 @@ export default function AlbumPicker(props: Props) {
       );
     }
 
-    // 表示順：指定キャラ→その他→残り
     const keys = new Set(Object.keys(by));
     const ordered: string[] = [];
 
@@ -101,27 +99,30 @@ export default function AlbumPicker(props: Props) {
       ordered.push("other");
       keys.delete("other");
     }
-    // 残りはアルファベット順
     ordered.push(
       ...Array.from(keys).sort((a, b) =>
         a.localeCompare(b, "ja", { numeric: true, sensitivity: "base" }),
       ),
     );
 
-    return ordered.map((k) => ({ key: k, label: getCharLabel(k), albums: by[k] ?? [] }));
+    return ordered.map((k) => ({
+      key: k,
+      label: getCharLabel(k),
+      albums: by[k] ?? [],
+    }));
   }, [items]);
 
   return (
     <PageShell
       title="秘密アルバム"
-      subtitle="キャラごとにまとまった一覧から選べる"
+      subtitle={null}
       showBack
       onBack={props.back}
-      maxWidth={1100}
+      maxWidth={1200}
       scrollY="auto"
     >
-      <div style={{ display: "grid", gap: 18 }}>
-        {loading && <div style={{ opacity: 0.8, padding: "6px 2px" }}>読み込み中…</div>}
+      <div style={{ display: "grid", gap: 14 }}>
+        {loading && <div style={{ opacity: 0.8, padding: "4px 2px" }}>読み込み中…</div>}
 
         {err && (
           <div
@@ -137,7 +138,7 @@ export default function AlbumPicker(props: Props) {
         )}
 
         {!loading && !err && grouped.every((g) => g.albums.length === 0) && (
-          <div style={{ opacity: 0.8, padding: "6px 2px" }}>
+          <div style={{ opacity: 0.8, padding: "4px 2px" }}>
             アルバムがまだないよ（index.json を確認してね）
           </div>
         )}
@@ -145,16 +146,16 @@ export default function AlbumPicker(props: Props) {
         {grouped.map((g) => {
           if (g.albums.length === 0) return null;
           return (
-            <section key={g.key} style={{ display: "grid", gap: 10 }}>
-              <div style={{ fontWeight: 900, fontSize: 16, opacity: 0.95 }}>
+            <section key={g.key} style={{ display: "grid", gap: 8 }}>
+              <div style={{ fontWeight: 900, fontSize: 15, opacity: 0.95 }}>
                 {g.label}
               </div>
 
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                  gap: 12,
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: 10,
                 }}
               >
                 {g.albums.map((a) => (
@@ -163,10 +164,10 @@ export default function AlbumPicker(props: Props) {
                     onClick={() => props.openAlbum(a.id, a.title)}
                     style={{
                       textAlign: "left",
-                      padding: 12,
-                      borderRadius: 18,
-                      border: "1px solid rgba(255,255,255,0.22)",
-                      background: "rgba(255,255,255,0.10)",
+                      padding: 10,
+                      borderRadius: 16,
+                      border: "1px solid rgba(255,255,255,0.18)",
+                      background: "rgba(255,255,255,0.08)",
                       color: "inherit",
                       cursor: "pointer",
                     }}
@@ -175,10 +176,10 @@ export default function AlbumPicker(props: Props) {
                       style={{
                         width: "100%",
                         aspectRatio: "16 / 9",
-                        borderRadius: 14,
+                        borderRadius: 12,
                         overflow: "hidden",
                         background: "rgba(0,0,0,0.18)",
-                        border: "1px solid rgba(255,255,255,0.14)",
+                        border: "1px solid rgba(255,255,255,0.12)",
                       }}
                     >
                       {a.thumb ? (
@@ -209,8 +210,12 @@ export default function AlbumPicker(props: Props) {
                       )}
                     </div>
 
-                    <div style={{ marginTop: 10, fontWeight: 700 }}>{a.title}</div>
-                    <div style={{ marginTop: 4, opacity: 0.75, fontSize: 12 }}>{a.id}</div>
+                    <div style={{ marginTop: 8, fontWeight: 800, fontSize: 13 }}>
+                      {a.title}
+                    </div>
+                    <div style={{ marginTop: 3, opacity: 0.7, fontSize: 11 }}>
+                      {a.id}
+                    </div>
                   </button>
                 ))}
               </div>
