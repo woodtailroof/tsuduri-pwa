@@ -110,10 +110,7 @@ function AppInner() {
     content = <CharacterSettings back={() => setScreen("chat")} />;
   } else if (screen === "albumPicker") {
     content = (
-      <AlbumPicker
-        back={backHome}
-        openAlbum={(albumId, title) => openAlbum(albumId, title)}
-      />
+      <AlbumPicker back={backHome} openAlbum={(id, t) => openAlbum(id, t)} />
     );
   } else if (screen === "albumViewer") {
     content = (
@@ -124,7 +121,10 @@ function AppInner() {
       />
     );
   } else {
-    content = <Home go={goFromHome} goSecret={() => setScreen("albumPicker")} />;
+    // Home 側に goSecret を追加してある前提（既に入れてるはず）
+    content = (
+      <Home go={goFromHome} goSecret={() => setScreen("albumPicker")} />
+    );
   }
 
   // ===== 背景URL 解決 =====
@@ -169,22 +169,19 @@ function AppInner() {
     const ga = clamp(glassAlpha, 0, 1);
     const gas = clamp(glassAlpha + 0.13, 0, 1);
 
-    // 通常
     const vars: CSSProperties & CSSVars = {
       "--bg-image":
         effectiveBgSrc && bgMode !== "off"
           ? `url("${effectiveBgSrc}")`
           : "none",
       "--bg-blur": `${bgBlurPx}px`,
-
       "--glass-blur": `${glassBlurUnitless}`,
       "--glass-blur-px": `${glassBlurUnitless}px`,
-
       "--glass-alpha": `${ga}`,
       "--glass-alpha-strong": `${gas}`,
     };
 
-    // ✅ スライド中は落ち着かせる（背景なし + ブラーなし）
+    // ✅ スライド中は落ち着かせる
     if (screen === "albumViewer") {
       vars["--bg-image"] = "none";
       vars["--bg-blur"] = "0px";
@@ -194,6 +191,7 @@ function AppInner() {
   }, [effectiveBgSrc, bgMode, bgBlur, glassBlur, glassAlpha, screen]);
 
   const isCalmViewer = screen === "albumViewer";
+  const skipFade = screen === "albumPicker" || screen === "albumViewer";
 
   return (
     <div
@@ -217,7 +215,6 @@ function AppInner() {
         }}
       />
 
-      {/* ✅ albumViewer の時は Stage を出さない（キャラも消える） */}
       {screen !== "albumViewer" && (
         <div
           id="layer-stage"
@@ -241,9 +238,14 @@ function AppInner() {
           pointerEvents: "auto",
         }}
       >
-        <CrossFadeSwitch activeKey={screen} durationMs={500}>
-          {content}
-        </CrossFadeSwitch>
+        {/* ✅ アルバム系はCrossFadeSwitchを通さない（チラつき根絶） */}
+        {skipFade ? (
+          content
+        ) : (
+          <CrossFadeSwitch activeKey={screen} durationMs={500}>
+            {content}
+          </CrossFadeSwitch>
+        )}
       </div>
     </div>
   );

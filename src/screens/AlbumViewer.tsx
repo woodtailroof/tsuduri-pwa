@@ -64,6 +64,17 @@ async function exitFs() {
   if (d.msExitFullscreen) return d.msExitFullscreen();
 }
 
+function preloadImage(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.loading = "eager";
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error("image load failed"));
+    img.src = src;
+  });
+}
+
 export default function AlbumViewer(props: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -78,7 +89,7 @@ export default function AlbumViewer(props: Props) {
   const [fsSupported, setFsSupported] = useState(false);
   const [hint, setHint] = useState<string>("");
 
-  // ✅ 表示中の画像（プリロード完了してからこれを差し替える）
+  // ✅ 表示中画像（空にしない！）
   const [shownSrc, setShownSrc] = useState<string>("");
 
   useEffect(() => {
@@ -94,6 +105,7 @@ export default function AlbumViewer(props: Props) {
     return id ? `/assets/slides/${id}` : "";
   }, [props.albumId]);
 
+  // ✅ manifestロード + 1枚目プリロードまでを「1つのロード」にする
   useEffect(() => {
     let cancelled = false;
 
@@ -101,7 +113,6 @@ export default function AlbumViewer(props: Props) {
       setLoading(true);
       setErr(null);
       setIdx(0);
-      setShownSrc("");
 
       if (!albumBase) {
         setErr("albumId が空だよ");
@@ -122,71 +133,82 @@ export default function AlbumViewer(props: Props) {
           ? json.files.filter(Boolean)
           : [];
 
-        if (!cancelled) {
-          setTitle(nextTitle);
-          setFiles(nextFiles);
+        if (cancelled) return;
+
+        setTitle(nextTitle);
+        setFiles(nextFiles);
+
+        if (nextFiles.length === 0) {
+          // 画像が無いならここで終わり
+          setShownSrc("");
+          setLoading(false);
+          return;
         }
+
+        // ✅ 1枚目を先に読み込んでから表示する（チラつき根絶）
+        const firstSrc = `${albumBase}/${nextFiles[0]}`;
+
+        // すでに同じアルバムを開いていて同じ1枚目が表示中なら、プリロード不要で即完了
+        if (shownSrc === firstSrc) {
+          setLoading(false);
+          return;
+        }
+
+        try {
+          await preloadImage(firstSrc);
+        } catch {
+          // 読めなくても表示は試す（落ちない）
+        }
+
+        if (cancelled) return;
+
+        setShownSrc(firstSrc);
+        setLoading(false);
       } catch (e) {
-        if (!cancelled) setErr(safeText(e));
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (cancelled) return;
+        setErr(safeText(e));
+        setLoading(false);
       }
     }
 
-    run();
+    void run();
+
     return () => {
       cancelled = true;
     };
+    // shownSrcは依存に入れない（無限ループ回避）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [albumBase, props.albumTitleHint]);
 
-  const targetSrc = useMemo(() => {
-    if (!albumBase) return "";
-    if (!files.length) return "";
-    const name = files[clamp(idx, 0, files.length - 1)];
-    return `${albumBase}/${name}`;
-  }, [albumBase, files, idx]);
-
-  // ✅ チラつき対策：targetSrc を直接出さずに、先読み完了してから shownSrc に反映
+  // idx変更時：次の画像をプリロードしてから切り替え（空白を作らない）
   useEffect(() => {
     let cancelled = false;
 
-    async function preloadAndSwap(src: string) {
-      if (!src) {
-        setShownSrc("");
-        return;
+    async function run() {
+      if (!albumBase) return;
+      if (!files.length) return;
+
+      const name = files[clamp(idx, 0, files.length - 1)];
+      const nextSrc = `${albumBase}/${name}`;
+
+      // すでに表示中なら何もしない
+      if (shownSrc === nextSrc) return;
+
+      try {
+        await preloadImage(nextSrc);
+      } catch {
+        // 読めなくても切り替えは試す
       }
 
-      // すでに同じなら何もしない
-      setErr((prev) => prev); // no-op（lint回避用ではなく、状態変化なし）
-      if (shownSrc === src) return;
-
-      const img = new Image();
-      img.decoding = "async";
-      img.loading = "eager";
-      img.src = src;
-
-      const done = () => {
-        if (cancelled) return;
-        // ✅ ここで初めて表示を差し替える（空白にならない）
-        setShownSrc(src);
-      };
-
-      img.onload = done;
-      img.onerror = () => {
-        if (cancelled) return;
-        // 読めない場合でも target を出してみる（それでもダメならブラウザ側でエラー）
-        setShownSrc(src);
-      };
+      if (cancelled) return;
+      setShownSrc(nextSrc);
     }
 
-    void preloadAndSwap(targetSrc);
-
+    void run();
     return () => {
       cancelled = true;
     };
-    // shownSrc を依存に入れるとループしやすいので入れない（比較は上でやってる）
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetSrc]);
+  }, [albumBase, files, idx, shownSrc]);
 
   const prev = () => {
     if (!files.length) return;
@@ -224,7 +246,7 @@ export default function AlbumViewer(props: Props) {
     window.addEventListener("keydown", onKeyDown, { passive: false });
     return () => window.removeEventListener("keydown", onKeyDown as any);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.back, files.length, idx]);
+  }, [props.back, files.length]);
 
   useEffect(() => {
     const onFsChange = () => setFs(isFullscreenNow());
@@ -251,15 +273,11 @@ export default function AlbumViewer(props: Props) {
       if (isFullscreenNow()) await exitFs();
       else await requestFs(root);
       setFs(isFullscreenNow());
-    } catch (e) {
+    } catch {
       setHint("全画面にできなかったよ（ブラウザ制限かも）。PWA起動だと安定！");
       window.setTimeout(() => setHint(""), 2400);
-
-      console.warn("Fullscreen failed:", e);
     }
   }
-
-  const showTopInfo = Boolean(title || files.length);
 
   return (
     <div
@@ -274,7 +292,6 @@ export default function AlbumViewer(props: Props) {
         touchAction: "manipulation",
       }}
     >
-      {/* 画像本体 */}
       <div
         style={{ position: "absolute", inset: 0 }}
         onClick={(e) => {
@@ -330,7 +347,6 @@ export default function AlbumViewer(props: Props) {
           alignItems: "center",
           justifyContent: "space-between",
           pointerEvents: "none",
-          opacity: showTopInfo ? 1 : 0.9,
         }}
       >
         <div style={{ display: "grid", gap: 2 }}>
@@ -379,8 +395,6 @@ export default function AlbumViewer(props: Props) {
           </button>
         </div>
       </div>
-
-      {/* ✅ 下の操作案内は削除（要望どおり） */}
 
       {/* 全画面案内メッセージ */}
       {hint && (
