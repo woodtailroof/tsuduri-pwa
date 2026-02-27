@@ -2,12 +2,10 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
-import Stage from "./Stage";
 
 type Props = {
   title?: ReactNode;
@@ -39,13 +37,12 @@ type Props = {
   showTestCharacter?: boolean;
 
   /**
-   * ✅ 画面側から「今表示したいキャラID」を渡す（Stageへ中継）
+   * ✅ 表示したいキャラID（Stageへ通知する）
    */
   displayCharacterId?: string;
 
   /**
    * ✅ 互換受け口だけ残す（実際の表情反映は Stage が担当）
-   * ※ 現状 Stage は useEmotion を見ているので、ここは未使用でもOK
    */
   displayExpression?: string;
 };
@@ -79,11 +76,6 @@ function useIsMobile() {
   return isMobile;
 }
 
-function safeActiveKey(v: unknown): string {
-  if (typeof v === "string" && v.trim()) return v.trim();
-  return "";
-}
-
 export default function PageShell(props: Props) {
   const title = props.title;
   const subtitle = props.subtitle;
@@ -94,8 +86,6 @@ export default function PageShell(props: Props) {
   const onBack = props.onBack;
   const scrollY = props.scrollY ?? "auto";
   const contentPadding = props.contentPadding;
-
-  const displayCharacterId = (props.displayCharacterId ?? "").trim();
 
   const isMobile = useIsMobile();
 
@@ -115,16 +105,27 @@ export default function PageShell(props: Props) {
     if (typeof window !== "undefined") window.history.back();
   }, [onBack]);
 
-  // ✅ Stageの activeKey：画面ごとに変えたいなら title/subtitle/displayCharacterId からも生成できる
-  //    ただし既存の挙動を壊したくないので「最低限の変化」に抑える
-  const stageActiveKey = useMemo(() => {
-    // displayCharacterId が変わると random も変わりうるが、
-    // Stage側は characterMode==="random" のときだけ反応するので安全
-    const base = `${safeActiveKey(String(title ?? ""))}|${safeActiveKey(
-      String(subtitle ?? ""),
-    )}|${displayCharacterId}|${maxWidth}|${scrollY}`;
-    return base;
-  }, [title, subtitle, displayCharacterId, maxWidth, scrollY]);
+  // ✅ Stageへ「表示キャラID」を通知（Stageは常駐1体だけの前提）
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const id = (props.displayCharacterId ?? "").trim();
+
+    window.dispatchEvent(
+      new CustomEvent("tsuduri-display-character", {
+        detail: { id },
+      }),
+    );
+
+    // 画面離脱時は「指定なし」に戻す（必要なら）
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("tsuduri-display-character", {
+          detail: { id: "" },
+        }),
+      );
+    };
+  }, [props.displayCharacterId]);
 
   // ✅ ヘッダー（classで疑似ブラー）
   const headerStyle: CSSProperties = {
@@ -135,7 +136,7 @@ export default function PageShell(props: Props) {
     zIndex: 999,
     height: `${effectiveHeaderH}px`,
     borderBottom: "1px solid rgba(255,255,255,0.10)",
-    borderRadius: 0, // ヘッダーは角丸しない
+    borderRadius: 0,
     background: "rgba(0,0,0,var(--glass-alpha, 0.22))",
   };
 
@@ -234,12 +235,6 @@ export default function PageShell(props: Props) {
 
   return (
     <div className="page-shell" style={shellStyle}>
-      {/* ✅ 背景やキャラはページ全体の最背面で描画（z-indexはStage側で管理） */}
-      <Stage
-        activeKey={stageActiveKey}
-        displayCharacterId={displayCharacterId}
-      />
-
       {headerVisible ? (
         <div className="glass-header" style={headerStyle}>
           <div style={headerInnerStyle}>

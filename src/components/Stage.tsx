@@ -18,7 +18,7 @@ type Props = {
   /** ✅ 画面遷移キー（ランダムを画面遷移ごとに成立させる） */
   activeKey?: string;
 
-  /** ✅ PageShell/各screenから「今表示したいキャラID」を渡せる（最優先） */
+  /** ✅ 直接propsで渡したい場合の受け口（任意） */
   displayCharacterId?: string;
 };
 
@@ -165,6 +165,30 @@ export default function Stage(props: Props) {
 
   const effectiveExpression = normalizeExpression(globalEmotion);
 
+  // ✅ PageShellからの「表示キャラ指定」を受け取る（Stage常駐で使う）
+  const [forcedIdFromShell, setForcedIdFromShell] = useState<string>("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handler = (ev: Event) => {
+      const ce = ev as CustomEvent<{ id?: unknown }>;
+      const raw = ce?.detail?.id;
+      const id = typeof raw === "string" ? raw.trim() : "";
+      setForcedIdFromShell(id);
+    };
+
+    window.addEventListener(
+      "tsuduri-display-character",
+      handler as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        "tsuduri-display-character",
+        handler as EventListener,
+      );
+  }, []);
+
   // ✅ 作成キャラ & マップは毎回読む（同一タブ更新にも追従）
   const createdCharacters = loadCreatedCharacters();
   const charImageMap = loadCharacterImageMap();
@@ -184,8 +208,8 @@ export default function Stage(props: Props) {
 
   const fixedCharacterId = settings.fixedCharacterId ?? "tsuduri";
 
-  // ✅ ここが本命：画面側から指定が来たら最優先でそれを使う
-  const forcedId = (props.displayCharacterId ?? "").trim();
+  const forcedId =
+    (props.displayCharacterId ?? "").trim() || (forcedIdFromShell ?? "").trim();
 
   const pickCharacterId =
     characterMode === "fixed" ? fixedCharacterId : randomPickedId;
@@ -297,17 +321,14 @@ export default function Stage(props: Props) {
     const next = characterCandidates[tryIndex] ?? "";
     if (!next) return;
 
-    // ✅ ここがポイント：同じURLでも「裏側にいる」なら可視側だけ切り替える
     if (next === frontSrc || next === backSrc) {
       if (fadeMs === 0) {
-        // 0msなら単純にfrontに固定
         if (next !== frontSrc) setFrontSrc(next);
         setBackSrc("");
         setFrontVisible(true);
         return;
       }
 
-      // next が back にいて front が見えてるなら back を見せる
       if (next === backSrc && frontVisibleRef.current) {
         const token = ++swapTokenRef.current;
 
@@ -323,14 +344,12 @@ export default function Stage(props: Props) {
 
         cleanupTimerRef.current = window.setTimeout(() => {
           if (token !== swapTokenRef.current) return;
-          // back が見えているので front を掃除
           if (!frontVisibleRef.current) setFrontSrc("");
         }, fadeMs + 30);
 
         return;
       }
 
-      // next が front にいて back が見えてるなら front を見せる
       if (next === frontSrc && !frontVisibleRef.current) {
         const token = ++swapTokenRef.current;
 
@@ -346,14 +365,12 @@ export default function Stage(props: Props) {
 
         cleanupTimerRef.current = window.setTimeout(() => {
           if (token !== swapTokenRef.current) return;
-          // front が見えているので back を掃除
           if (frontVisibleRef.current) setBackSrc("");
         }, fadeMs + 30);
 
         return;
       }
 
-      // 同じURLで、すでに正しい側が見えてるなら何もしない
       return;
     }
 
@@ -375,7 +392,6 @@ export default function Stage(props: Props) {
           return;
         }
 
-        // 表示していない方に next を入れて、次フレームで可視側を切替
         if (frontVisibleRef.current) {
           setBackSrc(next);
           requestAnimationFrame(() => {
@@ -390,14 +406,10 @@ export default function Stage(props: Props) {
           });
         }
 
-        // ✅ stale state で消し間違いしない（refで現在の可視側を判定）
         cleanupTimerRef.current = window.setTimeout(() => {
           if (token !== swapTokenRef.current) return;
-          if (frontVisibleRef.current) {
-            setBackSrc("");
-          } else {
-            setFrontSrc("");
-          }
+          if (frontVisibleRef.current) setBackSrc("");
+          else setFrontSrc("");
         }, fadeMs + 30);
       })
       .catch(() => {
