@@ -1,5 +1,6 @@
 // src/screens/Chat.tsx
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -456,22 +457,13 @@ function inferEmotionFromAssistantText(text: string): Emotion | undefined {
   const s = (text ?? "").trim();
   if (!s) return undefined;
 
-  // THINK（判断/検討/作戦っぽい）
   if (/(結論|根拠|作戦|判断|様子見|検討|プラン|整理|要点)/.test(s))
     return "think";
-
-  // LOVE（好意/照れ/大好き）
   if (/(好き|大好き|愛|惚|きゅん|尊い|付き合|結婚|抱きしめ|ぎゅ|ちゅ)/.test(s))
     return "love";
-
-  // SURPRISE（驚き/びっくり）
   if (/(えっ|まじ|マジ|！？|びっくり|驚|すご|ヤバ|なんで)/.test(s))
     return "surprise";
-
-  // SAD（謝罪/残念/つらい）
   if (/(ごめん|すま|残念|つら|悲|しんど|無理|だめ|失敗)/.test(s)) return "sad";
-
-  // HAPPY（喜/成功/やった）
   if (/(やった|いいね|最高|うれし|嬉|ナイス|完璧|勝ち)/.test(s)) return "happy";
 
   return undefined;
@@ -505,7 +497,13 @@ export default function Chat({ back, goCharacterSettings }: Props) {
   // ✅ chat由来の感情は「chatソース」として扱い、画面離脱で消す
   const { emitEmotion, clearEmotion } = useEmotion();
 
-  // Chat画面を出たら “chat” を消す（他画面へ持ち越さない）
+  // ✅ 「戻る」を押した瞬間に先に消す（HOMEに一瞬だけ残るのを防ぐ）
+  const onBack = useCallback(() => {
+    clearEmotion("chat");
+    back();
+  }, [clearEmotion, back]);
+
+  // 念のため：Chat画面を出たら “chat” を消す（保険）
   useEffect(() => {
     return () => {
       clearEmotion("chat");
@@ -650,8 +648,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
   }
 
   function applyChatEmotion(nextEmotion: Emotion) {
-    // ✅ chatの表情は「次の発話」で上書きされる前提
-    // ただし画面離脱まで残っても困るので、unmountでclearする
     emitEmotion({
       source: "chat",
       emotion: nextEmotion,
@@ -681,7 +677,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       const hints: string[] = [];
       const isJudge = isFishingJudgeText(text);
 
-      // ✅ judgeの時は、サーバ側にWeather hintを渡す（潮はサーバでtide736）
       if (isJudge) {
         const targetDay = detectTargetDay(text);
         const YAIZU = { lat: 34.868, lon: 138.3236 };
@@ -702,15 +697,11 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       const reply = await callApiChat(thread, currentCharacter, hints);
       setMessages([...next, { role: "assistant", content: reply.text }]);
 
-      // ✅ 表情反映
       if (isJudge) {
-        // 釣行判断は安定運用：think固定
         applyChatEmotion("think");
       } else if (reply.emotion && reply.emotion !== "neutral") {
-        // サーバがちゃんと出してきたら採用
         applyChatEmotion(reply.emotion);
       } else {
-        // neutral/未指定なら “返答本文” から救済推定
         const inferred = inferEmotionFromAssistantText(reply.text);
         if (inferred) applyChatEmotion(inferred);
         else applyChatEmotion("neutral");
@@ -753,7 +744,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       title={<h1 style={{ margin: 0 }}>💬 {selectedCharacter.name}と話す</h1>}
       maxWidth={1100}
       showBack
-      onBack={back}
+      onBack={onBack}
       titleLayout="left"
       scrollY="hidden"
       contentPadding={"clamp(10px, 2vw, 18px)"}
