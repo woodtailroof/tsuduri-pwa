@@ -203,25 +203,26 @@ export default function Stage(props: Props) {
     return pickRandomId(createdCharacters);
   });
 
-  // ✅ 従来のprops.activeKeyでもランダム更新できるように残す
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (characterMode !== "random") return;
+  // ===== ランダム更新トリガーの一本化 =====
+  // ✅ routeイベントを受け取ったら、その後は activeKey方式を無効化（2重更新防止）
+  const routeModeEnabledRef = useRef<boolean>(false);
+  const lastRouteKeyRef = useRef<string>("");
 
-    // forced が入ってるならランダムは動かさない（画面指定を優先）
-    const forced =
-      (props.displayCharacterId ?? "").trim() || forcedIdFromShellRef.current;
-    if (forced) return;
-
-    setRandomPickedId(pickRandomId(createdCharacters));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.activeKey, characterMode]);
-
-  // ✅ PageShellが送る「画面遷移イベント」でランダム更新
+  // ✅ PageShellが送る「画面遷移イベント」でランダム更新（推奨）
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const onRoute = () => {
+    const onRoute = (ev: Event) => {
+      routeModeEnabledRef.current = true;
+
+      const ce = ev as CustomEvent<{ key?: unknown }>;
+      const rawKey = ce?.detail?.key;
+      const key = typeof rawKey === "string" ? rawKey : "";
+
+      // ✅ 同じキーは無視（StrictModeの二重実行や二重dispatch対策）
+      if (key && key === lastRouteKeyRef.current) return;
+      if (key) lastRouteKeyRef.current = key;
+
       if (characterMode !== "random") return;
 
       const forced =
@@ -238,6 +239,21 @@ export default function Stage(props: Props) {
         onRoute as EventListener,
       );
   }, [characterMode, props.displayCharacterId, createdCharacters]);
+
+  // ✅ 旧：props.activeKeyでもランダム更新（互換）
+  //    ただし routeイベント方式が有効なら実行しない（2重更新防止）
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (routeModeEnabledRef.current) return; // ← ここが肝
+    if (characterMode !== "random") return;
+
+    const forced =
+      (props.displayCharacterId ?? "").trim() || forcedIdFromShellRef.current;
+    if (forced) return;
+
+    setRandomPickedId(pickRandomId(createdCharacters));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.activeKey, characterMode]);
 
   const fixedCharacterId = settings.fixedCharacterId ?? "tsuduri";
 
@@ -267,6 +283,7 @@ export default function Stage(props: Props) {
       : "";
     const mappedSingleSrc = mappedIsFile ? mappedNorm : "";
 
+    // 推測パス（実配置：/assets/characters/{id}/{expression}.png）
     const expressionSrc = normalizePublicPath(
       `/assets/characters/${effectiveCharacterId}/${effectiveExpression}.png`,
     );
