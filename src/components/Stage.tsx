@@ -17,6 +17,9 @@ import { useEmotion, type Emotion } from "../lib/emotion";
 type Props = {
   /** ✅ 画面遷移キー（ランダムを画面遷移ごとに成立させる） */
   activeKey?: string;
+
+  /** ✅ PageShell/各screenから「今表示したいキャラID」を渡せる（最優先） */
+  displayCharacterId?: string;
 };
 
 type StoredCharacterLike = {
@@ -180,9 +183,15 @@ export default function Stage(props: Props) {
   }, [props.activeKey, characterMode]);
 
   const fixedCharacterId = settings.fixedCharacterId ?? "tsuduri";
+
+  // ✅ ここが本命：画面側から指定が来たら最優先でそれを使う
+  const forcedId = (props.displayCharacterId ?? "").trim();
+
   const pickCharacterId =
     characterMode === "fixed" ? fixedCharacterId : randomPickedId;
-  const effectiveCharacterId = (pickCharacterId ?? "").trim() || "tsuduri";
+
+  const effectiveCharacterId =
+    forcedId || (pickCharacterId ?? "").trim() || "tsuduri";
 
   const characterCandidates = useMemo(() => {
     const mappedRaw = (charImageMap[effectiveCharacterId] ?? "").trim();

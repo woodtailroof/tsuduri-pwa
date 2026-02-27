@@ -2,10 +2,12 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
+import Stage from "./Stage";
 
 type Props = {
   title?: ReactNode;
@@ -37,12 +39,13 @@ type Props = {
   showTestCharacter?: boolean;
 
   /**
-   * ✅ 互換受け口だけ残す（実際のキャラ表示は Stage が担当）
+   * ✅ 画面側から「今表示したいキャラID」を渡す（Stageへ中継）
    */
   displayCharacterId?: string;
 
   /**
    * ✅ 互換受け口だけ残す（実際の表情反映は Stage が担当）
+   * ※ 現状 Stage は useEmotion を見ているので、ここは未使用でもOK
    */
   displayExpression?: string;
 };
@@ -76,6 +79,11 @@ function useIsMobile() {
   return isMobile;
 }
 
+function safeActiveKey(v: unknown): string {
+  if (typeof v === "string" && v.trim()) return v.trim();
+  return "";
+}
+
 export default function PageShell(props: Props) {
   const title = props.title;
   const subtitle = props.subtitle;
@@ -86,6 +94,8 @@ export default function PageShell(props: Props) {
   const onBack = props.onBack;
   const scrollY = props.scrollY ?? "auto";
   const contentPadding = props.contentPadding;
+
+  const displayCharacterId = (props.displayCharacterId ?? "").trim();
 
   const isMobile = useIsMobile();
 
@@ -104,6 +114,17 @@ export default function PageShell(props: Props) {
     if (onBack) return onBack();
     if (typeof window !== "undefined") window.history.back();
   }, [onBack]);
+
+  // ✅ Stageの activeKey：画面ごとに変えたいなら title/subtitle/displayCharacterId からも生成できる
+  //    ただし既存の挙動を壊したくないので「最低限の変化」に抑える
+  const stageActiveKey = useMemo(() => {
+    // displayCharacterId が変わると random も変わりうるが、
+    // Stage側は characterMode==="random" のときだけ反応するので安全
+    const base = `${safeActiveKey(String(title ?? ""))}|${safeActiveKey(
+      String(subtitle ?? ""),
+    )}|${displayCharacterId}|${maxWidth}|${scrollY}`;
+    return base;
+  }, [title, subtitle, displayCharacterId, maxWidth, scrollY]);
 
   // ✅ ヘッダー（classで疑似ブラー）
   const headerStyle: CSSProperties = {
@@ -213,6 +234,12 @@ export default function PageShell(props: Props) {
 
   return (
     <div className="page-shell" style={shellStyle}>
+      {/* ✅ 背景やキャラはページ全体の最背面で描画（z-indexはStage側で管理） */}
+      <Stage
+        activeKey={stageActiveKey}
+        displayCharacterId={displayCharacterId}
+      />
+
       {headerVisible ? (
         <div className="glass-header" style={headerStyle}>
           <div style={headerInnerStyle}>
