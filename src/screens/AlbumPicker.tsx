@@ -51,7 +51,9 @@ export default function AlbumPicker(props: Props) {
       setLoading(true);
       setErr(null);
       try {
-        const res = await fetch("/assets/slides/index.json", { cache: "no-store" });
+        const res = await fetch("/assets/slides/index.json", {
+          cache: "no-store",
+        });
         if (!res.ok) throw new Error(`index.json fetch failed: ${res.status}`);
         const json = (await res.json()) as AlbumIndex;
 
@@ -118,11 +120,13 @@ export default function AlbumPicker(props: Props) {
       subtitle={null}
       showBack
       onBack={props.back}
-      maxWidth={1200}
+      maxWidth={1400}
       scrollY="auto"
     >
-      <div style={{ display: "grid", gap: 14 }}>
-        {loading && <div style={{ opacity: 0.8, padding: "4px 2px" }}>読み込み中…</div>}
+      <div style={{ display: "grid", gap: 12 }}>
+        {loading && (
+          <div style={{ opacity: 0.8, padding: "4px 2px" }}>読み込み中…</div>
+        )}
 
         {err && (
           <div
@@ -137,25 +141,28 @@ export default function AlbumPicker(props: Props) {
           </div>
         )}
 
-        {!loading && !err && grouped.every((g) => g.albums.length === 0) && (
-          <div style={{ opacity: 0.8, padding: "4px 2px" }}>
-            アルバムがまだないよ（index.json を確認してね）
-          </div>
-        )}
+        {!loading &&
+          !err &&
+          grouped.every((g) => g.albums.length === 0 && true) && (
+            <div style={{ opacity: 0.8, padding: "4px 2px" }}>
+              アルバムがまだないよ（index.json を確認してね）
+            </div>
+          )}
 
         {grouped.map((g) => {
           if (g.albums.length === 0) return null;
           return (
             <section key={g.key} style={{ display: "grid", gap: 8 }}>
-              <div style={{ fontWeight: 900, fontSize: 15, opacity: 0.95 }}>
+              <div style={{ fontWeight: 900, fontSize: 14, opacity: 0.95 }}>
                 {g.label}
               </div>
 
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                  gap: 10,
+                  // ✅ ここが“極小化”ポイント：最小幅を下げて詰める
+                  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                  gap: 8,
                 }}
               >
                 {g.albums.map((a) => (
@@ -164,10 +171,10 @@ export default function AlbumPicker(props: Props) {
                     onClick={() => props.openAlbum(a.id, a.title)}
                     style={{
                       textAlign: "left",
-                      padding: 10,
-                      borderRadius: 16,
-                      border: "1px solid rgba(255,255,255,0.18)",
-                      background: "rgba(255,255,255,0.08)",
+                      padding: 8,
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.16)",
+                      background: "rgba(255,255,255,0.07)",
                       color: "inherit",
                       cursor: "pointer",
                     }}
@@ -175,11 +182,11 @@ export default function AlbumPicker(props: Props) {
                     <div
                       style={{
                         width: "100%",
-                        aspectRatio: "16 / 9",
+                        height: 72, // ✅ 高さ固定で巨大化しない
                         borderRadius: 12,
                         overflow: "hidden",
                         background: "rgba(0,0,0,0.18)",
-                        border: "1px solid rgba(255,255,255,0.12)",
+                        border: "1px solid rgba(255,255,255,0.10)",
                       }}
                     >
                       {a.thumb ? (
@@ -201,8 +208,8 @@ export default function AlbumPicker(props: Props) {
                             height: "100%",
                             display: "grid",
                             placeItems: "center",
-                            opacity: 0.75,
-                            fontSize: 12,
+                            opacity: 0.7,
+                            fontSize: 11,
                           }}
                         >
                           no thumb
@@ -210,10 +217,17 @@ export default function AlbumPicker(props: Props) {
                       )}
                     </div>
 
-                    <div style={{ marginTop: 8, fontWeight: 800, fontSize: 13 }}>
+                    <div
+                      style={{
+                        marginTop: 6,
+                        fontWeight: 800,
+                        fontSize: 12,
+                        lineHeight: 1.2,
+                      }}
+                    >
                       {a.title}
                     </div>
-                    <div style={{ marginTop: 3, opacity: 0.7, fontSize: 11 }}>
+                    <div style={{ marginTop: 2, opacity: 0.65, fontSize: 10 }}>
                       {a.id}
                     </div>
                   </button>
