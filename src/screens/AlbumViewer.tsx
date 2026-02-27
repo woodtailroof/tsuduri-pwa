@@ -17,10 +17,6 @@ function safeText(e: unknown): string {
   return String(e);
 }
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
 function isFullscreenNow(): boolean {
   const d = document as any;
   return Boolean(
