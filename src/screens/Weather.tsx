@@ -1,5 +1,6 @@
 // src/screens/Weather.tsx
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -366,6 +367,12 @@ export default function Weather({ back }: Props) {
 
   const { emitEmotion, clearEmotion } = useEmotion(); // ✅ 追加
 
+  // ✅ 「戻る」を押した瞬間に先に消す（HOMEに一瞬だけ残るのを防ぐ）
+  const onBack = useCallback(() => {
+    clearEmotion("weather");
+    back();
+  }, [clearEmotion, back]);
+
   const isMobile = useIsMobile();
   const isDesktop = !isMobile;
 
@@ -417,13 +424,10 @@ export default function Weather({ back }: Props) {
     if (!el || typeof ResizeObserver === "undefined") return;
 
     const compute = (w: number) => {
-      // 16:9 基準（横が広がったら縦も増やす）
       const h = Math.round(w * (9 / 16));
-      // 端末差を吸収（小さすぎ/大きすぎを抑制）
       return clamp(h, 300, 560);
     };
 
-    // 初回
     setGraphHeight(compute(el.getBoundingClientRect().width));
 
     const ro = new ResizeObserver((entries) => {
@@ -557,10 +561,8 @@ export default function Weather({ back }: Props) {
     });
   }, [wState, state]);
 
-  // ✅ ここが本命：Weatherの感情を “weather source” として発火
+  // ✅ Weatherの感情を “weather source” として発火
   useEffect(() => {
-    // Weatherは「ころころ変えない」方向が良いので、ttlは長め（例：30分）
-    // priorityは chat より弱く（例：10）
     emitEmotion({
       source: "weather",
       emotion: weatherEmotion,
@@ -569,7 +571,7 @@ export default function Weather({ back }: Props) {
     });
   }, [emitEmotion, weatherEmotion]);
 
-  // ✅ 画面を離れたら weather の感情は消す（他のsourceに戻せる）
+  // ✅ 画面を離れたら weather の感情は消す（保険）
   useEffect(() => {
     return () => {
       clearEmotion("weather");
@@ -677,7 +679,7 @@ export default function Weather({ back }: Props) {
       titleLayout="left"
       maxWidth={1100}
       showBack
-      onBack={back}
+      onBack={onBack}
       scrollY="auto"
       displayExpression={weatherEmotion}
     >
@@ -956,7 +958,6 @@ export default function Weather({ back }: Props) {
             )}
           </div>
 
-          {/* ✅ ここが本命：横幅はそのまま、実寸に合わせて高さを作る */}
           <div
             ref={graphWrapRef}
             className="glass glass-strong"
