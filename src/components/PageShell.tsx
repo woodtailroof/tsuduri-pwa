@@ -2,6 +2,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -38,6 +39,7 @@ type Props = {
 
   /**
    * ✅ 表示したいキャラID（Stageへ通知する）
+   * 渡されない画面では "指定なし" となり、Stage設定（fixed/random）が効く
    */
   displayCharacterId?: string;
 
@@ -76,6 +78,12 @@ function useIsMobile() {
   return isMobile;
 }
 
+function stableString(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  return String(v);
+}
+
 export default function PageShell(props: Props) {
   const title = props.title;
   const subtitle = props.subtitle;
@@ -105,27 +113,38 @@ export default function PageShell(props: Props) {
     if (typeof window !== "undefined") window.history.back();
   }, [onBack]);
 
-  // ✅ Stageへ「表示キャラID」を通知（Stageは常駐1体だけの前提）
+  // ✅ 画面遷移ごとの“合図”キー（ランダム更新のトリガー用）
+  const routeKey = useMemo(() => {
+    const t = stableString(title);
+    const s = stableString(subtitle);
+    const w = String(maxWidth);
+    const y = String(scrollY);
+    // children は巨大になり得るので使わない
+    return `${t}|${s}|${w}|${y}`;
+  }, [title, subtitle, maxWidth, scrollY]);
+
+  // ✅ Stageへ「表示キャラID」を通知（Chatなどが指定すると固定表示になる）
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const id = (props.displayCharacterId ?? "").trim();
-
     window.dispatchEvent(
       new CustomEvent("tsuduri-display-character", {
         detail: { id },
       }),
     );
-
-    // 画面離脱時は「指定なし」に戻す（必要なら）
-    return () => {
-      window.dispatchEvent(
-        new CustomEvent("tsuduri-display-character", {
-          detail: { id: "" },
-        }),
-      );
-    };
   }, [props.displayCharacterId]);
+
+  // ✅ 画面が変わった合図（常駐Stageに届く）
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    window.dispatchEvent(
+      new CustomEvent("tsuduri-stage-route", {
+        detail: { key: routeKey },
+      }),
+    );
+  }, [routeKey]);
 
   // ✅ ヘッダー（classで疑似ブラー）
   const headerStyle: CSSProperties = {

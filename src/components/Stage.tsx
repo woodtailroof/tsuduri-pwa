@@ -167,6 +167,10 @@ export default function Stage(props: Props) {
 
   // ✅ PageShellからの「表示キャラ指定」を受け取る（Stage常駐で使う）
   const [forcedIdFromShell, setForcedIdFromShell] = useState<string>("");
+  const forcedIdFromShellRef = useRef(forcedIdFromShell);
+  useEffect(() => {
+    forcedIdFromShellRef.current = forcedIdFromShell;
+  }, [forcedIdFromShell]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -193,18 +197,47 @@ export default function Stage(props: Props) {
   const createdCharacters = loadCreatedCharacters();
   const charImageMap = loadCharacterImageMap();
 
-  // ✅ ランダム：画面遷移ごとに変えたいので activeKey で更新する
+  // ✅ ランダム：初期値
   const [randomPickedId, setRandomPickedId] = useState<string>(() => {
     if (typeof window === "undefined") return "";
     return pickRandomId(createdCharacters);
   });
 
+  // ✅ 従来のprops.activeKeyでもランダム更新できるように残す
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (characterMode !== "random") return;
+
+    // forced が入ってるならランダムは動かさない（画面指定を優先）
+    const forced =
+      (props.displayCharacterId ?? "").trim() || forcedIdFromShellRef.current;
+    if (forced) return;
+
     setRandomPickedId(pickRandomId(createdCharacters));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.activeKey, characterMode]);
+
+  // ✅ PageShellが送る「画面遷移イベント」でランダム更新
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onRoute = () => {
+      if (characterMode !== "random") return;
+
+      const forced =
+        (props.displayCharacterId ?? "").trim() || forcedIdFromShellRef.current;
+      if (forced) return;
+
+      setRandomPickedId(pickRandomId(createdCharacters));
+    };
+
+    window.addEventListener("tsuduri-stage-route", onRoute as EventListener);
+    return () =>
+      window.removeEventListener(
+        "tsuduri-stage-route",
+        onRoute as EventListener,
+      );
+  }, [characterMode, props.displayCharacterId, createdCharacters]);
 
   const fixedCharacterId = settings.fixedCharacterId ?? "tsuduri";
 
@@ -234,7 +267,6 @@ export default function Stage(props: Props) {
       : "";
     const mappedSingleSrc = mappedIsFile ? mappedNorm : "";
 
-    // 推測パス（実配置：/assets/characters/{id}/{expression}.png）
     const expressionSrc = normalizePublicPath(
       `/assets/characters/${effectiveCharacterId}/${effectiveExpression}.png`,
     );
