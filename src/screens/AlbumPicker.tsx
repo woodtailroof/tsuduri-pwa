@@ -48,8 +48,10 @@ export default function AlbumPicker(props: Props) {
     let cancelled = false;
 
     async function run() {
+      // ✅ いったん「中身を空にする」のをやめる（チラつき源）
       setLoading(true);
       setErr(null);
+
       try {
         const res = await fetch("/assets/slides/index.json", {
           cache: "no-store",
@@ -114,6 +116,8 @@ export default function AlbumPicker(props: Props) {
     }));
   }, [items]);
 
+  const hasAnyAlbum = grouped.some((g) => g.albums.length > 0);
+
   return (
     <PageShell
       title="秘密アルバム"
@@ -123,119 +127,159 @@ export default function AlbumPicker(props: Props) {
       maxWidth={1400}
       scrollY="auto"
     >
-      <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ position: "relative" }}>
+        {/* ✅ ロード中は“上に薄く”乗せるだけ（中身は消さない） */}
         {loading && (
-          <div style={{ opacity: 0.8, padding: "4px 2px" }}>読み込み中…</div>
-        )}
-
-        {err && (
           <div
             style={{
-              padding: 12,
-              borderRadius: 14,
-              border: "1px solid rgba(255,100,100,0.45)",
-              background: "rgba(255,80,80,0.12)",
+              position: "absolute",
+              inset: 0,
+              zIndex: 5,
+              pointerEvents: "none",
+              display: "grid",
+              placeItems: "start",
             }}
           >
-            index.json を読めなかったよ: {err}
+            <div
+              style={{
+                marginTop: 2,
+                padding: "6px 10px",
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,0.18)",
+                background: "rgba(0,0,0,0.25)",
+                fontSize: 12,
+                opacity: 0.9,
+              }}
+            >
+              読み込み中…
+            </div>
           </div>
         )}
 
-        {!loading &&
-          !err &&
-          grouped.every((g) => g.albums.length === 0 && true) && (
+        <div style={{ display: "grid", gap: 12 }}>
+          {err && (
+            <div
+              style={{
+                padding: 12,
+                borderRadius: 14,
+                border: "1px solid rgba(255,100,100,0.45)",
+                background: "rgba(255,80,80,0.12)",
+              }}
+            >
+              index.json を読めなかったよ: {err}
+            </div>
+          )}
+
+          {!loading && !err && !hasAnyAlbum && (
             <div style={{ opacity: 0.8, padding: "4px 2px" }}>
               アルバムがまだないよ（index.json を確認してね）
             </div>
           )}
 
-        {grouped.map((g) => {
-          if (g.albums.length === 0) return null;
-          return (
-            <section key={g.key} style={{ display: "grid", gap: 8 }}>
-              <div style={{ fontWeight: 900, fontSize: 14, opacity: 0.95 }}>
-                {g.label}
-              </div>
+          {grouped.map((g) => {
+            if (g.albums.length === 0) return null;
 
-              <div
-                style={{
-                  display: "grid",
-                  // ✅ ここが“極小化”ポイント：最小幅を下げて詰める
-                  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-                  gap: 8,
-                }}
-              >
-                {g.albums.map((a) => (
-                  <button
-                    key={a.id}
-                    onClick={() => props.openAlbum(a.id, a.title)}
-                    style={{
-                      textAlign: "left",
-                      padding: 8,
-                      borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.16)",
-                      background: "rgba(255,255,255,0.07)",
-                      color: "inherit",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <div
+            return (
+              <section key={g.key} style={{ display: "grid", gap: 8 }}>
+                <div style={{ fontWeight: 900, fontSize: 14, opacity: 0.95 }}>
+                  {g.label}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  {g.albums.map((a) => (
+                    <button
+                      key={a.id}
+                      onClick={() => props.openAlbum(a.id, a.title)}
                       style={{
-                        width: "100%",
-                        height: 72, // ✅ 高さ固定で巨大化しない
-                        borderRadius: 12,
-                        overflow: "hidden",
-                        background: "rgba(0,0,0,0.18)",
-                        border: "1px solid rgba(255,255,255,0.10)",
+                        textAlign: "left",
+                        padding: 8,
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        background: "rgba(255,255,255,0.06)",
+                        color: "inherit",
+                        cursor: "pointer",
                       }}
                     >
-                      {a.thumb ? (
-                        <img
-                          src={a.thumb}
-                          alt={a.title}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                            display: "block",
-                          }}
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            display: "grid",
-                            placeItems: "center",
-                            opacity: 0.7,
-                            fontSize: 11,
-                          }}
-                        >
-                          no thumb
-                        </div>
-                      )}
-                    </div>
+                      <div
+                        style={{
+                          width: "100%",
+                          height: 56, // ✅ さらに小さく
+                          borderRadius: 12,
+                          overflow: "hidden",
+                          background: "rgba(0,0,0,0.18)",
+                          border: "1px solid rgba(255,255,255,0.10)",
+                        }}
+                      >
+                        {a.thumb ? (
+                          <img
+                            src={a.thumb}
+                            alt={a.title}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                              display: "block",
+                            }}
+                            loading="lazy"
+                            draggable={false}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              display: "grid",
+                              placeItems: "center",
+                              opacity: 0.7,
+                              fontSize: 10,
+                            }}
+                          >
+                            no thumb
+                          </div>
+                        )}
+                      </div>
 
-                    <div
-                      style={{
-                        marginTop: 6,
-                        fontWeight: 800,
-                        fontSize: 12,
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      {a.title}
-                    </div>
-                    <div style={{ marginTop: 2, opacity: 0.65, fontSize: 10 }}>
-                      {a.id}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </section>
-          );
-        })}
+                      <div
+                        style={{
+                          marginTop: 6,
+                          fontWeight: 800,
+                          fontSize: 11,
+                          lineHeight: 1.2,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={a.title}
+                      >
+                        {a.title}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 2,
+                          opacity: 0.65,
+                          fontSize: 10,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={a.id}
+                      >
+                        {a.id}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
       </div>
     </PageShell>
   );

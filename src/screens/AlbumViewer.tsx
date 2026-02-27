@@ -31,6 +31,23 @@ function isFullscreenNow(): boolean {
   );
 }
 
+function canUseFullscreenApi(): boolean {
+  const dEl = document.documentElement as any;
+  const hasReq =
+    !!dEl.requestFullscreen ||
+    !!dEl.webkitRequestFullscreen ||
+    !!dEl.mozRequestFullScreen ||
+    !!dEl.msRequestFullscreen;
+
+  if (!hasReq) return false;
+
+  const ua = navigator.userAgent || "";
+  const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  if (isIOS) return false;
+
+  return true;
+}
+
 async function requestFs(el: HTMLElement) {
   const anyEl = el as any;
   if (el.requestFullscreen) return el.requestFullscreen();
@@ -58,6 +75,19 @@ export default function AlbumViewer(props: Props) {
   const [idx, setIdx] = useState(0);
 
   const [fs, setFs] = useState(false);
+  const [fsSupported, setFsSupported] = useState(false);
+  const [hint, setHint] = useState<string>("");
+
+  // ✅ 表示中の画像（プリロード完了してからこれを差し替える）
+  const [shownSrc, setShownSrc] = useState<string>("");
+
+  useEffect(() => {
+    try {
+      setFsSupported(canUseFullscreenApi());
+    } catch {
+      setFsSupported(false);
+    }
+  }, []);
 
   const albumBase = useMemo(() => {
     const id = (props.albumId ?? "").trim();
@@ -71,6 +101,7 @@ export default function AlbumViewer(props: Props) {
       setLoading(true);
       setErr(null);
       setIdx(0);
+      setShownSrc("");
 
       if (!albumBase) {
         setErr("albumId が空だよ");
@@ -108,12 +139,54 @@ export default function AlbumViewer(props: Props) {
     };
   }, [albumBase, props.albumTitleHint]);
 
-  const currentSrc = useMemo(() => {
+  const targetSrc = useMemo(() => {
     if (!albumBase) return "";
     if (!files.length) return "";
     const name = files[clamp(idx, 0, files.length - 1)];
     return `${albumBase}/${name}`;
   }, [albumBase, files, idx]);
+
+  // ✅ チラつき対策：targetSrc を直接出さずに、先読み完了してから shownSrc に反映
+  useEffect(() => {
+    let cancelled = false;
+
+    async function preloadAndSwap(src: string) {
+      if (!src) {
+        setShownSrc("");
+        return;
+      }
+
+      // すでに同じなら何もしない
+      setErr((prev) => prev); // no-op（lint回避用ではなく、状態変化なし）
+      if (shownSrc === src) return;
+
+      const img = new Image();
+      img.decoding = "async";
+      img.loading = "eager";
+      img.src = src;
+
+      const done = () => {
+        if (cancelled) return;
+        // ✅ ここで初めて表示を差し替える（空白にならない）
+        setShownSrc(src);
+      };
+
+      img.onload = done;
+      img.onerror = () => {
+        if (cancelled) return;
+        // 読めない場合でも target を出してみる（それでもダメならブラウザ側でエラー）
+        setShownSrc(src);
+      };
+    }
+
+    void preloadAndSwap(targetSrc);
+
+    return () => {
+      cancelled = true;
+    };
+    // shownSrc を依存に入れるとループしやすいので入れない（比較は上でやってる）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetSrc]);
 
   const prev = () => {
     if (!files.length) return;
@@ -125,7 +198,6 @@ export default function AlbumViewer(props: Props) {
     setIdx((v) => (v + 1) % files.length);
   };
 
-  // クリック/タップで左右送り
   const onTap = (clientX: number, width: number) => {
     if (!files.length) return;
     const leftSide = clientX < width * 0.4;
@@ -133,7 +205,6 @@ export default function AlbumViewer(props: Props) {
     else next();
   };
 
-  // キーボード（PC）
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowLeft") {
@@ -155,7 +226,6 @@ export default function AlbumViewer(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.back, files.length, idx]);
 
-  // Fullscreen状態追従
   useEffect(() => {
     const onFsChange = () => setFs(isFullscreenNow());
     document.addEventListener("fullscreenchange", onFsChange);
@@ -167,16 +237,29 @@ export default function AlbumViewer(props: Props) {
   }, []);
 
   async function toggleFullscreen() {
+    if (!fsSupported) {
+      setHint(
+        "このブラウザは全画面ボタン非対応。PWA起動がいちばん大きく見えるよ",
+      );
+      window.setTimeout(() => setHint(""), 2400);
+      return;
+    }
+
     try {
       const root = rootRef.current;
       if (!root) return;
       if (isFullscreenNow()) await exitFs();
       else await requestFs(root);
       setFs(isFullscreenNow());
-    } catch {
-      // iOS Safariなどで不可のケースもある
+    } catch (e) {
+      setHint("全画面にできなかったよ（ブラウザ制限かも）。PWA起動だと安定！");
+      window.setTimeout(() => setHint(""), 2400);
+
+      console.warn("Fullscreen failed:", e);
     }
   }
+
+  const showTopInfo = Boolean(title || files.length);
 
   return (
     <div
@@ -185,13 +268,13 @@ export default function AlbumViewer(props: Props) {
         position: "fixed",
         inset: 0,
         zIndex: 9999,
-        background: "rgba(0,0,0,0.92)", // ✅ 落ち着く背景
+        background: "rgba(0,0,0,0.92)",
         color: "#fff",
         overflow: "hidden",
         touchAction: "manipulation",
       }}
     >
-      {/* 画像本体（フル表示 + containで自動余白） */}
+      {/* 画像本体 */}
       <div
         style={{ position: "absolute", inset: 0 }}
         onClick={(e) => {
@@ -201,9 +284,9 @@ export default function AlbumViewer(props: Props) {
           onTap(e.clientX - rect.left, rect.width);
         }}
       >
-        {currentSrc ? (
+        {shownSrc ? (
           <img
-            src={currentSrc}
+            src={shownSrc}
             alt={title || props.albumId}
             style={{
               width: "100%",
@@ -222,6 +305,7 @@ export default function AlbumViewer(props: Props) {
               display: "grid",
               placeItems: "center",
               opacity: 0.85,
+              fontSize: 13,
             }}
           >
             {loading
@@ -246,9 +330,10 @@ export default function AlbumViewer(props: Props) {
           alignItems: "center",
           justifyContent: "space-between",
           pointerEvents: "none",
+          opacity: showTopInfo ? 1 : 0.9,
         }}
       >
-        <div style={{ display: "grid", gap: 2, pointerEvents: "none" }}>
+        <div style={{ display: "grid", gap: 2 }}>
           <div style={{ fontWeight: 900, fontSize: 14, opacity: 0.95 }}>
             {title || "アルバム"}
           </div>
@@ -271,9 +356,10 @@ export default function AlbumViewer(props: Props) {
               color: "inherit",
               cursor: "pointer",
               fontSize: 12,
+              opacity: fsSupported ? 1 : 0.75,
             }}
           >
-            {fs ? "全画面OFF" : "全画面"}
+            {fsSupported ? (fs ? "全画面OFF" : "全画面") : "全画面(案内)"}
           </button>
 
           <button
@@ -294,16 +380,16 @@ export default function AlbumViewer(props: Props) {
         </div>
       </div>
 
-      {/* 下オーバーレイ（薄いヒント） */}
-      {files.length > 0 && (
+      {/* ✅ 下の操作案内は削除（要望どおり） */}
+
+      {/* 全画面案内メッセージ */}
+      {hint && (
         <div
           style={{
             position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: 0,
-            padding:
-              "10px max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left))",
+            left: 12,
+            right: 12,
+            top: 64,
             display: "grid",
             placeItems: "center",
             pointerEvents: "none",
@@ -311,27 +397,26 @@ export default function AlbumViewer(props: Props) {
         >
           <div
             style={{
-              padding: "6px 10px",
-              borderRadius: 999,
-              background: "rgba(0,0,0,0.35)",
+              padding: "10px 12px",
+              borderRadius: 14,
               border: "1px solid rgba(255,255,255,0.18)",
+              background: "rgba(0,0,0,0.45)",
               fontSize: 12,
-              opacity: 0.9,
+              opacity: 0.95,
             }}
           >
-            左タップ: 前 / 右タップ: 次（PCは ← → / Fで全画面）
+            {hint}
           </div>
         </div>
       )}
 
-      {/* エラー表示（必要最低限） */}
       {err && (
         <div
           style={{
             position: "absolute",
             left: 12,
             right: 12,
-            bottom: 56,
+            bottom: 12,
             padding: 10,
             borderRadius: 14,
             border: "1px solid rgba(255,100,100,0.45)",
