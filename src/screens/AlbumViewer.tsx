@@ -32,20 +32,19 @@ function isFullscreenNow(): boolean {
 }
 
 function canUseFullscreenApi(): boolean {
-  const dEl = document.documentElement as any;
-  const hasReq =
-    !!dEl.requestFullscreen ||
-    !!dEl.webkitRequestFullscreen ||
-    !!dEl.mozRequestFullScreen ||
-    !!dEl.msRequestFullscreen;
+  const el = document.documentElement as any;
+  return (
+    !!el.requestFullscreen ||
+    !!el.webkitRequestFullscreen ||
+    !!el.mozRequestFullScreen ||
+    !!el.msRequestFullscreen
+  );
+}
 
-  if (!hasReq) return false;
-
+// ✅ モバイル判定
+function isMobile(): boolean {
   const ua = navigator.userAgent || "";
-  const isIOS = /iPhone|iPad|iPod/i.test(ua);
-  if (isIOS) return false;
-
-  return true;
+  return /iPhone|iPad|iPod|Android/i.test(ua);
 }
 
 async function requestFs(el: HTMLElement) {
@@ -67,8 +66,6 @@ async function exitFs() {
 function preloadImage(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.decoding = "async";
-    img.loading = "eager";
     img.onload = () => resolve();
     img.onerror = () => reject(new Error("image load failed"));
     img.src = src;
@@ -86,26 +83,17 @@ export default function AlbumViewer(props: Props) {
   const [idx, setIdx] = useState(0);
 
   const [fs, setFs] = useState(false);
-  const [fsSupported, setFsSupported] = useState(false);
-  const [hint, setHint] = useState<string>("");
 
-  // ✅ 表示中画像（空にしない！）
-  const [shownSrc, setShownSrc] = useState<string>("");
-
-  useEffect(() => {
-    try {
-      setFsSupported(canUseFullscreenApi());
-    } catch {
-      setFsSupported(false);
-    }
-  }, []);
+  // ✅ PCのみ表示
+  const showFullscreenButton = !isMobile() && canUseFullscreenApi();
 
   const albumBase = useMemo(() => {
     const id = (props.albumId ?? "").trim();
     return id ? `/assets/slides/${id}` : "";
   }, [props.albumId]);
 
-  // ✅ manifestロード + 1枚目プリロードまでを「1つのロード」にする
+  const [shownSrc, setShownSrc] = useState<string>("");
+
   useEffect(() => {
     let cancelled = false;
 
@@ -113,12 +101,6 @@ export default function AlbumViewer(props: Props) {
       setLoading(true);
       setErr(null);
       setIdx(0);
-
-      if (!albumBase) {
-        setErr("albumId が空だよ");
-        setLoading(false);
-        return;
-      }
 
       try {
         const res = await fetch(`${albumBase}/manifest.json`, {
@@ -139,69 +121,42 @@ export default function AlbumViewer(props: Props) {
         setFiles(nextFiles);
 
         if (nextFiles.length === 0) {
-          // 画像が無いならここで終わり
           setShownSrc("");
           setLoading(false);
           return;
         }
 
-        // ✅ 1枚目を先に読み込んでから表示する（チラつき根絶）
         const firstSrc = `${albumBase}/${nextFiles[0]}`;
-
-        // すでに同じアルバムを開いていて同じ1枚目が表示中なら、プリロード不要で即完了
-        if (shownSrc === firstSrc) {
-          setLoading(false);
-          return;
-        }
-
-        try {
-          await preloadImage(firstSrc);
-        } catch {
-          // 読めなくても表示は試す（落ちない）
-        }
+        await preloadImage(firstSrc);
 
         if (cancelled) return;
 
         setShownSrc(firstSrc);
         setLoading(false);
       } catch (e) {
-        if (cancelled) return;
-        setErr(safeText(e));
-        setLoading(false);
+        if (!cancelled) {
+          setErr(safeText(e));
+          setLoading(false);
+        }
       }
     }
 
     void run();
-
     return () => {
       cancelled = true;
     };
-    // shownSrcは依存に入れない（無限ループ回避）
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [albumBase, props.albumTitleHint]);
 
-  // idx変更時：次の画像をプリロードしてから切り替え（空白を作らない）
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
-      if (!albumBase) return;
       if (!files.length) return;
-
-      const name = files[clamp(idx, 0, files.length - 1)];
-      const nextSrc = `${albumBase}/${name}`;
-
-      // すでに表示中なら何もしない
+      const nextSrc = `${albumBase}/${files[idx]}`;
       if (shownSrc === nextSrc) return;
 
-      try {
-        await preloadImage(nextSrc);
-      } catch {
-        // 読めなくても切り替えは試す
-      }
-
-      if (cancelled) return;
-      setShownSrc(nextSrc);
+      await preloadImage(nextSrc);
+      if (!cancelled) setShownSrc(nextSrc);
     }
 
     void run();
@@ -227,56 +182,14 @@ export default function AlbumViewer(props: Props) {
     else next();
   };
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        prev();
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        next();
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        props.back();
-      } else if (e.key.toLowerCase() === "f") {
-        e.preventDefault();
-        void toggleFullscreen();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown, { passive: false });
-    return () => window.removeEventListener("keydown", onKeyDown as any);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.back, files.length]);
-
-  useEffect(() => {
-    const onFsChange = () => setFs(isFullscreenNow());
-    document.addEventListener("fullscreenchange", onFsChange);
-    document.addEventListener("webkitfullscreenchange" as any, onFsChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", onFsChange);
-      document.removeEventListener("webkitfullscreenchange" as any, onFsChange);
-    };
-  }, []);
-
   async function toggleFullscreen() {
-    if (!fsSupported) {
-      setHint(
-        "このブラウザは全画面ボタン非対応。PWA起動がいちばん大きく見えるよ",
-      );
-      window.setTimeout(() => setHint(""), 2400);
-      return;
-    }
+    const root = rootRef.current;
+    if (!root) return;
 
-    try {
-      const root = rootRef.current;
-      if (!root) return;
-      if (isFullscreenNow()) await exitFs();
-      else await requestFs(root);
-      setFs(isFullscreenNow());
-    } catch {
-      setHint("全画面にできなかったよ（ブラウザ制限かも）。PWA起動だと安定！");
-      window.setTimeout(() => setHint(""), 2400);
-    }
+    if (isFullscreenNow()) await exitFs();
+    else await requestFs(root);
+
+    setFs(isFullscreenNow());
   }
 
   return (
@@ -289,7 +202,6 @@ export default function AlbumViewer(props: Props) {
         background: "rgba(0,0,0,0.92)",
         color: "#fff",
         overflow: "hidden",
-        touchAction: "manipulation",
       }}
     >
       <div
@@ -304,13 +216,12 @@ export default function AlbumViewer(props: Props) {
         {shownSrc ? (
           <img
             src={shownSrc}
-            alt={title || props.albumId}
+            alt={title}
             style={{
               width: "100%",
               height: "100%",
               objectFit: "contain",
               display: "block",
-              userSelect: "none",
             }}
             draggable={false}
           />
@@ -322,129 +233,71 @@ export default function AlbumViewer(props: Props) {
               display: "grid",
               placeItems: "center",
               opacity: 0.85,
-              fontSize: 13,
             }}
           >
-            {loading
-              ? "読み込み中…"
-              : err
-                ? "読み込みエラー"
-                : "files が空だよ"}
+            {loading ? "読み込み中…" : (err ?? "files が空だよ")}
           </div>
         )}
       </div>
 
-      {/* 上オーバーレイ */}
+      {/* 上部オーバーレイ */}
       <div
         style={{
           position: "absolute",
+          top: 0,
           left: 0,
           right: 0,
-          top: 0,
-          padding:
-            "max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 10px max(10px, env(safe-area-inset-left))",
+          padding: "12px",
           display: "flex",
-          alignItems: "center",
           justifyContent: "space-between",
           pointerEvents: "none",
         }}
       >
-        <div style={{ display: "grid", gap: 2 }}>
-          <div style={{ fontWeight: 900, fontSize: 14, opacity: 0.95 }}>
-            {title || "アルバム"}
-          </div>
+        <div style={{ pointerEvents: "none" }}>
+          <div style={{ fontWeight: 900 }}>{title}</div>
           {files.length > 0 && (
-            <div style={{ fontSize: 12, opacity: 0.75 }}>
+            <div style={{ fontSize: 12, opacity: 0.7 }}>
               {idx + 1} / {files.length}
             </div>
           )}
         </div>
 
         <div style={{ display: "flex", gap: 8, pointerEvents: "auto" }}>
-          <button
-            type="button"
-            onClick={() => void toggleFullscreen()}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.22)",
-              background: "rgba(0,0,0,0.35)",
-              color: "inherit",
-              cursor: "pointer",
-              fontSize: 12,
-              opacity: fsSupported ? 1 : 0.75,
-            }}
-          >
-            {fsSupported ? (fs ? "全画面OFF" : "全画面") : "全画面(案内)"}
-          </button>
+          {showFullscreenButton && (
+            <button
+              type="button"
+              onClick={() => void toggleFullscreen()}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,0.25)",
+                background: "rgba(0,0,0,0.4)",
+                color: "#fff",
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              {fs ? "全画面OFF" : "全画面"}
+            </button>
+          )}
 
           <button
             type="button"
             onClick={props.back}
             style={{
-              padding: "8px 10px",
+              padding: "6px 10px",
               borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.22)",
-              background: "rgba(0,0,0,0.35)",
-              color: "inherit",
-              cursor: "pointer",
+              border: "1px solid rgba(255,255,255,0.25)",
+              background: "rgba(0,0,0,0.4)",
+              color: "#fff",
               fontSize: 12,
+              cursor: "pointer",
             }}
           >
             ← 戻る
           </button>
         </div>
       </div>
-
-      {/* 全画面案内メッセージ */}
-      {hint && (
-        <div
-          style={{
-            position: "absolute",
-            left: 12,
-            right: 12,
-            top: 64,
-            display: "grid",
-            placeItems: "center",
-            pointerEvents: "none",
-          }}
-        >
-          <div
-            style={{
-              padding: "10px 12px",
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.18)",
-              background: "rgba(0,0,0,0.45)",
-              fontSize: 12,
-              opacity: 0.95,
-            }}
-          >
-            {hint}
-          </div>
-        </div>
-      )}
-
-      {err && (
-        <div
-          style={{
-            position: "absolute",
-            left: 12,
-            right: 12,
-            bottom: 12,
-            padding: 10,
-            borderRadius: 14,
-            border: "1px solid rgba(255,100,100,0.45)",
-            background: "rgba(255,80,80,0.14)",
-            fontSize: 12,
-            pointerEvents: "none",
-          }}
-        >
-          読めなかったよ: {err}
-          <div style={{ marginTop: 4, opacity: 0.85 }}>
-            {albumBase ? `期待パス: ${albumBase}/manifest.json` : ""}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
