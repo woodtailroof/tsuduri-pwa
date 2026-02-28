@@ -31,6 +31,29 @@ function normalizeEmotion(v: unknown): Emotion {
 }
 
 /**
+ * ✅ 表示用テキスト正規化（スマホで無駄スクロールを出さない）
+ * - 空行（連続改行）を潰す
+ * - 行頭末尾の余計な空白を軽く整理
+ */
+function normalizeAssistantText(raw: string): string {
+  const s = String(raw ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+
+  // 行末スペースを削除
+  const noTrail = s
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+$/g, ""))
+    .join("\n");
+
+  // ✅ 空行を全部つぶす（\n\n や \n  \n を禁止）
+  // 「段落」は改行1つで表現してもらう運用
+  const collapsed = noTrail.replace(/\n\s*\n+/g, "\n");
+
+  return collapsed.trim();
+}
+
+/**
  * GPTの返答が
  *  - 普通の本文だけ
  *  - 末尾にJSONを付けてくる
@@ -524,6 +547,11 @@ emotion は必ず 1つだけ選ぶ。
 - ${r.paragraphs}
 - ユーザー文から具体ワードを1つ拾って反応してから話を進める
 
+【表示上の重要ルール（スマホ対策）】
+- 空行（連続改行）を入れない。「\\n\\n」を作らない
+- 段落を分けたい時は空行ではなく、改行1つで区切る
+- 箇条書きも空行なしで詰めて書く
+
 【キャラ設定（自由記述）※最重要】
 ${(ch.prompt ?? "").trim() || "（未設定）"}
 
@@ -542,7 +570,6 @@ ${emotionRule}
 - JSONを2個以上出力すること
 - 本文の感情と emotion を不一致にすること
 - 冷たい断定、説教、威圧
-- 過度な性的表現
 - 個人情報の聞き出し
 `.trim(),
   };
@@ -639,7 +666,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const targetDay = detectTargetDay(lastUser);
 
     const profileMemo: Msg | null =
-      /釣り|サーフ|河口|港|堤防|ルアー|シーバス|ヒラメ|マゴチ|チヌ|アジ|メッキ/.test(
+      /釣り|サーフ|河口|港|堤防|ルアー|ブリ|イナダ|ワカシ|サワラ|サゴシ|シーバス|ヒラメ|マゴチ|チヌ|アジ|メッキ/.test(
         lastUser,
       )
         ? {
@@ -667,7 +694,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 2) Weather：数値を最低2つ引用。取得失敗なら「Weather：取得失敗（理由: ...）」と明記（ごまかし禁止）
 3) Tide：潮名＋満潮/干潮（時間orcm）を最低2つ引用
 4) 根拠まとめ：3〜6点
-5) 作戦：2〜5点（“夜22時以降”or“ド日中成立”を反映）
+5) 作戦：2〜5点
 6) 撤収ライン
 7) 一言（説教しない）
 
@@ -763,12 +790,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const parsed = extractTextAndEmotion(raw);
 
+    // ✅ 表示用テキストを正規化（空行潰し）
+    const normalizedText = normalizeAssistantText(parsed.text);
+
     // ✅ isJudge はブレ抑制。味で揺らしたいならここを parsed.emotion に戻せる
     const finalEmotion: Emotion = isJudge ? "think" : parsed.emotion;
 
     return jsonResponse(200, {
       ok: true,
-      text: parsed.text,
+      text: normalizedText,
       emotion: finalEmotion,
     });
   } catch (e) {
