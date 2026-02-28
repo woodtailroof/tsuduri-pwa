@@ -1,5 +1,11 @@
 {
   "title": "こころ：セーラー",
-  "files": ["k001.png", "k002.png", "k003.png", "k004.png"],
+  "files": [
+    "000.png",
+    "k001.png",
+    "k002.png",
+    "k003.png",
+    "k004.png"
+  ],
   "intervalMs": 1200
 }
