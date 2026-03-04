@@ -11,7 +11,13 @@ import SecretPortalHotspot from "../components/SecretPortalHotspot";
 
 type Props = {
   go: (
-    screen: "record" | "recordHistory" | "weather" | "chat" | "settings",
+    screen:
+      | "record"
+      | "recordHistory"
+      | "recordAnalysis"
+      | "weather"
+      | "chat"
+      | "settings",
   ) => void;
 
   /** 秘密入口（あれば使う） */
@@ -98,6 +104,7 @@ export default function Home({ go, goSecret }: Props) {
   const logoSrc = "/assets/logo/logo-title.png";
   const btnRecord = "/assets/buttons/btn-record.png";
   const btnHistory = "/assets/buttons/btn-history.png";
+  const btnAnalysis = "/assets/buttons/btn-analysis.png";
   const btnWeather = "/assets/buttons/btn-weather.png";
   const btnChat = "/assets/buttons/btn-chat.png";
   const btnSettings = "/assets/buttons/btn-settings.png";
@@ -418,6 +425,12 @@ export default function Home({ go, goSecret }: Props) {
                         src={btnHistory}
                         alt="履歴をみる"
                         onClick={() => go("recordHistory")}
+                        style={{ width: "var(--btnw)" }}
+                      />
+                      <ImgButton
+                        src={btnAnalysis}
+                        alt="釣行分析"
+                        onClick={() => go("recordAnalysis")}
                         style={{ width: "var(--btnw)" }}
                       />
                       <ImgButton

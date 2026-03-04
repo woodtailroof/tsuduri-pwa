@@ -9,6 +9,7 @@ import {
 import Home from "./screens/Home";
 import Record from "./screens/Record";
 import RecordHistory from "./screens/RecordHistory";
+import RecordAnalysis from "./screens/RecordAnalysis";
 import Weather from "./screens/Weather";
 import Chat from "./screens/Chat";
 import Settings from "./screens/Settings";
@@ -31,6 +32,7 @@ type Screen =
   | "home"
   | "record"
   | "recordHistory"
+  | "recordAnalysis"
   | "weather"
   | "chat"
   | "settings"
@@ -83,7 +85,13 @@ function AppInner() {
   const backHome = () => setScreen("home");
 
   const goFromHome = (
-    s: "record" | "recordHistory" | "weather" | "chat" | "settings",
+    s:
+      | "record"
+      | "recordHistory"
+      | "recordAnalysis"
+      | "weather"
+      | "chat"
+      | "settings",
   ) => setScreen(s);
 
   const openAlbum = (albumId: string, title?: string) => {
@@ -97,6 +105,8 @@ function AppInner() {
   if (screen === "record") content = <Record back={backHome} />;
   else if (screen === "recordHistory")
     content = <RecordHistory back={backHome} />;
+  else if (screen === "recordAnalysis")
+    content = <RecordAnalysis back={backHome} />;
   else if (screen === "weather") content = <Weather back={backHome} />;
   else if (screen === "settings") content = <Settings back={backHome} />;
   else if (screen === "chat") {
