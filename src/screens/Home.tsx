@@ -52,34 +52,153 @@ function setUnlocked(pass: string) {
   }
 }
 
-type ImgBtnProps = {
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+type SmartBtnProps = {
   src: string;
   alt: string;
   onClick: () => void;
   style?: CSSProperties;
+
+  /** 画像が無い/壊れてる時に出す代替 */
+  fallbackLabel: string;
+  fallbackSub?: string;
+  fallbackIcon?: string;
+  disabled?: boolean;
 };
 
-function ImgButton({ src, alt, onClick, style }: ImgBtnProps) {
+function SmartButton({
+  src,
+  alt,
+  onClick,
+  style,
+  fallbackLabel,
+  fallbackSub,
+  fallbackIcon,
+  disabled,
+}: SmartBtnProps) {
+  const [failed, setFailed] = useState(false);
+
+  const btnBase: CSSProperties = {
+    appearance: "none",
+    border: 0,
+    padding: 0,
+    margin: 0,
+    display: "inline-block",
+    cursor: disabled ? "not-allowed" : "pointer",
+    background: "transparent",
+    lineHeight: 0,
+    WebkitTapHighlightColor: "transparent",
+    opacity: disabled ? 0.55 : 1,
+  };
+
+  const fallbackStyle: CSSProperties = {
+    width: "100%",
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,0.16)",
+    background: "rgba(255,255,255,0.08)",
+    boxShadow: "0 10px 26px rgba(0,0,0,0.22), inset 0 0 0 1px rgba(0,0,0,0.14)",
+    backdropFilter: "blur(var(--glass-blur,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+    color: "rgba(255,255,255,0.92)",
+    padding: "14px 16px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    textAlign: "left",
+    lineHeight: 1.2,
+    userSelect: "none",
+  };
+
+  const left: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    minWidth: 0,
+  };
+
+  const iconStyle: CSSProperties = {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    display: "grid",
+    placeItems: "center",
+    background: "rgba(0,0,0,0.18)",
+    border: "1px solid rgba(255,255,255,0.14)",
+    flex: "0 0 auto",
+    fontSize: 18,
+  };
+
+  const textWrap: CSSProperties = {
+    display: "grid",
+    gap: 4,
+    minWidth: 0,
+  };
+
+  const labelStyle: CSSProperties = {
+    fontWeight: 900,
+    letterSpacing: "0.02em",
+    fontSize: 16,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  };
+
+  const subStyle: CSSProperties = {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.68)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  };
+
+  const chevron: CSSProperties = {
+    flex: "0 0 auto",
+    fontSize: 16,
+    color: "rgba(255,255,255,0.72)",
+    paddingLeft: 8,
+  };
+
+  const showFallback = failed;
+
   return (
     <button
       type="button"
-      className="home-img-btn"
-      onClick={onClick}
       aria-label={alt}
-      style={style}
+      onClick={() => !disabled && onClick()}
+      style={{ ...btnBase, ...style }}
+      className="home-smart-btn"
     >
-      <img
-        className="home-img-btn__img"
-        src={src}
-        alt={alt}
-        draggable={false}
-      />
+      {showFallback ? (
+        <div className="glass" style={fallbackStyle}>
+          <div style={left}>
+            <div style={iconStyle} aria-hidden="true">
+              {fallbackIcon ?? "✨"}
+            </div>
+            <div style={textWrap}>
+              <div style={labelStyle}>{fallbackLabel}</div>
+              {fallbackSub ? <div style={subStyle}>{fallbackSub}</div> : null}
+            </div>
+          </div>
+          <div style={chevron} aria-hidden="true">
+            ▶
+          </div>
+        </div>
+      ) : (
+        <img
+          className="home-img-btn__img"
+          src={src}
+          alt={alt}
+          draggable={false}
+          onError={() => setFailed(true)}
+          style={{ display: "block", width: "100%", height: "auto" }}
+        />
+      )}
     </button>
   );
-}
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
 }
 
 export default function Home({ go, goSecret }: Props) {
@@ -104,7 +223,7 @@ export default function Home({ go, goSecret }: Props) {
   const logoSrc = "/assets/logo/logo-title.png";
   const btnRecord = "/assets/buttons/btn-record.png";
   const btnHistory = "/assets/buttons/btn-history.png";
-  const btnAnalysis = "/assets/buttons/btn-analysis.png";
+  const btnAnalysis = "/assets/buttons/btn-analysis.png"; // ✅ 無くてもOK（fallback表示）
   const btnWeather = "/assets/buttons/btn-weather.png";
   const btnChat = "/assets/buttons/btn-chat.png";
   const btnSettings = "/assets/buttons/btn-settings.png";
@@ -172,22 +291,6 @@ export default function Home({ go, goSecret }: Props) {
     >
       <style>
         {`
-        .home-img-btn{
-          appearance:none;
-          border:0;
-          background:transparent;
-          padding:0;
-          margin:0;
-          display:inline-block;
-          line-height:0;
-          cursor:pointer;
-        }
-        .home-img-btn__img{
-          display:block;
-          width:100%;
-          height:auto;
-        }
-
         .home-root{
           width:100%;
           height:100dvh;
@@ -415,43 +518,67 @@ export default function Home({ go, goSecret }: Props) {
                 <div className="home-safe-actions">
                   <div className="home-actions-scale">
                     <div className="home-grid">
-                      <ImgButton
+                      <SmartButton
                         src={btnRecord}
                         alt="記録する"
                         onClick={() => go("record")}
                         style={{ width: "var(--btnw)" }}
+                        fallbackLabel="記録する"
+                        fallbackSub="写真/潮を保存"
+                        fallbackIcon="📸"
                       />
-                      <ImgButton
+
+                      <SmartButton
                         src={btnHistory}
                         alt="履歴をみる"
                         onClick={() => go("recordHistory")}
                         style={{ width: "var(--btnw)" }}
+                        fallbackLabel="履歴をみる"
+                        fallbackSub="過去ログを確認"
+                        fallbackIcon="🗃"
                       />
-                      <ImgButton
+
+                      {/* ✅ 追加：釣行分析（画像が無いならガラスボタンが出る） */}
+                      <SmartButton
                         src={btnAnalysis}
                         alt="釣行分析"
                         onClick={() => go("recordAnalysis")}
                         style={{ width: "var(--btnw)" }}
+                        fallbackLabel="釣行分析"
+                        fallbackSub="相関/時間帯を掘る"
+                        fallbackIcon="📊"
                       />
-                      <ImgButton
+
+                      <SmartButton
                         src={btnWeather}
                         alt="天気・潮をみる"
                         onClick={() => go("weather")}
                         style={{ width: "var(--btnw)" }}
+                        fallbackLabel="天気・潮をみる"
+                        fallbackSub="予報/タイド"
+                        fallbackIcon="🌦"
                       />
-                      <ImgButton
+
+                      <SmartButton
                         src={btnChat}
                         alt="話す"
                         onClick={() => go("chat")}
                         style={{ width: "var(--btnw)" }}
+                        fallbackLabel="話す"
+                        fallbackSub="つづりと作戦会議"
+                        fallbackIcon="💬"
                       />
                     </div>
+
                     <div className="home-settings">
-                      <ImgButton
+                      <SmartButton
                         src={btnSettings}
                         alt="設定"
                         onClick={() => go("settings")}
                         style={{ width: "var(--btnw)" }}
+                        fallbackLabel="設定"
+                        fallbackSub="表示/背景/ガラス"
+                        fallbackIcon="⚙️"
                       />
                     </div>
                   </div>
