@@ -1,704 +1,820 @@
 // src/screens/RecordAnalysis.tsx
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import PageShell from "../components/PageShell";
+import { useAppSettings } from "../lib/appSettings";
+import { db, type TripFish, type TripRecord } from "../db";
 
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { db, type CatchRecord } from '../db'
-import PageShell from '../components/PageShell'
-import { FIXED_PORT } from '../points'
-import { getTimeBand } from '../lib/timeband'
-import { getTideAtTime } from '../lib/tide736'
-import { getTide736DayCached, type TideCacheSource } from '../lib/tide736Cache'
-import { getTidePhaseFromSeries } from '../lib/tidePhase736'
+/**
+ * ✅ 釣果分析（TripRecord / TripFish 前提）
+ * - timeBand は TripRecord にある（TripFish には無い）ので join して集計する
+ * - lureType はまだDBに無い想定なので、存在する場合だけ拾う（将来追加に備えて安全に）
+ *
+ * 注意：
+ * - 運用開始前で互換不要、という方針に沿って「今のDBを正」にしている
+ */
 
 type Props = {
-  back: () => void
+  back: () => void;
+};
+
+type RowKV = { key: string; value: number; extra?: string };
+
+const TIMEBANDS: Array<TripRecord["timeBand"]> = [
+  "morning",
+  "day",
+  "evening",
+  "night",
+  "unknown",
+];
+
+const TIMEBAND_LABEL: Record<TripRecord["timeBand"], string> = {
+  morning: "朝",
+  day: "昼",
+  evening: "夕",
+  night: "夜",
+  unknown: "不明",
+};
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
 }
 
-type AnalysisTideInfo = {
-  tideName?: string | null
-  phase?: string
-  cm?: number
-  trend?: string
-  dayKey?: string
-  source?: TideCacheSource
-  isStale?: boolean
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
 }
 
-type AnalysisMetric = 'catchRate' | 'avgSize' | 'effortBias'
-type AnalysisGroup =
-  | 'tideName'
-  | 'phase'
-  | 'trend'
-  | 'timeBand'
-  | 'tideName_timeBand'
-  | 'phase_timeBand'
-  | 'species'
-  | 'species_timeBand'
-
-type TideInfo = { cm: number; trend: string }
-type TidePoint = { unix?: number; cm: number; time?: string }
-
-function dayKeyFromISO(iso: string) {
-  const d = new Date(iso)
-  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  return { d, key }
+function monthKeyFromISO(iso: string): string | null {
+  const d = new Date(iso);
+  const t = d.getTime();
+  if (!Number.isFinite(t)) return null;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
 }
 
-function displayPhaseForHeader(phase: string) {
-  const hide = new Set(['上げ', '下げ', '上げ始め', '下げ始め', '止まり'])
-  return hide.has(phase) ? '' : phase
+function safeRate(caught: number, total: number): number {
+  if (!Number.isFinite(caught) || !Number.isFinite(total) || total <= 0)
+    return 0;
+  return caught / total;
 }
 
-function mean(xs: number[]) {
-  if (xs.length === 0) return 0
-  return xs.reduce((a, b) => a + b, 0) / xs.length
+function fmtPct(x: number): string {
+  const v = Math.round(clamp(x, 0, 1) * 1000) / 10; // 0.1%刻み
+  return `${v.toFixed(1)}%`;
 }
 
-function stddev(xs: number[]) {
-  if (xs.length <= 1) return 0
-  const m = mean(xs)
-  const v = xs.reduce((a, x) => a + (x - m) * (x - m), 0) / xs.length
-  return Math.sqrt(v)
+function fmtN(n: number): string {
+  return String(Math.max(0, Math.floor(n)));
 }
 
-function zScore(x: number, m: number, sd: number) {
-  if (!Number.isFinite(sd) || sd === 0) return 0
-  return (x - m) / sd
+function normalizeSpecies(raw: string | null | undefined): string {
+  const s = (raw ?? "").trim();
+  return s ? s : "不明";
 }
 
-function wilsonLowerBound(success: number, total: number, z = 1.96) {
-  if (total <= 0) return 0
-  const phat = success / total
-  const z2 = z * z
-  const denom = 1 + z2 / total
-  const center = phat + z2 / (2 * total)
-  const margin = z * Math.sqrt((phat * (1 - phat) + z2 / (4 * total)) / total)
-  return (center - margin) / denom
+/**
+ * TripRecord に後で足す予定の項目を “あるなら拾う” 用
+ */
+type LureType =
+  | "metal_jig"
+  | "minnow"
+  | "sinking_pencil"
+  | "top"
+  | "worm"
+  | "blade"
+  | "bigbait"
+  | "other"
+  | "unknown";
+
+const LURE_LABEL: Record<LureType, string> = {
+  metal_jig: "メタルジグ",
+  minnow: "ミノー",
+  sinking_pencil: "シンペン",
+  top: "トップ",
+  worm: "ワーム",
+  blade: "ブレード",
+  bigbait: "ビッグベイト",
+  other: "その他",
+  unknown: "不明",
+};
+
+function getLureTypeFromTrip(trip: TripRecord): LureType {
+  // 将来 TripRecord に lureType を追加したときにそのまま効くようにする
+  const v = (trip as unknown as { lureType?: unknown }).lureType;
+  if (typeof v !== "string") return "unknown";
+  if (
+    v === "metal_jig" ||
+    v === "minnow" ||
+    v === "sinking_pencil" ||
+    v === "top" ||
+    v === "worm" ||
+    v === "blade" ||
+    v === "bigbait" ||
+    v === "other" ||
+    v === "unknown"
+  )
+    return v;
+  return "unknown";
 }
 
-function formatPercent(x: number) {
-  if (!Number.isFinite(x)) return '0%'
-  return `${Math.round(x * 1000) / 10}%`
+type JoinedFish = {
+  tripId: number;
+  tripCreatedAt: string;
+  tripStartedAt: string;
+  timeBand: TripRecord["timeBand"];
+  tideName: string; // nullは「—」で吸収
+  tidePhase: string;
+  tideTrend: string;
+  weatherCode: number | null;
+  windSpeedMs: number | null;
+  waveHeightM: number | null;
+  lureType: LureType;
+
+  species: string;
+  sizeCm: number | null;
+  count: number | null;
+};
+
+type JoinedTrip = {
+  id: number;
+  createdAt: string;
+  startedAt: string;
+  timeBand: TripRecord["timeBand"];
+  outcome: TripRecord["outcome"];
+  tideName: string;
+  tidePhase: string;
+  tideTrend: string;
+  weatherCode: number | null;
+  windSpeedMs: number | null;
+  waveHeightM: number | null;
+  lureType: LureType;
+};
+
+function makeTripMap(trips: Array<TripRecord & { id: number }>) {
+  const map = new Map<number, TripRecord & { id: number }>();
+  for (const t of trips) map.set(t.id, t);
+  return map;
 }
 
-function formatDeltaPercent(x: number) {
-  if (!Number.isFinite(x)) return '+0.0%'
-  const v = Math.round(x * 1000) / 10
-  return `${v >= 0 ? '+' : ''}${v}%`
+function labelNullDash(v: string | null | undefined): string {
+  const s = (v ?? "").trim();
+  return s ? s : "—";
+}
+
+function labelTrend(v: TripRecord["tideTrend"]): string {
+  if (v === "up") return "上げ";
+  if (v === "down") return "下げ";
+  if (v === "flat") return "止まり";
+  return "不明";
+}
+
+function sortDescByValue(a: RowKV, b: RowKV) {
+  return b.value - a.value;
+}
+
+function sectionTitleStyle(): CSSProperties {
+  return { fontWeight: 900, fontSize: 14 };
 }
 
 export default function RecordAnalysis({ back }: Props) {
-  // =========================
-  // ✅ UI共通（Record.tsxの雰囲気踏襲）
-  // =========================
-  const pillBtnStyle: CSSProperties = {
-    borderRadius: 999,
-    padding: '8px 12px',
-    border: '1px solid rgba(255,255,255,0.18)',
-    background: 'rgba(0,0,0,0.24)',
-    color: 'rgba(255,255,255,0.78)',
-    cursor: 'pointer',
-    userSelect: 'none',
-    lineHeight: 1,
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 8,
-    whiteSpace: 'nowrap',
-    backdropFilter: 'blur(10px)',
-    WebkitBackdropFilter: 'blur(10px)',
-  }
+  const { settings } = useAppSettings();
 
-  const pillBtnStyleDisabled: CSSProperties = {
-    ...pillBtnStyle,
-    opacity: 0.55,
-    cursor: 'not-allowed',
-  }
+  const glassVars = {
+    "--glass-alpha": String(clamp(settings.glassAlpha ?? 0.22, 0, 0.6)),
+    "--glass-blur": `${clamp(settings.glassBlur ?? 10, 0, 40)}px`,
+  } as unknown as CSSProperties;
 
-  const glassBoxStyle: CSSProperties = {
+  const cardStyle: CSSProperties = {
     borderRadius: 16,
     padding: 12,
-    display: 'grid',
-    gap: 10,
-  }
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.32))",
+    boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
+    backdropFilter: "blur(var(--glass-blur,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+  };
 
-  // =========================
-  // ✅ 状態
-  // =========================
-  const [all, setAll] = useState<CatchRecord[]>([])
-  const [allLoading, setAllLoading] = useState(false)
-  const [allLoadedOnce, setAllLoadedOnce] = useState(false)
+  const pillStyle: CSSProperties = {
+    borderRadius: 999,
+    padding: "6px 10px",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(0,0,0,0.20)",
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 12,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    whiteSpace: "nowrap",
+    backdropFilter: "blur(var(--glass-blur,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+  };
 
-  const [archiveYear, setArchiveYear] = useState<string>('')
-  const [archiveMonth, setArchiveMonth] = useState<string>('')
+  const [loading, setLoading] = useState(false);
+  const [trips, setTrips] = useState<Array<TripRecord & { id: number }>>([]);
+  const [fish, setFish] = useState<Array<TripFish & { id: number }>>([]);
 
-  const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true)
+  const [error, setError] = useState<string>("");
 
-  const [analysisMetric, setAnalysisMetric] = useState<AnalysisMetric>('catchRate')
-  const [analysisGroup, setAnalysisGroup] = useState<AnalysisGroup>('tideName_timeBand')
-  const [analysisMinN, setAnalysisMinN] = useState<1 | 3 | 5 | 10>(3)
-  const [analysisIncludeUnknown, setAnalysisIncludeUnknown] = useState(false)
+  // 表示オプション（今は最低限）
+  const [limitTop, setLimitTop] = useState<number>(8);
 
-  const [analysisTideMap, setAnalysisTideMap] = useState<Record<number, AnalysisTideInfo>>({})
-  const [analysisTideLoading, setAnalysisTideLoading] = useState(false)
-  const [analysisTideProgress, setAnalysisTideProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 })
-  const [analysisTideError, setAnalysisTideError] = useState<string>('')
-
-  useEffect(() => {
-    const onUp = () => setOnline(true)
-    const onDown = () => setOnline(false)
-    window.addEventListener('online', onUp)
-    window.addEventListener('offline', onDown)
-    return () => {
-      window.removeEventListener('online', onUp)
-      window.removeEventListener('offline', onDown)
-    }
-  }, [])
-
-  async function loadAll() {
-    setAllLoading(true)
+  async function reload() {
+    setLoading(true);
+    setError("");
     try {
-      const list = await db.catches.orderBy('createdAt').reverse().toArray()
-      setAll(list)
-      setAllLoadedOnce(true)
+      const t = await db.trips.orderBy("createdAt").reverse().toArray();
+      const f = await db.tripFish.orderBy("createdAt").reverse().toArray();
+      setTrips(t as Array<TripRecord & { id: number }>);
+      setFish(f as Array<TripFish & { id: number }>);
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setAllLoading(false)
+      setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadAll()
-  }, [])
+    reload();
+  }, []);
 
-  // =========================
-  // ✅ 絞り込み（年→月）
-  // =========================
-  const yearMonthsMap = useMemo(() => {
-    const map = new Map<number, Set<number>>()
-
-    for (const r of all) {
-      const iso = r.capturedAt ?? r.createdAt
-      const d = new Date(iso)
-      const t = d.getTime()
-      if (!Number.isFinite(t)) continue
-      const y = d.getFullYear()
-      const m = d.getMonth() + 1
-
-      if (!map.has(y)) map.set(y, new Set<number>())
-      map.get(y)!.add(m)
-    }
-
-    const out: Record<number, number[]> = {}
-    for (const [y, set] of map.entries()) {
-      out[y] = Array.from(set).sort((a, b) => a - b)
-    }
-    return out
-  }, [all])
-
-  const years = useMemo(() => {
-    const ys = Object.keys(yearMonthsMap)
-      .map((x) => Number(x))
-      .filter(Number.isFinite)
-    return ys.sort((a, b) => b - a)
-  }, [yearMonthsMap])
-
-  const monthsForSelectedYear = useMemo(() => {
-    if (!archiveYear) return null
-    const y = Number(archiveYear)
-    if (!Number.isFinite(y)) return null
-    return yearMonthsMap[y] ?? []
-  }, [archiveYear, yearMonthsMap])
-
-  useEffect(() => {
-    if (!archiveYear) return
-    const y = Number(archiveYear)
-    if (!Number.isFinite(y)) return
-    const months = yearMonthsMap[y] ?? []
-
-    if (!archiveMonth) return
-    const m = Number(archiveMonth)
-    if (!Number.isFinite(m)) {
-      setArchiveMonth('')
-      return
-    }
-    if (!months.includes(m)) setArchiveMonth('')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [archiveYear, yearMonthsMap])
-
-  const filteredArchive = useMemo(() => {
-    let list = all
-
-    if (archiveYear) {
-      const y = Number(archiveYear)
-      if (Number.isFinite(y)) {
-        list = list.filter((r) => {
-          const iso = r.capturedAt ?? r.createdAt
-          const d = new Date(iso)
-          return d.getFullYear() === y
-        })
-      }
-    }
-
-    if (archiveMonth) {
-      const m = Number(archiveMonth)
-      if (Number.isFinite(m) && m >= 1 && m <= 12) {
-        list = list.filter((r) => {
-          const iso = r.capturedAt ?? r.createdAt
-          const d = new Date(iso)
-          return d.getMonth() + 1 === m
-        })
-      }
-    }
-
-    return list
-  }, [all, archiveYear, archiveMonth])
-
-  const analysisTargets = useMemo(() => {
-    return filteredArchive.filter((r) => r.id && r.capturedAt) as Array<CatchRecord & { id: number; capturedAt: string }>
-  }, [filteredArchive])
-
-  // =========================
-  // ✅ 分析用：潮データ付与（撮影日時あり対象のみ）
-  // =========================
-  useEffect(() => {
-    if (!allLoadedOnce) return
-
-    if (analysisTargets.length === 0) {
-      setAnalysisTideMap({})
-      setAnalysisTideLoading(false)
-      setAnalysisTideProgress({ done: 0, total: 0 })
-      setAnalysisTideError('')
-      return
-    }
-
-    let cancelled = false
-
-    async function run() {
-      setAnalysisTideLoading(true)
-      setAnalysisTideError('')
-      setAnalysisTideProgress({ done: 0, total: 0 })
-
-      try {
-        const byDay = new Map<string, Array<CatchRecord & { id: number; capturedAt: string }>>()
-        for (const r of analysisTargets) {
-          const { key } = dayKeyFromISO(r.capturedAt)
-          byDay.set(key, [...(byDay.get(key) ?? []), r])
-        }
-
-        const entries = Array.from(byDay.entries())
-        setAnalysisTideProgress({ done: 0, total: entries.length })
-
-        const nextMap: Record<number, AnalysisTideInfo> = {}
-
-        for (let i = 0; i < entries.length; i++) {
-          if (cancelled) return
-
-          const [key, records] = entries[i]
-          const anyDate = new Date(records[0].capturedAt)
-
-          const { series, source, isStale, tideName } = await getTide736DayCached(FIXED_PORT.pc, FIXED_PORT.hc, anyDate, { ttlDays: 30 })
-
-          for (const r of records) {
-            const shot = new Date(r.capturedAt)
-            const whenMs = shot.getTime()
-            const info: TideInfo | null = getTideAtTime(series as TidePoint[], whenMs)
-            const phaseRaw = getTidePhaseFromSeries(series as TidePoint[], shot, shot)
-            const phase = phaseRaw ? phaseRaw : '不明'
-
-            nextMap[r.id] = {
-              dayKey: key,
-              tideName: tideName ?? null,
-              phase,
-              cm: info?.cm,
-              trend: info?.trend,
-              source,
-              isStale,
-            }
-          }
-
-          setAnalysisTideProgress({ done: i + 1, total: entries.length })
-        }
-
-        if (!cancelled) {
-          setAnalysisTideMap(nextMap)
-        }
-      } catch (e) {
-        console.error(e)
-        const msg = e instanceof Error ? e.message : String(e)
-        if (!cancelled) setAnalysisTideError(msg)
-      } finally {
-        if (!cancelled) setAnalysisTideLoading(false)
-      }
-    }
-
-    run()
-    return () => {
-      cancelled = true
-    }
-  }, [allLoadedOnce, analysisTargets])
-
-  // =========================
-  // ✅ 分析テーブル生成
-  // =========================
-  function labelForRecord(r: CatchRecord): string {
-    const id = r.id
-    const tide = id != null ? analysisTideMap[id] : undefined
-
-    const shotIso = r.capturedAt ?? r.createdAt
-    const shot = new Date(shotIso)
-    const band = Number.isFinite(shot.getTime()) ? getTimeBand(shot) : '不明'
-
-    const tideName = tide?.tideName ?? '（潮名なし）'
-    const phase = tide?.phase ? tide.phase : '（フェーズなし）'
-    const phaseShown = phase ? displayPhaseForHeader(phase) || phase : '（フェーズなし）'
-    const trend = tide?.trend ?? '（上げ下げなし）'
-    const sp = r.species?.trim() ? r.species.trim() : '不明'
-
-    switch (analysisGroup) {
-      case 'tideName':
-        return tideName
-      case 'phase':
-        return phaseShown
-      case 'trend':
-        return trend
-      case 'timeBand':
-        return band
-      case 'tideName_timeBand':
-        return `${tideName} × ${band}`
-      case 'phase_timeBand':
-        return `${phaseShown} × ${band}`
-      case 'species':
-        return sp
-      case 'species_timeBand':
-        return `${sp} × ${band}`
-      default:
-        return '不明'
-    }
-  }
-
-  const analysisRecords = useMemo(() => {
-    let list = analysisTargets as CatchRecord[]
-    if (!analysisIncludeUnknown) {
-      list = list.filter((r) => r.result === 'caught' || r.result === 'skunk')
-    }
-    return list
-  }, [analysisTargets, analysisIncludeUnknown])
-
-  const baseline = useMemo(() => {
-    const rs = analysisRecords
-    const total = rs.length
-    const caught = rs.filter((r) => r.result === 'caught').length
-    const skunk = rs.filter((r) => r.result === 'skunk').length
-    const unknown = total - caught - skunk
-
-    const denom = analysisIncludeUnknown ? total : caught + skunk
-    const catchRate = denom > 0 ? caught / denom : 0
-
-    const sizeList = rs
-      .filter((r) => r.result === 'caught' && typeof r.sizeCm === 'number' && Number.isFinite(r.sizeCm))
-      .map((r) => r.sizeCm as number)
-
-    const avgSize = sizeList.length > 0 ? mean(sizeList) : 0
-
-    return { total, caught, skunk, unknown, catchRate, avgSize }
-  }, [analysisRecords, analysisIncludeUnknown])
-
-  const analysisTable = useMemo(() => {
-    const map = new Map<string, { label: string; total: number; caught: number; skunk: number; unknown: number; sizeList: number[] }>()
-
-    for (const r of analysisRecords) {
-      const lab = labelForRecord(r)
-      const cur = map.get(lab) ?? { label: lab, total: 0, caught: 0, skunk: 0, unknown: 0, sizeList: [] as number[] }
-
-      cur.total += 1
-      if (r.result === 'caught') {
-        cur.caught += 1
-        if (typeof r.sizeCm === 'number' && Number.isFinite(r.sizeCm)) cur.sizeList.push(r.sizeCm)
-      } else if (r.result === 'skunk') {
-        cur.skunk += 1
-      } else {
-        cur.unknown += 1
-      }
-
-      map.set(lab, cur)
-    }
-
-    const rows = Array.from(map.values())
-      .filter((x) => x.total >= analysisMinN)
-      .map((x) => {
-        const denom = analysisIncludeUnknown ? x.total : x.caught + x.skunk
-        const rate = denom > 0 ? x.caught / denom : 0
-        const wilson = wilsonLowerBound(x.caught, denom)
-        const avgSize = x.sizeList.length > 0 ? mean(x.sizeList) : 0
-
+  const joinedTrips: JoinedTrip[] = useMemo(() => {
+    return trips
+      .filter((t) => typeof t.id === "number" && Number.isFinite(t.id))
+      .map((t) => {
+        const id = t.id as number;
         return {
-          ...x,
-          denom,
-          catchRate: rate,
-          catchRateDelta: (rate - baseline.catchRate) * 100,
-          wilsonLower: wilson,
-          avgSize,
-          avgSizeDelta: avgSize - baseline.avgSize,
-        }
-      })
+          id,
+          createdAt: t.createdAt,
+          startedAt: t.startedAt,
+          timeBand: t.timeBand ?? "unknown",
+          outcome: t.outcome ?? "skunk",
 
-    const totals = rows.map((r) => r.total)
-    const m = mean(totals)
-    const sd = stddev(totals)
+          tideName: labelNullDash(t.tideName ?? null),
+          tidePhase: labelNullDash(t.tidePhase ?? null),
+          tideTrend: labelTrend(t.tideTrend ?? "unknown"),
 
-    const withZ = rows.map((r) => ({ ...r, z: zScore(r.total, m, sd) }))
+          weatherCode: typeof t.weatherCode === "number" ? t.weatherCode : null,
+          windSpeedMs: typeof t.windSpeedMs === "number" ? t.windSpeedMs : null,
+          waveHeightM: typeof t.waveHeightM === "number" ? t.waveHeightM : null,
 
-    const sorted = [...withZ].sort((a, b) => {
-      if (analysisMetric === 'effortBias') return b.z - a.z
+          lureType: getLureTypeFromTrip(t),
+        };
+      });
+  }, [trips]);
 
-      if (analysisMetric === 'avgSize') {
-        const aHas = a.sizeList.length > 0
-        const bHas = b.sizeList.length > 0
-        if (aHas !== bHas) return aHas ? -1 : 1
-        if (b.avgSize !== a.avgSize) return b.avgSize - a.avgSize
-        return b.total - a.total
+  const joinedFish: JoinedFish[] = useMemo(() => {
+    const map = makeTripMap(trips as Array<TripRecord & { id: number }>);
+    const out: JoinedFish[] = [];
+
+    for (const f of fish) {
+      const tripId = f.tripId;
+      if (typeof tripId !== "number" || !Number.isFinite(tripId)) continue;
+
+      const t = map.get(tripId);
+      if (!t) continue; // 孤児データは無視（運用前なら基本起きない想定）
+
+      out.push({
+        tripId,
+        tripCreatedAt: t.createdAt,
+        tripStartedAt: t.startedAt,
+        timeBand: t.timeBand ?? "unknown",
+        tideName: labelNullDash(t.tideName ?? null),
+        tidePhase: labelNullDash(t.tidePhase ?? null),
+        tideTrend: labelTrend(t.tideTrend ?? "unknown"),
+        weatherCode: typeof t.weatherCode === "number" ? t.weatherCode : null,
+        windSpeedMs: typeof t.windSpeedMs === "number" ? t.windSpeedMs : null,
+        waveHeightM: typeof t.waveHeightM === "number" ? t.waveHeightM : null,
+        lureType: getLureTypeFromTrip(t),
+
+        species: normalizeSpecies(f.species),
+        sizeCm:
+          typeof f.sizeCm === "number" && Number.isFinite(f.sizeCm)
+            ? f.sizeCm
+            : null,
+        count:
+          typeof f.count === "number" && Number.isFinite(f.count)
+            ? f.count
+            : null,
+      });
+    }
+    return out;
+  }, [trips, fish]);
+
+  const totalTrips = joinedTrips.length;
+  const caughtTrips = joinedTrips.filter((t) => t.outcome === "caught").length;
+
+  const topSpecies = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const jf of joinedFish) {
+      const sp = normalizeSpecies(jf.species);
+      m.set(sp, (m.get(sp) ?? 0) + 1);
+    }
+    const rows: RowKV[] = Array.from(m.entries()).map(([key, value]) => ({
+      key,
+      value,
+    }));
+    rows.sort(sortDescByValue);
+    return rows.slice(0, Math.max(1, limitTop));
+  }, [joinedFish, limitTop]);
+
+  const timeBandStats = useMemo(() => {
+    // trip単位：釣れた/総数
+    const totalBy = new Map<TripRecord["timeBand"], number>();
+    const caughtBy = new Map<TripRecord["timeBand"], number>();
+
+    for (const t of joinedTrips) {
+      const b = t.timeBand ?? "unknown";
+      totalBy.set(b, (totalBy.get(b) ?? 0) + 1);
+      if (t.outcome === "caught") caughtBy.set(b, (caughtBy.get(b) ?? 0) + 1);
+    }
+
+    const rows = TIMEBANDS.map((b) => {
+      const total = totalBy.get(b) ?? 0;
+      const caught = caughtBy.get(b) ?? 0;
+      return {
+        band: b,
+        total,
+        caught,
+        rate: safeRate(caught, total),
+      };
+    });
+
+    // 表示優先：総数が多い順（同数なら釣れた率）
+    rows.sort((a, b) => {
+      if (b.total !== a.total) return b.total - a.total;
+      return b.rate - a.rate;
+    });
+
+    return rows;
+  }, [joinedTrips]);
+
+  const tideNameStats = useMemo(() => {
+    const totalBy = new Map<string, number>();
+    const caughtBy = new Map<string, number>();
+
+    for (const t of joinedTrips) {
+      const k = labelNullDash(t.tideName);
+      totalBy.set(k, (totalBy.get(k) ?? 0) + 1);
+      if (t.outcome === "caught") caughtBy.set(k, (caughtBy.get(k) ?? 0) + 1);
+    }
+
+    const rows = Array.from(totalBy.entries()).map(([k, total]) => {
+      const caught = caughtBy.get(k) ?? 0;
+      return { key: k, total, caught, rate: safeRate(caught, total) };
+    });
+
+    rows.sort((a, b) => {
+      if (b.total !== a.total) return b.total - a.total;
+      return b.rate - a.rate;
+    });
+
+    return rows.slice(0, Math.max(1, limitTop));
+  }, [joinedTrips, limitTop]);
+
+  const speciesByMonth = useMemo(() => {
+    // 月 → 魚種 → 件数（TripFishベース）
+    const monthMap = new Map<string, Map<string, number>>();
+
+    for (const jf of joinedFish) {
+      const mk =
+        monthKeyFromISO(jf.tripStartedAt) ?? monthKeyFromISO(jf.tripCreatedAt);
+      if (!mk) continue;
+      const sp = normalizeSpecies(jf.species);
+
+      if (!monthMap.has(mk)) monthMap.set(mk, new Map<string, number>());
+      const inner = monthMap.get(mk)!;
+      inner.set(sp, (inner.get(sp) ?? 0) + 1);
+    }
+
+    const months = Array.from(monthMap.keys()).sort((a, b) => (a < b ? 1 : -1)); // 新しい月が上
+    const out: Array<{
+      month: string;
+      top: RowKV[];
+      totalFish: number;
+    }> = [];
+
+    for (const m of months) {
+      const inner = monthMap.get(m)!;
+      let totalFish = 0;
+      const rows: RowKV[] = [];
+      for (const [sp, n] of inner.entries()) {
+        rows.push({ key: sp, value: n });
+        totalFish += n;
       }
+      rows.sort(sortDescByValue);
+      out.push({
+        month: m,
+        top: rows.slice(0, Math.max(1, limitTop)),
+        totalFish,
+      });
+    }
 
-      if (b.wilsonLower !== a.wilsonLower) return b.wilsonLower - a.wilsonLower
-      if (b.denom !== a.denom) return b.denom - a.denom
-      return b.catchRate - a.catchRate
-    })
+    return out;
+  }, [joinedFish, limitTop]);
 
-    return sorted
-  }, [analysisRecords, analysisMetric, analysisGroup, analysisMinN, analysisIncludeUnknown, baseline.catchRate, baseline.avgSize, analysisTideMap])
+  const lureStats = useMemo(() => {
+    // lureType が実装されていない間は、全部 unknown に寄る。それでも壊れないのが狙い。
+    const totalBy = new Map<LureType, number>();
+    const caughtBy = new Map<LureType, number>();
 
-  const analysisTop = useMemo(() => analysisTable.slice(0, 10), [analysisTable])
-  const analysisBottom = useMemo(() => [...analysisTable].slice(-10).reverse(), [analysisTable])
+    for (const t of joinedTrips) {
+      const k = t.lureType ?? "unknown";
+      totalBy.set(k, (totalBy.get(k) ?? 0) + 1);
+      if (t.outcome === "caught") caughtBy.set(k, (caughtBy.get(k) ?? 0) + 1);
+    }
 
-  // =========================
-  // ✅ 描画
-  // =========================
+    const rows = Array.from(totalBy.entries()).map(([k, total]) => {
+      const caught = caughtBy.get(k) ?? 0;
+      return { key: k, total, caught, rate: safeRate(caught, total) };
+    });
+
+    rows.sort((a, b) => {
+      if (b.total !== a.total) return b.total - a.total;
+      return b.rate - a.rate;
+    });
+
+    return rows.slice(0, Math.max(1, limitTop));
+  }, [joinedTrips, limitTop]);
+
+  const hasEnvAny = useMemo(() => {
+    return joinedTrips.some(
+      (t) =>
+        typeof t.weatherCode === "number" ||
+        typeof t.windSpeedMs === "number" ||
+        typeof t.waveHeightM === "number",
+    );
+  }, [joinedTrips]);
+
   return (
     <PageShell
-      title={<h1 style={{ margin: 0, fontSize: 'clamp(20px, 6vw, 32px)', lineHeight: 1.15 }}>📈 偏差分析</h1>}
-      maxWidth={1100}
+      title={
+        <h1
+          style={{
+            margin: 0,
+            fontSize: "clamp(20px, 3.2vw, 32px)",
+            lineHeight: 1.15,
+          }}
+        >
+          📊 釣果分析
+        </h1>
+      }
+      titleLayout="left"
+      maxWidth={1200}
       showBack
       onBack={back}
+      scrollY="auto"
     >
-      <div style={{ overflowX: 'clip', maxWidth: '100vw' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-            🌊 潮汐基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
-            {!online && <span style={{ marginLeft: 10, color: '#f6c' }}>📴 オフライン</span>}
-          </div>
+      <div style={{ ...glassVars, display: "grid", gap: 12 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <span style={pillStyle}>🧾 投稿 {fmtN(totalTrips)} 件</span>
+          <span style={pillStyle}>
+            🎣 釣れた {fmtN(caughtTrips)} 件 /{" "}
+            {fmtPct(safeRate(caughtTrips, totalTrips))}
+          </span>
 
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button type="button" onClick={() => loadAll()} disabled={allLoading} style={allLoading ? pillBtnStyleDisabled : pillBtnStyle} title="全履歴を再読み込み">
-              {allLoading ? '読み込み中…' : '↻ 全履歴更新'}
-            </button>
+          <button
+            type="button"
+            onClick={reload}
+            disabled={loading}
+            style={{
+              ...pillStyle,
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.55 : 1,
+            }}
+            title="DBから再読み込み"
+          >
+            {loading ? "読み込み中…" : "↻ 更新"}
+          </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setAnalysisTideMap({})
-                setAnalysisTideError('')
+          <label style={pillStyle} title="上位の表示件数">
+            上位
+            <select
+              value={String(limitTop)}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (Number.isFinite(n) && n >= 3 && n <= 20) setLimitTop(n);
               }}
-              style={pillBtnStyle}
-              title="分析用の潮データ付与を一旦リセット（必要なら再取得される）"
+              style={{ marginLeft: 6 }}
             >
-              🧹 潮データ付与をリセット
-            </button>
+              {[5, 8, 10, 12, 15, 20].map((n) => (
+                <option key={n} value={String(n)}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
 
-            <div style={{ marginLeft: 'auto', fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-              {allLoadedOnce ? `全 ${all.length} 件（絞り込み ${filteredArchive.length} 件）` : '—'}
-            </div>
+        {error && (
+          <div style={{ ...cardStyle, color: "#ff7a7a" }}>
+            読み込みエラー：{error}
           </div>
+        )}
 
-          {/* 絞り込み */}
-          <div className="glass glass-strong" style={{ ...glassBoxStyle }}>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>🔎 絞り込み</div>
+        {/* 時間帯 */}
+        <div style={cardStyle}>
+          <div style={sectionTitleStyle()}>🕒 時間帯別（投稿単位）</div>
+          <div style={{ height: 8 }} />
 
-              <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
-                年：
-                <select value={archiveYear} onChange={(e) => setArchiveYear(e.target.value)} style={{ marginLeft: 8 }}>
-                  <option value="">すべて</option>
-                  {years.map((y) => (
-                    <option key={y} value={String(y)}>
-                      {y}年
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
-                月：
-                <select
-                  value={archiveMonth}
-                  onChange={(e) => setArchiveMonth(e.target.value)}
-                  style={{ marginLeft: 8 }}
-                  disabled={!!archiveYear && (monthsForSelectedYear?.length ?? 0) === 0}
-                  title={archiveYear ? '選択中の年に存在する月だけ出すよ' : '年を選ばなくても月で絞れるよ'}
-                >
-                  <option value="">すべて</option>
-
-                  {archiveYear && monthsForSelectedYear
-                    ? monthsForSelectedYear.map((m) => (
-                        <option key={m} value={String(m)}>
-                          {m}月
-                        </option>
-                      ))
-                    : Array.from({ length: 12 }).map((_, i) => {
-                        const m = i + 1
-                        return (
-                          <option key={m} value={String(m)}>
-                            {m}月
-                          </option>
-                        )
-                      })}
-                </select>
-              </label>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setArchiveYear('')
-                  setArchiveMonth('')
+          <div style={{ display: "grid", gap: 8 }}>
+            {timeBandStats.map((r) => (
+              <div
+                key={r.band}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "80px 1fr auto",
+                  gap: 10,
+                  alignItems: "center",
                 }}
-                style={{ marginLeft: 'auto' }}
-                title="絞り込みを解除"
               >
-                リセット
-              </button>
-            </div>
+                <div
+                  style={{ fontWeight: 800, color: "rgba(255,255,255,0.90)" }}
+                >
+                  {TIMEBAND_LABEL[r.band]}
+                </div>
 
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>
-              対象：絞り込み {filteredArchive.length} 件（分析対象（撮影日時あり）：{analysisTargets.length} 件）
-            </div>
+                <div
+                  style={{
+                    height: 10,
+                    borderRadius: 999,
+                    background: "rgba(255,255,255,0.12)",
+                    overflow: "hidden",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                  }}
+                  title={`釣れた率 ${fmtPct(r.rate)}（釣れた${r.caught}/総数${r.total}）`}
+                >
+                  <div
+                    style={{
+                      width: `${Math.round(r.rate * 100)}%`,
+                      height: "100%",
+                      background: "rgba(255,77,109,0.75)",
+                    }}
+                  />
+                </div>
+
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.78)" }}>
+                  {fmtPct(r.rate)}（{fmtN(r.caught)}/{fmtN(r.total)}）
+                </div>
+              </div>
+            ))}
           </div>
 
-          {/* 分析設定 */}
-          <div className="glass glass-strong" style={{ ...glassBoxStyle }}>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-              <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
-                指標：
-                <select value={analysisMetric} onChange={(e) => setAnalysisMetric(e.target.value as AnalysisMetric)} style={{ marginLeft: 8 }}>
-                  <option value="catchRate">釣れた率（Wilsonで安定）</option>
-                  <option value="avgSize">平均サイズ（釣れた＆サイズあり）</option>
-                  <option value="effortBias">行きがち偏り（Z）</option>
-                </select>
-              </label>
-
-              <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
-                区切り：
-                <select value={analysisGroup} onChange={(e) => setAnalysisGroup(e.target.value as AnalysisGroup)} style={{ marginLeft: 8 }}>
-                  <option value="tideName_timeBand">潮名 × 時間帯</option>
-                  <option value="phase_timeBand">フェーズ × 時間帯</option>
-                  <option value="tideName">潮名（大潮など）</option>
-                  <option value="phase">フェーズ</option>
-                  <option value="trend">上げ/下げ</option>
-                  <option value="timeBand">時間帯</option>
-                  <option value="species">魚種</option>
-                  <option value="species_timeBand">魚種 × 時間帯</option>
-                </select>
-              </label>
-
-              <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
-                最低件数：
-                <select value={analysisMinN} onChange={(e) => setAnalysisMinN(Number(e.target.value) as 1 | 3 | 5 | 10)} style={{ marginLeft: 8 }}>
-                  <option value={1}>1</option>
-                  <option value={3}>3</option>
-                  <option value={5}>5</option>
-                  <option value={10}>10</option>
-                </select>
-              </label>
-
-              <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-                <input type="checkbox" checked={analysisIncludeUnknown} onChange={(e) => setAnalysisIncludeUnknown(e.target.checked)} />
-                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>結果未入力も含める（未入力＝ボウズ扱い）</span>
-              </label>
-            </div>
-
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>
-              ベースライン：釣れた率 {formatPercent(baseline.catchRate)}（{baseline.caught}/{analysisIncludeUnknown ? baseline.total : baseline.caught + baseline.skunk}） / 平均サイズ{' '}
-              {baseline.avgSize ? `${Math.round(baseline.avgSize * 10) / 10}cm` : '—'}
-            </div>
-
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>
-              🌊 分析用 tide736：
-              {analysisTideLoading ? (
-                <> 取得中…（{analysisTideProgress.done}/{analysisTideProgress.total} 日）</>
-              ) : analysisTideError ? (
-                <span style={{ color: '#ff7a7a' }}> 取得失敗 → {analysisTideError}</span>
-              ) : (
-                <span style={{ color: '#0a6' }}> OK（{Object.keys(analysisTideMap).length}件に付与）</span>
-              )}
-            </div>
-
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>✅ 上位は “運じゃなく再現性” 寄りにするため、釣れた率は Wilson 下限で並べてるよ😼</div>
+          <div style={{ height: 10 }} />
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
+            ※「釣れた/釣れなかった」は TripRecord.outcome 基準（投稿単位）
           </div>
+        </div>
 
-          {/* 結果 */}
-          {!allLoadedOnce && allLoading ? (
-            <p>読み込み中…</p>
-          ) : filteredArchive.length === 0 ? (
-            <p>まだ記録がないよ</p>
+        {/* 潮名 */}
+        <div style={cardStyle}>
+          <div style={sectionTitleStyle()}>🌙 潮名別（投稿単位）</div>
+          <div style={{ height: 8 }} />
+
+          {tideNameStats.length === 0 ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+              データがまだ無いよ
+            </div>
           ) : (
-            <div style={{ display: 'grid', gap: 16 }}>
-              <div className="glass glass-strong" style={{ borderRadius: 16, padding: 12 }}>
-                <div style={{ fontWeight: 700, marginBottom: 8 }}>🏆 上位（強い条件）</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {tideNameStats.map((r) => (
+                <div
+                  key={r.key}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "120px 1fr auto",
+                    gap: 10,
+                    alignItems: "center",
+                  }}
+                >
+                  <div style={{ fontWeight: 800, ...{ minWidth: 0 } }}>
+                    {r.key}
+                  </div>
 
-                {analysisTop.length === 0 ? (
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>※条件の種類が少ないか、最低件数（minN）が高すぎるかも</div>
-                ) : (
-                  <ol style={{ paddingLeft: 18, margin: 0, display: 'grid', gap: 6 }}>
-                    {analysisTop.map((r) => (
-                      <li key={r.label}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                          <span style={{ color: '#ffd166', overflowWrap: 'anywhere' }}>{r.label}</span>
-                          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>
-                            n={r.total}
-                            {analysisMetric === 'catchRate' && <> / 釣れた率 {formatPercent(r.catchRate)}（Δ{formatDeltaPercent(r.catchRateDelta)}）</>}
-                            {analysisMetric === 'avgSize' && (
-                              <>
-                                {' '}
-                                / 平均 {r.sizeList.length ? `${Math.round(r.avgSize * 10) / 10}cm` : '—'}（Δ{Math.round(r.avgSizeDelta * 10) / 10}cm）
-                              </>
-                            )}
-                            {analysisMetric === 'effortBias' && <> / Z={r.z.toFixed(2)}</>}
-                          </span>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </div>
+                  <div
+                    style={{
+                      height: 10,
+                      borderRadius: 999,
+                      background: "rgba(255,255,255,0.12)",
+                      overflow: "hidden",
+                      border: "1px solid rgba(255,255,255,0.10)",
+                    }}
+                    title={`釣れた率 ${fmtPct(r.rate)}（釣れた${r.caught}/総数${r.total}）`}
+                  >
+                    <div
+                      style={{
+                        width: `${Math.round(r.rate * 100)}%`,
+                        height: "100%",
+                        background: "rgba(102,204,255,0.75)",
+                      }}
+                    />
+                  </div>
 
-              <div className="glass glass-strong" style={{ borderRadius: 16, padding: 12 }}>
-                <div style={{ fontWeight: 700, marginBottom: 8 }}>🧊 下位（弱い条件）</div>
-
-                {analysisBottom.length === 0 ? (
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>—</div>
-                ) : (
-                  <ol style={{ paddingLeft: 18, margin: 0, display: 'grid', gap: 6 }}>
-                    {analysisBottom.map((r) => (
-                      <li key={r.label}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                          <span style={{ color: 'rgba(255,255,255,0.78)', overflowWrap: 'anywhere' }}>{r.label}</span>
-                          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)' }}>
-                            n={r.total}
-                            {analysisMetric === 'catchRate' && <> / 釣れた率 {formatPercent(r.catchRate)}（Δ{formatDeltaPercent(r.catchRateDelta)}）</>}
-                            {analysisMetric === 'avgSize' && (
-                              <>
-                                {' '}
-                                / 平均 {r.sizeList.length ? `${Math.round(r.avgSize * 10) / 10}cm` : '—'}（Δ{Math.round(r.avgSizeDelta * 10) / 10}cm）
-                              </>
-                            )}
-                            {analysisMetric === 'effortBias' && <> / Z={r.z.toFixed(2)}</>}
-                          </span>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </div>
+                  <div
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.78)" }}
+                  >
+                    {fmtPct(r.rate)}（{fmtN(r.caught)}/{fmtN(r.total)}）
+                  </div>
+                </div>
+              ))}
             </div>
           )}
+
+          <div style={{ height: 10 }} />
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
+            ※潮名は
+            Record保存時点のスナップショット（tide736プレビューをそのまま保存）
+          </div>
+        </div>
+
+        {/* 魚種トップ */}
+        <div style={cardStyle}>
+          <div style={sectionTitleStyle()}>🐟 魚種トップ（魚=1行）</div>
+          <div style={{ height: 8 }} />
+
+          {topSpecies.length === 0 ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+              まだ「釣れた」の魚データが無いよ
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 6 }}>
+              {topSpecies.map((r) => (
+                <div
+                  key={r.key}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    alignItems: "center",
+                  }}
+                >
+                  <div style={{ fontWeight: 800 }}>{r.key}</div>
+                  <div
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}
+                  >
+                    {fmtN(r.value)} 件
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ height: 10 }} />
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
+            ※1投稿で複数魚が入る想定なので、投稿数とは一致しないよ
+          </div>
+        </div>
+
+        {/* 月別×魚種 */}
+        <div style={cardStyle}>
+          <div style={sectionTitleStyle()}>🗓 月別 × 魚種（上位）</div>
+          <div style={{ height: 8 }} />
+
+          {speciesByMonth.length === 0 ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+              まだ魚データが無いよ
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {speciesByMonth.map((m) => (
+                <div
+                  key={m.month}
+                  style={{
+                    borderRadius: 14,
+                    padding: 10,
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background: "rgba(0,0,0,0.12)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "baseline",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ fontWeight: 900 }}>{m.month}</div>
+                    <div
+                      style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
+                    >
+                      魚データ {fmtN(m.totalFish)} 件
+                    </div>
+                  </div>
+
+                  <div style={{ height: 8 }} />
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {m.top.map((r) => (
+                      <div
+                        key={`${m.month}:${r.key}`}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 10,
+                        }}
+                      >
+                        <div style={{ fontWeight: 700 }}>{r.key}</div>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "rgba(255,255,255,0.75)",
+                          }}
+                        >
+                          {fmtN(r.value)} 件
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ height: 10 }} />
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
+            ※月は Trip.startedAt（基準時刻）優先。無い場合は createdAt を使うよ
+          </div>
+        </div>
+
+        {/* ルアージャンル（将来用） */}
+        <div style={cardStyle}>
+          <div style={sectionTitleStyle()}>🧲 ルアージャンル別（投稿単位）</div>
+          <div style={{ height: 8 }} />
+
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
+            今はDBに lureType が無い想定だから、基本 “不明” に寄るよ。
+            追加した瞬間からこの集計が自然に効くようにしてある🧩
+          </div>
+
+          <div style={{ height: 10 }} />
+          <div style={{ display: "grid", gap: 8 }}>
+            {lureStats.map((r) => (
+              <div
+                key={r.key}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "120px 1fr auto",
+                  gap: 10,
+                  alignItems: "center",
+                }}
+              >
+                <div style={{ fontWeight: 800 }}>
+                  {LURE_LABEL[r.key as LureType] ?? "不明"}
+                </div>
+
+                <div
+                  style={{
+                    height: 10,
+                    borderRadius: 999,
+                    background: "rgba(255,255,255,0.12)",
+                    overflow: "hidden",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                  }}
+                  title={`釣れた率 ${fmtPct(r.rate)}（釣れた${r.caught}/総数${r.total}）`}
+                >
+                  <div
+                    style={{
+                      width: `${Math.round(r.rate * 100)}%`,
+                      height: "100%",
+                      background: "rgba(255,209,102,0.75)",
+                    }}
+                  />
+                </div>
+
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.78)" }}>
+                  {fmtPct(r.rate)}（{fmtN(r.caught)}/{fmtN(r.total)}）
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 気象はまだ */}
+        <div style={cardStyle}>
+          <div style={sectionTitleStyle()}>🌦 天気・風・波</div>
+          <div style={{ height: 8 }} />
+
+          {hasEnvAny ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.78)" }}>
+              すでに env 値が入ってる投稿があるよ（次はここを本格集計できる）✅
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
+              まだ未実装（envFetchedAt も null のまま）なので、ここは
+              “保存の仕組み” が入ったら一気に育つ🌱
+            </div>
+          )}
+
+          <div style={{ height: 10 }} />
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
+            ※天気は「過去に遡れない問題」があるから、基本は投稿（保存）時点でスナップショット保存が安全
+          </div>
+        </div>
+
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
+          データ量が少ないうちはブレるけど、週1〜2のペースなら “3か月”
+          くらいで偏りが見え始めるよ🎣✨
         </div>
       </div>
     </PageShell>
-  )
+  );
 }
