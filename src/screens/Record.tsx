@@ -459,7 +459,10 @@ export default function Record({ back }: Props) {
         outcome,
         timeBand: band,
 
-        // 潮（今はRecord画面で見えている内容をスナップショット）
+        // ✅ lureType はUI未実装なので今は null（後で選択UIを付ければ保存できる）
+        lureType: null,
+
+        // 潮（いまRecord画面で見えている内容をスナップショット）
         tideDayKey: baseCapturedAt
           ? `${baseCapturedAt.getFullYear()}-${pad2(baseCapturedAt.getMonth() + 1)}-${pad2(baseCapturedAt.getDate())}`
           : null,
@@ -512,6 +515,9 @@ export default function Record({ back }: Props) {
               species: sp,
               sizeCm: sizeCmNumber ?? null,
               count: null,
+
+              // ✅ 追加：fish側にも timeBand を持たせる（分析・互換用）
+              timeBand: band,
             };
             await db.tripFish.add(fish);
           }
