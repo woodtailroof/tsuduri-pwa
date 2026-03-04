@@ -433,14 +433,6 @@ export default function RecordHistory({ back }: Props) {
     }
   }
 
-  function getCoverThumbUrl(tripId: number): string | null {
-    const cached = coverThumbUrlRef.current.get(tripId);
-    if (cached) return cached;
-
-    // cover photo は preload で coverPhotoMap に入れる
-    return null;
-  }
-
   function setCoverThumbUrl(tripId: number, blob: Blob) {
     // 既存があれば解放して置き換え
     const prev = coverThumbUrlRef.current.get(tripId);
