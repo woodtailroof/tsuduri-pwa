@@ -7,8 +7,7 @@ import {
   type CSSProperties,
 } from "react";
 import { createPortal } from "react-dom";
-import { db, type CatchRecord } from "../db";
-import { exportCatches, importCatches } from "../lib/catchTransfer";
+import { db, type TripRecord, type TripPhoto, type TripFish } from "../db";
 import { getTimeBand } from "../lib/timeband";
 import { FIXED_PORT } from "../points";
 import { getTideAtTime } from "../lib/tide736";
@@ -18,9 +17,7 @@ import TideGraph from "../components/TideGraph";
 import PageShell from "../components/PageShell";
 import { useAppSettings } from "../lib/appSettings";
 
-type Props = {
-  back: () => void;
-};
+type Props = { back: () => void };
 
 type TideInfo = { cm: number; trend: string };
 
@@ -44,19 +41,6 @@ function dayKeyFromISO(iso: string) {
 function displayPhaseForHeader(phase: string) {
   const hide = new Set(["上げ", "下げ", "上げ始め", "下げ始め", "止まり"]);
   return hide.has(phase) ? "" : phase;
-}
-
-function formatResultLine(r: CatchRecord) {
-  if (r.result === "caught") {
-    const sp = r.species?.trim() ? r.species.trim() : "不明";
-    const sz =
-      typeof r.sizeCm === "number" && Number.isFinite(r.sizeCm)
-        ? `${r.sizeCm}cm`
-        : "サイズ不明";
-    return `🎣 釣れた：${sp} / ${sz}`;
-  }
-  if (r.result === "skunk") return "😇 釣れなかった（ボウズ）";
-  return "❔ 結果未入力";
 }
 
 function sourceLabel(source: TideCacheSource | null, isStale: boolean) {
@@ -106,10 +90,6 @@ function prefersReducedMotion() {
   }
 }
 
-/**
- * ✅ BottomSheet（Portal版）
- * 目的：PageShell/背景/ガラス等が作る transform / overflow / stacking context の影響を受けずに確実に表示する
- */
 function BottomSheet({
   open,
   onClose,
@@ -136,7 +116,6 @@ function BottomSheet({
     if (!open) return;
 
     type TouchActionStyle = CSSStyleDeclaration & { touchAction?: string };
-
     const style = document.body.style as TouchActionStyle;
     const prevOverflow = style.overflow;
     const prevTouch = style.touchAction;
@@ -287,6 +266,21 @@ function BottomSheet({
   return createPortal(node, document.body);
 }
 
+function formatOutcomeLine(trip: TripRecord, fish: TripFish[]) {
+  if (trip.outcome === "skunk") return "😇 釣れなかった（ボウズ）";
+  if (trip.outcome === "caught") {
+    if (fish.length === 0) return "🎣 釣れた：不明";
+    const top = fish[0];
+    const sp = top.species?.trim() ? top.species.trim() : "不明";
+    const sz =
+      typeof top.sizeCm === "number" && Number.isFinite(top.sizeCm)
+        ? `${top.sizeCm}cm`
+        : "サイズ不明";
+    return `🎣 釣れた：${sp} / ${sz}`;
+  }
+  return "❔ 結果未入力";
+}
+
 export default function RecordHistory({ back }: Props) {
   const { settings } = useAppSettings();
 
@@ -397,7 +391,7 @@ export default function RecordHistory({ back }: Props) {
     typeof navigator !== "undefined" ? navigator.onLine : true,
   );
 
-  const [all, setAll] = useState<CatchRecord[]>([]);
+  const [all, setAll] = useState<TripRecord[]>([]);
   const [allLoading, setAllLoading] = useState(false);
   const [allLoadedOnce, setAllLoadedOnce] = useState(false);
 
@@ -414,43 +408,47 @@ export default function RecordHistory({ back }: Props) {
   const [detailPointMap, setDetailPointMap] = useState<
     Record<number, TideInfo>
   >({});
+  const [detailPhotos, setDetailPhotos] = useState<TripPhoto[]>([]);
+  const [detailFish, setDetailFish] = useState<TripFish[]>([]);
+  const [selectedPhotoId, setSelectedPhotoId] = useState<number | null>(null);
 
   const detailPaneRef = useRef<HTMLDivElement | null>(null);
 
-  const thumbUrlMapRef = useRef<Map<number, string>>(new Map());
+  const thumbUrlMapRef = useRef<Map<number, string>>(new Map()); // photoId -> url
+  const coverThumbUrlRef = useRef<Map<number, string>>(new Map()); // tripId -> url
 
-  function getThumbUrl(r: CatchRecord): string | null {
-    if (!r.id || !r.photoBlob) return null;
-    const cached = thumbUrlMapRef.current.get(r.id);
+  function getPhotoUrlByPhotoId(photoId: number): string | null {
+    const cached = thumbUrlMapRef.current.get(photoId);
     if (cached) return cached;
+
+    const photo = detailPhotos.find((p) => p.id === photoId);
+    if (!photo?.photoBlob) return null;
+
     try {
-      const url = URL.createObjectURL(r.photoBlob);
-      thumbUrlMapRef.current.set(r.id, url);
+      const url = URL.createObjectURL(photo.photoBlob);
+      thumbUrlMapRef.current.set(photoId, url);
       return url;
     } catch {
       return null;
     }
   }
 
-  useEffect(() => {
-    const alive = new Set<number>();
-    for (const r of all) if (r.id) alive.add(r.id);
+  function getCoverThumbUrl(tripId: number): string | null {
+    const cached = coverThumbUrlRef.current.get(tripId);
+    if (cached) return cached;
 
-    for (const [id, url] of thumbUrlMapRef.current.entries()) {
-      if (!alive.has(id)) {
-        URL.revokeObjectURL(url);
-        thumbUrlMapRef.current.delete(id);
-      }
-    }
-  }, [all]);
+    // cover photo は preload で coverPhotoMap に入れる
+    return null;
+  }
 
-  useEffect(() => {
-    const map = thumbUrlMapRef.current;
-    return () => {
-      for (const url of map.values()) URL.revokeObjectURL(url);
-      map.clear();
-    };
-  }, []);
+  function setCoverThumbUrl(tripId: number, blob: Blob) {
+    // 既存があれば解放して置き換え
+    const prev = coverThumbUrlRef.current.get(tripId);
+    if (prev) URL.revokeObjectURL(prev);
+
+    const url = URL.createObjectURL(blob);
+    coverThumbUrlRef.current.set(tripId, url);
+  }
 
   useEffect(() => {
     const onUp = () => setOnline(true);
@@ -463,12 +461,50 @@ export default function RecordHistory({ back }: Props) {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      for (const url of thumbUrlMapRef.current.values())
+        URL.revokeObjectURL(url);
+      thumbUrlMapRef.current.clear();
+
+      for (const url of coverThumbUrlRef.current.values())
+        URL.revokeObjectURL(url);
+      coverThumbUrlRef.current.clear();
+    };
+  }, []);
+
   async function loadAll() {
     setAllLoading(true);
     try {
-      const list = await db.catches.orderBy("createdAt").reverse().toArray();
+      const list = await db.trips.orderBy("createdAt").reverse().toArray();
       setAll(list);
       setAllLoadedOnce(true);
+
+      // 表示用のcoverサムネを先読み（上から archivePageSize 分くらい）
+      const top = list
+        .slice(0, Math.max(50, archivePageSize))
+        .filter((t) => t.id != null) as Array<TripRecord & { id: number }>;
+      const ids = top.map((t) => t.id);
+
+      if (ids.length > 0) {
+        // tripId でまとめて取り、各tripの cover を決める
+        const photos = await db.tripPhotos.where("tripId").anyOf(ids).toArray();
+
+        const byTrip = new Map<number, TripPhoto[]>();
+        for (const p of photos) {
+          if (!p.tripId) continue;
+          byTrip.set(p.tripId, [...(byTrip.get(p.tripId) ?? []), p]);
+        }
+
+        for (const id of ids) {
+          const ps = byTrip.get(id) ?? [];
+          if (ps.length === 0) continue;
+          const cover =
+            ps.find((x) => x.isCover === 1) ??
+            [...ps].sort((a, b) => a.order - b.order)[0];
+          if (cover?.photoBlob) setCoverThumbUrl(id, cover.photoBlob);
+        }
+      }
     } finally {
       setAllLoading(false);
     }
@@ -476,12 +512,13 @@ export default function RecordHistory({ back }: Props) {
 
   useEffect(() => {
     loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const yearMonthsMap = useMemo(() => {
     const map = new Map<number, Set<number>>();
     for (const r of all) {
-      const iso = r.capturedAt ?? r.createdAt;
+      const iso = r.startedAt ?? r.createdAt;
       const d = new Date(iso);
       const t = d.getTime();
       if (!Number.isFinite(t)) continue;
@@ -498,9 +535,7 @@ export default function RecordHistory({ back }: Props) {
   }, [all]);
 
   const years = useMemo(() => {
-    const ys = Object.keys(yearMonthsMap)
-      .map((x) => Number(x))
-      .filter(Number.isFinite);
+    const ys = Object.keys(yearMonthsMap).map(Number).filter(Number.isFinite);
     return ys.sort((a, b) => b - a);
   }, [yearMonthsMap]);
 
@@ -533,22 +568,18 @@ export default function RecordHistory({ back }: Props) {
     if (archiveYear) {
       const y = Number(archiveYear);
       if (Number.isFinite(y)) {
-        list = list.filter((r) => {
-          const iso = r.capturedAt ?? r.createdAt;
-          const d = new Date(iso);
-          return d.getFullYear() === y;
-        });
+        list = list.filter(
+          (r) => new Date(r.startedAt ?? r.createdAt).getFullYear() === y,
+        );
       }
     }
 
     if (archiveMonth) {
       const m = Number(archiveMonth);
       if (Number.isFinite(m) && m >= 1 && m <= 12) {
-        list = list.filter((r) => {
-          const iso = r.capturedAt ?? r.createdAt;
-          const d = new Date(iso);
-          return d.getMonth() + 1 === m;
-        });
+        list = list.filter(
+          (r) => new Date(r.startedAt ?? r.createdAt).getMonth() + 1 === m,
+        );
       }
     }
 
@@ -569,30 +600,60 @@ export default function RecordHistory({ back }: Props) {
     if (!id) return;
     const ok = confirm("この記録を削除する？（戻せないよ）");
     if (!ok) return;
-    await db.catches.delete(id);
+
+    await db.transaction(
+      "rw",
+      db.trips,
+      db.tripPhotos,
+      db.tripFish,
+      async () => {
+        await db.tripPhotos.where("tripId").equals(id).delete();
+        await db.tripFish.where("tripId").equals(id).delete();
+        await db.trips.delete(id);
+      },
+    );
+
     await loadAll();
     if (selectedId === id) setSelectedId(null);
     if (isMobile) setSheetOpen(false);
   }
 
-  async function openDetailForRecord(r: CatchRecord) {
-    if (!r.id) return;
-    setSelectedId(r.id);
+  async function openDetailForTrip(t: TripRecord) {
+    if (!t.id) return;
+    setSelectedId(t.id);
 
     if (isMobile) setSheetOpen(true);
 
     setDetailError("");
     setDetailTide(null);
     setDetailPointMap({});
+    setDetailPhotos([]);
+    setDetailFish([]);
+    setSelectedPhotoId(null);
     setDetailLoading(true);
 
     try {
-      if (!r.capturedAt) {
+      const tripId = t.id;
+
+      const [photos, fish] = await Promise.all([
+        db.tripPhotos.where("tripId").equals(tripId).sortBy("order"),
+        db.tripFish.where("tripId").equals(tripId).toArray(),
+      ]);
+
+      setDetailPhotos(photos);
+      setDetailFish(fish);
+
+      const cover = photos.find((p) => p.isCover === 1) ?? photos[0] ?? null;
+      if (cover?.id) setSelectedPhotoId(cover.id);
+
+      // tide graph（startedAt基準。保存済みスナップショットとは別にseriesで描画）
+      const shotIso = t.startedAt ?? t.createdAt;
+      const shot = new Date(shotIso);
+      if (!Number.isFinite(shot.getTime())) {
         setDetailLoading(false);
         return;
       }
 
-      const shot = new Date(r.capturedAt);
       const { series, source, isStale, tideName } = await getTide736DayCached(
         FIXED_PORT.pc,
         FIXED_PORT.hc,
@@ -604,7 +665,7 @@ export default function RecordHistory({ back }: Props) {
       const info = getTideAtTime(series, whenMs);
 
       const map: Record<number, TideInfo> = {};
-      if (info && r.id) map[r.id] = { cm: info.cm, trend: info.trend };
+      if (info) map[tripId] = { cm: info.cm, trend: info.trend };
 
       setDetailTide({ series, source, isStale, tideName: tideName ?? null });
       setDetailPointMap(map);
@@ -623,15 +684,15 @@ export default function RecordHistory({ back }: Props) {
     }
   }
 
-  function DetailView({ record }: { record: CatchRecord }) {
-    const shotIso = record.capturedAt ?? record.createdAt;
-    const shot = record.capturedAt ? new Date(record.capturedAt) : null;
-    const created = new Date(record.createdAt);
+  function DetailView({ trip }: { trip: TripRecord }) {
+    const baseIso = trip.startedAt ?? trip.createdAt;
+    const base = new Date(baseIso);
+    const created = new Date(trip.createdAt);
 
-    const tide = record.id != null ? detailPointMap[record.id] : undefined;
+    const tide = trip.id != null ? detailPointMap[trip.id] : undefined;
     const phaseRaw =
-      shot && detailTide?.series && detailTide.series.length > 0
-        ? getTidePhaseFromSeries(detailTide.series, shot, shot)
+      base && detailTide?.series && detailTide.series.length > 0
+        ? getTidePhaseFromSeries(detailTide.series, base, base)
         : "";
     const phase = phaseRaw ? displayPhaseForHeader(phaseRaw) : "";
 
@@ -674,20 +735,23 @@ export default function RecordHistory({ back }: Props) {
           >
             記録：{created.toLocaleString()}
           </div>
+
           <div
             style={{ fontSize: 12, color: "#6cf", overflowWrap: "anywhere" }}
           >
-            📸{" "}
-            {record.capturedAt
-              ? new Date(record.capturedAt).toLocaleString()
-              : "（撮影日時なし）"}
-            {shot ? ` / 🕒 ${getTimeBand(shot)}` : ""}
+            🕒 基準：
+            {Number.isFinite(base.getTime())
+              ? base.toLocaleString()
+              : "（不明）"}
+            {Number.isFinite(base.getTime())
+              ? ` / 🕒 ${getTimeBand(base)}`
+              : ""}
             {detailTide?.tideName ? ` / 🌙 ${detailTide.tideName}` : ""}
             {phase ? ` / 🌊 ${phase}` : ""}
           </div>
 
           <div style={{ fontSize: 12, color: "#ffd166" }}>
-            {formatResultLine(record)}
+            {formatOutcomeLine(trip, detailFish)}
           </div>
 
           <div
@@ -704,13 +768,13 @@ export default function RecordHistory({ back }: Props) {
           </div>
 
           <div style={{ color: "#eee", overflowWrap: "anywhere" }}>
-            {record.memo || "（メモなし）"}
+            {trip.memo || "（メモなし）"}
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <button
               type="button"
-              onClick={() => onDelete(record.id)}
+              onClick={() => onDelete(trip.id)}
               style={{
                 fontSize: 12,
                 color: "#ff7a7a",
@@ -728,12 +792,134 @@ export default function RecordHistory({ back }: Props) {
           </div>
         </div>
 
+        {/* 写真一覧 */}
+        <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ fontWeight: 900 }}>🖼 写真</div>
+
+          {detailPhotos.length === 0 ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+              写真なし
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(5, minmax(0,1fr))",
+                  gap: 8,
+                }}
+              >
+                {detailPhotos.map((p) => {
+                  const url = p.id ? getPhotoUrlByPhotoId(p.id) : null;
+                  const active = p.id != null && p.id === selectedPhotoId;
+
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => p.id && setSelectedPhotoId(p.id)}
+                      className="glass"
+                      style={{
+                        borderRadius: 12,
+                        overflow: "hidden",
+                        border: active
+                          ? "2px solid #ff4d6d"
+                          : "1px solid rgba(255,255,255,0.12)",
+                        background: "rgba(0,0,0,0.18)",
+                        aspectRatio: "1 / 1",
+                        padding: 0,
+                        cursor: "pointer",
+                      }}
+                      title={
+                        p.capturedAt
+                          ? new Date(p.capturedAt).toLocaleString()
+                          : "日時なし"
+                      }
+                    >
+                      {url ? (
+                        <img
+                          src={url}
+                          alt="thumb"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                            display: "block",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "rgba(255,255,255,0.62)",
+                            display: "grid",
+                            placeItems: "center",
+                            height: "100%",
+                          }}
+                        >
+                          No Photo
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div
+                className="glass glass-strong"
+                style={{
+                  borderRadius: 16,
+                  padding: 10,
+                  minHeight: 260,
+                  display: "grid",
+                  alignItems: "center",
+                  overflow: "hidden",
+                }}
+              >
+                {selectedPhotoId != null ? (
+                  (() => {
+                    const url = getPhotoUrlByPhotoId(selectedPhotoId);
+                    return url ? (
+                      <img
+                        src={url}
+                        alt="selected"
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "contain",
+                          display: "block",
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "rgba(255,255,255,0.68)",
+                        }}
+                      >
+                        画像の表示に失敗
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}
+                  >
+                    —
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* タイドグラフ */}
         <div style={{ display: "grid", gap: 10 }}>
           <div style={{ fontWeight: 900 }}>📈 タイドグラフ</div>
 
-          {!record.capturedAt ? (
+          {!Number.isFinite(base.getTime()) ? (
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-              撮影日時が無いから、この記録はタイドを紐づけられないよ
+              基準時刻が無いから、この記録はタイドを紐づけられないよ
             </div>
           ) : (
             <div
@@ -747,7 +933,7 @@ export default function RecordHistory({ back }: Props) {
                 overflow: "hidden",
               }}
             >
-              {detailTide && detailTide.series.length > 0 && shot ? (
+              {detailTide && detailTide.series.length > 0 ? (
                 <div
                   style={{
                     opacity: detailLoading ? 0.65 : 1,
@@ -760,42 +946,14 @@ export default function RecordHistory({ back }: Props) {
                 >
                   <TideGraph
                     series={detailTide.series}
-                    baseDate={shot}
-                    highlightAt={shot}
+                    baseDate={base}
+                    highlightAt={base}
                     yDomain={{ min: -50, max: 200 }}
                   />
                 </div>
               ) : detailLoading ? (
-                <div style={{ display: "grid", gap: 10 }}>
-                  <div
-                    style={{
-                      height: 14,
-                      width: "60%",
-                      borderRadius: 999,
-                      background: "rgba(255,255,255,0.10)",
-                    }}
-                  />
-                  <div
-                    style={{
-                      height: 220,
-                      width: "100%",
-                      borderRadius: 14,
-                      background: "rgba(255,255,255,0.08)",
-                    }}
-                  />
-                  <div
-                    style={{
-                      height: 12,
-                      width: "40%",
-                      borderRadius: 999,
-                      background: "rgba(255,255,255,0.10)",
-                    }}
-                  />
-                  <div
-                    style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}
-                  >
-                    準備中…
-                  </div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                  準備中…
                 </div>
               ) : detailError ? (
                 <div style={{ fontSize: 12, color: "#ff7a7a" }}>
@@ -812,7 +970,7 @@ export default function RecordHistory({ back }: Props) {
 
         <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
           key: {FIXED_PORT.pc}:{FIXED_PORT.hc}:
-          {shot ? dayKeyFromISO(shotIso).key : "—"}
+          {Number.isFinite(base.getTime()) ? dayKeyFromISO(baseIso).key : "—"}
         </div>
       </div>
     );
@@ -849,49 +1007,10 @@ export default function RecordHistory({ back }: Props) {
           {allLoading ? "読み込み中…" : "↻ 全履歴更新"}
         </button>
 
-        <button
-          type="button"
-          onClick={exportCatches}
-          style={pillBtnStyle}
-          title="釣果（写真含む）をZIPで保存"
-        >
-          📤 釣果をエクスポート
-        </button>
-
-        <label
-          style={pillBtnStyle}
-          title="ZIPから釣果（写真含む）を復元（端末内データは置き換え）"
-        >
-          📥 釣果をインポート
-          <input
-            type="file"
-            accept=".zip"
-            hidden
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-
-              const ok = confirm(
-                "既存の釣果はすべて削除され、ZIPの内容で置き換えられるよ。続ける？",
-              );
-              if (!ok) {
-                e.currentTarget.value = "";
-                return;
-              }
-
-              try {
-                await importCatches(file);
-                alert("インポート完了！");
-                location.reload();
-              } catch (err) {
-                console.error(err);
-                alert("インポート失敗…（ZIPが壊れてる or 形式違いかも）");
-              } finally {
-                e.currentTarget.value = "";
-              }
-            }}
-          />
-        </label>
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+          ※
+          エクスポート/インポートは新DB形式で後で作り直す（互換不要のため一旦OFF）
+        </div>
       </div>
 
       <div
@@ -938,7 +1057,6 @@ export default function RecordHistory({ back }: Props) {
             }
           >
             <option value="">すべて</option>
-
             {archiveYear && monthsForSelectedYear
               ? monthsForSelectedYear.map((m) => (
                   <option key={m} value={String(m)}>
@@ -1051,16 +1169,20 @@ export default function RecordHistory({ back }: Props) {
 
   const ListView = (
     <div style={{ display: "grid", gap: 10 }}>
-      {archiveList.map((r) => {
-        const created = new Date(r.createdAt);
-        const shotDate = r.capturedAt ? new Date(r.capturedAt) : null;
-        const finalThumb = getThumbUrl(r);
+      {archiveList.map((t) => {
+        const created = new Date(t.createdAt);
+        const base = new Date(t.startedAt ?? t.createdAt);
+        const tripId = t.id ?? 0;
+
+        const finalThumb = tripId
+          ? (coverThumbUrlRef.current.get(tripId) ?? null)
+          : null;
 
         return (
           <button
-            key={r.id}
+            key={t.id}
             type="button"
-            onClick={() => openDetailForRecord(r)}
+            onClick={() => openDetailForTrip(t)}
             className="glass"
             style={historyCardStyle}
             title="この記録を開く"
@@ -1110,16 +1232,23 @@ export default function RecordHistory({ back }: Props) {
                   overflowWrap: "anywhere",
                 }}
               >
-                📸 {shotDate ? shotDate.toLocaleString() : "（撮影日時なし）"}
-                {shotDate ? ` / 🕒 ${getTimeBand(shotDate)}` : ""}
+                🕒 基準：
+                {Number.isFinite(base.getTime())
+                  ? base.toLocaleString()
+                  : "（不明）"}
+                {Number.isFinite(base.getTime())
+                  ? ` / 🕒 ${getTimeBand(base)}`
+                  : ""}
               </div>
 
               <div style={{ fontSize: 12, color: "#ffd166" }}>
-                {formatResultLine(r)}
+                {t.outcome === "skunk"
+                  ? "😇 釣れなかった（ボウズ）"
+                  : "🎣 釣れた"}
               </div>
 
               <div style={{ color: "#eee", overflowWrap: "anywhere" }}>
-                {r.memo || "（メモなし）"}
+                {t.memo || "（メモなし）"}
               </div>
             </div>
           </button>
@@ -1133,21 +1262,6 @@ export default function RecordHistory({ back }: Props) {
       )}
     </div>
   );
-
-  const photoUrl = useMemo(() => {
-    if (!selected?.photoBlob) return null;
-    try {
-      return URL.createObjectURL(selected.photoBlob);
-    } catch {
-      return null;
-    }
-  }, [selected?.photoBlob]);
-
-  useEffect(() => {
-    return () => {
-      if (photoUrl) URL.revokeObjectURL(photoUrl);
-    };
-  }, [photoUrl]);
 
   const titleNode = (
     <h1
@@ -1168,14 +1282,12 @@ export default function RecordHistory({ back }: Props) {
 
   return (
     <PageShell
-      // ✅ PCでもPageShellヘッダーに統一（タイトル左上 / 戻る右上を完全固定）
       title={titleNode}
       subtitle={headerSubNode}
       titleLayout="left"
       maxWidth={1400}
       showBack
       onBack={back}
-      // ✅ PCは外側スクロールを止めて、各カラムだけスクロールさせる
       scrollY={isDesktop ? "hidden" : "auto"}
     >
       <div
@@ -1184,8 +1296,6 @@ export default function RecordHistory({ back }: Props) {
           overflowX: "clip",
           maxWidth: "100vw",
           minHeight: 0,
-          // ✅ PageShellがPCヘッダー分のpaddingTopを足してくれる前提なので、ここで上の安全余白は足さない
-          // ✅ PCは“残り領域を使い切る”ために高さだけは定義（header分はCSS変数で引く）
           height: isDesktop ? "calc(100dvh - var(--shell-header-h))" : "auto",
         }}
       >
@@ -1213,7 +1323,7 @@ export default function RecordHistory({ back }: Props) {
                   pillBtnStyle={pillBtnStyle}
                 >
                   {selected ? (
-                    <DetailView record={selected} />
+                    <DetailView trip={selected} />
                   ) : (
                     <div
                       style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}
@@ -1271,7 +1381,7 @@ export default function RecordHistory({ back }: Props) {
               </div>
             </div>
 
-            {/* 中央（操作 + 写真） */}
+            {/* 中央（操作） */}
             <div
               style={{
                 display: "grid",
@@ -1308,40 +1418,14 @@ export default function RecordHistory({ back }: Props) {
                     display: "grid",
                     alignItems: "center",
                     justifyItems: "center",
+                    color: "rgba(255,255,255,0.62)",
+                    fontSize: 13,
+                    padding: 16,
+                    textAlign: "center",
                   }}
                 >
-                  {selected && photoUrl ? (
-                    <img
-                      src={photoUrl}
-                      alt="selected"
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "contain",
-                        display: "block",
-                      }}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        color: "rgba(255,255,255,0.62)",
-                        fontSize: 13,
-                        padding: 16,
-                        textAlign: "center",
-                      }}
-                    >
-                      🖼 写真の拡大表示
-                      <div style={{ height: 6 }} />
-                      <span
-                        style={{
-                          fontSize: 12,
-                          color: "rgba(255,255,255,0.52)",
-                        }}
-                      >
-                        左の履歴から選ぶとここに出るよ
-                      </span>
-                    </div>
-                  )}
+                  🧭
+                  ここは将来「分析への入口」や「環境再取得ボタン」を置くスペースにすると気持ちいい
                 </div>
               </div>
             </div>
@@ -1369,7 +1453,7 @@ export default function RecordHistory({ back }: Props) {
                   まだ記録がないよ
                 </div>
               ) : selected ? (
-                <DetailView record={selected} />
+                <DetailView trip={selected} />
               ) : (
                 <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
                   左の履歴から選択してね

@@ -1,7 +1,13 @@
 // src/screens/Record.tsx
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import exifr from "exifr";
-import { db, type CatchRecord, type CatchResult } from "../db";
+import {
+  db,
+  type TripOutcome,
+  type TripRecord,
+  type TripPhoto,
+  type TripFish,
+} from "../db";
 import PageShell from "../components/PageShell";
 import { FIXED_PORT } from "../points";
 import { getTideAtTime } from "../lib/tide736";
@@ -17,6 +23,15 @@ type Props = {
 type TidePoint = { unix?: number; cm: number; time?: string };
 type TideInfo = { cm: number; trend: string };
 
+type PhotoItem = {
+  id: string; // local id
+  file: File;
+  previewUrl: string;
+  capturedAt: Date | null;
+  exifNote?: string;
+  isCover: boolean;
+};
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
@@ -26,9 +41,7 @@ function clamp(n: number, min: number, max: number) {
 }
 
 function toDateTimeLocalValue(d: Date) {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(
-    d.getDate(),
-  )}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
 function parseDateTimeLocalValue(v: string): Date | null {
@@ -50,6 +63,10 @@ function displayPhaseForHeader(phase: string) {
   return hide.has(phase) ? "" : phase;
 }
 
+function uuidLike() {
+  return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+}
+
 export default function Record({ back }: Props) {
   const { settings } = useAppSettings();
 
@@ -58,9 +75,6 @@ export default function Record({ back }: Props) {
     "--glass-blur": `${clamp(settings.glassBlur ?? 10, 0, 40)}px`,
   } as unknown as CSSProperties;
 
-  // =========================
-  // ✅ 見た目（ガラスは PageShell のCSS変数に追従）
-  // =========================
   const glassBoxStyle: CSSProperties = {
     borderRadius: 16,
     padding: 12,
@@ -168,31 +182,47 @@ export default function Record({ back }: Props) {
     background: "rgba(0,0,0,calc(0.10 + var(--glass-alpha,0.22) * 0.45))",
   };
 
-  // =========================
-  // ✅ 状態
-  // =========================
-  const [photo, setPhoto] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const pillBtnStyle: CSSProperties = {
+    borderRadius: 999,
+    padding: "8px 12px",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(0,0,0,0.24)",
+    color: "rgba(255,255,255,0.78)",
+    cursor: "pointer",
+    userSelect: "none",
+    lineHeight: 1,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    whiteSpace: "nowrap",
+    backdropFilter: "blur(var(--glass-blur,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+  };
 
-  const [capturedAt, setCapturedAt] = useState<Date | null>(null);
-  const [exifNote, setExifNote] = useState<string>("");
+  // -------------------------
+  // 状態
+  // -------------------------
+  const [photos, setPhotos] = useState<PhotoItem[]>([]);
 
+  const [baseCapturedAt, setBaseCapturedAt] = useState<Date | null>(null);
   const [manualMode, setManualMode] = useState(false);
   const [manualValue, setManualValue] = useState("");
   const [allowUnknown, setAllowUnknown] = useState(false);
 
-  const [result, setResult] = useState<CatchResult>("skunk");
+  const [outcome, setOutcome] = useState<TripOutcome>("skunk");
+  const [memo, setMemo] = useState("");
+
+  // いまは入力UI1つ（後で複数魚に拡張しやすいようにDBは別テーブル）
   const [species, setSpecies] = useState("");
   const [sizeCm, setSizeCm] = useState("");
 
-  const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
 
   const [online, setOnline] = useState<boolean>(
     typeof navigator !== "undefined" ? navigator.onLine : true,
   );
 
-  // 記録プレビュー用（潮）
+  // タイドプレビュー
   const [tideLoading, setTideLoading] = useState(false);
   const [tideError, setTideError] = useState("");
   const [tideName, setTideName] = useState<string | null>(null);
@@ -212,11 +242,13 @@ export default function Record({ back }: Props) {
     };
   }, []);
 
+  // 画像URLの解放
   useEffect(() => {
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      for (const p of photos) URL.revokeObjectURL(p.previewUrl);
     };
-  }, [previewUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sizeCmNumber = useMemo(() => {
     const v = Number(sizeCm);
@@ -225,14 +257,45 @@ export default function Record({ back }: Props) {
     return Math.round(v * 10) / 10;
   }, [sizeCm]);
 
-  function resetPhotoStates() {
-    setPhoto(null);
-    setPreviewUrl(null);
-    setCapturedAt(null);
-    setExifNote("");
+  const resultOk =
+    outcome === "skunk" ||
+    (outcome === "caught" && (sizeCm.trim() === "" || sizeCmNumber != null));
+
+  // 基準時刻：EXIF最古（あれば） or 手動
+  const autoBaseCapturedAt = useMemo(() => {
+    const ds = photos
+      .map((p) => p.capturedAt)
+      .filter((d): d is Date => d instanceof Date);
+    if (ds.length === 0) return null;
+    ds.sort((a, b) => a.getTime() - b.getTime());
+    return ds[0] ?? null;
+  }, [photos]);
+
+  useEffect(() => {
+    // 手動OFFのときは、自動基準に追従
+    if (manualMode) return;
+    setBaseCapturedAt(autoBaseCapturedAt);
+    if (autoBaseCapturedAt) {
+      setManualValue(toDateTimeLocalValue(autoBaseCapturedAt));
+      setAllowUnknown(false);
+    } else {
+      setManualValue("");
+    }
+  }, [autoBaseCapturedAt, manualMode]);
+
+  function resetAll() {
+    for (const p of photos) URL.revokeObjectURL(p.previewUrl);
+    setPhotos([]);
+
+    setBaseCapturedAt(null);
     setManualMode(false);
     setManualValue("");
     setAllowUnknown(false);
+
+    setOutcome("skunk");
+    setSpecies("");
+    setSizeCm("");
+    setMemo("");
 
     setTideLoading(false);
     setTideError("");
@@ -243,12 +306,7 @@ export default function Record({ back }: Props) {
     setPhase("");
   }
 
-  function resetResultStates() {
-    setResult("skunk");
-    setSpecies("");
-    setSizeCm("");
-  }
-
+  // タイドプレビュー更新
   useEffect(() => {
     let cancelled = false;
 
@@ -260,24 +318,27 @@ export default function Record({ back }: Props) {
       setTideAtShot(null);
       setPhase("");
 
-      if (!capturedAt) return;
-      if (!online && !photo) return;
+      if (!baseCapturedAt) return;
+      if (!online) return;
 
       setTideLoading(true);
       try {
         const { series, source, isStale, tideName } = await getTide736DayCached(
           FIXED_PORT.pc,
           FIXED_PORT.hc,
-          capturedAt,
+          baseCapturedAt,
           { ttlDays: 30 },
         );
         if (cancelled) return;
 
-        const info = getTideAtTime(series as TidePoint[], capturedAt.getTime());
+        const info = getTideAtTime(
+          series as TidePoint[],
+          baseCapturedAt.getTime(),
+        );
         const ph = getTidePhaseFromSeries(
           series as TidePoint[],
-          capturedAt,
-          capturedAt,
+          baseCapturedAt,
+          baseCapturedAt,
         );
         const shownPhase = ph ? displayPhaseForHeader(ph) || ph : "";
 
@@ -299,7 +360,7 @@ export default function Record({ back }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [capturedAt, online, photo]);
+  }, [baseCapturedAt, online]);
 
   function sourceLabel(source: TideCacheSource | null, isStale: boolean) {
     if (!source) return null;
@@ -311,39 +372,153 @@ export default function Record({ back }: Props) {
     };
   }
 
-  const resultOk =
-    result === "skunk" ||
-    (result === "caught" && (sizeCm.trim() === "" || sizeCmNumber != null));
-
   const canSave =
     !saving &&
-    !(photo && manualMode && !manualValue && !allowUnknown) &&
-    resultOk;
+    resultOk &&
+    (baseCapturedAt != null || allowUnknown || photos.length === 0);
+
+  async function addFiles(files: FileList) {
+    const list = Array.from(files);
+    if (list.length === 0) return;
+
+    const next: PhotoItem[] = [];
+    for (const file of list) {
+      const previewUrl = URL.createObjectURL(file);
+      let captured: Date | null = null;
+      let note = "";
+
+      try {
+        const dt = await exifr.parse(file, {
+          pick: ["DateTimeOriginal", "CreateDate"],
+        });
+        const meta = dt as {
+          DateTimeOriginal?: Date;
+          CreateDate?: Date;
+        } | null;
+        const date = meta?.DateTimeOriginal ?? meta?.CreateDate ?? null;
+        if (date instanceof Date) captured = date;
+        else note = "撮影日時が見つからなかったよ";
+      } catch {
+        note = "EXIFの読み取りに失敗したよ";
+      }
+
+      next.push({
+        id: uuidLike(),
+        file,
+        previewUrl,
+        capturedAt: captured,
+        exifNote: note || undefined,
+        isCover: false,
+      });
+    }
+
+    setPhotos((prev) => {
+      const merged = [...prev, ...next];
+      // cover が無ければ先頭に付ける
+      if (!merged.some((p) => p.isCover) && merged.length > 0)
+        merged[0].isCover = true;
+      return merged;
+    });
+  }
+
+  function setCover(id: string) {
+    setPhotos((prev) => prev.map((p) => ({ ...p, isCover: p.id === id })));
+  }
+
+  function removePhoto(id: string) {
+    setPhotos((prev) => {
+      const tgt = prev.find((p) => p.id === id);
+      if (tgt) URL.revokeObjectURL(tgt.previewUrl);
+
+      const next = prev.filter((p) => p.id !== id);
+      if (!next.some((p) => p.isCover) && next.length > 0)
+        next[0].isCover = true;
+      return next;
+    });
+  }
 
   async function onSave() {
     setSaving(true);
     try {
-      const record: CatchRecord = {
-        createdAt: new Date().toISOString(),
-        capturedAt: capturedAt ? capturedAt.toISOString() : undefined,
+      const nowIso = new Date().toISOString();
+
+      // 基準時刻（釣行時刻）
+      const startedAt =
+        baseCapturedAt?.toISOString() ?? (allowUnknown ? nowIso : nowIso);
+
+      // timeBand は基準時刻で確定
+      const band = baseCapturedAt
+        ? (getTimeBand(baseCapturedAt) as TripRecord["timeBand"])
+        : "unknown";
+
+      const trip: TripRecord = {
+        createdAt: nowIso,
+        startedAt,
         pointId: FIXED_PORT.id,
         memo,
+        outcome,
+        timeBand: band,
 
-        photoName: photo?.name,
-        photoType: photo?.type,
-        photoBlob: photo ?? undefined,
+        // 潮（今はRecord画面で見えている内容をスナップショット）
+        tideDayKey: baseCapturedAt
+          ? `${baseCapturedAt.getFullYear()}-${pad2(baseCapturedAt.getMonth() + 1)}-${pad2(baseCapturedAt.getDate())}`
+          : null,
+        tideName: tideName ?? null,
+        tidePhase: phase ? phase : null,
+        tideTrend:
+          tideAtShot?.trend === "上げ"
+            ? "up"
+            : tideAtShot?.trend === "下げ"
+              ? "down"
+              : tideAtShot?.trend
+                ? "flat"
+                : "unknown",
+        tideCm: typeof tideAtShot?.cm === "number" ? tideAtShot.cm : null,
 
-        result,
-        species: result === "caught" ? species.trim() || "不明" : undefined,
-        sizeCm: result === "caught" ? (sizeCmNumber ?? undefined) : undefined,
+        // 天気/風/波は後で実装（ここに保存する）
+        envFetchedAt: null,
       };
 
-      await db.catches.add(record);
+      await db.transaction(
+        "rw",
+        db.trips,
+        db.tripPhotos,
+        db.tripFish,
+        async () => {
+          const tripId = await db.trips.add(trip);
 
-      resetPhotoStates();
-      resetResultStates();
-      setMemo("");
+          // photos
+          const ordered = [...photos].map((p, idx) => ({ p, idx }));
+          for (const { p, idx } of ordered) {
+            const row: TripPhoto = {
+              tripId,
+              createdAt: nowIso,
+              capturedAt: p.capturedAt ? p.capturedAt.toISOString() : null,
+              photoName: p.file.name,
+              photoType: p.file.type || "image/*",
+              photoBlob: p.file,
+              order: idx,
+              isCover: p.isCover ? 1 : 0,
+            };
+            await db.tripPhotos.add(row);
+          }
 
+          // fish
+          if (outcome === "caught") {
+            const sp = species.trim() ? species.trim() : "不明";
+            const fish: TripFish = {
+              tripId,
+              createdAt: nowIso,
+              species: sp,
+              sizeCm: sizeCmNumber ?? null,
+              count: null,
+            };
+            await db.tripFish.add(fish);
+          }
+        },
+      );
+
+      resetAll();
       alert("記録したよ！");
     } catch (e) {
       console.error(e);
@@ -353,18 +528,20 @@ export default function Record({ back }: Props) {
     }
   }
 
-  const photoFrameStyle: CSSProperties = {
+  const gridStyle: CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gap: 8,
+  };
+
+  const thumbStyle: CSSProperties = {
     width: "100%",
-    aspectRatio: "4 / 3",
-    borderRadius: 14,
+    aspectRatio: "1 / 1",
+    borderRadius: 12,
     overflow: "hidden",
-    background: "rgba(0,0,0,calc(0.14 + var(--glass-alpha,0.22) * 0.55))",
-    border: "1px solid rgba(255,255,255,0.14)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    backdropFilter: "blur(var(--glass-blur,10px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(0,0,0,0.18)",
+    position: "relative",
   };
 
   return (
@@ -387,25 +564,13 @@ export default function Record({ back }: Props) {
       scrollY="auto"
     >
       <style>{`
-        .record-layout{
-          display:grid;
-          gap:14px;
-          min-width:0;
-        }
+        .record-layout{ display:grid; gap:14px; min-width:0; }
         @media (min-width: 980px){
-          .record-layout{
-            grid-template-columns: 420px minmax(0, 1fr);
-            align-items:start;
-          }
-          .record-left{
-            position: sticky;
-            top: 12px;
-            align-self:start;
-          }
+          .record-layout{ grid-template-columns: 420px minmax(0, 1fr); align-items:start; }
+          .record-left{ position: sticky; top: 12px; align-self:start; }
         }
       `}</style>
 
-      {/* ✅ ここでCSS変数を供給 */}
       <div style={{ ...glassVars }}>
         <div
           style={{
@@ -430,123 +595,110 @@ export default function Record({ back }: Props) {
               className="glass glass-strong"
               style={{ borderRadius: 16, padding: 12 }}
             >
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>🖼 写真</div>
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>
+                🖼 写真（複数OK）
+              </div>
 
               <div style={{ display: "grid", gap: 10 }}>
                 <label
                   style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
                 >
-                  写真を選ぶ
+                  写真を選ぶ（複数）
                   <div style={{ marginTop: 6 }}>
                     <input
                       type="file"
                       accept="image/*"
+                      multiple
                       onChange={async (e) => {
-                        if (!e.target.files || !e.target.files[0]) return;
-                        const file = e.target.files[0];
-                        setPhoto(file);
-                        setPreviewUrl(URL.createObjectURL(file));
-
-                        setCapturedAt(null);
-                        setExifNote("");
-                        setManualMode(false);
-                        setManualValue("");
-                        setAllowUnknown(false);
-
-                        try {
-                          const dt = await exifr.parse(file, {
-                            pick: ["DateTimeOriginal", "CreateDate"],
-                          });
-
-                          const meta = dt as {
-                            DateTimeOriginal?: Date;
-                            CreateDate?: Date;
-                          } | null;
-                          const date =
-                            meta?.DateTimeOriginal ?? meta?.CreateDate ?? null;
-
-                          if (date instanceof Date) {
-                            setCapturedAt(date);
-                            setExifNote("");
-                            setManualMode(false);
-                            setManualValue(toDateTimeLocalValue(date));
-                          } else {
-                            setCapturedAt(null);
-                            setExifNote(
-                              "撮影日時が見つからなかったよ（手動入力できます）",
-                            );
-                            setManualMode(true);
-                            setManualValue("");
-                          }
-                        } catch {
-                          setCapturedAt(null);
-                          setExifNote(
-                            "EXIFの読み取りに失敗したよ（手動入力できます）",
-                          );
-                          setManualMode(true);
-                          setManualValue("");
-                        }
+                        if (!e.target.files || e.target.files.length === 0)
+                          return;
+                        await addFiles(e.target.files);
+                        e.currentTarget.value = "";
                       }}
                     />
                   </div>
                 </label>
 
-                <div style={photoFrameStyle}>
-                  {previewUrl ? (
-                    <img
-                      src={previewUrl}
-                      alt="preview"
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "contain",
-                        display: "block",
-                      }}
-                    />
-                  ) : (
-                    <div style={{ textAlign: "center", padding: 12 }}>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "rgba(255,255,255,0.70)",
-                          fontWeight: 700,
-                        }}
-                      >
-                        プレビュー
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 6,
-                          fontSize: 11,
-                          color: "rgba(255,255,255,0.52)",
-                        }}
-                      >
-                        ここに写真が表示されるよ
-                      </div>
-                    </div>
-                  )}
-                </div>
+                {photos.length === 0 ? (
+                  <div
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}
+                  >
+                    写真は任意（あとからでもOK）。でも、天気/潮を正確に保存したいなら写真（EXIF）か手動時刻があると強いよ📌
+                  </div>
+                ) : (
+                  <>
+                    <div style={gridStyle}>
+                      {photos.map((p) => (
+                        <div key={p.id} style={thumbStyle}>
+                          <img
+                            src={p.previewUrl}
+                            alt="thumb"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                              display: "block",
+                            }}
+                          />
 
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
-                  {photo ? (
-                    <>選択中：{photo.name}</>
-                  ) : (
-                    <>写真は任意（あとからでもOK）</>
-                  )}
-                </div>
+                          <div
+                            style={{
+                              position: "absolute",
+                              inset: 6,
+                              display: "flex",
+                              gap: 6,
+                              justifyContent: "flex-end",
+                              alignItems: "flex-start",
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setCover(p.id)}
+                              style={pillBtnStyle}
+                              title="サムネ（表紙）にする"
+                            >
+                              {p.isCover ? "★ 表紙" : "表紙"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removePhoto(p.id)}
+                              style={pillBtnStyle}
+                              title="削除"
+                            >
+                              🗑
+                            </button>
+                          </div>
 
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-                  {capturedAt ? (
-                    <>📅 撮影日時：{capturedAt.toLocaleString()}</>
-                  ) : (
-                    <>📅 撮影日時：（不明）</>
-                  )}
-                  {exifNote && (
-                    <div style={{ marginTop: 4, color: "#ff7a7a" }}>
-                      {exifNote}
+                          <div
+                            style={{
+                              position: "absolute",
+                              left: 8,
+                              right: 8,
+                              bottom: 6,
+                              fontSize: 10,
+                              color: "rgba(255,255,255,0.85)",
+                              textShadow: "0 2px 10px rgba(0,0,0,0.55)",
+                            }}
+                          >
+                            {p.capturedAt
+                              ? p.capturedAt.toLocaleString()
+                              : "EXIFなし"}
+                            {p.exifNote ? ` / ${p.exifNote}` : ""}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  )}
-                </div>
+
+                    <div
+                      style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
+                    >
+                      基準時刻（最古EXIF）：{" "}
+                      {autoBaseCapturedAt
+                        ? autoBaseCapturedAt.toLocaleString()
+                        : "（なし）"}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -560,221 +712,215 @@ export default function Record({ back }: Props) {
               gap: 12,
             }}
           >
-            {/* 手動日時入力 */}
-            {photo && (
-              <div className="glass glass-strong" style={glassBoxStyle}>
-                <div
+            {/* 手動日時入力（写真がある or なくてもOK） */}
+            <div className="glass glass-strong" style={glassBoxStyle}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <label
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 10,
-                    flexWrap: "wrap",
+                    gap: 8,
+                    cursor: "pointer",
                   }}
                 >
-                  <label
+                  <input
+                    type="checkbox"
+                    checked={manualMode}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setManualMode(on);
+                      if (on) {
+                        const d = baseCapturedAt ?? autoBaseCapturedAt;
+                        if (d) setManualValue(toDateTimeLocalValue(d));
+                      } else {
+                        setAllowUnknown(false);
+                      }
+                    }}
+                  />
+                  <span
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
+                  >
+                    基準時刻を手動で補正する（帰宅投稿向け）
+                  </span>
+                </label>
+
+                {!manualMode && !autoBaseCapturedAt && (
+                  <div style={{ fontSize: 12, color: "#f6c" }}>
+                    ※EXIFが無いので、ONにして入力すると潮/天気に紐づくよ
+                  </div>
+                )}
+              </div>
+
+              {manualMode && (
+                <>
+                  <div
                     style={{
                       display: "flex",
+                      gap: 10,
                       alignItems: "center",
-                      gap: 8,
-                      cursor: "pointer",
+                      flexWrap: "wrap",
                     }}
                   >
-                    <input
-                      type="checkbox"
-                      checked={manualMode}
-                      onChange={(e) => {
-                        const on = e.target.checked;
-                        setManualMode(on);
-                        if (on) {
-                          if (capturedAt)
-                            setManualValue(toDateTimeLocalValue(capturedAt));
-                        } else {
-                          if (!capturedAt) setManualValue("");
-                          setAllowUnknown(false);
-                        }
-                      }}
-                    />
-                    <span
+                    <label
                       style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
                     >
-                      撮影日時を手動で補正する
-                    </span>
-                  </label>
+                      基準時刻（ローカル）：
+                      <input
+                        type="datetime-local"
+                        value={manualValue}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setManualValue(v);
+                          const d = parseDateTimeLocalValue(v);
+                          setBaseCapturedAt(d);
+                          if (d) setAllowUnknown(false);
+                        }}
+                        style={{ marginLeft: 8 }}
+                      />
+                    </label>
 
-                  {!manualMode && !capturedAt && (
-                    <div style={{ fontSize: 12, color: "#f6c" }}>
-                      ※EXIFが無いので、ONにして入力するとタイドに紐づくよ
-                    </div>
-                  )}
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        const v = toDateTimeLocalValue(now);
+                        setManualValue(v);
+                        setBaseCapturedAt(now);
+                        setAllowUnknown(false);
+                      }}
+                      className="glass"
+                      style={primaryBtn}
+                    >
+                      今にする
+                    </button>
+                  </div>
 
-                {manualMode && (
-                  <>
-                    <div
+                  {!manualValue && (
+                    <label
                       style={{
                         display: "flex",
-                        gap: 10,
                         alignItems: "center",
-                        flexWrap: "wrap",
+                        gap: 8,
+                        cursor: "pointer",
                       }}
                     >
-                      <label
+                      <input
+                        type="checkbox"
+                        checked={allowUnknown}
+                        onChange={(e) => setAllowUnknown(e.target.checked)}
+                      />
+                      <span
                         style={{
                           fontSize: 12,
                           color: "rgba(255,255,255,0.72)",
                         }}
                       >
-                        手動撮影日時（ローカル）：
-                        <input
-                          type="datetime-local"
-                          value={manualValue}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setManualValue(v);
-                            const d = parseDateTimeLocalValue(v);
-                            setCapturedAt(d);
-                            if (d) setAllowUnknown(false);
-                          }}
-                          style={{ marginLeft: 8 }}
-                        />
-                      </label>
+                        不明のまま保存する（潮/天気の保存なし）
+                      </span>
+                    </label>
+                  )}
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const now = new Date();
-                          const v = toDateTimeLocalValue(now);
-                          setManualValue(v);
-                          setCapturedAt(now);
-                          setAllowUnknown(false);
-                        }}
-                        className="glass"
-                        style={primaryBtn}
-                      >
-                        今にする
-                      </button>
-                    </div>
-
-                    {!manualValue && (
-                      <label
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          cursor: "pointer",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={allowUnknown}
-                          onChange={(e) => setAllowUnknown(e.target.checked)}
-                        />
-                        <span
-                          style={{
-                            fontSize: 12,
-                            color: "rgba(255,255,255,0.72)",
-                          }}
-                        >
-                          不明のまま保存する（タイド紐づけ無し）
-                        </span>
-                      </label>
-                    )}
-
-                    {!manualValue && !allowUnknown && (
-                      <div style={{ fontSize: 12, color: "#f6c" }}>
-                        ※日時を入れるか、「不明のまま保存」をONにしてね
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* 潮プレビュー */}
-            {photo && (
-              <div
-                className="glass glass-strong"
-                style={{ borderRadius: 16, padding: 12 }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <div style={{ fontWeight: 800 }}>🌙 タイド（プレビュー）</div>
-                  {!online && (
+                  {!manualValue && !allowUnknown && (
                     <div style={{ fontSize: 12, color: "#f6c" }}>
-                      📴 オフライン
+                      ※時刻を入れるか、「不明のまま保存」をONにしてね
                     </div>
                   )}
-                  {tideSource &&
-                    (() => {
-                      const lab = sourceLabel(tideSource, tideIsStale);
-                      if (!lab) return null;
-                      return (
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: lab.color,
-                            whiteSpace: "nowrap",
-                          }}
-                          title="tide736取得元"
-                        >
-                          🌊 {lab.text}
-                        </div>
-                      );
-                    })()}
-                </div>
+                </>
+              )}
 
-                {!capturedAt ? (
-                  <div
-                    style={{
-                      marginTop: 8,
-                      fontSize: 12,
-                      color: "rgba(255,255,255,0.68)",
-                    }}
-                  >
-                    撮影日時が無いので、タイドに紐づけできないよ
-                  </div>
-                ) : tideLoading ? (
-                  <div style={{ marginTop: 8, fontSize: 12, color: "#0a6" }}>
-                    取得中…
-                  </div>
-                ) : tideError ? (
-                  <div style={{ marginTop: 8, fontSize: 12, color: "#ff7a7a" }}>
-                    取得失敗 → {tideError}
-                  </div>
-                ) : (
-                  <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
-                    <div
-                      style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}
-                    >
-                      🕒 {getTimeBand(capturedAt)}
-                    </div>
-                    <div style={{ fontSize: 12, color: "#6cf" }}>
-                      {tideName ? `🌙 ${tideName}` : "🌙 潮名：—"}
-                      {phase ? ` / 🌊 ${phase}` : ""}
-                    </div>
-                    <div style={{ fontSize: 12, color: "#7ef" }}>
-                      🌊 焼津潮位：
-                      {tideAtShot
-                        ? `${tideAtShot.cm}cm / ${tideAtShot.trend}`
-                        : "—"}
-                    </div>
-                    {!online && tideSource === "stale-cache" && (
-                      <div
-                        style={{ marginTop: 4, fontSize: 12, color: "#f6c" }}
-                      >
-                        ⚠ オフラインのため、期限切れキャッシュの可能性あり
-                      </div>
-                    )}
+              {!manualMode && (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.70)" }}>
+                  基準時刻：{" "}
+                  {baseCapturedAt
+                    ? baseCapturedAt.toLocaleString()
+                    : "（未確定）"}
+                </div>
+              )}
+            </div>
+
+            {/* 潮プレビュー */}
+            <div
+              className="glass glass-strong"
+              style={{ borderRadius: 16, padding: 12 }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ fontWeight: 800 }}>🌙 タイド（プレビュー）</div>
+                {!online && (
+                  <div style={{ fontSize: 12, color: "#f6c" }}>
+                    📴 オフライン
                   </div>
                 )}
+                {tideSource &&
+                  (() => {
+                    const lab = sourceLabel(tideSource, tideIsStale);
+                    if (!lab) return null;
+                    return (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: lab.color,
+                          whiteSpace: "nowrap",
+                        }}
+                        title="tide736取得元"
+                      >
+                        🌊 {lab.text}
+                      </div>
+                    );
+                  })()}
               </div>
-            )}
+
+              {!baseCapturedAt ? (
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 12,
+                    color: "rgba(255,255,255,0.68)",
+                  }}
+                >
+                  基準時刻が無いので、タイドに紐づけできないよ
+                </div>
+              ) : tideLoading ? (
+                <div style={{ marginTop: 8, fontSize: 12, color: "#0a6" }}>
+                  取得中…
+                </div>
+              ) : tideError ? (
+                <div style={{ marginTop: 8, fontSize: 12, color: "#ff7a7a" }}>
+                  取得失敗 → {tideError}
+                </div>
+              ) : (
+                <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+                  <div
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}
+                  >
+                    🕒 {getTimeBand(baseCapturedAt)}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#6cf" }}>
+                    {tideName ? `🌙 ${tideName}` : "🌙 潮名：—"}
+                    {phase ? ` / 🌊 ${phase}` : ""}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#7ef" }}>
+                    🌊 焼津潮位：
+                    {tideAtShot
+                      ? `${tideAtShot.cm}cm / ${tideAtShot.trend}`
+                      : "—"}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* 釣果 */}
             <div>
@@ -785,14 +931,14 @@ export default function Record({ back }: Props) {
                   <label style={segLabelStyle}>
                     <input
                       type="radio"
-                      name="result"
-                      checked={result === "caught"}
-                      onChange={() => setResult("caught")}
+                      name="outcome"
+                      checked={outcome === "caught"}
+                      onChange={() => setOutcome("caught")}
                       style={segInputHidden}
                     />
-                    <span style={segPill(result === "caught")}>
+                    <span style={segPill(outcome === "caught")}>
                       <span
-                        style={segDot(result === "caught")}
+                        style={segDot(outcome === "caught")}
                         aria-hidden="true"
                       />
                       釣れた
@@ -802,14 +948,14 @@ export default function Record({ back }: Props) {
                   <label style={segLabelStyle}>
                     <input
                       type="radio"
-                      name="result"
-                      checked={result === "skunk"}
-                      onChange={() => setResult("skunk")}
+                      name="outcome"
+                      checked={outcome === "skunk"}
+                      onChange={() => setOutcome("skunk")}
                       style={segInputHidden}
                     />
-                    <span style={segPill(result === "skunk")}>
+                    <span style={segPill(outcome === "skunk")}>
                       <span
-                        style={segDot(result === "skunk")}
+                        style={segDot(outcome === "skunk")}
                         aria-hidden="true"
                       />
                       釣れなかった（ボウズ）
@@ -817,7 +963,7 @@ export default function Record({ back }: Props) {
                   </label>
                 </div>
 
-                {result === "caught" && (
+                {outcome === "caught" && (
                   <div style={{ display: "grid", gap: 10 }}>
                     <div
                       style={{
@@ -868,7 +1014,7 @@ export default function Record({ back }: Props) {
                     <div
                       style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}
                     >
-                      ※魚種が空なら「不明」として保存するよ（後で分析に使えるからね）
+                      ※魚種が空なら「不明」で保存するよ（分析に効く）
                     </div>
                   </div>
                 )}
@@ -914,24 +1060,20 @@ export default function Record({ back }: Props) {
                 {saving ? "保存中..." : "💾 記録する"}
               </button>
 
-              {photo && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const ok = confirm(
-                      "入力内容をリセットして、最初からやり直す？",
-                    );
-                    if (!ok) return;
-                    resetPhotoStates();
-                    resetResultStates();
-                    setMemo("");
-                  }}
-                  className="glass"
-                  style={dangerBtn}
-                >
-                  ↺ リセット
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const ok = confirm(
+                    "入力内容をリセットして、最初からやり直す？",
+                  );
+                  if (!ok) return;
+                  resetAll();
+                }}
+                className="glass"
+                style={dangerBtn}
+              >
+                ↺ リセット
+              </button>
             </div>
 
             {!resultOk && (
