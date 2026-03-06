@@ -5,6 +5,9 @@ export type TripOutcome = "caught" | "skunk";
 export type TripTimeBand = "morning" | "day" | "evening" | "night" | "unknown";
 export type TideTrend = "up" | "down" | "flat" | "unknown";
 
+export type SpotType = "port" | "surf";
+export type WaterClarity = "clear" | "normal" | "muddy";
+
 // ルアーは“ジャンル”だけ（モデル名は入れない方針）
 export type LureType =
   | "metaljig"
@@ -31,17 +34,30 @@ export type TripRecord = {
   // 分析軸
   timeBand: TripTimeBand;
 
-  // ✅ 追加：ルアージャンル
+  // ✅ 互換・暫定用（将来的には TripFish.lureType を主に使う）
   lureType?: LureType | null;
+
+  // ✅ 追加：釣り場タイプ
+  spotType?: SpotType | null;
+
+  // ✅ 追加：濁り
+  waterClarity?: WaterClarity | null;
+
+  // ✅ 追加：見えベイト
+  baitPresent?: boolean | null;
+
+  // ✅ 追加：EXIF由来の位置
+  lat?: number | null;
+  lon?: number | null;
 
   // 潮（tide736 由来のスナップショット）
   tideDayKey?: string | null; // YYYY-MM-DD
-  tideName?: string | null; // 大潮/中潮...
+  tideName?: string | null; // 大潮 / 中潮 / 小潮 / 長潮 / 若潮 ...
   tidePhase?: string | null; // フェーズ
   tideTrend?: TideTrend | null;
   tideCm?: number | null;
 
-  // 気象（後で実装）
+  // 気象（あとで実装）
   weatherCode?: number | null;
   windSpeedMs?: number | null;
   windDirDeg?: number | null;
@@ -59,7 +75,10 @@ export type TripFish = {
   sizeCm?: number | null;
   count?: number | null;
 
-  // ✅ 追加：分析用に timeBand を冗長保持（RecordAnalysis.ts が fish.timeBand を参照しても死なない）
+  // ✅ 魚ごとのルアージャンル
+  lureType?: LureType | null;
+
+  // ✅ 分析用に保持（魚ごとのヒット時間帯）
   timeBand?: TripTimeBand | null;
 
   createdAt: string; // ISO
@@ -95,7 +114,7 @@ export type TideCacheEntry = {
 
 /**
  * ✅ 互換シム（ビルド通すため）
- * 旧 catchTransfer / stats / RecordAnalysis(旧) が参照している CatchRecord / db.catches を一時的に提供する。
+ * 旧 catchTransfer / stats / 旧分析系が参照している CatchRecord / db.catches を一時的に提供する。
  * 互換不要方針なので、旧ファイルをTrip版に置き換えたら削除してOK。
  */
 export type CatchRecord = {
@@ -122,7 +141,6 @@ class AppDB extends Dexie {
   constructor() {
     super("appdb");
 
-    // v1 -> v2: schema（indexes）変更のため version を上げる
     this.version(1).stores({
       trips:
         "++id, createdAt, startedAt, endedAt, pointId, outcome, timeBand, tideDayKey, tideName, tidePhase, tideTrend, weatherCode",
@@ -133,25 +151,36 @@ class AppDB extends Dexie {
       catches: "++id, createdAt, capturedAt, result",
     });
 
-    this.version(2)
-      .stores({
-        // ✅ lureType をインデックスに追加（分析で絞り込みしやすい）
-        trips:
-          "++id, createdAt, startedAt, endedAt, pointId, outcome, timeBand, lureType, tideDayKey, tideName, tidePhase, tideTrend, weatherCode",
+    this.version(2).stores({
+      trips:
+        "++id, createdAt, startedAt, endedAt, pointId, outcome, timeBand, lureType, tideDayKey, tideName, tidePhase, tideTrend, weatherCode",
+      tripFish:
+        "++id, tripId, species, timeBand, createdAt, [tripId+species], [tripId+timeBand], [tripId+species+timeBand]",
+      tripPhotos:
+        "++id, tripId, createdAt, capturedAt, isCover, order, [tripId+order], [tripId+isCover]",
+      tideCache: "key, day, pc, hc, fetchedAt",
+      catches: "++id, createdAt, capturedAt, result",
+    });
 
-        // ✅ timeBand をインデックスに追加（魚→時間帯集計が速い）
+    this.version(3)
+      .stores({
+        // ✅ 分析対応正式版
+        trips:
+          "++id, createdAt, startedAt, endedAt, pointId, outcome, timeBand, lureType, spotType, waterClarity, baitPresent, lat, lon, tideDayKey, tideName, tidePhase, tideTrend, weatherCode",
+
         tripFish:
-          "++id, tripId, species, timeBand, createdAt, [tripId+species], [tripId+timeBand], [tripId+species+timeBand]",
+          "++id, tripId, species, lureType, timeBand, createdAt, [tripId+species], [tripId+lureType], [tripId+timeBand], [tripId+species+timeBand]",
 
         tripPhotos:
           "++id, tripId, createdAt, capturedAt, isCover, order, [tripId+order], [tripId+isCover]",
+
         tideCache: "key, day, pc, hc, fetchedAt",
 
-        // ✅ 互換シム（最小でOK）
+        // ✅ 互換シム
         catches: "++id, createdAt, capturedAt, result",
       })
       .upgrade(async () => {
-        // 運用前想定。必要なら将来ここで既存データ補完もできる。
+        // 運用前想定。既存データ補完は今は不要。
       });
   }
 }
