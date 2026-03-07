@@ -90,10 +90,39 @@ function SmartButton({
     lineHeight: 0,
     WebkitTapHighlightColor: "transparent",
     opacity: disabled ? 0.55 : 1,
+    width: "100%",
+  };
+
+  // ✅ 画像ありでも外枠のガラスが効く
+  const frameStyle: CSSProperties = {
+    width: "100%",
+    borderRadius: 20,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.42 + 0.02))",
+    boxShadow:
+      "0 10px 26px rgba(0,0,0,0.20), inset 0 0 0 1px rgba(255,255,255,0.06)",
+    backdropFilter: "blur(var(--glass-blur-px,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur-px,10px))",
+    overflow: "hidden",
+    position: "relative",
+  };
+
+  const imageWrapStyle: CSSProperties = {
+    width: "100%",
+    padding: 6,
+    boxSizing: "border-box",
+  };
+
+  const imageStyle: CSSProperties = {
+    display: "block",
+    width: "100%",
+    height: "auto",
+    borderRadius: 14,
   };
 
   const fallbackStyle: CSSProperties = {
     width: "100%",
+    minHeight: 82,
     borderRadius: 18,
     border: "1px solid rgba(255,255,255,0.18)",
     background: "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.42 + 0.02))",
@@ -110,6 +139,7 @@ function SmartButton({
     textAlign: "left",
     lineHeight: 1.2,
     userSelect: "none",
+    boxSizing: "border-box",
   };
 
   const left: CSSProperties = {
@@ -165,8 +195,6 @@ function SmartButton({
     paddingLeft: 8,
   };
 
-  const showFallback = failed;
-
   return (
     <button
       type="button"
@@ -175,7 +203,7 @@ function SmartButton({
       style={{ ...btnBase, ...style }}
       className="home-smart-btn"
     >
-      {showFallback ? (
+      {failed ? (
         <div className="glass" style={fallbackStyle}>
           <div style={left}>
             <div style={iconStyle} aria-hidden="true">
@@ -191,14 +219,18 @@ function SmartButton({
           </div>
         </div>
       ) : (
-        <img
-          className="home-img-btn__img"
-          src={src}
-          alt={alt}
-          draggable={false}
-          onError={() => setFailed(true)}
-          style={{ display: "block", width: "100%", height: "auto" }}
-        />
+        <div className="glass" style={frameStyle}>
+          <div style={imageWrapStyle}>
+            <img
+              className="home-img-btn__img"
+              src={src}
+              alt={alt}
+              draggable={false}
+              onError={() => setFailed(true)}
+              style={imageStyle}
+            />
+          </div>
+        </div>
       )}
     </button>
   );
@@ -231,7 +263,7 @@ export default function Home({ go, goSecret }: Props) {
   const btnChat = "/assets/buttons/btn-chat.png";
   const btnSettings = "/assets/buttons/btn-settings.png";
 
-  // ===== ✅ 画面内フィット（はみ出す時だけ全体を縮小） =====
+  // ===== 画面内フィット =====
   const fitOuterRef = useRef<HTMLDivElement | null>(null);
   const fitInnerRef = useRef<HTMLDivElement | null>(null);
   const [fitScale, setFitScale] = useState<number>(1);
@@ -399,7 +431,7 @@ export default function Home({ go, goSecret }: Props) {
 
         .home-actions-scale{
           --btnw:clamp(210px,22vw,320px);
-          --gapy:clamp(6px,1.1vh,12px);
+          --gapy:clamp(8px,1.2vh,14px);
           display:grid;
           gap:var(--gapy);
           justify-content:center;
@@ -427,7 +459,7 @@ export default function Home({ go, goSecret }: Props) {
             padding-right:8px;
             transform:scale(0.92);
             transform-origin: top center;
-            --gapy:clamp(2px,0.45vh,7px);
+            --gapy:clamp(4px,0.65vh,8px);
             --btnw:100%;
           }
           .home-grid{ justify-items:center; }
