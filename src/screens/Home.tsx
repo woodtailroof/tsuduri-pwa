@@ -61,8 +61,6 @@ type SmartBtnProps = {
   alt: string;
   onClick: () => void;
   style?: CSSProperties;
-
-  /** 画像が無い/壊れてる時に出す代替 */
   fallbackLabel: string;
   fallbackSub?: string;
   fallbackIcon?: string;
@@ -97,12 +95,13 @@ function SmartButton({
   const fallbackStyle: CSSProperties = {
     width: "100%",
     borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.16)",
-    background: "rgba(255,255,255,0.08)",
-    boxShadow: "0 10px 26px rgba(0,0,0,0.22), inset 0 0 0 1px rgba(0,0,0,0.14)",
-    backdropFilter: "blur(var(--glass-blur,10px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
-    color: "rgba(255,255,255,0.92)",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.42 + 0.02))",
+    boxShadow:
+      "0 10px 26px rgba(0,0,0,0.20), inset 0 0 0 1px rgba(255,255,255,0.06)",
+    backdropFilter: "blur(var(--glass-blur-px,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur-px,10px))",
+    color: "rgba(255,255,255,0.95)",
     padding: "14px 16px",
     display: "flex",
     alignItems: "center",
@@ -126,10 +125,12 @@ function SmartButton({
     borderRadius: 14,
     display: "grid",
     placeItems: "center",
-    background: "rgba(0,0,0,0.18)",
+    background: "rgba(0,0,0,calc(var(--glass-alpha,0.22) * 0.45 + 0.06))",
     border: "1px solid rgba(255,255,255,0.14)",
     flex: "0 0 auto",
     fontSize: 18,
+    backdropFilter: "blur(calc(var(--glass-blur-px,10px) * 0.7))",
+    WebkitBackdropFilter: "blur(calc(var(--glass-blur-px,10px) * 0.7))",
   };
 
   const textWrap: CSSProperties = {
@@ -145,20 +146,22 @@ function SmartButton({
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
+    lineHeight: 1.15,
   };
 
   const subStyle: CSSProperties = {
     fontSize: 12,
-    color: "rgba(255,255,255,0.68)",
+    color: "rgba(255,255,255,0.72)",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
+    lineHeight: 1.1,
   };
 
   const chevron: CSSProperties = {
     flex: "0 0 auto",
     fontSize: 16,
-    color: "rgba(255,255,255,0.72)",
+    color: "rgba(255,255,255,0.76)",
     paddingLeft: 8,
   };
 
@@ -223,7 +226,7 @@ export default function Home({ go, goSecret }: Props) {
   const logoSrc = "/assets/logo/logo-title.png";
   const btnRecord = "/assets/buttons/btn-record.png";
   const btnHistory = "/assets/buttons/btn-history.png";
-  const btnAnalysis = "/assets/buttons/btn-analysis.png"; // ✅ 無くてもOK（fallback表示）
+  const btnAnalysis = "/assets/buttons/btn-analysis.png";
   const btnWeather = "/assets/buttons/btn-weather.png";
   const btnChat = "/assets/buttons/btn-chat.png";
   const btnSettings = "/assets/buttons/btn-settings.png";
@@ -357,7 +360,7 @@ export default function Home({ go, goSecret }: Props) {
           width:min(96vw,1320px);
           height:clamp(140px,28dvh,300px);
           min-height:0;
-          position:relative; /* ✅ ここに秘密入口を重ねる */
+          position:relative;
         }
         @media (max-width:720px){
           .home-logo-box{
@@ -501,7 +504,6 @@ export default function Home({ go, goSecret }: Props) {
                     alt="釣嫁ぷろじぇくと"
                   />
 
-                  {/* ✅ 秘密入口: ロゴの上にだけ当たり判定を重ねる */}
                   {typeof goSecret === "function" && (
                     <SecretPortalHotspot
                       onUnlock={goSecret}
@@ -538,7 +540,6 @@ export default function Home({ go, goSecret }: Props) {
                         fallbackIcon="🗃"
                       />
 
-                      {/* ✅ 追加：釣行分析（画像が無いならガラスボタンが出る） */}
                       <SmartButton
                         src={btnAnalysis}
                         alt="釣行分析"
@@ -585,11 +586,8 @@ export default function Home({ go, goSecret }: Props) {
                 </div>
               </div>
             </div>
-            {/* /home-inner */}
           </div>
-          {/* /home-fit-inner */}
         </div>
-        {/* /home-fit */}
       </div>
     </PageShell>
   );

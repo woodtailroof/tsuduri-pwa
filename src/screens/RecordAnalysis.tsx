@@ -4,15 +4,6 @@ import PageShell from "../components/PageShell";
 import { useAppSettings } from "../lib/appSettings";
 import { db, type TripFish, type TripRecord } from "../db";
 
-/**
- * ✅ 釣果分析（TripRecord / TripFish 前提）
- * - timeBand は TripRecord にある（TripFish には無い）ので join して集計する
- * - lureType はまだDBに無い想定なので、存在する場合だけ拾う（将来追加に備えて安全に）
- *
- * 注意：
- * - 運用開始前で互換不要、という方針に沿って「今のDBを正」にしている
- */
-
 type Props = {
   back: () => void;
 };
@@ -51,13 +42,14 @@ function monthKeyFromISO(iso: string): string | null {
 }
 
 function safeRate(caught: number, total: number): number {
-  if (!Number.isFinite(caught) || !Number.isFinite(total) || total <= 0)
+  if (!Number.isFinite(caught) || !Number.isFinite(total) || total <= 0) {
     return 0;
+  }
   return caught / total;
 }
 
 function fmtPct(x: number): string {
-  const v = Math.round(clamp(x, 0, 1) * 1000) / 10; // 0.1%刻み
+  const v = Math.round(clamp(x, 0, 1) * 1000) / 10;
   return `${v.toFixed(1)}%`;
 }
 
@@ -70,13 +62,10 @@ function normalizeSpecies(raw: string | null | undefined): string {
   return s ? s : "不明";
 }
 
-/**
- * TripRecord に後で足す予定の項目を “あるなら拾う” 用
- */
 type LureType =
-  | "metal_jig"
+  | "metaljig"
   | "minnow"
-  | "sinking_pencil"
+  | "sinkingpencil"
   | "top"
   | "worm"
   | "blade"
@@ -85,9 +74,9 @@ type LureType =
   | "unknown";
 
 const LURE_LABEL: Record<LureType, string> = {
-  metal_jig: "メタルジグ",
+  metaljig: "メタルジグ",
   minnow: "ミノー",
-  sinking_pencil: "シンペン",
+  sinkingpencil: "シンペン",
   top: "トップ",
   worm: "ワーム",
   blade: "ブレード",
@@ -96,22 +85,20 @@ const LURE_LABEL: Record<LureType, string> = {
   unknown: "不明",
 };
 
-function getLureTypeFromTrip(trip: TripRecord): LureType {
-  // 将来 TripRecord に lureType を追加したときにそのまま効くようにする
-  const v = (trip as unknown as { lureType?: unknown }).lureType;
-  if (typeof v !== "string") return "unknown";
+function getLureTypeFromFish(fish: TripFish): LureType {
+  const v = fish.lureType;
   if (
-    v === "metal_jig" ||
+    v === "metaljig" ||
     v === "minnow" ||
-    v === "sinking_pencil" ||
+    v === "sinkingpencil" ||
     v === "top" ||
     v === "worm" ||
     v === "blade" ||
     v === "bigbait" ||
-    v === "other" ||
-    v === "unknown"
-  )
+    v === "other"
+  ) {
     return v;
+  }
   return "unknown";
 }
 
@@ -120,7 +107,7 @@ type JoinedFish = {
   tripCreatedAt: string;
   tripStartedAt: string;
   timeBand: TripRecord["timeBand"];
-  tideName: string; // nullは「—」で吸収
+  tideName: string;
   tidePhase: string;
   tideTrend: string;
   weatherCode: number | null;
@@ -145,7 +132,6 @@ type JoinedTrip = {
   weatherCode: number | null;
   windSpeedMs: number | null;
   waveHeightM: number | null;
-  lureType: LureType;
 };
 
 function makeTripMap(trips: Array<TripRecord & { id: number }>) {
@@ -170,50 +156,45 @@ function sortDescByValue(a: RowKV, b: RowKV) {
   return b.value - a.value;
 }
 
-function sectionTitleStyle(): CSSProperties {
-  return { fontWeight: 900, fontSize: 14 };
-}
-
 export default function RecordAnalysis({ back }: Props) {
   const { settings } = useAppSettings();
 
   const glassVars = {
     "--glass-alpha": String(clamp(settings.glassAlpha ?? 0.22, 0, 0.6)),
-    "--glass-blur": `${clamp(settings.glassBlur ?? 10, 0, 40)}px`,
+    "--glass-blur": `${clamp(settings.glassBlur ?? 10, 0, 40)}`,
+    "--glass-blur-px": `${clamp(settings.glassBlur ?? 10, 0, 40)}px`,
   } as unknown as CSSProperties;
 
   const cardStyle: CSSProperties = {
     borderRadius: 16,
     padding: 12,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.32))",
-    boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
-    backdropFilter: "blur(var(--glass-blur,10px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.40 + 0.02))",
+    boxShadow:
+      "0 6px 18px rgba(0,0,0,0.16), inset 0 0 0 1px rgba(255,255,255,0.04)",
+    backdropFilter: "blur(var(--glass-blur-px,10px))",
+    WebkitBackdropFilter: "blur(var(--glass-blur-px,10px))",
   };
 
   const pillStyle: CSSProperties = {
     borderRadius: 999,
-    padding: "6px 10px",
+    padding: "8px 12px",
     border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(0,0,0,0.20)",
-    color: "rgba(255,255,255,0.78)",
+    background: "rgba(0,0,0,calc(var(--glass-alpha,0.22) * 0.45 + 0.08))",
+    color: "rgba(255,255,255,0.86)",
     fontSize: 12,
     display: "inline-flex",
     alignItems: "center",
     gap: 8,
     whiteSpace: "nowrap",
-    backdropFilter: "blur(var(--glass-blur,10px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+    backdropFilter: "blur(calc(var(--glass-blur-px,10px) * 0.9))",
+    WebkitBackdropFilter: "blur(calc(var(--glass-blur-px,10px) * 0.9))",
   };
 
   const [loading, setLoading] = useState(false);
   const [trips, setTrips] = useState<Array<TripRecord & { id: number }>>([]);
   const [fish, setFish] = useState<Array<TripFish & { id: number }>>([]);
-
-  const [error, setError] = useState<string>("");
-
-  // 表示オプション（今は最低限）
+  const [error, setError] = useState("");
   const [limitTop, setLimitTop] = useState<number>(8);
 
   async function reload() {
@@ -239,26 +220,19 @@ export default function RecordAnalysis({ back }: Props) {
   const joinedTrips: JoinedTrip[] = useMemo(() => {
     return trips
       .filter((t) => typeof t.id === "number" && Number.isFinite(t.id))
-      .map((t) => {
-        const id = t.id as number;
-        return {
-          id,
-          createdAt: t.createdAt,
-          startedAt: t.startedAt,
-          timeBand: t.timeBand ?? "unknown",
-          outcome: t.outcome ?? "skunk",
-
-          tideName: labelNullDash(t.tideName ?? null),
-          tidePhase: labelNullDash(t.tidePhase ?? null),
-          tideTrend: labelTrend(t.tideTrend ?? "unknown"),
-
-          weatherCode: typeof t.weatherCode === "number" ? t.weatherCode : null,
-          windSpeedMs: typeof t.windSpeedMs === "number" ? t.windSpeedMs : null,
-          waveHeightM: typeof t.waveHeightM === "number" ? t.waveHeightM : null,
-
-          lureType: getLureTypeFromTrip(t),
-        };
-      });
+      .map((t) => ({
+        id: t.id as number,
+        createdAt: t.createdAt,
+        startedAt: t.startedAt,
+        timeBand: t.timeBand ?? "unknown",
+        outcome: t.outcome ?? "skunk",
+        tideName: labelNullDash(t.tideName ?? null),
+        tidePhase: labelNullDash(t.tidePhase ?? null),
+        tideTrend: labelTrend(t.tideTrend ?? "unknown"),
+        weatherCode: typeof t.weatherCode === "number" ? t.weatherCode : null,
+        windSpeedMs: typeof t.windSpeedMs === "number" ? t.windSpeedMs : null,
+        waveHeightM: typeof t.waveHeightM === "number" ? t.waveHeightM : null,
+      }));
   }, [trips]);
 
   const joinedFish: JoinedFish[] = useMemo(() => {
@@ -270,7 +244,7 @@ export default function RecordAnalysis({ back }: Props) {
       if (typeof tripId !== "number" || !Number.isFinite(tripId)) continue;
 
       const t = map.get(tripId);
-      if (!t) continue; // 孤児データは無視（運用前なら基本起きない想定）
+      if (!t) continue;
 
       out.push({
         tripId,
@@ -283,8 +257,7 @@ export default function RecordAnalysis({ back }: Props) {
         weatherCode: typeof t.weatherCode === "number" ? t.weatherCode : null,
         windSpeedMs: typeof t.windSpeedMs === "number" ? t.windSpeedMs : null,
         waveHeightM: typeof t.waveHeightM === "number" ? t.waveHeightM : null,
-        lureType: getLureTypeFromTrip(t),
-
+        lureType: getLureTypeFromFish(f),
         species: normalizeSpecies(f.species),
         sizeCm:
           typeof f.sizeCm === "number" && Number.isFinite(f.sizeCm)
@@ -317,14 +290,15 @@ export default function RecordAnalysis({ back }: Props) {
   }, [joinedFish, limitTop]);
 
   const timeBandStats = useMemo(() => {
-    // trip単位：釣れた/総数
     const totalBy = new Map<TripRecord["timeBand"], number>();
     const caughtBy = new Map<TripRecord["timeBand"], number>();
 
     for (const t of joinedTrips) {
       const b = t.timeBand ?? "unknown";
       totalBy.set(b, (totalBy.get(b) ?? 0) + 1);
-      if (t.outcome === "caught") caughtBy.set(b, (caughtBy.get(b) ?? 0) + 1);
+      if (t.outcome === "caught") {
+        caughtBy.set(b, (caughtBy.get(b) ?? 0) + 1);
+      }
     }
 
     const rows = TIMEBANDS.map((b) => {
@@ -338,7 +312,6 @@ export default function RecordAnalysis({ back }: Props) {
       };
     });
 
-    // 表示優先：総数が多い順（同数なら釣れた率）
     rows.sort((a, b) => {
       if (b.total !== a.total) return b.total - a.total;
       return b.rate - a.rate;
@@ -354,7 +327,9 @@ export default function RecordAnalysis({ back }: Props) {
     for (const t of joinedTrips) {
       const k = labelNullDash(t.tideName);
       totalBy.set(k, (totalBy.get(k) ?? 0) + 1);
-      if (t.outcome === "caught") caughtBy.set(k, (caughtBy.get(k) ?? 0) + 1);
+      if (t.outcome === "caught") {
+        caughtBy.set(k, (caughtBy.get(k) ?? 0) + 1);
+      }
     }
 
     const rows = Array.from(totalBy.entries()).map(([k, total]) => {
@@ -371,13 +346,13 @@ export default function RecordAnalysis({ back }: Props) {
   }, [joinedTrips, limitTop]);
 
   const speciesByMonth = useMemo(() => {
-    // 月 → 魚種 → 件数（TripFishベース）
     const monthMap = new Map<string, Map<string, number>>();
 
     for (const jf of joinedFish) {
       const mk =
         monthKeyFromISO(jf.tripStartedAt) ?? monthKeyFromISO(jf.tripCreatedAt);
       if (!mk) continue;
+
       const sp = normalizeSpecies(jf.species);
 
       if (!monthMap.has(mk)) monthMap.set(mk, new Map<string, number>());
@@ -385,7 +360,7 @@ export default function RecordAnalysis({ back }: Props) {
       inner.set(sp, (inner.get(sp) ?? 0) + 1);
     }
 
-    const months = Array.from(monthMap.keys()).sort((a, b) => (a < b ? 1 : -1)); // 新しい月が上
+    const months = Array.from(monthMap.keys()).sort((a, b) => (a < b ? 1 : -1));
     const out: Array<{
       month: string;
       top: RowKV[];
@@ -412,28 +387,21 @@ export default function RecordAnalysis({ back }: Props) {
   }, [joinedFish, limitTop]);
 
   const lureStats = useMemo(() => {
-    // lureType が実装されていない間は、全部 unknown に寄る。それでも壊れないのが狙い。
     const totalBy = new Map<LureType, number>();
-    const caughtBy = new Map<LureType, number>();
 
-    for (const t of joinedTrips) {
-      const k = t.lureType ?? "unknown";
+    for (const f of joinedFish) {
+      const k = f.lureType ?? "unknown";
       totalBy.set(k, (totalBy.get(k) ?? 0) + 1);
-      if (t.outcome === "caught") caughtBy.set(k, (caughtBy.get(k) ?? 0) + 1);
     }
 
-    const rows = Array.from(totalBy.entries()).map(([k, total]) => {
-      const caught = caughtBy.get(k) ?? 0;
-      return { key: k, total, caught, rate: safeRate(caught, total) };
-    });
+    const rows = Array.from(totalBy.entries()).map(([k, total]) => ({
+      key: k,
+      total,
+    }));
 
-    rows.sort((a, b) => {
-      if (b.total !== a.total) return b.total - a.total;
-      return b.rate - a.rate;
-    });
-
+    rows.sort((a, b) => b.total - a.total);
     return rows.slice(0, Math.max(1, limitTop));
-  }, [joinedTrips, limitTop]);
+  }, [joinedFish, limitTop]);
 
   const hasEnvAny = useMemo(() => {
     return joinedTrips.some(
@@ -454,7 +422,7 @@ export default function RecordAnalysis({ back }: Props) {
             lineHeight: 1.15,
           }}
         >
-          📊 釣果分析
+          📊 釣行分析
         </h1>
       }
       titleLayout="left"
@@ -491,7 +459,9 @@ export default function RecordAnalysis({ back }: Props) {
               value={String(limitTop)}
               onChange={(e) => {
                 const n = Number(e.target.value);
-                if (Number.isFinite(n) && n >= 3 && n <= 20) setLimitTop(n);
+                if (Number.isFinite(n) && n >= 3 && n <= 20) {
+                  setLimitTop(n);
+                }
               }}
               style={{ marginLeft: 6 }}
             >
@@ -510,9 +480,10 @@ export default function RecordAnalysis({ back }: Props) {
           </div>
         )}
 
-        {/* 時間帯 */}
         <div style={cardStyle}>
-          <div style={sectionTitleStyle()}>🕒 時間帯別（投稿単位）</div>
+          <div style={{ fontWeight: 900, fontSize: 14 }}>
+            🕒 時間帯別（投稿単位）
+          </div>
           <div style={{ height: 8 }} />
 
           <div style={{ display: "grid", gap: 8 }}>
@@ -536,7 +507,8 @@ export default function RecordAnalysis({ back }: Props) {
                   style={{
                     height: 10,
                     borderRadius: 999,
-                    background: "rgba(255,255,255,0.12)",
+                    background:
+                      "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.22 + 0.04))",
                     overflow: "hidden",
                     border: "1px solid rgba(255,255,255,0.10)",
                   }}
@@ -546,7 +518,7 @@ export default function RecordAnalysis({ back }: Props) {
                     style={{
                       width: `${Math.round(r.rate * 100)}%`,
                       height: "100%",
-                      background: "rgba(255,77,109,0.75)",
+                      background: "rgba(255,77,109,0.78)",
                     }}
                   />
                 </div>
@@ -559,14 +531,15 @@ export default function RecordAnalysis({ back }: Props) {
           </div>
 
           <div style={{ height: 10 }} />
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
             ※「釣れた/釣れなかった」は TripRecord.outcome 基準（投稿単位）
           </div>
         </div>
 
-        {/* 潮名 */}
         <div style={cardStyle}>
-          <div style={sectionTitleStyle()}>🌙 潮名別（投稿単位）</div>
+          <div style={{ fontWeight: 900, fontSize: 14 }}>
+            🌙 潮名別（投稿単位）
+          </div>
           <div style={{ height: 8 }} />
 
           {tideNameStats.length === 0 ? (
@@ -585,15 +558,14 @@ export default function RecordAnalysis({ back }: Props) {
                     alignItems: "center",
                   }}
                 >
-                  <div style={{ fontWeight: 800, ...{ minWidth: 0 } }}>
-                    {r.key}
-                  </div>
+                  <div style={{ fontWeight: 800, minWidth: 0 }}>{r.key}</div>
 
                   <div
                     style={{
                       height: 10,
                       borderRadius: 999,
-                      background: "rgba(255,255,255,0.12)",
+                      background:
+                        "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.22 + 0.04))",
                       overflow: "hidden",
                       border: "1px solid rgba(255,255,255,0.10)",
                     }}
@@ -603,7 +575,7 @@ export default function RecordAnalysis({ back }: Props) {
                       style={{
                         width: `${Math.round(r.rate * 100)}%`,
                         height: "100%",
-                        background: "rgba(102,204,255,0.75)",
+                        background: "rgba(102,204,255,0.80)",
                       }}
                     />
                   </div>
@@ -619,15 +591,15 @@ export default function RecordAnalysis({ back }: Props) {
           )}
 
           <div style={{ height: 10 }} />
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
-            ※潮名は
-            Record保存時点のスナップショット（tide736プレビューをそのまま保存）
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
+            ※潮名は Record保存時点のスナップショット
           </div>
         </div>
 
-        {/* 魚種トップ */}
         <div style={cardStyle}>
-          <div style={sectionTitleStyle()}>🐟 魚種トップ（魚=1行）</div>
+          <div style={{ fontWeight: 900, fontSize: 14 }}>
+            🐟 魚種トップ（魚=1行）
+          </div>
           <div style={{ height: 8 }} />
 
           {topSpecies.length === 0 ? (
@@ -658,14 +630,15 @@ export default function RecordAnalysis({ back }: Props) {
           )}
 
           <div style={{ height: 10 }} />
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
             ※1投稿で複数魚が入る想定なので、投稿数とは一致しないよ
           </div>
         </div>
 
-        {/* 月別×魚種 */}
         <div style={cardStyle}>
-          <div style={sectionTitleStyle()}>🗓 月別 × 魚種（上位）</div>
+          <div style={{ fontWeight: 900, fontSize: 14 }}>
+            🗓 月別 × 魚種（上位）
+          </div>
           <div style={{ height: 8 }} />
 
           {speciesByMonth.length === 0 ? (
@@ -681,7 +654,8 @@ export default function RecordAnalysis({ back }: Props) {
                     borderRadius: 14,
                     padding: 10,
                     border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(0,0,0,0.12)",
+                    background:
+                      "rgba(0,0,0,calc(var(--glass-alpha,0.22) * 0.26 + 0.03))",
                   }}
                 >
                   <div
@@ -730,67 +704,49 @@ export default function RecordAnalysis({ back }: Props) {
           )}
 
           <div style={{ height: 10 }} />
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
             ※月は Trip.startedAt（基準時刻）優先。無い場合は createdAt を使うよ
           </div>
         </div>
 
-        {/* ルアージャンル（将来用） */}
         <div style={cardStyle}>
-          <div style={sectionTitleStyle()}>🧲 ルアージャンル別（投稿単位）</div>
+          <div style={{ fontWeight: 900, fontSize: 14 }}>
+            🧲 ルアージャンル別（魚単位）
+          </div>
           <div style={{ height: 8 }} />
 
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
-            今はDBに lureType が無い想定だから、基本 “不明” に寄るよ。
-            追加した瞬間からこの集計が自然に効くようにしてある🧩
-          </div>
-
-          <div style={{ height: 10 }} />
-          <div style={{ display: "grid", gap: 8 }}>
-            {lureStats.map((r) => (
-              <div
-                key={r.key}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "120px 1fr auto",
-                  gap: 10,
-                  alignItems: "center",
-                }}
-              >
-                <div style={{ fontWeight: 800 }}>
-                  {LURE_LABEL[r.key as LureType] ?? "不明"}
-                </div>
-
+          {lureStats.length === 0 ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+              まだルアーデータが無いよ
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {lureStats.map((r) => (
                 <div
+                  key={r.key}
                   style={{
-                    height: 10,
-                    borderRadius: 999,
-                    background: "rgba(255,255,255,0.12)",
-                    overflow: "hidden",
-                    border: "1px solid rgba(255,255,255,0.10)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    alignItems: "center",
                   }}
-                  title={`釣れた率 ${fmtPct(r.rate)}（釣れた${r.caught}/総数${r.total}）`}
                 >
+                  <div style={{ fontWeight: 800 }}>
+                    {LURE_LABEL[r.key as LureType] ?? "不明"}
+                  </div>
                   <div
-                    style={{
-                      width: `${Math.round(r.rate * 100)}%`,
-                      height: "100%",
-                      background: "rgba(255,209,102,0.75)",
-                    }}
-                  />
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.78)" }}
+                  >
+                    {fmtN(r.total)} 件
+                  </div>
                 </div>
-
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.78)" }}>
-                  {fmtPct(r.rate)}（{fmtN(r.caught)}/{fmtN(r.total)}）
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* 気象はまだ */}
         <div style={cardStyle}>
-          <div style={sectionTitleStyle()}>🌦 天気・風・波</div>
+          <div style={{ fontWeight: 900, fontSize: 14 }}>🌦 天気・風・波</div>
           <div style={{ height: 8 }} />
 
           {hasEnvAny ? (
@@ -799,18 +755,17 @@ export default function RecordAnalysis({ back }: Props) {
             </div>
           ) : (
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
-              まだ未実装（envFetchedAt も null のまま）なので、ここは
-              “保存の仕組み” が入ったら一気に育つ🌱
+              まだ未実装なので、ここは “保存の仕組み” が入ったら一気に育つ🌱
             </div>
           )}
 
           <div style={{ height: 10 }} />
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
-            ※天気は「過去に遡れない問題」があるから、基本は投稿（保存）時点でスナップショット保存が安全
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
+            ※天気は保存時点でスナップショット化するのが安全
           </div>
         </div>
 
-        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
           データ量が少ないうちはブレるけど、週1〜2のペースなら “3か月”
           くらいで偏りが見え始めるよ🎣✨
         </div>
