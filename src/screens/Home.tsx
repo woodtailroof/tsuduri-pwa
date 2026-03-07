@@ -93,16 +93,9 @@ function SmartButton({
     width: "100%",
   };
 
-  // ✅ 画像ありでも外枠のガラスが効く
   const frameStyle: CSSProperties = {
     width: "100%",
     borderRadius: 20,
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.42 + 0.02))",
-    boxShadow:
-      "0 10px 26px rgba(0,0,0,0.20), inset 0 0 0 1px rgba(255,255,255,0.06)",
-    backdropFilter: "blur(var(--glass-blur-px,10px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur-px,10px))",
     overflow: "hidden",
     position: "relative",
   };
@@ -124,13 +117,6 @@ function SmartButton({
     width: "100%",
     minHeight: 82,
     borderRadius: 18,
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.42 + 0.02))",
-    boxShadow:
-      "0 10px 26px rgba(0,0,0,0.20), inset 0 0 0 1px rgba(255,255,255,0.06)",
-    backdropFilter: "blur(var(--glass-blur-px,10px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur-px,10px))",
-    color: "rgba(255,255,255,0.95)",
     padding: "14px 16px",
     display: "flex",
     alignItems: "center",
@@ -155,12 +141,10 @@ function SmartButton({
     borderRadius: 14,
     display: "grid",
     placeItems: "center",
-    background: "rgba(0,0,0,calc(var(--glass-alpha,0.22) * 0.45 + 0.06))",
+    background: "rgba(0,0,0,0.18)",
     border: "1px solid rgba(255,255,255,0.14)",
     flex: "0 0 auto",
     fontSize: 18,
-    backdropFilter: "blur(calc(var(--glass-blur-px,10px) * 0.7))",
-    WebkitBackdropFilter: "blur(calc(var(--glass-blur-px,10px) * 0.7))",
   };
 
   const textWrap: CSSProperties = {
@@ -254,7 +238,6 @@ export default function Home({ go, goSecret }: Props) {
     setError("");
   }
 
-  // ===== assets =====
   const logoSrc = "/assets/logo/logo-title.png";
   const btnRecord = "/assets/buttons/btn-record.png";
   const btnHistory = "/assets/buttons/btn-history.png";
@@ -263,7 +246,6 @@ export default function Home({ go, goSecret }: Props) {
   const btnChat = "/assets/buttons/btn-chat.png";
   const btnSettings = "/assets/buttons/btn-settings.png";
 
-  // ===== 画面内フィット =====
   const fitOuterRef = useRef<HTMLDivElement | null>(null);
   const fitInnerRef = useRef<HTMLDivElement | null>(null);
   const [fitScale, setFitScale] = useState<number>(1);
@@ -272,6 +254,7 @@ export default function Home({ go, goSecret }: Props) {
     if (typeof window === "undefined") return;
 
     let raf = 0;
+
     const calc = () => {
       const outer = fitOuterRef.current;
       const inner = fitInnerRef.current;
@@ -334,7 +317,7 @@ export default function Home({ go, goSecret }: Props) {
         }
         @media (min-width: 821px){
           .home-root{
-            height: calc(100dvh - var(--shell-header-h));
+            height: calc(100dvh - var(--shell-header-h, 0px));
           }
         }
 
@@ -356,8 +339,8 @@ export default function Home({ go, goSecret }: Props) {
 
         @media (max-width:720px){
           .home-fit{
-            place-items: start center;
-            --home-top-nudge: -10px;
+            place-items:start center;
+            --home-top-nudge:-10px;
             padding-top: calc(max(2px, env(safe-area-inset-top)) + var(--home-top-nudge));
           }
         }
@@ -365,23 +348,23 @@ export default function Home({ go, goSecret }: Props) {
         .home-fit-inner{
           width:100%;
           max-width:1700px;
-          transform-origin: top center;
-          will-change: transform;
+          transform-origin:top center;
+          will-change:transform;
         }
 
         .home-inner{
           width:100%;
           min-width:0;
-          padding: clamp(10px, 1.8vw, 16px);
+          padding:clamp(10px, 1.8vw, 16px);
           display:grid;
           grid-template-rows:auto minmax(0,1fr);
-          gap: clamp(2px, 0.8vh, 8px);
+          gap:clamp(2px, 0.8vh, 8px);
           box-sizing:border-box;
         }
 
         .home-safe-logo{
           width:100%;
-          padding-right:clamp(0px,18vw,430px);
+          padding-right:clamp(0px, 18vw, 430px);
           min-width:0;
         }
         @media (max-width:720px){
@@ -389,15 +372,15 @@ export default function Home({ go, goSecret }: Props) {
         }
 
         .home-logo-box{
-          width:min(96vw,1320px);
-          height:clamp(140px,28dvh,300px);
+          width:min(96vw, 1320px);
+          height:clamp(140px, 28dvh, 300px);
           min-height:0;
           position:relative;
         }
         @media (max-width:720px){
           .home-logo-box{
-            width:min(96vw,820px);
-            height:clamp(170px,30dvh,340px);
+            width:min(96vw, 820px);
+            height:clamp(170px, 30dvh, 340px);
             margin:0 auto;
           }
         }
@@ -422,7 +405,7 @@ export default function Home({ go, goSecret }: Props) {
 
         .home-safe-actions{
           width:100%;
-          padding-right:clamp(0px,18vw,430px);
+          padding-right:clamp(0px, 18vw, 430px);
           min-width:0;
         }
         @media (max-width:720px){
@@ -430,8 +413,8 @@ export default function Home({ go, goSecret }: Props) {
         }
 
         .home-actions-scale{
-          --btnw:clamp(210px,22vw,320px);
-          --gapy:clamp(8px,1.2vh,14px);
+          --btnw:clamp(210px, 22vw, 320px);
+          --gapy:clamp(8px, 1.2vh, 14px);
           display:grid;
           gap:var(--gapy);
           justify-content:center;
@@ -453,13 +436,13 @@ export default function Home({ go, goSecret }: Props) {
 
         @media (max-width:720px){
           .home-actions-scale{
-            width:min(48vw,320px);
+            width:min(48vw, 320px);
             justify-content:center;
-            padding-left:max(8px,env(safe-area-inset-left));
+            padding-left:max(8px, env(safe-area-inset-left));
             padding-right:8px;
             transform:scale(0.92);
-            transform-origin: top center;
-            --gapy:clamp(4px,0.65vh,8px);
+            transform-origin:top center;
+            --gapy:clamp(4px, 0.65vh, 8px);
             --btnw:100%;
           }
           .home-grid{ justify-items:center; }
@@ -481,10 +464,10 @@ export default function Home({ go, goSecret }: Props) {
           }}
         >
           <div
+            className="glass"
             style={{
               width: "min(520px,96vw)",
               borderRadius: 14,
-              background: "#0f0f0f",
               color: "#ddd",
               padding: 14,
             }}

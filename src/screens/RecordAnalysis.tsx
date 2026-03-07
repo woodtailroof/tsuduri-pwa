@@ -1,7 +1,6 @@
 // src/screens/RecordAnalysis.tsx
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import PageShell from "../components/PageShell";
-import { useAppSettings } from "../lib/appSettings";
 import { db, type TripFish, type TripRecord } from "../db";
 
 type Props = {
@@ -157,45 +156,37 @@ function sortDescByValue(a: RowKV, b: RowKV) {
 }
 
 export default function RecordAnalysis({ back }: Props) {
-  const { settings } = useAppSettings();
-
-  const glassVars = {
-    "--glass-alpha": String(clamp(settings.glassAlpha ?? 0.22, 0, 0.6)),
-    "--glass-blur": `${clamp(settings.glassBlur ?? 10, 0, 40)}`,
-    "--glass-blur-px": `${clamp(settings.glassBlur ?? 10, 0, 40)}px`,
-  } as unknown as CSSProperties;
+  const [loading, setLoading] = useState(false);
+  const [trips, setTrips] = useState<Array<TripRecord & { id: number }>>([]);
+  const [fish, setFish] = useState<Array<TripFish & { id: number }>>([]);
+  const [error, setError] = useState("");
+  const [limitTop, setLimitTop] = useState<number>(8);
 
   const cardStyle: CSSProperties = {
     borderRadius: 16,
     padding: 12,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.40 + 0.02))",
-    boxShadow:
-      "0 6px 18px rgba(0,0,0,0.16), inset 0 0 0 1px rgba(255,255,255,0.04)",
-    backdropFilter: "blur(var(--glass-blur-px,10px))",
-    WebkitBackdropFilter: "blur(var(--glass-blur-px,10px))",
+    display: "grid",
+    gap: 0,
   };
 
   const pillStyle: CSSProperties = {
     borderRadius: 999,
     padding: "8px 12px",
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(0,0,0,calc(var(--glass-alpha,0.22) * 0.45 + 0.08))",
     color: "rgba(255,255,255,0.86)",
     fontSize: 12,
     display: "inline-flex",
     alignItems: "center",
     gap: 8,
     whiteSpace: "nowrap",
-    backdropFilter: "blur(calc(var(--glass-blur-px,10px) * 0.9))",
-    WebkitBackdropFilter: "blur(calc(var(--glass-blur-px,10px) * 0.9))",
+    lineHeight: 1.1,
   };
 
-  const [loading, setLoading] = useState(false);
-  const [trips, setTrips] = useState<Array<TripRecord & { id: number }>>([]);
-  const [fish, setFish] = useState<Array<TripFish & { id: number }>>([]);
-  const [error, setError] = useState("");
-  const [limitTop, setLimitTop] = useState<number>(8);
+  const subtlePanelStyle: CSSProperties = {
+    borderRadius: 14,
+    padding: 10,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(0,0,0,0.12)",
+  };
 
   async function reload() {
     setLoading(true);
@@ -431,10 +422,12 @@ export default function RecordAnalysis({ back }: Props) {
       onBack={back}
       scrollY="auto"
     >
-      <div style={{ ...glassVars, display: "grid", gap: 12 }}>
+      <div style={{ display: "grid", gap: 12 }}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <span style={pillStyle}>🧾 投稿 {fmtN(totalTrips)} 件</span>
-          <span style={pillStyle}>
+          <span className="glass" style={pillStyle}>
+            🧾 投稿 {fmtN(totalTrips)} 件
+          </span>
+          <span className="glass" style={pillStyle}>
             🎣 釣れた {fmtN(caughtTrips)} 件 /{" "}
             {fmtPct(safeRate(caughtTrips, totalTrips))}
           </span>
@@ -444,7 +437,6 @@ export default function RecordAnalysis({ back }: Props) {
             onClick={reload}
             disabled={loading}
             style={{
-              ...pillStyle,
               cursor: loading ? "not-allowed" : "pointer",
               opacity: loading ? 0.55 : 1,
             }}
@@ -453,7 +445,11 @@ export default function RecordAnalysis({ back }: Props) {
             {loading ? "読み込み中…" : "↻ 更新"}
           </button>
 
-          <label style={pillStyle} title="上位の表示件数">
+          <label
+            className="glass"
+            style={{ ...pillStyle, lineHeight: 1 }}
+            title="上位の表示件数"
+          >
             上位
             <select
               value={String(limitTop)}
@@ -475,12 +471,15 @@ export default function RecordAnalysis({ back }: Props) {
         </div>
 
         {error && (
-          <div style={{ ...cardStyle, color: "#ff7a7a" }}>
+          <div
+            className="glass-panel strong"
+            style={{ ...cardStyle, color: "#ff7a7a" }}
+          >
             読み込みエラー：{error}
           </div>
         )}
 
-        <div style={cardStyle}>
+        <div className="glass-panel strong" style={cardStyle}>
           <div style={{ fontWeight: 900, fontSize: 14 }}>
             🕒 時間帯別（投稿単位）
           </div>
@@ -507,8 +506,7 @@ export default function RecordAnalysis({ back }: Props) {
                   style={{
                     height: 10,
                     borderRadius: 999,
-                    background:
-                      "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.22 + 0.04))",
+                    background: "rgba(255,255,255,0.08)",
                     overflow: "hidden",
                     border: "1px solid rgba(255,255,255,0.10)",
                   }}
@@ -536,7 +534,7 @@ export default function RecordAnalysis({ back }: Props) {
           </div>
         </div>
 
-        <div style={cardStyle}>
+        <div className="glass-panel strong" style={cardStyle}>
           <div style={{ fontWeight: 900, fontSize: 14 }}>
             🌙 潮名別（投稿単位）
           </div>
@@ -564,8 +562,7 @@ export default function RecordAnalysis({ back }: Props) {
                     style={{
                       height: 10,
                       borderRadius: 999,
-                      background:
-                        "rgba(255,255,255,calc(var(--glass-alpha,0.22) * 0.22 + 0.04))",
+                      background: "rgba(255,255,255,0.08)",
                       overflow: "hidden",
                       border: "1px solid rgba(255,255,255,0.10)",
                     }}
@@ -596,7 +593,7 @@ export default function RecordAnalysis({ back }: Props) {
           </div>
         </div>
 
-        <div style={cardStyle}>
+        <div className="glass-panel strong" style={cardStyle}>
           <div style={{ fontWeight: 900, fontSize: 14 }}>
             🐟 魚種トップ（魚=1行）
           </div>
@@ -635,7 +632,7 @@ export default function RecordAnalysis({ back }: Props) {
           </div>
         </div>
 
-        <div style={cardStyle}>
+        <div className="glass-panel strong" style={cardStyle}>
           <div style={{ fontWeight: 900, fontSize: 14 }}>
             🗓 月別 × 魚種（上位）
           </div>
@@ -648,16 +645,7 @@ export default function RecordAnalysis({ back }: Props) {
           ) : (
             <div style={{ display: "grid", gap: 12 }}>
               {speciesByMonth.map((m) => (
-                <div
-                  key={m.month}
-                  style={{
-                    borderRadius: 14,
-                    padding: 10,
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    background:
-                      "rgba(0,0,0,calc(var(--glass-alpha,0.22) * 0.26 + 0.03))",
-                  }}
-                >
+                <div key={m.month} className="glass" style={subtlePanelStyle}>
                   <div
                     style={{
                       display: "flex",
@@ -709,7 +697,7 @@ export default function RecordAnalysis({ back }: Props) {
           </div>
         </div>
 
-        <div style={cardStyle}>
+        <div className="glass-panel strong" style={cardStyle}>
           <div style={{ fontWeight: 900, fontSize: 14 }}>
             🧲 ルアージャンル別（魚単位）
           </div>
@@ -745,7 +733,7 @@ export default function RecordAnalysis({ back }: Props) {
           )}
         </div>
 
-        <div style={cardStyle}>
+        <div className="glass-panel strong" style={cardStyle}>
           <div style={{ fontWeight: 900, fontSize: 14 }}>🌦 天気・風・波</div>
           <div style={{ height: 8 }} />
 
