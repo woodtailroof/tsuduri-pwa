@@ -68,6 +68,8 @@ function stableString(v: unknown): string {
   return String(v);
 }
 
+type CSSVars = Record<`--${string}`, string>;
+
 export default function PageShell(props: Props) {
   const title = props.title;
   const subtitle = props.subtitle;
@@ -128,7 +130,7 @@ export default function PageShell(props: Props) {
     );
   }, [routeKey]);
 
-  const shellStyle: CSSProperties = {
+  const shellStyle: CSSProperties & CSSVars = {
     width: "100%",
     height: "100%",
     minHeight: 0,
@@ -136,7 +138,7 @@ export default function PageShell(props: Props) {
     position: "relative",
     display: "flex",
     flexDirection: "column",
-    ["--shell-header-h" as const]: `${effectiveHeaderH}px`,
+    "--shell-header-h": `${effectiveHeaderH}px`,
   };
 
   const contentOuterStyle: CSSProperties = {
