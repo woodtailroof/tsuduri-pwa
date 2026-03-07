@@ -1,5 +1,6 @@
 // src/screens/AlbumViewer.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAppSettings } from "../lib/appSettings";
 
 type Props = {
   back: () => void;
@@ -17,8 +18,21 @@ function safeText(e: unknown): string {
   return String(e);
 }
 
+function appendAssetVersion(url: string, assetVersion: string) {
+  const u = (url ?? "").trim();
+  const av = (assetVersion ?? "").trim();
+  if (!u || !av) return u;
+  const encoded = encodeURIComponent(av);
+  return u.includes("?") ? `${u}&av=${encoded}` : `${u}?av=${encoded}`;
+}
+
 function isFullscreenNow(): boolean {
-  const d = document as any;
+  const d = document as {
+    webkitFullscreenElement?: Element | null;
+    mozFullScreenElement?: Element | null;
+    msFullscreenElement?: Element | null;
+  };
+
   return Boolean(
     document.fullscreenElement ||
     d.webkitFullscreenElement ||
@@ -28,23 +42,32 @@ function isFullscreenNow(): boolean {
 }
 
 function canUseFullscreenApi(): boolean {
-  const el = document.documentElement as any;
-  return (
-    !!el.requestFullscreen ||
-    !!el.webkitRequestFullscreen ||
-    !!el.mozRequestFullScreen ||
-    !!el.msRequestFullscreen
+  const el = document.documentElement as HTMLElement & {
+    webkitRequestFullscreen?: () => Promise<void> | void;
+    mozRequestFullScreen?: () => Promise<void> | void;
+    msRequestFullscreen?: () => Promise<void> | void;
+  };
+
+  return Boolean(
+    el.requestFullscreen ||
+    el.webkitRequestFullscreen ||
+    el.mozRequestFullScreen ||
+    el.msRequestFullscreen,
   );
 }
 
-// ✅ モバイル判定
 function isMobile(): boolean {
   const ua = navigator.userAgent || "";
   return /iPhone|iPad|iPod|Android/i.test(ua);
 }
 
 async function requestFs(el: HTMLElement) {
-  const anyEl = el as any;
+  const anyEl = el as HTMLElement & {
+    webkitRequestFullscreen?: () => Promise<void> | void;
+    mozRequestFullScreen?: () => Promise<void> | void;
+    msRequestFullscreen?: () => Promise<void> | void;
+  };
+
   if (el.requestFullscreen) return el.requestFullscreen();
   if (anyEl.webkitRequestFullscreen) return anyEl.webkitRequestFullscreen();
   if (anyEl.mozRequestFullScreen) return anyEl.mozRequestFullScreen();
@@ -52,7 +75,12 @@ async function requestFs(el: HTMLElement) {
 }
 
 async function exitFs() {
-  const d = document as any;
+  const d = document as Document & {
+    webkitExitFullscreen?: () => Promise<void> | void;
+    mozCancelFullScreen?: () => Promise<void> | void;
+    msExitFullscreen?: () => Promise<void> | void;
+  };
+
   if (document.exitFullscreen) return document.exitFullscreen();
   if (d.webkitExitFullscreen) return d.webkitExitFullscreen();
   if (d.mozCancelFullScreen) return d.mozCancelFullScreen();
@@ -69,6 +97,9 @@ function preloadImage(src: string): Promise<void> {
 }
 
 export default function AlbumViewer(props: Props) {
+  const { settings } = useAppSettings();
+  const assetVersion = String(settings.assetVersion ?? "").trim();
+
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -80,13 +111,23 @@ export default function AlbumViewer(props: Props) {
 
   const [fs, setFs] = useState(false);
 
-  // ✅ PCのみ表示
   const showFullscreenButton = !isMobile() && canUseFullscreenApi();
 
   const albumBase = useMemo(() => {
     const id = (props.albumId ?? "").trim();
     return id ? `/assets/slides/${id}` : "";
   }, [props.albumId]);
+
+  const manifestUrl = useMemo(() => {
+    return albumBase
+      ? appendAssetVersion(`${albumBase}/manifest.json`, assetVersion)
+      : "";
+  }, [albumBase, assetVersion]);
+
+  const buildSlideSrc = useMemo(() => {
+    return (file: string) =>
+      appendAssetVersion(`${albumBase}/${file}`, assetVersion);
+  }, [albumBase, assetVersion]);
 
   const [shownSrc, setShownSrc] = useState<string>("");
 
@@ -99,11 +140,17 @@ export default function AlbumViewer(props: Props) {
       setIdx(0);
 
       try {
-        const res = await fetch(`${albumBase}/manifest.json`, {
+        if (!manifestUrl) {
+          throw new Error("albumId が空だよ");
+        }
+
+        const res = await fetch(manifestUrl, {
           cache: "no-store",
         });
-        if (!res.ok)
+        if (!res.ok) {
           throw new Error(`manifest.json fetch failed: ${res.status}`);
+        }
+
         const json = (await res.json()) as AlbumManifest;
 
         const nextTitle = (json?.title ?? props.albumTitleHint ?? "").trim();
@@ -122,7 +169,7 @@ export default function AlbumViewer(props: Props) {
           return;
         }
 
-        const firstSrc = `${albumBase}/${nextFiles[0]}`;
+        const firstSrc = buildSlideSrc(nextFiles[0]);
         await preloadImage(firstSrc);
 
         if (cancelled) return;
@@ -141,14 +188,18 @@ export default function AlbumViewer(props: Props) {
     return () => {
       cancelled = true;
     };
-  }, [albumBase, props.albumTitleHint]);
+  }, [manifestUrl, buildSlideSrc, props.albumTitleHint]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
       if (!files.length) return;
-      const nextSrc = `${albumBase}/${files[idx]}`;
+
+      const nextFile = files[idx];
+      if (!nextFile) return;
+
+      const nextSrc = buildSlideSrc(nextFile);
       if (shownSrc === nextSrc) return;
 
       await preloadImage(nextSrc);
@@ -159,7 +210,7 @@ export default function AlbumViewer(props: Props) {
     return () => {
       cancelled = true;
     };
-  }, [albumBase, files, idx, shownSrc]);
+  }, [buildSlideSrc, files, idx, shownSrc]);
 
   const prev = () => {
     if (!files.length) return;
@@ -236,7 +287,6 @@ export default function AlbumViewer(props: Props) {
         )}
       </div>
 
-      {/* 上部オーバーレイ */}
       <div
         style={{
           position: "absolute",

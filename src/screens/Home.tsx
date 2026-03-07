@@ -8,6 +8,7 @@ import {
 } from "react";
 import PageShell from "../components/PageShell";
 import SecretPortalHotspot from "../components/SecretPortalHotspot";
+import { useAppSettings } from "../lib/appSettings";
 
 type Props = {
   go: (
@@ -54,6 +55,14 @@ function setUnlocked(pass: string) {
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
+}
+
+function appendAssetVersion(url: string, assetVersion: string) {
+  const u = (url ?? "").trim();
+  const av = (assetVersion ?? "").trim();
+  if (!u || !av) return u;
+  const encoded = encodeURIComponent(av);
+  return u.includes("?") ? `${u}&av=${encoded}` : `${u}?av=${encoded}`;
 }
 
 type SmartBtnProps = {
@@ -221,6 +230,8 @@ function SmartButton({
 }
 
 export default function Home({ go, goSecret }: Props) {
+  const { settings } = useAppSettings();
+
   const [unlocked, setUnlockedState] = useState<boolean>(() => isUnlocked());
   const [pass, setPass] = useState<string>(() => loadSavedPass());
   const [error, setError] = useState<string>("");
@@ -238,13 +249,36 @@ export default function Home({ go, goSecret }: Props) {
     setError("");
   }
 
-  const logoSrc = "/assets/logo/logo-title.png";
-  const btnRecord = "/assets/buttons/btn-record.png";
-  const btnHistory = "/assets/buttons/btn-history.png";
-  const btnAnalysis = "/assets/buttons/btn-analysis.png";
-  const btnWeather = "/assets/buttons/btn-weather.png";
-  const btnChat = "/assets/buttons/btn-chat.png";
-  const btnSettings = "/assets/buttons/btn-settings.png";
+  const assetVersion = String(settings.assetVersion ?? "").trim();
+
+  const logoSrc = appendAssetVersion(
+    "/assets/logo/logo-title.png",
+    assetVersion,
+  );
+  const btnRecord = appendAssetVersion(
+    "/assets/buttons/btn-record.png",
+    assetVersion,
+  );
+  const btnHistory = appendAssetVersion(
+    "/assets/buttons/btn-history.png",
+    assetVersion,
+  );
+  const btnAnalysis = appendAssetVersion(
+    "/assets/buttons/btn-analysis.png",
+    assetVersion,
+  );
+  const btnWeather = appendAssetVersion(
+    "/assets/buttons/btn-weather.png",
+    assetVersion,
+  );
+  const btnChat = appendAssetVersion(
+    "/assets/buttons/btn-chat.png",
+    assetVersion,
+  );
+  const btnSettings = appendAssetVersion(
+    "/assets/buttons/btn-settings.png",
+    assetVersion,
+  );
 
   const fitOuterRef = useRef<HTMLDivElement | null>(null);
   const fitInnerRef = useRef<HTMLDivElement | null>(null);

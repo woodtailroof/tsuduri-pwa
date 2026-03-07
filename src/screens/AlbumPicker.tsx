@@ -1,6 +1,7 @@
 // src/screens/AlbumPicker.tsx
 import { useEffect, useMemo, useState } from "react";
 import PageShell from "../components/PageShell";
+import { useAppSettings } from "../lib/appSettings";
 
 type Props = {
   back: () => void;
@@ -24,6 +25,14 @@ function safeText(e: unknown): string {
   return String(e);
 }
 
+function appendAssetVersion(url: string, assetVersion: string) {
+  const u = (url ?? "").trim();
+  const av = (assetVersion ?? "").trim();
+  if (!u || !av) return u;
+  const encoded = encodeURIComponent(av);
+  return u.includes("?") ? `${u}&av=${encoded}` : `${u}?av=${encoded}`;
+}
+
 const CHARACTER_ORDER = ["tsuduri", "matsuri", "kokoro"] as const;
 
 const CHARACTER_LABEL: Record<string, string> = {
@@ -40,11 +49,13 @@ function getCharLabel(characterId: string | undefined): string {
 }
 
 export default function AlbumPicker(props: Props) {
+  const { settings } = useAppSettings();
+  const assetVersion = String(settings.assetVersion ?? "").trim();
+
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [items, setItems] = useState<AlbumItem[]>([]);
 
-  // ✅ タブ（キャラ）＆ページング
   const [activeKey, setActiveKey] = useState<string>("all");
   const [page, setPage] = useState(0);
 
@@ -56,14 +67,25 @@ export default function AlbumPicker(props: Props) {
       setErr(null);
 
       try {
-        const res = await fetch("/assets/slides/index.json", {
+        const indexUrl = appendAssetVersion(
+          "/assets/slides/index.json",
+          assetVersion,
+        );
+
+        const res = await fetch(indexUrl, {
           cache: "no-store",
         });
         if (!res.ok) throw new Error(`index.json fetch failed: ${res.status}`);
-        const json = (await res.json()) as AlbumIndex;
 
+        const json = (await res.json()) as AlbumIndex;
         const list = Array.isArray(json?.albums) ? json.albums : [];
-        if (!cancelled) setItems(list);
+
+        const normalized = list.map((a) => ({
+          ...a,
+          thumb: a.thumb ? appendAssetVersion(a.thumb, assetVersion) : a.thumb,
+        }));
+
+        if (!cancelled) setItems(normalized);
       } catch (e) {
         if (!cancelled) setErr(safeText(e));
       } finally {
@@ -75,7 +97,7 @@ export default function AlbumPicker(props: Props) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [assetVersion]);
 
   const grouped = useMemo(() => {
     const by: Record<string, AlbumItem[]> = {};
@@ -138,11 +160,9 @@ export default function AlbumPicker(props: Props) {
     return list;
   }, [grouped, allAlbums.length]);
 
-  // ✅ データが来たら、activeKey が空振りしないように補正
   useEffect(() => {
     const valid = new Set(tabs.map((t) => t.key));
     if (!valid.has(activeKey)) setActiveKey("all");
-    // データが変わったらページは先頭に戻す（見失い防止）
     setPage(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabs.length]);
@@ -153,8 +173,6 @@ export default function AlbumPicker(props: Props) {
     return g?.albums ?? [];
   }, [activeKey, allAlbums, grouped]);
 
-  // ✅ 1画面に収めるため、表示件数は固定でページング
-  //    ここを増減すると「1画面の密度」が変わるよ
   const PAGE_SIZE = 9;
 
   const pageCount = Math.max(1, Math.ceil(visibleAlbums.length / PAGE_SIZE));
@@ -178,7 +196,6 @@ export default function AlbumPicker(props: Props) {
       showBack
       onBack={props.back}
       maxWidth={1400}
-      // ✅ スクロール禁止（1画面必須）
       scrollY="hidden"
     >
       <div
@@ -189,7 +206,6 @@ export default function AlbumPicker(props: Props) {
           flexDirection: "column",
         }}
       >
-        {/* ✅ ロード中は“上に薄く”乗せるだけ（中身は消さない） */}
         {loading && (
           <div
             style={{
@@ -202,12 +218,11 @@ export default function AlbumPicker(props: Props) {
             }}
           >
             <div
+              className="glass"
               style={{
                 marginTop: 2,
                 padding: "6px 10px",
                 borderRadius: 999,
-                border: "1px solid rgba(255,255,255,0.18)",
-                background: "rgba(0,0,0,0.25)",
                 fontSize: 12,
                 opacity: 0.9,
               }}
@@ -220,6 +235,7 @@ export default function AlbumPicker(props: Props) {
         <div style={{ display: "grid", gap: 10 }}>
           {err && (
             <div
+              className="glass"
               style={{
                 padding: 12,
                 borderRadius: 14,
@@ -237,7 +253,6 @@ export default function AlbumPicker(props: Props) {
             </div>
           )}
 
-          {/* タブ（キャラ切替） */}
           {hasAnyAlbum && (
             <div
               style={{
@@ -275,7 +290,6 @@ export default function AlbumPicker(props: Props) {
                 );
               })}
 
-              {/* ページング */}
               <div
                 style={{
                   marginLeft: "auto",
@@ -328,13 +342,12 @@ export default function AlbumPicker(props: Props) {
           )}
         </div>
 
-        {/* ✅ サムネグリッド（カード型） */}
         <div
           style={{
             flex: 1,
             minHeight: 0,
             marginTop: 10,
-            overflow: "hidden", // スクロール禁止
+            overflow: "hidden",
             display: "grid",
             gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
             gap: 10,
@@ -363,7 +376,6 @@ export default function AlbumPicker(props: Props) {
                   overflow: "hidden",
                   border: "1px solid rgba(255,255,255,0.10)",
                   background: "rgba(0,0,0,0.18)",
-                  // ✅ 画像が綺麗に見える“比率固定”
                   aspectRatio: "16 / 9",
                 }}
               >
@@ -379,12 +391,10 @@ export default function AlbumPicker(props: Props) {
                         height: "100%",
                         objectFit: "cover",
                         display: "block",
-                        // ✅ ちょいだけコントラストを上げて見栄え良く
                         filter: "contrast(1.06) saturate(1.02)",
                         transform: "translateZ(0)",
                       }}
                     />
-                    {/* ✅ 下にうっすらグラデ（文字が乗りやすい） */}
                     <div
                       style={{
                         position: "absolute",
