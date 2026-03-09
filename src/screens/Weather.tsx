@@ -1,4 +1,5 @@
 // src/screens/Weather.tsx
+
 import {
   useCallback,
   useEffect,
@@ -23,6 +24,10 @@ import { useEmotion } from "../lib/emotion"; // ✅ 追加
 type Props = {
   back: () => void;
 };
+
+export default function Weather({ back }: Props) {
+  console.log("Weather render");
+
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
