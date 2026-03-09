@@ -87,7 +87,7 @@ export default function FadeSwitch(props: Props) {
   };
 
   // 同一キーなら中身だけ追従（フェード無し）
-  // ただし画面切替中は触らない
+  // ただし切替中は触らない
   useEffect(() => {
     if (phase !== "idle") return;
     if (props.activeKey === shownKey) {
@@ -108,7 +108,7 @@ export default function FadeSwitch(props: Props) {
       return;
     }
 
-    // 1) まず幕を閉じる
+    // 1) 幕を閉じる
     setPhase("fadeOut");
 
     timerRef.current = window.setTimeout(() => {
@@ -118,7 +118,7 @@ export default function FadeSwitch(props: Props) {
       setShownKey(props.activeKey);
       setShownChildren(latestChildrenRef.current);
 
-      // 3) いったん hold にして、新画面のレイアウトを少し落ち着かせる
+      // 3) いったん hold にしてレイアウトを少し落ち着かせる
       setPhase("hold");
 
       raf1Ref.current = window.requestAnimationFrame(() => {
@@ -130,7 +130,7 @@ export default function FadeSwitch(props: Props) {
           timerRef.current = window.setTimeout(() => {
             if (token !== tokenRef.current) return;
 
-            // 4) 落ち着いてから幕を開ける
+            // 4) 幕を開ける
             setPhase("fadeIn");
 
             timerRef.current = window.setTimeout(() => {
@@ -148,8 +148,11 @@ export default function FadeSwitch(props: Props) {
     };
   }, [props.activeKey, shownKey, durationMs, halfMs, settleMs]);
 
-  const overlayOpacity =
-    phase === "fadeOut" || phase === "hold" || phase === "fadeIn" ? 1 : 0;
+  // ✅ ここが重要
+  // fadeOut / hold では幕を表示
+  // fadeIn では 0 に向かって開ける
+  // idle では完全に消す
+  const overlayOpacity = phase === "fadeOut" || phase === "hold" ? 1 : 0;
 
   const easing =
     phase === "fadeOut" ? "cubic-bezier(.4,0,1,1)" : "cubic-bezier(0,0,.2,1)";
