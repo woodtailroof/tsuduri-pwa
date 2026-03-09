@@ -18,6 +18,7 @@ import AlbumPicker from "./screens/AlbumPicker";
 import AlbumViewer from "./screens/AlbumViewer";
 import Stage from "./components/Stage";
 import CrossFadeSwitch from "./components/CrossFadeSwitch";
+import LockScreen from "./components/LockScreen";
 import {
   DEFAULT_SETTINGS,
   getTimeBand,
@@ -27,6 +28,11 @@ import {
   useAppSettings,
 } from "./lib/appSettings";
 import { EmotionProvider } from "./lib/emotion";
+import {
+  hasAppPassword,
+  isSessionUnlocked,
+  migrateLegacyPlaintextLock,
+} from "./lib/appLock";
 
 type Screen =
   | "home"
@@ -82,6 +88,40 @@ function AppInner() {
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
   const [selectedAlbumTitle, setSelectedAlbumTitle] = useState<string>("");
 
+  const [lockReady, setLockReady] = useState(false);
+  const [lockExists, setLockExists] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function boot() {
+      try {
+        await migrateLegacyPlaintextLock();
+
+        if (!alive) return;
+
+        const exists = hasAppPassword();
+        const sessionOpen = exists ? isSessionUnlocked() : false;
+
+        setLockExists(exists);
+        setUnlocked(sessionOpen);
+      } catch (err) {
+        console.error(err);
+        setLockExists(false);
+        setUnlocked(false);
+      } finally {
+        if (alive) setLockReady(true);
+      }
+    }
+
+    void boot();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const backHome = () => setScreen("home");
 
   const goFromHome = (
@@ -131,7 +171,6 @@ function AppInner() {
       />
     );
   } else {
-    // Home 側に goSecret を追加してある前提（既に入れてるはず）
     content = (
       <Home go={goFromHome} goSecret={() => setScreen("albumPicker")} />
     );
@@ -191,7 +230,6 @@ function AppInner() {
       "--glass-alpha-strong": `${gas}`,
     };
 
-    // ✅ スライド中は落ち着かせる
     if (screen === "albumViewer") {
       vars["--bg-image"] = "none";
       vars["--bg-blur"] = "0px";
@@ -202,6 +240,31 @@ function AppInner() {
 
   const isCalmViewer = screen === "albumViewer";
   const skipFade = screen === "albumPicker" || screen === "albumViewer";
+
+  // ===== ロック未解除ならアプリ本体を描画しない =====
+  if (!lockReady) {
+    return (
+      <div
+        style={{
+          width: "100vw",
+          height: "100dvh",
+          background: "rgba(8,10,14,0.98)",
+        }}
+      />
+    );
+  }
+
+  if (!unlocked) {
+    return (
+      <LockScreen
+        hasPassword={lockExists}
+        onUnlocked={() => {
+          setLockExists(true);
+          setUnlocked(true);
+        }}
+      />
+    );
+  }
 
   return (
     <div
@@ -248,7 +311,6 @@ function AppInner() {
           pointerEvents: "auto",
         }}
       >
-        {/* ✅ アルバム系はCrossFadeSwitchを通さない（チラつき根絶） */}
         {skipFade ? (
           content
         ) : (

@@ -22,6 +22,12 @@ import {
   useAppSettings,
 } from "../lib/appSettings";
 import { CHARACTERS_STORAGE_KEY } from "./CharacterSettings";
+import {
+  changeAppPassword,
+  clearAppPassword,
+  hasAppPassword,
+  setSessionUnlocked,
+} from "../lib/appLock";
 
 type Props = {
   back: () => void;
@@ -190,12 +196,12 @@ function appendAssetVersion(url: string, assetVersion: string) {
 
 /** ✅ 表情キー（プレビュー用） */
 const EXPRESSION_KEYS = [
-  { key: "neutral", label: "neutral" }, // 喜
-  { key: "happy", label: "happy" }, // 楽
-  { key: "sad", label: "sad" }, // 哀
-  { key: "think", label: "think" }, // 考
-  { key: "surprise", label: "surprise" }, // 驚
-  { key: "love", label: "love" }, // 好
+  { key: "neutral", label: "neutral" },
+  { key: "happy", label: "happy" },
+  { key: "sad", label: "sad" },
+  { key: "think", label: "think" },
+  { key: "surprise", label: "surprise" },
+  { key: "love", label: "love" },
 ] as const;
 
 export default function Settings({ back }: Props) {
@@ -222,6 +228,16 @@ export default function Settings({ back }: Props) {
     [],
   );
   const [charImageMap, setCharImageMapState] = useState<CharacterImageMap>({});
+
+  // 🔐 ロック設定UI用
+  const [lockEnabled, setLockEnabled] = useState(false);
+  const [currentPass, setCurrentPass] = useState("");
+  const [nextPass, setNextPass] = useState("");
+  const [confirmNextPass, setConfirmNextPass] = useState("");
+  const [lockBusy, setLockBusy] = useState(false);
+  const [lockMsg, setLockMsg] = useState("");
+  const [lockError, setLockError] = useState("");
+  const [revealLockInputs, setRevealLockInputs] = useState(false);
 
   // ✅ unitless の --glass-blur を px に変換して使う（inline style 用）
   const glassBlurCss = "blur(calc(var(--glass-blur, 0) * 1px))";
@@ -356,6 +372,7 @@ export default function Settings({ back }: Props) {
   useEffect(() => {
     refresh();
     refreshCreatedCharactersAndMap();
+    setLockEnabled(hasAppPassword());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -446,6 +463,88 @@ export default function Settings({ back }: Props) {
   // ✅ Settingsカードのクラスを index.css に合わせる
   const cardClass = "glass-panel strong";
 
+  const lockInputType = revealLockInputs ? "text" : "password";
+
+  async function handleChangePassword() {
+    setLockMsg("");
+    setLockError("");
+
+    const cur = currentPass.trim();
+    const next = nextPass.trim();
+    const confirm = confirmNextPass.trim();
+
+    if (!lockEnabled) {
+      setLockError("ロックが設定されていないよ");
+      return;
+    }
+    if (!cur) {
+      setLockError("現在のパスワードを入れてね");
+      return;
+    }
+    if (!next) {
+      setLockError("新しいパスワードを入れてね");
+      return;
+    }
+    if (next.length < 4) {
+      setLockError("新しいパスワードは4文字以上がおすすめだよ");
+      return;
+    }
+    if (!confirm) {
+      setLockError("確認用パスワードを入れてね");
+      return;
+    }
+    if (next !== confirm) {
+      setLockError("新しいパスワードと確認用が一致してないよ");
+      return;
+    }
+
+    setLockBusy(true);
+    try {
+      const ok = await changeAppPassword(cur, next);
+      if (!ok) {
+        setLockError("現在のパスワードが違うよ");
+        return;
+      }
+
+      setCurrentPass("");
+      setNextPass("");
+      setConfirmNextPass("");
+      setLockEnabled(true);
+      setLockMsg("パスワードを更新したよ");
+    } catch (err) {
+      console.error(err);
+      setLockError("パスワード変更に失敗したよ");
+    } finally {
+      setLockBusy(false);
+    }
+  }
+
+  function handleResetSessionOnly() {
+    const ok = confirm(
+      "今の解除状態だけ消して、次回表示時にもう一度ロックを出す？",
+    );
+    if (!ok) return;
+
+    setSessionUnlocked(false);
+    setLockMsg("このタブの解除状態を消したよ。次回読み込みでロックが出るよ");
+    setLockError("");
+  }
+
+  function handleClearLockCompletely() {
+    const ok = confirm(
+      "入口パスワード自体を完全に削除する？\n次回起動時はロックなしになるよ。",
+    );
+    if (!ok) return;
+
+    clearAppPassword();
+    setLockEnabled(false);
+    setCurrentPass("");
+    setNextPass("");
+    setConfirmNextPass("");
+    setLockMsg("入口ロックを完全に削除したよ");
+    setLockError("");
+  }
+
   return (
     <PageShell
       title={
@@ -475,6 +574,184 @@ export default function Settings({ back }: Props) {
       >
         <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
           <div style={{ display: "grid", gap: 16, paddingRight: 2 }}>
+            {/* 🔐 入口ロック */}
+            <div className={cardClass} style={card}>
+              <h2 style={sectionTitle}>🔐 入口ロック</h2>
+
+              <div style={formGrid}>
+                <div style={row}>
+                  <div style={label}>状態</div>
+                  <div style={rowStack}>
+                    <div style={help}>
+                      現在の入口ロック:{" "}
+                      <b style={{ color: "rgba(255,255,255,0.88)" }}>
+                        {lockEnabled ? "有効" : "未設定"}
+                      </b>
+                    </div>
+                    <div style={help}>
+                      ※
+                      パスワードの新規作成は、ロック未設定の状態でアプリを開いたときにロック画面側で行う方式だよ。
+                    </div>
+                  </div>
+                </div>
+
+                <div style={row}>
+                  <div style={label}>表示切替</div>
+                  <div style={rowStack}>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        style={lockBusy ? pillDisabled : pillBase}
+                        disabled={lockBusy}
+                        onClick={() => setRevealLockInputs((v) => !v)}
+                      >
+                        {revealLockInputs ? "🙈 入力を隠す" : "👁 入力を表示"}
+                      </button>
+
+                      <button
+                        type="button"
+                        style={lockBusy ? pillDisabled : pillBase}
+                        disabled={lockBusy}
+                        onClick={handleResetSessionOnly}
+                      >
+                        🔒 今の解除状態を消す
+                      </button>
+
+                      <button
+                        type="button"
+                        style={lockBusy ? pillDisabled : pillBase}
+                        disabled={lockBusy || !lockEnabled}
+                        onClick={handleClearLockCompletely}
+                      >
+                        🗑 入口ロックを削除
+                      </button>
+                    </div>
+
+                    <div style={help}>
+                      「今の解除状態を消す」はパスワード自体は残したまま、このタブの通行証だけ破る感じ。
+                    </div>
+                  </div>
+                </div>
+
+                <div style={row}>
+                  <div style={label}>パスワード変更</div>
+                  <div style={rowStack}>
+                    <input
+                      value={currentPass}
+                      onChange={(e) => {
+                        setCurrentPass(e.target.value);
+                        setLockMsg("");
+                        setLockError("");
+                      }}
+                      type={lockInputType}
+                      placeholder="現在のパスワード"
+                      disabled={!lockEnabled || lockBusy}
+                      style={fullWidthControl}
+                      autoComplete="current-password"
+                    />
+
+                    <input
+                      value={nextPass}
+                      onChange={(e) => {
+                        setNextPass(e.target.value);
+                        setLockMsg("");
+                        setLockError("");
+                      }}
+                      type={lockInputType}
+                      placeholder="新しいパスワード"
+                      disabled={!lockEnabled || lockBusy}
+                      style={fullWidthControl}
+                      autoComplete="new-password"
+                    />
+
+                    <input
+                      value={confirmNextPass}
+                      onChange={(e) => {
+                        setConfirmNextPass(e.target.value);
+                        setLockMsg("");
+                        setLockError("");
+                      }}
+                      type={lockInputType}
+                      placeholder="新しいパスワード（確認用）"
+                      disabled={!lockEnabled || lockBusy}
+                      style={fullWidthControl}
+                      autoComplete="new-password"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && lockEnabled && !lockBusy) {
+                          void handleChangePassword();
+                        }
+                      }}
+                    />
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        style={
+                          !lockEnabled || lockBusy ? pillDisabled : pillBase
+                        }
+                        disabled={!lockEnabled || lockBusy}
+                        onClick={() => {
+                          void handleChangePassword();
+                        }}
+                      >
+                        ✅ パスワードを変更
+                      </button>
+
+                      <span style={help}>
+                        4文字以上推奨。英字・数字・記号まぜでもOK。
+                      </span>
+                    </div>
+
+                    {lockMsg ? (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          lineHeight: 1.4,
+                          color: "rgba(210,255,230,0.92)",
+                          background: "rgba(80,180,120,0.12)",
+                          border: "1px solid rgba(110,220,150,0.18)",
+                          borderRadius: 12,
+                          padding: "10px 12px",
+                        }}
+                      >
+                        {lockMsg}
+                      </div>
+                    ) : null}
+
+                    {lockError ? (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          lineHeight: 1.4,
+                          color: "#ffbfd0",
+                          background: "rgba(255, 110, 150, 0.10)",
+                          border: "1px solid rgba(255, 150, 180, 0.18)",
+                          borderRadius: 12,
+                          padding: "10px 12px",
+                        }}
+                      >
+                        {lockError}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* 👧 キャラ */}
             <div className={cardClass} style={card}>
               <h2 style={sectionTitle}>👧 キャラクター</h2>

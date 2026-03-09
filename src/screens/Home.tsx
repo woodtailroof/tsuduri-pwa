@@ -1,11 +1,5 @@
 // src/screens/Home.tsx
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import PageShell from "../components/PageShell";
 import SecretPortalHotspot from "../components/SecretPortalHotspot";
 import { useAppSettings } from "../lib/appSettings";
@@ -24,34 +18,6 @@ type Props = {
   /** 秘密入口（あれば使う） */
   goSecret?: () => void;
 };
-
-const APP_LOCK_PASS_KEY = "tsuduri_app_pass_v1";
-const APP_LOCK_UNLOCKED_KEY = "tsuduri_app_unlocked_v1";
-
-function loadSavedPass() {
-  try {
-    return localStorage.getItem(APP_LOCK_PASS_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function isUnlocked() {
-  try {
-    return localStorage.getItem(APP_LOCK_UNLOCKED_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function setUnlocked(pass: string) {
-  try {
-    localStorage.setItem(APP_LOCK_PASS_KEY, pass);
-    localStorage.setItem(APP_LOCK_UNLOCKED_KEY, "1");
-  } catch {
-    /* ignore */
-  }
-}
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -231,23 +197,6 @@ function SmartButton({
 
 export default function Home({ go, goSecret }: Props) {
   const { settings } = useAppSettings();
-
-  const [unlocked, setUnlockedState] = useState<boolean>(() => isUnlocked());
-  const [pass, setPass] = useState<string>(() => loadSavedPass());
-  const [error, setError] = useState<string>("");
-
-  const canUse = useMemo(() => unlocked, [unlocked]);
-
-  function unlockNow() {
-    const p = pass.trim();
-    if (!p) {
-      setError("合言葉を入れてね");
-      return;
-    }
-    setUnlocked(p);
-    setUnlockedState(true);
-    setError("");
-  }
 
   const assetVersion = String(settings.assetVersion ?? "").trim();
 
@@ -485,57 +434,7 @@ export default function Home({ go, goSecret }: Props) {
         `}
       </style>
 
-      {!canUse && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 9999,
-            background: "rgba(0,0,0,0.72)",
-            display: "grid",
-            placeItems: "center",
-            padding: 16,
-          }}
-        >
-          <div
-            className="glass"
-            style={{
-              width: "min(520px,96vw)",
-              borderRadius: 14,
-              color: "#ddd",
-              padding: 14,
-            }}
-          >
-            <div style={{ fontWeight: 900, marginBottom: 8 }}>
-              🔒 合言葉を入力
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                value={pass}
-                onChange={(e) => {
-                  setPass(e.target.value);
-                  setError("");
-                }}
-                type="password"
-                style={{ flex: 1 }}
-                onKeyDown={(e) => e.key === "Enter" && unlockNow()}
-              />
-              <button type="button" onClick={unlockNow}>
-                解錠
-              </button>
-            </div>
-            {error && <div style={{ color: "#ffb3c1" }}>{error}</div>}
-          </div>
-        </div>
-      )}
-
-      <div
-        className="home-root"
-        style={{
-          opacity: canUse ? 1 : 0.25,
-          pointerEvents: canUse ? "auto" : "none",
-        }}
-      >
+      <div className="home-root">
         <div className="home-fit" ref={fitOuterRef}>
           <div
             className="home-fit-inner"
