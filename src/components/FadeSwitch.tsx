@@ -2,23 +2,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 type Props = {
-  /** 切替トリガーになるキー（screen名など） */
   activeKey: string;
-  /** 表示したい中身 */
   children: ReactNode;
-  /** ms（デフォルト: 260） */
   durationMs?: number;
-  /**
-   * ✅ 幕の濃さ（0〜1）
-   * 0.65〜0.85 あたりが「切替が見えにくくて自然」になりやすい
-   * デフォルト: 0.78
-   */
   coverAlpha?: number;
-  /**
-   * ✅ 差し替え後に幕を開けるまでの待機時間
-   * 重い画面ほど少し長めが安定しやすい
-   * デフォルト: 90ms
-   */
   settleMs?: number;
 };
 
@@ -86,8 +73,7 @@ export default function FadeSwitch(props: Props) {
     }
   };
 
-  // 同一キーなら中身だけ追従（フェード無し）
-  // ただし切替中は触らない
+  // 同一キーのときは中身だけ追従
   useEffect(() => {
     if (phase !== "idle") return;
     if (props.activeKey === shownKey) {
@@ -95,6 +81,7 @@ export default function FadeSwitch(props: Props) {
     }
   }, [props.activeKey, props.children, shownKey, phase]);
 
+  // ✅ 依存は activeKey ベースだけにする
   useEffect(() => {
     if (props.activeKey === shownKey) return;
 
@@ -108,17 +95,13 @@ export default function FadeSwitch(props: Props) {
       return;
     }
 
-    // 1) 幕を閉じる
     setPhase("fadeOut");
 
     timerRef.current = window.setTimeout(() => {
       if (token !== tokenRef.current) return;
 
-      // 2) 幕が十分濃くなったところで中身差し替え
       setShownKey(props.activeKey);
       setShownChildren(latestChildrenRef.current);
-
-      // 3) いったん hold にしてレイアウトを少し落ち着かせる
       setPhase("hold");
 
       raf1Ref.current = window.requestAnimationFrame(() => {
@@ -130,7 +113,6 @@ export default function FadeSwitch(props: Props) {
           timerRef.current = window.setTimeout(() => {
             if (token !== tokenRef.current) return;
 
-            // 4) 幕を開ける
             setPhase("fadeIn");
 
             timerRef.current = window.setTimeout(() => {
@@ -146,12 +128,9 @@ export default function FadeSwitch(props: Props) {
     return () => {
       clearPending();
     };
-  }, [props.activeKey, shownKey, durationMs, halfMs, settleMs]);
+    // ✅ shownKey を入れない
+  }, [props.activeKey, durationMs, halfMs, settleMs]);
 
-  // ✅ ここが重要
-  // fadeOut / hold では幕を表示
-  // fadeIn では 0 に向かって開ける
-  // idle では完全に消す
   const overlayOpacity = phase === "fadeOut" || phase === "hold" ? 1 : 0;
 
   const easing =
