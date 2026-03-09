@@ -1,5 +1,11 @@
 // src/screens/Home.tsx
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import PageShell from "../components/PageShell";
 import SecretPortalHotspot from "../components/SecretPortalHotspot";
 import { useAppSettings } from "../lib/appSettings";
@@ -231,9 +237,11 @@ export default function Home({ go, goSecret }: Props) {
 
   const fitOuterRef = useRef<HTMLDivElement | null>(null);
   const fitInnerRef = useRef<HTMLDivElement | null>(null);
-  const [fitScale, setFitScale] = useState<number>(1);
 
-  useEffect(() => {
+  const [fitScale, setFitScale] = useState<number>(1);
+  const [fitReady, setFitReady] = useState(false);
+
+  useLayoutEffect(() => {
     if (typeof window === "undefined") return;
 
     let raf = 0;
@@ -254,15 +262,17 @@ export default function Home({ go, goSecret }: Props) {
       const sW = aw / cw;
       const sH = ah / ch;
       const next = clamp(Math.min(1, sW, sH), 0.55, 1);
+
       setFitScale((prev) => (Math.abs(prev - next) < 0.01 ? prev : next));
+      setFitReady(true);
     };
+
+    calc();
 
     const schedule = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(calc);
     };
-
-    schedule();
 
     const ro = new ResizeObserver(() => schedule());
     if (fitOuterRef.current) ro.observe(fitOuterRef.current);
@@ -280,6 +290,16 @@ export default function Home({ go, goSecret }: Props) {
       window.removeEventListener("load", schedule);
     };
   }, []);
+
+  useEffect(() => {
+    if (fitReady) return;
+
+    const id = window.requestAnimationFrame(() => {
+      setFitReady(true);
+    });
+
+    return () => window.cancelAnimationFrame(id);
+  }, [fitReady]);
 
   return (
     <PageShell
@@ -333,6 +353,7 @@ export default function Home({ go, goSecret }: Props) {
           max-width:1700px;
           transform-origin:top center;
           will-change:transform;
+          transition: opacity 120ms ease;
         }
 
         .home-inner{
@@ -441,6 +462,7 @@ export default function Home({ go, goSecret }: Props) {
             ref={fitInnerRef}
             style={{
               transform: `scale(${fitScale})`,
+              opacity: fitReady ? 1 : 0,
             }}
           >
             <div className="home-inner">

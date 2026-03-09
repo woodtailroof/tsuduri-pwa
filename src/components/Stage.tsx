@@ -24,8 +24,8 @@ type Props = {
 
 type StoredCharacterLike = {
   id?: unknown;
-  name?: unknown; // v2
-  label?: unknown; // v1
+  name?: unknown;
+  label?: unknown;
 };
 
 const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
@@ -162,10 +162,35 @@ export default function Stage(props: Props) {
     : DEFAULT_SETTINGS.characterOpacity;
 
   const characterOverrideSrc = (settings.characterOverrideSrc ?? "").trim();
-
   const effectiveExpression = normalizeExpression(globalEmotion);
 
-  // ✅ PageShellからの「表示キャラ指定」を受け取る（Stage常駐で使う）
+  const reducedMotion = useMemo(() => prefersReducedMotion(), []);
+  const fadeMs = reducedMotion ? 0 : 500;
+
+  const [createdCharacters, setCreatedCharacters] = useState<
+    { id: string; label: string }[]
+  >(() => loadCreatedCharacters());
+  const [charImageMap, setCharImageMap] = useState<CharacterImageMap>(() =>
+    loadCharacterImageMap(),
+  );
+
+  useEffect(() => {
+    const reload = () => {
+      setCreatedCharacters(loadCreatedCharacters());
+      setCharImageMap(loadCharacterImageMap());
+    };
+
+    reload();
+
+    window.addEventListener("storage", reload);
+    window.addEventListener("tsuduri-settings", reload);
+
+    return () => {
+      window.removeEventListener("storage", reload);
+      window.removeEventListener("tsuduri-settings", reload);
+    };
+  }, []);
+
   const [forcedIdFromShell, setForcedIdFromShell] = useState<string>("");
   const forcedIdFromShellRef = useRef(forcedIdFromShell);
   useEffect(() => {
@@ -193,22 +218,14 @@ export default function Stage(props: Props) {
       );
   }, []);
 
-  // ✅ 作成キャラ & マップは毎回読む（同一タブ更新にも追従）
-  const createdCharacters = loadCreatedCharacters();
-  const charImageMap = loadCharacterImageMap();
-
-  // ✅ ランダム：初期値
   const [randomPickedId, setRandomPickedId] = useState<string>(() => {
     if (typeof window === "undefined") return "";
-    return pickRandomId(createdCharacters);
+    return pickRandomId(loadCreatedCharacters());
   });
 
-  // ===== ランダム更新トリガーの一本化 =====
-  // ✅ routeイベントを受け取ったら、その後は activeKey方式を無効化（2重更新防止）
   const routeModeEnabledRef = useRef<boolean>(false);
   const lastRouteKeyRef = useRef<string>("");
 
-  // ✅ PageShellが送る「画面遷移イベント」でランダム更新（推奨）
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -219,7 +236,6 @@ export default function Stage(props: Props) {
       const rawKey = ce?.detail?.key;
       const key = typeof rawKey === "string" ? rawKey : "";
 
-      // ✅ 同じキーは無視（StrictModeの二重実行や二重dispatch対策）
       if (key && key === lastRouteKeyRef.current) return;
       if (key) lastRouteKeyRef.current = key;
 
@@ -240,11 +256,9 @@ export default function Stage(props: Props) {
       );
   }, [characterMode, props.displayCharacterId, createdCharacters]);
 
-  // ✅ 旧：props.activeKeyでもランダム更新（互換）
-  //    ただし routeイベント方式が有効なら実行しない（2重更新防止）
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (routeModeEnabledRef.current) return; // ← ここが肝
+    if (routeModeEnabledRef.current) return;
     if (characterMode !== "random") return;
 
     const forced =
@@ -283,7 +297,6 @@ export default function Stage(props: Props) {
       : "";
     const mappedSingleSrc = mappedIsFile ? mappedNorm : "";
 
-    // 推測パス（実配置：/assets/characters/{id}/{expression}.png）
     const expressionSrc = normalizePublicPath(
       `/assets/characters/${effectiveCharacterId}/${effectiveExpression}.png`,
     );
@@ -299,16 +312,13 @@ export default function Stage(props: Props) {
         normalizePublicPath(characterOverrideSrc),
         assetVersion,
       ),
-
       mappedIsFile
         ? appendAssetVersion(mappedSingleSrc, assetVersion)
         : appendAssetVersion(mappedExpressionSrc, assetVersion),
       mappedIsFile ? "" : appendAssetVersion(mappedNeutralSrc, assetVersion),
-
       appendAssetVersion(expressionSrc, assetVersion),
       appendAssetVersion(neutralSrc, assetVersion),
       appendAssetVersion(fallbackSrc, assetVersion),
-
       appendAssetVersion(
         "/assets/characters/tsuduri/neutral.png",
         assetVersion,
@@ -338,7 +348,6 @@ export default function Stage(props: Props) {
     [characterCandidates],
   );
 
-  // ===== クロスフェード状態 =====
   const [frontSrc, setFrontSrc] = useState<string>("");
   const [backSrc, setBackSrc] = useState<string>("");
   const [frontVisible, setFrontVisible] = useState<boolean>(true);
@@ -351,14 +360,6 @@ export default function Stage(props: Props) {
 
   const swapTokenRef = useRef(0);
   const cleanupTimerRef = useRef<number | null>(null);
-
-  const fadeMs = prefersReducedMotion() ? 0 : 500;
-
-  useEffect(() => {
-    const on = () => setTryIndex(0);
-    window.addEventListener("tsuduri-settings", on);
-    return () => window.removeEventListener("tsuduri-settings", on);
-  }, []);
 
   useEffect(() => {
     setTryIndex(0);

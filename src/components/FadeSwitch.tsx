@@ -45,7 +45,6 @@ export default function FadeSwitch(props: Props) {
     return Math.max(0, Math.min(1, v));
   }, [coverAlphaRaw]);
 
-  // 半分ずつ（暗転→差替→復帰）
   const halfMs = useMemo(
     () => Math.max(0, Math.floor(durationMs / 2)),
     [durationMs],
@@ -55,7 +54,6 @@ export default function FadeSwitch(props: Props) {
   const [shownChildren, setShownChildren] = useState<ReactNode>(props.children);
   const [phase, setPhase] = useState<Phase>("idle");
 
-  // 最新のchildrenを保持
   const latestChildrenRef = useRef<ReactNode>(props.children);
   useEffect(() => {
     latestChildrenRef.current = props.children;
@@ -63,6 +61,18 @@ export default function FadeSwitch(props: Props) {
 
   const tokenRef = useRef(0);
   const timerRef = useRef<number | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  const clearPending = () => {
+    if (timerRef.current != null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (rafRef.current != null) {
+      window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  };
 
   // 同一キーなら中身だけ追従（フェード無し）
   useEffect(() => {
@@ -75,13 +85,8 @@ export default function FadeSwitch(props: Props) {
     if (props.activeKey === shownKey) return;
 
     const token = ++tokenRef.current;
+    clearPending();
 
-    if (timerRef.current != null) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-
-    // reduced motion / 短すぎる場合は即差替え
     if (durationMs === 0 || halfMs === 0) {
       setShownKey(props.activeKey);
       setShownChildren(latestChildrenRef.current);
@@ -89,18 +94,15 @@ export default function FadeSwitch(props: Props) {
       return;
     }
 
-    // 1) 暗転開始（幕を濃く）
     setPhase("fadeOut");
 
-    // 2) 暗転が最大になったタイミングで差し替え
     timerRef.current = window.setTimeout(() => {
       if (token !== tokenRef.current) return;
 
       setShownKey(props.activeKey);
       setShownChildren(latestChildrenRef.current);
 
-      // 3) 次フレームから復帰（明転）
-      requestAnimationFrame(() => {
+      rafRef.current = window.requestAnimationFrame(() => {
         if (token !== tokenRef.current) return;
 
         setPhase("fadeIn");
@@ -108,22 +110,18 @@ export default function FadeSwitch(props: Props) {
         timerRef.current = window.setTimeout(() => {
           if (token !== tokenRef.current) return;
           setPhase("idle");
+          timerRef.current = null;
         }, halfMs);
       });
     }, halfMs);
 
     return () => {
-      if (timerRef.current != null) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
+      clearPending();
     };
   }, [props.activeKey, shownKey, durationMs, halfMs]);
 
-  // overlay（幕）の見え方
   const overlayOpacity = phase === "fadeOut" || phase === "fadeIn" ? 1 : 0;
 
-  // 暗転は ease-in、明転は ease-out にすると自然
   const easing =
     phase === "fadeOut" ? "cubic-bezier(.4,0,1,1)" : "cubic-bezier(0,0,.2,1)";
 
@@ -139,12 +137,10 @@ export default function FadeSwitch(props: Props) {
         minHeight: 0,
       }}
     >
-      {/* コンテンツは常に不透明（backdrop-filterを守る） */}
       <div style={{ width: "100%", height: "100%", minHeight: 0 }}>
         {shownChildren}
       </div>
 
-      {/* 幕（これだけがフェードする） */}
       <div
         aria-hidden="true"
         style={{
@@ -153,12 +149,7 @@ export default function FadeSwitch(props: Props) {
           pointerEvents: "none",
           opacity: overlayOpacity,
           transition: overlayTransition,
-
-          // ✅ 重要：切替を完全に隠すため「幕の濃さ」を強めに
           background: `rgba(0,0,0,${coverAlpha})`,
-
-          // ほんの少しだけハイライトを足して“質感”を出す（好みで）
-          // background: `linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.00)), rgba(0,0,0,${coverAlpha})`,
         }}
       />
     </div>
