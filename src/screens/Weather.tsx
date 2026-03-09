@@ -1,5 +1,4 @@
 // src/screens/Weather.tsx
-
 import {
   useCallback,
   useEffect,
@@ -19,7 +18,7 @@ import type { TidePoint } from "../db";
 import PageShell from "../components/PageShell";
 import { useAppSettings } from "../lib/appSettings";
 import { decideWeatherEmotion } from "../lib/emotionDeciders/weatherEmotion";
-import { useEmotion } from "../lib/emotion"; // ✅ 追加
+import { useEmotion } from "../lib/emotion";
 
 type Props = {
   back: () => void;
@@ -27,6 +26,8 @@ type Props = {
 
 export default function Weather({ back }: Props) {
   console.log("Weather render");
+
+  // ここから元のWeatherの中身
 
 
 function pad2(n: number) {
