@@ -17,7 +17,7 @@ import CharacterSettings from "./screens/CharacterSettings";
 import AlbumPicker from "./screens/AlbumPicker";
 import AlbumViewer from "./screens/AlbumViewer";
 import Stage from "./components/Stage";
-import FadeSwitch from "./components/FadeSwitch";
+import CrossFadeSwitch from "./components/CrossFadeSwitch";
 import LockScreen from "./components/LockScreen";
 import {
   DEFAULT_SETTINGS,
@@ -28,11 +28,7 @@ import {
   useAppSettings,
 } from "./lib/appSettings";
 import { EmotionProvider } from "./lib/emotion";
-import {
-  hasAppPassword,
-  isSessionUnlocked,
-  migrateLegacyPlaintextLock,
-} from "./lib/appLock";
+import { isSessionUnlocked, migrateLegacyPlaintextLock } from "./lib/appLock";
 
 type Screen =
   | "home"
@@ -89,7 +85,6 @@ function AppInner() {
   const [selectedAlbumTitle, setSelectedAlbumTitle] = useState<string>("");
 
   const [lockReady, setLockReady] = useState(false);
-  const [lockExists, setLockExists] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
 
   useEffect(() => {
@@ -100,15 +95,9 @@ function AppInner() {
         await migrateLegacyPlaintextLock();
 
         if (!alive) return;
-
-        const exists = hasAppPassword();
-        const sessionOpen = exists ? isSessionUnlocked() : false;
-
-        setLockExists(exists);
-        setUnlocked(sessionOpen);
+        setUnlocked(isSessionUnlocked());
       } catch (err) {
         console.error(err);
-        setLockExists(false);
         setUnlocked(false);
       } finally {
         if (alive) setLockReady(true);
@@ -254,9 +243,7 @@ function AppInner() {
   if (!unlocked) {
     return (
       <LockScreen
-        hasPassword={lockExists}
         onUnlocked={() => {
-          setLockExists(true);
           setUnlocked(true);
         }}
       />
@@ -295,7 +282,7 @@ function AppInner() {
             pointerEvents: "none",
           }}
         >
-          <Stage activeKey={screen} />
+          <Stage />
         </div>
       )}
 
@@ -311,14 +298,9 @@ function AppInner() {
         {skipFade ? (
           content
         ) : (
-          <FadeSwitch
-            activeKey={screen}
-            durationMs={260}
-            coverAlpha={0.82}
-            settleMs={90}
-          >
+          <CrossFadeSwitch activeKey={screen} durationMs={500}>
             {content}
-          </FadeSwitch>
+          </CrossFadeSwitch>
         )}
       </div>
     </div>

@@ -22,12 +22,7 @@ import {
   useAppSettings,
 } from "../lib/appSettings";
 import { CHARACTERS_STORAGE_KEY } from "./CharacterSettings";
-import {
-  changeAppPassword,
-  clearAppPassword,
-  hasAppPassword,
-  setSessionUnlocked,
-} from "../lib/appLock";
+import { setSessionUnlocked } from "../lib/appLock";
 
 type Props = {
   back: () => void;
@@ -57,11 +52,10 @@ function safeJsonParse<T>(raw: string | null, fallback: T): T {
   }
 }
 
-/** CharacterSettings 側の作成キャラを読む（v2/v1混在想定でゆるく） */
 type StoredCharacterLike = {
   id?: unknown;
-  name?: unknown; // v2
-  label?: unknown; // v1
+  name?: unknown;
+  label?: unknown;
 };
 
 function loadCreatedCharacters(): CharacterOption[] {
@@ -91,7 +85,6 @@ function loadCreatedCharacters(): CharacterOption[] {
   return uniq;
 }
 
-/** キャラID -> 画像パス/フォルダ を保存するキー（割り当て用） */
 const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
 type CharacterImageMap = Record<string, string>;
 
@@ -103,10 +96,6 @@ function loadCharacterImageMap(): CharacterImageMap {
   return map;
 }
 
-/**
- * ✅ 同一タブで localStorage を更新しても `storage` は飛ばない。
- * PageShell 側の追従用に、同じく購読してる `tsuduri-settings` を明示的に飛ばす。
- */
 function saveCharacterImageMap(map: CharacterImageMap) {
   if (typeof window === "undefined") return;
   localStorage.setItem(CHARACTER_IMAGE_MAP_KEY, JSON.stringify(map));
@@ -141,7 +130,6 @@ function useIsNarrow(breakpointPx = 720) {
   return isNarrow;
 }
 
-/** ✅ 1分ごとにUIを更新（“自動背景の時間帯”の追従用） */
 function useMinuteTick() {
   const [tick, setTick] = useState(1);
 
@@ -181,7 +169,6 @@ function resolveCharacterPreviewSrc(raw: string, key: string) {
   if (!normalized) return "";
   if (looksLikeImageFilePath(normalized)) return normalized;
 
-  // フォルダ指定想定（末尾/なしでもOKにする）
   const dir = ensureTrailingSlash(normalized);
   return normalizePublicPath(`${dir}${key}.png`) || "";
 }
@@ -194,7 +181,6 @@ function appendAssetVersion(url: string, assetVersion: string) {
   return u.includes("?") ? `${u}&av=${encoded}` : `${u}?av=${encoded}`;
 }
 
-/** ✅ 表情キー（プレビュー用） */
 const EXPRESSION_KEYS = [
   { key: "neutral", label: "neutral" },
   { key: "happy", label: "happy" },
@@ -223,23 +209,12 @@ export default function Settings({ back }: Props) {
   const [entries, setEntries] = useState<TideCacheEntry[]>([]);
   const [days, setDays] = useState<30 | 60 | 90 | 180>(30);
 
-  // ✅ 作成キャラ一覧 & 画像割り当て
   const [createdCharacters, setCreatedCharacters] = useState<CharacterOption[]>(
     [],
   );
   const [charImageMap, setCharImageMapState] = useState<CharacterImageMap>({});
-
-  // 🔐 ロック設定UI用
-  const [lockEnabled, setLockEnabled] = useState(false);
-  const [currentPass, setCurrentPass] = useState("");
-  const [nextPass, setNextPass] = useState("");
-  const [confirmNextPass, setConfirmNextPass] = useState("");
-  const [lockBusy, setLockBusy] = useState(false);
   const [lockMsg, setLockMsg] = useState("");
-  const [lockError, setLockError] = useState("");
-  const [revealLockInputs, setRevealLockInputs] = useState(false);
 
-  // ✅ unitless の --glass-blur を px に変換して使う（inline style 用）
   const glassBlurCss = "blur(calc(var(--glass-blur, 0) * 1px))";
 
   const sectionTitle: CSSProperties = {
@@ -251,7 +226,6 @@ export default function Settings({ back }: Props) {
     gap: 8,
   };
 
-  // ✅ cardは「枠/余白/レイアウト」だけにして、質感は index.css の glass-panel に寄せる
   const card: CSSProperties = {
     borderRadius: 16,
     padding: 14,
@@ -312,7 +286,6 @@ export default function Settings({ back }: Props) {
     boxSizing: "border-box",
   };
 
-  // ✅ 固定の blur(10px) は撤去して、全体の --glass-blur / --glass-alpha に追従させる
   const pillBase: CSSProperties = {
     borderRadius: 999,
     padding: "10px 12px",
@@ -372,7 +345,6 @@ export default function Settings({ back }: Props) {
   useEffect(() => {
     refresh();
     refreshCreatedCharactersAndMap();
-    setLockEnabled(hasAppPassword());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -381,7 +353,6 @@ export default function Settings({ back }: Props) {
     return Math.round((kb / 1024) * 100) / 100;
   }, [stats]);
 
-  // settings（安全なデフォルト）
   const characterEnabled =
     settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
   const characterMode =
@@ -398,7 +369,6 @@ export default function Settings({ back }: Props) {
     return createdCharacters[0]?.id ?? "";
   }, [settings.fixedCharacterId, createdIds, createdCharacters]);
 
-  // ✅ 50〜200%（0.5〜2.0）に統一
   const characterScale = Number.isFinite(settings.characterScale)
     ? settings.characterScale
     : DEFAULT_SETTINGS.characterScale;
@@ -407,7 +377,6 @@ export default function Settings({ back }: Props) {
     ? settings.characterOpacity
     : DEFAULT_SETTINGS.characterOpacity;
 
-  // ✅ 表示（bgDim は撤去）
   const bgBlur = Number.isFinite(settings.bgBlur)
     ? settings.bgBlur
     : DEFAULT_SETTINGS.bgBlur;
@@ -419,10 +388,8 @@ export default function Settings({ back }: Props) {
     ? settings.glassBlur
     : DEFAULT_SETTINGS.glassBlur;
 
-  // ✅ assetVersion（Cloudflare immutable 対策）
   const assetVersion = (settings.assetVersion ?? "").trim();
 
-  // ===== ✅ 背景 =====
   const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
   const autoBgSet =
     (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
@@ -460,64 +427,7 @@ export default function Settings({ back }: Props) {
     characterMode !== "fixed" ||
     createdCharacters.length === 0;
 
-  // ✅ Settingsカードのクラスを index.css に合わせる
   const cardClass = "glass-panel strong";
-
-  const lockInputType = revealLockInputs ? "text" : "password";
-
-  async function handleChangePassword() {
-    setLockMsg("");
-    setLockError("");
-
-    const cur = currentPass.trim();
-    const next = nextPass.trim();
-    const confirm = confirmNextPass.trim();
-
-    if (!lockEnabled) {
-      setLockError("ロックが設定されていないよ");
-      return;
-    }
-    if (!cur) {
-      setLockError("現在のパスワードを入れてね");
-      return;
-    }
-    if (!next) {
-      setLockError("新しいパスワードを入れてね");
-      return;
-    }
-    if (next.length < 4) {
-      setLockError("新しいパスワードは4文字以上がおすすめだよ");
-      return;
-    }
-    if (!confirm) {
-      setLockError("確認用パスワードを入れてね");
-      return;
-    }
-    if (next !== confirm) {
-      setLockError("新しいパスワードと確認用が一致してないよ");
-      return;
-    }
-
-    setLockBusy(true);
-    try {
-      const ok = await changeAppPassword(cur, next);
-      if (!ok) {
-        setLockError("現在のパスワードが違うよ");
-        return;
-      }
-
-      setCurrentPass("");
-      setNextPass("");
-      setConfirmNextPass("");
-      setLockEnabled(true);
-      setLockMsg("パスワードを更新したよ");
-    } catch (err) {
-      console.error(err);
-      setLockError("パスワード変更に失敗したよ");
-    } finally {
-      setLockBusy(false);
-    }
-  }
 
   function handleResetSessionOnly() {
     const ok = confirm(
@@ -527,22 +437,6 @@ export default function Settings({ back }: Props) {
 
     setSessionUnlocked(false);
     setLockMsg("このタブの解除状態を消したよ。次回読み込みでロックが出るよ");
-    setLockError("");
-  }
-
-  function handleClearLockCompletely() {
-    const ok = confirm(
-      "入口パスワード自体を完全に削除する？\n次回起動時はロックなしになるよ。",
-    );
-    if (!ok) return;
-
-    clearAppPassword();
-    setLockEnabled(false);
-    setCurrentPass("");
-    setNextPass("");
-    setConfirmNextPass("");
-    setLockMsg("入口ロックを完全に削除したよ");
-    setLockError("");
   }
 
   return (
@@ -574,29 +468,25 @@ export default function Settings({ back }: Props) {
       >
         <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
           <div style={{ display: "grid", gap: 16, paddingRight: 2 }}>
-            {/* 🔐 入口ロック */}
             <div className={cardClass} style={card}>
               <h2 style={sectionTitle}>🔐 入口ロック</h2>
 
               <div style={formGrid}>
                 <div style={row}>
-                  <div style={label}>状態</div>
+                  <div style={label}>方式</div>
                   <div style={rowStack}>
                     <div style={help}>
-                      現在の入口ロック:{" "}
-                      <b style={{ color: "rgba(255,255,255,0.88)" }}>
-                        {lockEnabled ? "有効" : "未設定"}
-                      </b>
+                      入口パスワードは端末ごとに設定する方式ではなく、
+                      アプリ共通の固定パスワード方式になっているよ。
                     </div>
                     <div style={help}>
-                      ※
-                      パスワードの新規作成は、ロック未設定の状態でアプリを開いたときにロック画面側で行う方式だよ。
+                      設定画面からは変更しないで、コード側で管理する想定。
                     </div>
                   </div>
                 </div>
 
                 <div style={row}>
-                  <div style={label}>表示切替</div>
+                  <div style={label}>解除状態</div>
                   <div style={rowStack}>
                     <div
                       style={{
@@ -608,112 +498,15 @@ export default function Settings({ back }: Props) {
                     >
                       <button
                         type="button"
-                        style={lockBusy ? pillDisabled : pillBase}
-                        disabled={lockBusy}
-                        onClick={() => setRevealLockInputs((v) => !v)}
-                      >
-                        {revealLockInputs ? "🙈 入力を隠す" : "👁 入力を表示"}
-                      </button>
-
-                      <button
-                        type="button"
-                        style={lockBusy ? pillDisabled : pillBase}
-                        disabled={lockBusy}
+                        style={pillBase}
                         onClick={handleResetSessionOnly}
                       >
                         🔒 今の解除状態を消す
                       </button>
-
-                      <button
-                        type="button"
-                        style={lockBusy ? pillDisabled : pillBase}
-                        disabled={lockBusy || !lockEnabled}
-                        onClick={handleClearLockCompletely}
-                      >
-                        🗑 入口ロックを削除
-                      </button>
                     </div>
 
                     <div style={help}>
-                      「今の解除状態を消す」はパスワード自体は残したまま、このタブの通行証だけ破る感じ。
-                    </div>
-                  </div>
-                </div>
-
-                <div style={row}>
-                  <div style={label}>パスワード変更</div>
-                  <div style={rowStack}>
-                    <input
-                      value={currentPass}
-                      onChange={(e) => {
-                        setCurrentPass(e.target.value);
-                        setLockMsg("");
-                        setLockError("");
-                      }}
-                      type={lockInputType}
-                      placeholder="現在のパスワード"
-                      disabled={!lockEnabled || lockBusy}
-                      style={fullWidthControl}
-                      autoComplete="current-password"
-                    />
-
-                    <input
-                      value={nextPass}
-                      onChange={(e) => {
-                        setNextPass(e.target.value);
-                        setLockMsg("");
-                        setLockError("");
-                      }}
-                      type={lockInputType}
-                      placeholder="新しいパスワード"
-                      disabled={!lockEnabled || lockBusy}
-                      style={fullWidthControl}
-                      autoComplete="new-password"
-                    />
-
-                    <input
-                      value={confirmNextPass}
-                      onChange={(e) => {
-                        setConfirmNextPass(e.target.value);
-                        setLockMsg("");
-                        setLockError("");
-                      }}
-                      type={lockInputType}
-                      placeholder="新しいパスワード（確認用）"
-                      disabled={!lockEnabled || lockBusy}
-                      style={fullWidthControl}
-                      autoComplete="new-password"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && lockEnabled && !lockBusy) {
-                          void handleChangePassword();
-                        }
-                      }}
-                    />
-
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 10,
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <button
-                        type="button"
-                        style={
-                          !lockEnabled || lockBusy ? pillDisabled : pillBase
-                        }
-                        disabled={!lockEnabled || lockBusy}
-                        onClick={() => {
-                          void handleChangePassword();
-                        }}
-                      >
-                        ✅ パスワードを変更
-                      </button>
-
-                      <span style={help}>
-                        4文字以上推奨。英字・数字・記号まぜでもOK。
-                      </span>
+                      パスワード自体は変えず、このタブの通行証だけ消すよ。
                     </div>
 
                     {lockMsg ? (
@@ -731,33 +524,15 @@ export default function Settings({ back }: Props) {
                         {lockMsg}
                       </div>
                     ) : null}
-
-                    {lockError ? (
-                      <div
-                        style={{
-                          fontSize: 12,
-                          lineHeight: 1.4,
-                          color: "#ffbfd0",
-                          background: "rgba(255, 110, 150, 0.10)",
-                          border: "1px solid rgba(255, 150, 180, 0.18)",
-                          borderRadius: 12,
-                          padding: "10px 12px",
-                        }}
-                      >
-                        {lockError}
-                      </div>
-                    ) : null}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* 👧 キャラ */}
             <div className={cardClass} style={card}>
               <h2 style={sectionTitle}>👧 キャラクター</h2>
 
               <div style={formGrid}>
-                {/* ✅ assetVersion */}
                 <div style={row}>
                   <div style={label}>assetVersion</div>
                   <div style={rowStack}>
@@ -1151,7 +926,6 @@ export default function Settings({ back }: Props) {
                   </div>
                 </div>
 
-                {/* ✅ 50〜200% */}
                 <div style={row}>
                   <div style={label}>大きさ</div>
                   <div style={rowStack}>
@@ -1214,7 +988,6 @@ export default function Settings({ back }: Props) {
               </div>
             </div>
 
-            {/* 🖼 背景 */}
             <div className={cardClass} style={card}>
               <h2 style={sectionTitle}>🖼 背景</h2>
 
@@ -1392,7 +1165,6 @@ export default function Settings({ back }: Props) {
               </div>
             </div>
 
-            {/* 🪟 表示（bgDim撤去） */}
             <div className={cardClass} style={card}>
               <h2 style={sectionTitle}>🪟 表示</h2>
 
@@ -1468,7 +1240,6 @@ export default function Settings({ back }: Props) {
               </div>
             </div>
 
-            {/* 🌊 キャッシュ */}
             <div className={cardClass} style={card}>
               <h2 style={sectionTitle}>🌊 tide736 キャッシュ</h2>
 
@@ -1703,7 +1474,6 @@ export default function Settings({ back }: Props) {
           </div>
         </div>
 
-        {/* 下部ボタンは固定（画面下） */}
         <div
           style={{
             flex: "0 0 auto",

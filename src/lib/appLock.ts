@@ -1,21 +1,19 @@
 // src/lib/appLock.ts
 
-export type StoredAppLock = {
-  version: 2;
-  saltB64: string;
-  hashB64: string;
-  iterations: number;
-  createdAt: string;
-};
+const APP_LOCK_SESSION_KEY = "tsuduri_app_session_unlocked_v3";
 
-const APP_LOCK_STORAGE_KEY = "tsuduri_app_lock_v2";
-const APP_LOCK_SESSION_KEY = "tsuduri_app_session_unlocked_v2";
+const HASH_PARTS = [
+  "4ac4a02e0ced",
+  "fc9e15a5afdd",
+  "6e3cf9aa7c37",
+  "b3df23347c73",
+  "881550915c33",
+  "8c96",
+] as const;
 
-// 旧 Home.tsx の簡易ロック用キー（自動移行に使う）
-const LEGACY_APP_LOCK_PASS_KEY = "tsuduri_app_pass_v1";
-const LEGACY_APP_LOCK_UNLOCKED_KEY = "tsuduri_app_unlocked_v1";
-
-const PBKDF2_ITERATIONS = 150_000;
+function getExpectedHashHex(): string {
+  return HASH_PARTS.join("");
+}
 
 function getCryptoOrThrow(): Crypto {
   if (typeof window === "undefined" || !window.crypto?.subtle) {
@@ -24,103 +22,37 @@ function getCryptoOrThrow(): Crypto {
   return window.crypto;
 }
 
-function safeJsonParse<T>(raw: string | null, fallback: T): T {
-  try {
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
+function bytesToHex(bytes: Uint8Array): string {
+  let out = "";
+  for (const b of bytes) {
+    out += b.toString(16).padStart(2, "0");
   }
+  return out;
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const chunkSize = 0x8000;
-
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-
-  return btoa(binary);
-}
-
-function base64ToBytes(b64: string): Uint8Array {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-
-  return bytes;
-}
-
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(
-    bytes.byteOffset,
-    bytes.byteOffset + bytes.byteLength,
-  ) as ArrayBuffer;
-}
-
-function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
+function timingSafeEqualString(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
 
   let diff = 0;
   for (let i = 0; i < a.length; i += 1) {
-    diff |= a[i] ^ b[i];
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   }
   return diff === 0;
 }
 
-async function derivePasswordHash(
-  password: string,
-  salt: Uint8Array,
-  iterations: number,
-): Promise<Uint8Array> {
+async function sha256Hex(input: string): Promise<string> {
   const cryptoObj = getCryptoOrThrow();
   const enc = new TextEncoder();
-  const passwordBytes = enc.encode(password);
-
-  const keyMaterial = await cryptoObj.subtle.importKey(
-    "raw",
-    toArrayBuffer(passwordBytes),
-    "PBKDF2",
-    false,
-    ["deriveBits"],
-  );
-
-  const bits = await cryptoObj.subtle.deriveBits(
-    {
-      name: "PBKDF2",
-      salt: toArrayBuffer(salt),
-      iterations,
-      hash: "SHA-256",
-    },
-    keyMaterial,
-    256,
-  );
-
-  return new Uint8Array(bits);
+  const data = enc.encode(input);
+  const digest = await cryptoObj.subtle.digest("SHA-256", data);
+  return bytesToHex(new Uint8Array(digest));
 }
 
-export function getStoredAppLock(): StoredAppLock | null {
-  try {
-    const raw = localStorage.getItem(APP_LOCK_STORAGE_KEY);
-    const parsed = safeJsonParse<StoredAppLock | null>(raw, null);
-
-    if (!parsed) return null;
-    if (parsed.version !== 2) return null;
-    if (!parsed.saltB64 || !parsed.hashB64 || !parsed.iterations) return null;
-
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
+/**
+ * いまは「共通固定パスワード方式」なので常に true 扱い。
+ */
 export function hasAppPassword(): boolean {
-  return !!getStoredAppLock();
+  return true;
 }
 
 export function isSessionUnlocked(): boolean {
@@ -143,84 +75,39 @@ export function setSessionUnlocked(unlocked: boolean) {
   }
 }
 
-export async function setupAppPassword(password: string): Promise<void> {
-  const trimmed = password.trim();
-  if (!trimmed) {
-    throw new Error("パスワードが空です。");
+/**
+ * 旧版からの移行で残っている端末ローカル値は使わない。
+ * 誤動作防止のため掃除だけする。
+ */
+export async function migrateLegacyPlaintextLock(): Promise<void> {
+  try {
+    localStorage.removeItem("tsuduri_app_pass_v1");
+    localStorage.removeItem("tsuduri_app_unlocked_v1");
+    localStorage.removeItem("tsuduri_app_lock_v2");
+    sessionStorage.removeItem("tsuduri_app_session_unlocked_v2");
+  } catch {
+    // ignore
   }
-
-  const cryptoObj = getCryptoOrThrow();
-  const salt = cryptoObj.getRandomValues(new Uint8Array(16));
-  const hash = await derivePasswordHash(trimmed, salt, PBKDF2_ITERATIONS);
-
-  const payload: StoredAppLock = {
-    version: 2,
-    saltB64: bytesToBase64(salt),
-    hashB64: bytesToBase64(hash),
-    iterations: PBKDF2_ITERATIONS,
-    createdAt: new Date().toISOString(),
-  };
-
-  localStorage.setItem(APP_LOCK_STORAGE_KEY, JSON.stringify(payload));
 }
 
 export async function verifyAppPassword(password: string): Promise<boolean> {
   const trimmed = password.trim();
   if (!trimmed) return false;
 
-  const stored = getStoredAppLock();
-  if (!stored) return false;
+  const actual = await sha256Hex(trimmed);
+  const expected = getExpectedHashHex();
 
-  const salt = base64ToBytes(stored.saltB64);
-  const expectedHash = base64ToBytes(stored.hashB64);
-  const actualHash = await derivePasswordHash(
-    trimmed,
-    salt,
-    stored.iterations || PBKDF2_ITERATIONS,
-  );
-
-  return timingSafeEqual(expectedHash, actualHash);
+  return timingSafeEqualString(actual, expected);
 }
 
-export async function changeAppPassword(
-  currentPassword: string,
-  nextPassword: string,
-): Promise<boolean> {
-  const ok = await verifyAppPassword(currentPassword);
-  if (!ok) return false;
-
-  await setupAppPassword(nextPassword);
-  return true;
+/**
+ * 固定共通パスワード方式なので、設定画面から変更や削除は不可。
+ * もし呼ばれても false / no-op を返す。
+ */
+export async function changeAppPassword(): Promise<boolean> {
+  return false;
 }
 
 export function clearAppPassword() {
-  try {
-    localStorage.removeItem(APP_LOCK_STORAGE_KEY);
-    sessionStorage.removeItem(APP_LOCK_SESSION_KEY);
-  } catch {
-    // ignore
-  }
-}
-
-export async function migrateLegacyPlaintextLock(): Promise<void> {
-  try {
-    const alreadyMigrated = hasAppPassword();
-    const legacyPass = (
-      localStorage.getItem(LEGACY_APP_LOCK_PASS_KEY) ?? ""
-    ).trim();
-    const legacyUnlocked =
-      localStorage.getItem(LEGACY_APP_LOCK_UNLOCKED_KEY) === "1";
-
-    if (!alreadyMigrated && legacyPass) {
-      await setupAppPassword(legacyPass);
-      if (legacyUnlocked) {
-        setSessionUnlocked(true);
-      }
-    }
-
-    localStorage.removeItem(LEGACY_APP_LOCK_PASS_KEY);
-    localStorage.removeItem(LEGACY_APP_LOCK_UNLOCKED_KEY);
-  } catch {
-    // ignore
-  }
+  // 固定共通パスワード方式では削除しない
 }

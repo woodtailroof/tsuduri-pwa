@@ -1,13 +1,8 @@
 // src/components/LockScreen.tsx
 import { useMemo, useState, type CSSProperties } from "react";
-import {
-  setSessionUnlocked,
-  setupAppPassword,
-  verifyAppPassword,
-} from "../lib/appLock";
+import { setSessionUnlocked, verifyAppPassword } from "../lib/appLock";
 
 type Props = {
-  hasPassword: boolean;
   onUnlocked: () => void;
 };
 
@@ -15,9 +10,8 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-export default function LockScreen({ hasPassword, onUnlocked }: Props) {
+export default function LockScreen({ onUnlocked }: Props) {
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [reveal, setReveal] = useState(false);
@@ -54,7 +48,7 @@ export default function LockScreen({ hasPassword, onUnlocked }: Props) {
         setMissCount((v) => v + 1);
         setError(
           waitSeconds > 0
-            ? `パスワードが違うよ。少し待ってからもう一度どうぞ`
+            ? "パスワードが違うよ。少し待ってからもう一度どうぞ"
             : "パスワードが違うよ",
         );
         return;
@@ -62,46 +56,11 @@ export default function LockScreen({ hasPassword, onUnlocked }: Props) {
 
       setSessionUnlocked(true);
       setMissCount(0);
+      setPassword("");
       onUnlocked();
     } catch (err) {
       console.error(err);
       setError("ロック解除に失敗したよ");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleSetup() {
-    const p1 = password.trim();
-    const p2 = confirm.trim();
-
-    if (!p1) {
-      setError("新しいパスワードを入れてね");
-      return;
-    }
-    if (p1.length < 4) {
-      setError("パスワードは4文字以上がおすすめだよ");
-      return;
-    }
-    if (!p2) {
-      setError("確認用パスワードを入れてね");
-      return;
-    }
-    if (p1 !== p2) {
-      setError("確認用パスワードが一致してないよ");
-      return;
-    }
-
-    setBusy(true);
-    setError("");
-
-    try {
-      await setupAppPassword(p1);
-      setSessionUnlocked(true);
-      onUnlocked();
-    } catch (err) {
-      console.error(err);
-      setError("パスワード設定に失敗したよ");
     } finally {
       setBusy(false);
     }
@@ -192,20 +151,14 @@ export default function LockScreen({ hasPassword, onUnlocked }: Props) {
     <div style={shell}>
       <div style={card}>
         <div style={{ display: "grid", gap: 8 }}>
-          <h1 style={title}>
-            {hasPassword ? "🔒 ロック解除" : "🔐 パスワード設定"}
-          </h1>
+          <h1 style={title}>🔒 ロック解除</h1>
           <div style={sub}>
-            {hasPassword
-              ? "このアプリは入口ロック中だよ。パスワードを入れるまで中には入れないようにしてある。"
-              : "初回だけ、入口用のパスワードを設定してね。以後は起動時にこのパスワードで入れるようになるよ。"}
+            このアプリは入口ロック中だよ。パスワードを知らない人は中に入れないようにしてある。
           </div>
         </div>
 
         <div style={{ display: "grid", gap: 8 }}>
-          <div style={label}>
-            {hasPassword ? "パスワード" : "新しいパスワード"}
-          </div>
+          <div style={label}>パスワード</div>
           <input
             value={password}
             onChange={(e) => {
@@ -214,40 +167,15 @@ export default function LockScreen({ hasPassword, onUnlocked }: Props) {
             }}
             type={inputType}
             autoFocus
-            autoComplete={hasPassword ? "current-password" : "new-password"}
+            autoComplete="current-password"
             style={input}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
-                if (hasPassword) {
-                  void handleUnlock();
-                } else {
-                  void handleSetup();
-                }
+                void handleUnlock();
               }
             }}
           />
         </div>
-
-        {!hasPassword && (
-          <div style={{ display: "grid", gap: 8 }}>
-            <div style={label}>確認用パスワード</div>
-            <input
-              value={confirm}
-              onChange={(e) => {
-                setConfirm(e.target.value);
-                setError("");
-              }}
-              type={inputType}
-              autoComplete="new-password"
-              style={input}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  void handleSetup();
-                }
-              }}
-            />
-          </div>
-        )}
 
         <div
           style={{
@@ -271,15 +199,11 @@ export default function LockScreen({ hasPassword, onUnlocked }: Props) {
             type="button"
             style={button}
             onClick={() => {
-              if (hasPassword) {
-                void handleUnlock();
-              } else {
-                void handleSetup();
-              }
+              void handleUnlock();
             }}
             disabled={busy}
           >
-            {hasPassword ? "解錠する" : "この内容で設定する"}
+            解錠する
           </button>
         </div>
 
@@ -299,7 +223,7 @@ export default function LockScreen({ hasPassword, onUnlocked }: Props) {
           </div>
         ) : null}
 
-        {hasPassword && missCount >= 3 ? (
+        {missCount >= 3 ? (
           <div style={sub}>
             連続ミスが増えると、少しずつ待ち時間が入るようにしてあるよ。
           </div>
