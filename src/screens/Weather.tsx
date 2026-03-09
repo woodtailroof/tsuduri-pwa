@@ -120,8 +120,9 @@ function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
       const a = prevSlope;
       const b = slope;
       const mid = uniq[i - 1];
-      if (a > 0 && b < 0) raw.push({ kind: "high", min: mid.min, cm: mid.cm });
-      else if (a < 0 && b > 0) {
+      if (a > 0 && b < 0) {
+        raw.push({ kind: "high", min: mid.min, cm: mid.cm });
+      } else if (a < 0 && b > 0) {
         raw.push({ kind: "low", min: mid.min, cm: mid.cm });
       }
     }
@@ -174,6 +175,17 @@ function sourceLabel(source: TideCacheSource | null, isStale: boolean) {
     color: "#f6c",
   };
 }
+
+type WeatherSummary = {
+  label: string;
+  overview: string;
+  tempMin: number;
+  tempMax: number;
+  windMax: number;
+  gustMax: number;
+  rainProbMax: number;
+  rainSum: number;
+};
 
 type LoadState =
   | { status: "idle" }
@@ -229,33 +241,12 @@ function useIsMobile() {
   return isMobile;
 }
 
-export default function Weather({ back }: Props) {
-  console.log("Weather render");
-
-  // ここから下に、元の Weather コンポーネント本体を続ける
-/**
- * ===== Open-Meteo（日別サマリ）=====
- * - ブラウザから直叩き（Cloudflare経由のIP共有ガチャを避ける）
- * - localStorage 10分キャッシュ
- */
-const YAIZU = { lat: 34.868, lon: 138.3236 }; // 焼津周辺固定
-
-type WeatherSummary = {
-  label: string; // "今日" / "明日" / "yyyy-mm-dd"
-  overview: string; // "晴れ" / "くもり" / "雨" etc.
-  tempMin: number;
-  tempMax: number;
-  windMax: number;
-  gustMax: number;
-  rainProbMax: number;
-  rainSum: number;
-};
+const YAIZU = { lat: 34.868, lon: 138.3236 };
 
 const WEATHER_CACHE_PREFIX = "tsuduri_openmeteo_daily_v1:";
 const WEATHER_TTL_MS = 10 * 60 * 1000;
 
 function wmoToJa(code: number): string {
-  // WMO weather interpretation codes（ざっくり日本語）
   if (!Number.isFinite(code)) return "不明";
   if (code === 0) return "快晴";
   if (code === 1) return "晴れ";
@@ -290,8 +281,9 @@ async function fetchOpenMeteoDaily(lat: number, lon: number) {
   const text = await res.text().catch(() => "");
   if (!res.ok) {
     const head = (text || "").replace(/\s+/g, " ").trim().slice(0, 160);
-    if (res.status === 429)
+    if (res.status === 429) {
       throw new Error(`openmeteo_rate_limited_429${head ? `:${head}` : ""}`);
+    }
     throw new Error(`openmeteo_http_${res.status}${head ? `:${head}` : ""}`);
   }
 
@@ -345,6 +337,7 @@ function loadWeatherCache(
     const ts = safeNumber(obj.ts, 0);
     const s = obj.summary;
     if (!s || typeof s !== "object") return null;
+
     const summary: WeatherSummary = {
       label: String(s.label ?? day),
       overview: String(s.overview ?? "不明"),
@@ -373,11 +366,19 @@ function saveWeatherCache(day: string, summary: WeatherSummary) {
 }
 
 export default function Weather({ back }: Props) {
+  console.log("Weather render");
+
   useAppSettings();
 
-  const { emitEmotion, clearEmotion } = useEmotion(); // ✅ 追加
+  const { emitEmotion, clearEmotion } = useEmotion();
 
-  // ✅ 「戻る」を押した瞬間に先に消す（HOMEに一瞬だけ残るのを防ぐ）
+  useEffect(() => {
+    console.log("Weather mounted");
+    return () => {
+      console.log("Weather unmounted");
+    };
+  }, []);
+
   const onBack = useCallback(() => {
     clearEmotion("weather");
     back();
@@ -395,7 +396,6 @@ export default function Weather({ back }: Props) {
   const [state, setState] = useState<LoadState>({ status: "idle" });
   const [wState, setWState] = useState<WeatherLoadState>({ status: "idle" });
 
-  // ✅ グラフの「横幅に追従した高さ」を作る（横幅維持しつつアス比を自然に）
   const graphWrapRef = useRef<HTMLDivElement | null>(null);
   const [graphHeight, setGraphHeight] = useState<number>(380);
 
@@ -428,7 +428,6 @@ export default function Weather({ back }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
-  // ✅ グラフ枠の実寸から「自然な高さ」を決める（16:9 を基準）
   useEffect(() => {
     const el = graphWrapRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -449,7 +448,6 @@ export default function Weather({ back }: Props) {
     return () => ro.disconnect();
   }, [isDesktop]);
 
-  // ===== 天気（Open-Meteo）読み込み =====
   useEffect(() => {
     let cancelled = false;
 
@@ -518,9 +516,9 @@ export default function Weather({ back }: Props) {
     };
   }, [targetDate, online]);
 
-  // ===== 潮（tide736）読み込み =====
   useEffect(() => {
     let cancelled = false;
+
     async function run() {
       setState({ status: "loading" });
       try {
@@ -546,20 +544,19 @@ export default function Weather({ back }: Props) {
         if (!cancelled) setState({ status: "error", message: msg });
       }
     }
+
     run();
     return () => {
       cancelled = true;
     };
   }, [targetDate]);
 
-  // ✅ 表情（Weather用・安定型）
   const weatherEmotion = useMemo(() => {
     const overview = wState.status === "ok" ? wState.summary.overview : null;
     const rainProbMax =
       wState.status === "ok" ? wState.summary.rainProbMax : null;
     const windMax = wState.status === "ok" ? wState.summary.windMax : null;
     const gustMax = wState.status === "ok" ? wState.summary.gustMax : null;
-
     const tideName = state.status === "ok" ? state.tideName : null;
 
     return decideWeatherEmotion({
@@ -571,7 +568,6 @@ export default function Weather({ back }: Props) {
     });
   }, [wState, state]);
 
-  // ✅ Weatherの感情を “weather source” として発火
   useEffect(() => {
     emitEmotion({
       source: "weather",
@@ -581,7 +577,6 @@ export default function Weather({ back }: Props) {
     });
   }, [emitEmotion, weatherEmotion]);
 
-  // ✅ 画面を離れたら weather の感情は消す（保険）
   useEffect(() => {
     return () => {
       clearEmotion("weather");
@@ -676,8 +671,9 @@ export default function Weather({ back }: Props) {
 
   function weatherStatusBadge() {
     if (wState.status === "loading") return { text: "取得中…", color: "#0a6" };
-    if (wState.status === "error")
+    if (wState.status === "error") {
       return { text: "取得失敗", color: "#ff7a7a" };
+    }
     const src = weatherSourceText();
     return src ? { text: src, color: "#6cf" } : null;
   }
@@ -702,7 +698,6 @@ export default function Weather({ back }: Props) {
           gap: 12,
         }}
       >
-        {/* タブ */}
         <div
           className="glass glass-strong"
           style={{
@@ -750,7 +745,6 @@ export default function Weather({ back }: Props) {
           )}
         </div>
 
-        {/* 天気：ステータス */}
         {(wState.status === "loading" || wState.status === "error") && (
           <div
             className="glass glass-strong"
@@ -766,7 +760,6 @@ export default function Weather({ back }: Props) {
           </div>
         )}
 
-        {/* 潮：ステータス */}
         {(state.status === "loading" || state.status === "error") && (
           <div
             className="glass glass-strong"
@@ -782,7 +775,6 @@ export default function Weather({ back }: Props) {
           </div>
         )}
 
-        {/* サマリー（天気＋潮名） */}
         <div className="glass glass-strong" style={tileStyle}>
           <div
             style={{
@@ -844,7 +836,6 @@ export default function Weather({ back }: Props) {
             </div>
           </div>
 
-          {/* 天気サマリー */}
           <div style={{ marginTop: 10 }}>
             <div style={{ fontWeight: 800, marginBottom: 6 }}>
               🌤️ 天気（焼津）
@@ -860,8 +851,8 @@ export default function Weather({ back }: Props) {
             ) : (
               <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
                 <div style={{ color: "rgba(255,255,255,0.88)" }}>
-                  🧾 概況：{" "}
-                  <span style={{ color: "#fff" }}>
+                  🧾 概況：
+                  <span style={{ color: "#fff", marginLeft: 4 }}>
                     {wState.summary.overview}
                   </span>
                   <span
@@ -885,7 +876,6 @@ export default function Weather({ back }: Props) {
             )}
           </div>
 
-          {/* 潮名 */}
           <div style={{ marginTop: 12, fontSize: 12, color: "#6cf" }}>
             🌙 潮名：
             {state.status === "ok"
@@ -908,7 +898,6 @@ export default function Weather({ back }: Props) {
           )}
         </div>
 
-        {/* 満潮/干潮 + グラフ */}
         <div
           style={{
             display: "grid",
@@ -1013,6 +1002,7 @@ export default function Weather({ back }: Props) {
             tide key: {FIXED_PORT.pc}:{FIXED_PORT.hc}:{state.dayKey}
           </div>
         )}
+
         {wState.status === "ok" && (
           <div
             style={{
