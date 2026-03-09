@@ -17,7 +17,7 @@ import CharacterSettings from "./screens/CharacterSettings";
 import AlbumPicker from "./screens/AlbumPicker";
 import AlbumViewer from "./screens/AlbumViewer";
 import Stage from "./components/Stage";
-import CrossFadeSwitch from "./components/CrossFadeSwitch";
+import FadeSwitch from "./components/FadeSwitch";
 import LockScreen from "./components/LockScreen";
 import {
   DEFAULT_SETTINGS,
@@ -131,14 +131,17 @@ function AppInner() {
 
   let content: ReactNode;
 
-  if (screen === "record") content = <Record back={backHome} />;
-  else if (screen === "recordHistory")
+  if (screen === "record") {
+    content = <Record back={backHome} />;
+  } else if (screen === "recordHistory") {
     content = <RecordHistory back={backHome} />;
-  else if (screen === "recordAnalysis")
+  } else if (screen === "recordAnalysis") {
     content = <RecordAnalysis back={backHome} />;
-  else if (screen === "weather") content = <Weather back={backHome} />;
-  else if (screen === "settings") content = <Settings back={backHome} />;
-  else if (screen === "chat") {
+  } else if (screen === "weather") {
+    content = <Weather back={backHome} />;
+  } else if (screen === "settings") {
+    content = <Settings back={backHome} />;
+  } else if (screen === "chat") {
     content = (
       <Chat
         back={backHome}
@@ -282,7 +285,7 @@ function AppInner() {
             pointerEvents: "none",
           }}
         >
-          <Stage />
+          <Stage activeKey={screen} />
         </div>
       )}
 
@@ -298,9 +301,14 @@ function AppInner() {
         {skipFade ? (
           content
         ) : (
-          <CrossFadeSwitch activeKey={screen} durationMs={500}>
+          <FadeSwitch
+            activeKey={screen}
+            durationMs={260}
+            coverAlpha={0.82}
+            settleMs={90}
+          >
             {content}
-          </CrossFadeSwitch>
+          </FadeSwitch>
         )}
       </div>
     </div>
