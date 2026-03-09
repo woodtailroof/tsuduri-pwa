@@ -78,50 +78,76 @@ function pickWinner(events: EmotionEvent[]): Emotion {
 }
 
 function nowMs(): number {
-  // ✅ render中に Date.now() を呼ぶ lint（react-hooks/purity）対策
-  // performance.now は “経過時間” なので expiresAt 判定には使わない
   return Date.now();
+}
+
+function filterActiveEvents(
+  record: Record<string, EmotionEvent>,
+  now: number,
+): EmotionEvent[] {
+  return Object.values(record).filter(
+    (e) => e.expiresAt == null || e.expiresAt > now,
+  );
+}
+
+function removeExpiredEvents(
+  record: Record<string, EmotionEvent>,
+  now: number,
+): Record<string, EmotionEvent> {
+  let changed = false;
+  const next: Record<string, EmotionEvent> = {};
+
+  for (const [key, ev] of Object.entries(record)) {
+    if (ev.expiresAt != null && ev.expiresAt <= now) {
+      changed = true;
+      continue;
+    }
+    next[key] = ev;
+  }
+
+  return changed ? next : record;
+}
+
+function getNextExpiryMs(record: Record<string, EmotionEvent>): number | null {
+  let min: number | null = null;
+
+  for (const ev of Object.values(record)) {
+    if (ev.expiresAt == null) continue;
+    if (min == null || ev.expiresAt < min) min = ev.expiresAt;
+  }
+
+  return min;
 }
 
 export function EmotionProvider({ children }: { children: React.ReactNode }) {
   const [events, setEvents] = useState<Record<string, EmotionEvent>>({});
   const eventsRef = useRef(events);
+
   useEffect(() => {
     eventsRef.current = events;
   }, [events]);
 
-  // ✅ “現在時刻”は state で持って render 外で更新（purity対策）
-  const [tickNow, setTickNow] = useState<number>(() => nowMs());
-
-  // ✅ 期限切れを掃除（1秒に1回で十分）
+  // ✅ 次に期限切れになる瞬間だけタイマーを仕掛ける
   useEffect(() => {
-    const id = window.setInterval(() => {
+    if (typeof window === "undefined") return;
+
+    const nextExpiry = getNextExpiryMs(events);
+    if (nextExpiry == null) return;
+
+    const delay = Math.max(0, nextExpiry - nowMs());
+
+    const id = window.setTimeout(() => {
       const now = nowMs();
-      setTickNow(now);
+      setEvents((cur) => removeExpiredEvents(cur, now));
+    }, delay);
 
-      const cur = eventsRef.current;
-      let changed = false;
-      const next: Record<string, EmotionEvent> = { ...cur };
-
-      for (const [k, ev] of Object.entries(cur)) {
-        if (ev.expiresAt != null && ev.expiresAt <= now) {
-          delete next[k];
-          changed = true;
-        }
-      }
-      if (changed) setEvents(next);
-    }, 1000);
-
-    return () => window.clearInterval(id);
-  }, []);
+    return () => window.clearTimeout(id);
+  }, [events]);
 
   const emotion = useMemo(() => {
-    const now = tickNow;
-    const active = Object.values(events).filter(
-      (e) => e.expiresAt == null || e.expiresAt > now,
-    );
+    const active = filterActiveEvents(events, nowMs());
     return pickWinner(active);
-  }, [events, tickNow]);
+  }, [events]);
 
   const emitEmotion = useCallback((args: EmitArgs) => {
     const source = String(args.source ?? "").trim() || "system";
@@ -130,7 +156,6 @@ export function EmotionProvider({ children }: { children: React.ReactNode }) {
     const priority = clampInt(args.priority, source === "manual" ? 50 : 10);
     const ttlRaw = args.ttlMs;
 
-    // ttl <= 0 は “クリア” 扱いにする
     const ttlMs =
       ttlRaw == null
         ? null
@@ -166,6 +191,7 @@ export function EmotionProvider({ children }: { children: React.ReactNode }) {
   const clearEmotion = useCallback((source: EmotionSource) => {
     const key = String(source ?? "").trim();
     if (!key) return;
+
     setEvents((cur) => {
       if (!cur[key]) return cur;
       const next = { ...cur };
@@ -188,16 +214,14 @@ export function EmotionProvider({ children }: { children: React.ReactNode }) {
   );
 
   const getActiveSources = useCallback(() => {
-    const now = tickNow;
-    return Object.values(eventsRef.current)
-      .filter((e) => e.expiresAt == null || e.expiresAt > now)
-      .map((e) => ({
-        source: String(e.source),
-        emotion: e.emotion,
-        priority: e.priority,
-        expiresAt: e.expiresAt,
-      }));
-  }, [tickNow]);
+    const now = nowMs();
+    return filterActiveEvents(eventsRef.current, now).map((e) => ({
+      source: String(e.source),
+      emotion: e.emotion,
+      priority: e.priority,
+      expiresAt: e.expiresAt,
+    }));
+  }, []);
 
   const value = useMemo<EmotionState>(
     () => ({

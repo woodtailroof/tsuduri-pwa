@@ -12,23 +12,14 @@ type Props = {
   title?: ReactNode;
   subtitle?: ReactNode;
   children: ReactNode;
-
   maxWidth?: number;
-
   showBack?: boolean;
-
   onBack?: () => void;
-
   titleLayout?: "center" | "left";
-
   scrollY?: "auto" | "hidden";
-
   contentPadding?: string | number;
-
   showTestCharacter?: boolean;
-
   displayCharacterId?: string;
-
   displayExpression?: string;
 };
 
@@ -71,6 +62,8 @@ function stableString(v: unknown): string {
 type CSSVars = Record<`--${string}`, string>;
 
 export default function PageShell(props: Props) {
+  console.log("PageShell render");
+
   const title = props.title;
   const subtitle = props.subtitle;
   const children = props.children;
