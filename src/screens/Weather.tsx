@@ -24,12 +24,6 @@ type Props = {
   back: () => void;
 };
 
-export default function Weather({ back }: Props) {
-  console.log("Weather render");
-
-  // ここから元のWeatherの中身
-
-
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
@@ -127,8 +121,9 @@ function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
       const b = slope;
       const mid = uniq[i - 1];
       if (a > 0 && b < 0) raw.push({ kind: "high", min: mid.min, cm: mid.cm });
-      else if (a < 0 && b > 0)
+      else if (a < 0 && b > 0) {
         raw.push({ kind: "low", min: mid.min, cm: mid.cm });
+      }
     }
 
     if (slope !== 0) prevSlope = slope;
@@ -161,6 +156,7 @@ function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
     .filter((e) => e.kind === "high")
     .sort((a, b) => a.min - b.min)
     .slice(0, 2);
+
   const lows = merged
     .filter((e) => e.kind === "low")
     .sort((a, b) => a.min - b.min)
@@ -173,7 +169,10 @@ function sourceLabel(source: TideCacheSource | null, isStale: boolean) {
   if (!source) return null;
   if (source === "fetch") return { text: "取得", color: "#0a6" };
   if (source === "cache") return { text: "キャッシュ", color: "#6cf" };
-  return { text: isStale ? "期限切れキャッシュ" : "キャッシュ", color: "#f6c" };
+  return {
+    text: isStale ? "期限切れキャッシュ" : "キャッシュ",
+    color: "#f6c",
+  };
 }
 
 type LoadState =
@@ -210,6 +209,7 @@ function useIsMobile() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+
     const mq = window.matchMedia("(max-width: 820px)");
     const coarse = window.matchMedia("(pointer: coarse)");
 
@@ -229,6 +229,10 @@ function useIsMobile() {
   return isMobile;
 }
 
+export default function Weather({ back }: Props) {
+  console.log("Weather render");
+
+  // ここから下に、元の Weather コンポーネント本体を続ける
 /**
  * ===== Open-Meteo（日別サマリ）=====
  * - ブラウザから直叩き（Cloudflare経由のIP共有ガチャを避ける）
