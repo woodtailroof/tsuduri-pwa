@@ -22,6 +22,7 @@ import { useEmotion } from "../lib/emotion";
 
 type Props = {
   back: () => void;
+  isActive?: boolean;
 };
 
 function pad2(n: number) {
@@ -365,7 +366,7 @@ function saveWeatherCache(day: string, summary: WeatherSummary) {
   }
 }
 
-export default function Weather({ back }: Props) {
+expexport default function Weather({ back, isActive = true }: Props) {
   console.log("Weather render");
 
   useAppSettings();
@@ -568,14 +569,19 @@ export default function Weather({ back }: Props) {
     });
   }, [wState, state]);
 
-  useEffect(() => {
-    emitEmotion({
-      source: "weather",
-      emotion: weatherEmotion,
-      priority: 10,
-      ttlMs: 30 * 60 * 1000,
-    });
-  }, [emitEmotion, weatherEmotion]);
+   useEffect(() => {
+  if (!isActive) {
+    clearEmotion("weather");
+    return;
+  }
+
+  emitEmotion({
+    source: "weather",
+    emotion: weatherEmotion,
+    priority: 10,
+    ttlMs: 30 * 60 * 1000,
+  });
+}, [isActive, emitEmotion, clearEmotion, weatherEmotion]);
 
   useEffect(() => {
     return () => {
