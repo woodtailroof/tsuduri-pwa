@@ -17,7 +17,7 @@ import CharacterSettings from "./screens/CharacterSettings";
 import AlbumPicker from "./screens/AlbumPicker";
 import AlbumViewer from "./screens/AlbumViewer";
 import Stage from "./components/Stage";
-import CrossFadeSwitch from "./components/CrossFadeSwitch";
+import FadeSwitch from "./components/FadeSwitch";
 import LockScreen from "./components/LockScreen";
 import {
   DEFAULT_SETTINGS,
@@ -176,7 +176,6 @@ function AppInner() {
     );
   }
 
-  // ===== 背景URL 解決 =====
   const bgMode: BgMode = settings.bgMode ?? DEFAULT_SETTINGS.bgMode;
   const autoBgSet =
     (settings.autoBgSet ?? DEFAULT_SETTINGS.autoBgSet).trim() ||
@@ -197,7 +196,6 @@ function AppInner() {
     return autoPreviewSrc;
   }, [bgMode, fixedBgSrc, autoPreviewSrc]);
 
-  // ===== 表示設定 =====
   const bgBlur = Number.isFinite(settings.bgBlur)
     ? settings.bgBlur
     : DEFAULT_SETTINGS.bgBlur;
@@ -241,7 +239,6 @@ function AppInner() {
   const isCalmViewer = screen === "albumViewer";
   const skipFade = screen === "albumPicker" || screen === "albumViewer";
 
-  // ===== ロック未解除ならアプリ本体を描画しない =====
   if (!lockReady) {
     return (
       <div
@@ -298,7 +295,7 @@ function AppInner() {
             pointerEvents: "none",
           }}
         >
-          <Stage />
+          <Stage activeKey={screen} />
         </div>
       )}
 
@@ -314,9 +311,14 @@ function AppInner() {
         {skipFade ? (
           content
         ) : (
-          <CrossFadeSwitch activeKey={screen} durationMs={500}>
+          <FadeSwitch
+            activeKey={screen}
+            durationMs={260}
+            coverAlpha={0.82}
+            settleMs={90}
+          >
             {content}
-          </CrossFadeSwitch>
+          </FadeSwitch>
         )}
       </div>
     </div>

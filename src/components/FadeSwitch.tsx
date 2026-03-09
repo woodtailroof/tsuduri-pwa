@@ -14,6 +14,12 @@ type Props = {
    * デフォルト: 0.78
    */
   coverAlpha?: number;
+  /**
+   * ✅ 差し替え後に幕を開けるまでの待機時間
+   * 重い画面ほど少し長めが安定しやすい
+   * デフォルト: 90ms
+   */
+  settleMs?: number;
 };
 
 function prefersReducedMotion(): boolean {
@@ -23,17 +29,12 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-type Phase = "idle" | "fadeOut" | "fadeIn";
+type Phase = "idle" | "fadeOut" | "hold" | "fadeIn";
 
-/**
- * ✅ backdrop-filter を殺しにくいフェード方式
- * - コンテンツ側の opacity を触らない
- * - 上に「幕(overlay)」を被せてフェード
- * - 幕が最も濃い瞬間に中身を差し替える（切替が見えない）
- */
 export default function FadeSwitch(props: Props) {
   const durationMsRaw = props.durationMs ?? 260;
   const coverAlphaRaw = props.coverAlpha ?? 0.78;
+  const settleMsRaw = props.settleMs ?? 90;
 
   const durationMs = useMemo(() => {
     return prefersReducedMotion() ? 0 : Math.max(0, Math.floor(durationMsRaw));
@@ -44,6 +45,12 @@ export default function FadeSwitch(props: Props) {
     if (!Number.isFinite(v)) return 0.78;
     return Math.max(0, Math.min(1, v));
   }, [coverAlphaRaw]);
+
+  const settleMs = useMemo(() => {
+    const v = Number(settleMsRaw);
+    if (!Number.isFinite(v)) return 90;
+    return Math.max(0, Math.floor(v));
+  }, [settleMsRaw]);
 
   const halfMs = useMemo(
     () => Math.max(0, Math.floor(durationMs / 2)),
@@ -61,25 +68,32 @@ export default function FadeSwitch(props: Props) {
 
   const tokenRef = useRef(0);
   const timerRef = useRef<number | null>(null);
-  const rafRef = useRef<number | null>(null);
+  const raf1Ref = useRef<number | null>(null);
+  const raf2Ref = useRef<number | null>(null);
 
   const clearPending = () => {
     if (timerRef.current != null) {
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    if (rafRef.current != null) {
-      window.cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
+    if (raf1Ref.current != null) {
+      window.cancelAnimationFrame(raf1Ref.current);
+      raf1Ref.current = null;
+    }
+    if (raf2Ref.current != null) {
+      window.cancelAnimationFrame(raf2Ref.current);
+      raf2Ref.current = null;
     }
   };
 
   // 同一キーなら中身だけ追従（フェード無し）
+  // ただし画面切替中は触らない
   useEffect(() => {
+    if (phase !== "idle") return;
     if (props.activeKey === shownKey) {
       setShownChildren(props.children);
     }
-  }, [props.activeKey, props.children, shownKey]);
+  }, [props.activeKey, props.children, shownKey, phase]);
 
   useEffect(() => {
     if (props.activeKey === shownKey) return;
@@ -94,39 +108,56 @@ export default function FadeSwitch(props: Props) {
       return;
     }
 
+    // 1) まず幕を閉じる
     setPhase("fadeOut");
 
     timerRef.current = window.setTimeout(() => {
       if (token !== tokenRef.current) return;
 
+      // 2) 幕が十分濃くなったところで中身差し替え
       setShownKey(props.activeKey);
       setShownChildren(latestChildrenRef.current);
 
-      rafRef.current = window.requestAnimationFrame(() => {
+      // 3) いったん hold にして、新画面のレイアウトを少し落ち着かせる
+      setPhase("hold");
+
+      raf1Ref.current = window.requestAnimationFrame(() => {
         if (token !== tokenRef.current) return;
 
-        setPhase("fadeIn");
-
-        timerRef.current = window.setTimeout(() => {
+        raf2Ref.current = window.requestAnimationFrame(() => {
           if (token !== tokenRef.current) return;
-          setPhase("idle");
-          timerRef.current = null;
-        }, halfMs);
+
+          timerRef.current = window.setTimeout(() => {
+            if (token !== tokenRef.current) return;
+
+            // 4) 落ち着いてから幕を開ける
+            setPhase("fadeIn");
+
+            timerRef.current = window.setTimeout(() => {
+              if (token !== tokenRef.current) return;
+              setPhase("idle");
+              timerRef.current = null;
+            }, halfMs);
+          }, settleMs);
+        });
       });
     }, halfMs);
 
     return () => {
       clearPending();
     };
-  }, [props.activeKey, shownKey, durationMs, halfMs]);
+  }, [props.activeKey, shownKey, durationMs, halfMs, settleMs]);
 
-  const overlayOpacity = phase === "fadeOut" || phase === "fadeIn" ? 1 : 0;
+  const overlayOpacity =
+    phase === "fadeOut" || phase === "hold" || phase === "fadeIn" ? 1 : 0;
 
   const easing =
     phase === "fadeOut" ? "cubic-bezier(.4,0,1,1)" : "cubic-bezier(0,0,.2,1)";
 
   const overlayTransition =
-    durationMs === 0 || halfMs === 0 ? "none" : `opacity ${halfMs}ms ${easing}`;
+    phase === "hold" || durationMs === 0 || halfMs === 0
+      ? "none"
+      : `opacity ${halfMs}ms ${easing}`;
 
   return (
     <div

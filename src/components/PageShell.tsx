@@ -2,6 +2,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
   type CSSProperties,
@@ -62,8 +63,6 @@ function stableString(v: unknown): string {
 type CSSVars = Record<`--${string}`, string>;
 
 export default function PageShell(props: Props) {
-  console.log("PageShell render");
-
   const title = props.title;
   const subtitle = props.subtitle;
   const children = props.children;
@@ -73,6 +72,7 @@ export default function PageShell(props: Props) {
   const onBack = props.onBack;
   const scrollY = props.scrollY ?? "auto";
   const contentPadding = props.contentPadding;
+  const titleLayout = props.titleLayout ?? "center";
 
   const isMobile = useIsMobile();
 
@@ -98,10 +98,12 @@ export default function PageShell(props: Props) {
     const s = stableString(subtitle);
     const w = String(maxWidth);
     const y = String(scrollY);
-    return `${t}|${s}|${w}|${y}`;
-  }, [title, subtitle, maxWidth, scrollY]);
+    const tl = String(titleLayout);
+    const sb = String(showBack);
+    return `${t}|${s}|${w}|${y}|${tl}|${sb}`;
+  }, [title, subtitle, maxWidth, scrollY, titleLayout, showBack]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === "undefined") return;
 
     const id = (props.displayCharacterId ?? "").trim();
@@ -113,7 +115,7 @@ export default function PageShell(props: Props) {
     );
   }, [props.displayCharacterId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === "undefined") return;
 
     window.dispatchEvent(
@@ -177,18 +179,21 @@ export default function PageShell(props: Props) {
     paddingBottom: 10,
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: titleLayout === "center" ? "center" : "space-between",
     gap: 12,
     minWidth: 0,
     boxSizing: "border-box",
+    position: "relative",
   };
 
   const titleWrapStyle: CSSProperties = {
     minWidth: 0,
-    flex: "1 1 auto",
+    flex: titleLayout === "center" ? "0 1 auto" : "1 1 auto",
     display: "flex",
     flexDirection: "column",
     justifyContent: "center",
+    alignItems: titleLayout === "center" ? "center" : "flex-start",
+    textAlign: titleLayout === "center" ? "center" : "left",
   };
 
   const subtitleStyle: CSSProperties = {
@@ -199,12 +204,22 @@ export default function PageShell(props: Props) {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+    width: "100%",
+    textAlign: titleLayout === "center" ? "center" : "left",
   };
 
   const backWrapStyle: CSSProperties = {
     flex: "0 0 auto",
     display: "flex",
     alignItems: "center",
+    ...(titleLayout === "center"
+      ? {
+          position: "absolute",
+          right: "max(14px, env(safe-area-inset-right))",
+          top: "50%",
+          transform: "translateY(-50%)",
+        }
+      : {}),
   };
 
   return (
@@ -223,9 +238,7 @@ export default function PageShell(props: Props) {
                   ← 戻る
                 </button>
               </div>
-            ) : (
-              <span />
-            )}
+            ) : null}
           </div>
         </div>
       ) : null}
