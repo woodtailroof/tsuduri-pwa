@@ -112,7 +112,6 @@ function AppInner() {
     };
   }, []);
 
-  // ✅ weather画面を離れたら、親側でも必ず weather 感情を消す
   useEffect(() => {
     if (screen !== "weather") {
       clearEmotion("weather");
@@ -146,7 +145,7 @@ function AppInner() {
   } else if (screen === "recordAnalysis") {
     content = <RecordAnalysis back={backHome} />;
   } else if (screen === "weather") {
-    content = <Weather back={backHome} />;
+    content = <Weather back={backHome} isActive={screen === "weather"} />;
   } else if (screen === "settings") {
     content = <Settings back={backHome} />;
   } else if (screen === "chat") {
