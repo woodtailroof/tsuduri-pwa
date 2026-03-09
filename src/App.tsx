@@ -27,7 +27,7 @@ import {
   type BgMode,
   useAppSettings,
 } from "./lib/appSettings";
-import { EmotionProvider } from "./lib/emotion";
+import { EmotionProvider, useEmotion } from "./lib/emotion";
 import { isSessionUnlocked, migrateLegacyPlaintextLock } from "./lib/appLock";
 
 type Screen =
@@ -79,6 +79,7 @@ function useMinuteTick() {
 function AppInner() {
   const [screen, setScreen] = useState<Screen>("home");
   const { settings } = useAppSettings();
+  const { clearEmotion } = useEmotion();
   const minuteTick = useMinuteTick();
 
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
@@ -110,6 +111,13 @@ function AppInner() {
       alive = false;
     };
   }, []);
+
+  // ✅ weather画面を離れたら、親側でも必ず weather 感情を消す
+  useEffect(() => {
+    if (screen !== "weather") {
+      clearEmotion("weather");
+    }
+  }, [screen, clearEmotion]);
 
   const backHome = () => setScreen("home");
 
