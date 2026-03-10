@@ -27,7 +27,7 @@ import {
   type BgMode,
   useAppSettings,
 } from "./lib/appSettings";
-import { EmotionProvider, useEmotion } from "./lib/emotion";
+import { EmotionProvider } from "./lib/emotion";
 import { isSessionUnlocked, migrateLegacyPlaintextLock } from "./lib/appLock";
 
 type Screen =
@@ -79,7 +79,6 @@ function useMinuteTick() {
 function AppInner() {
   const [screen, setScreen] = useState<Screen>("home");
   const { settings } = useAppSettings();
-  const { clearEmotion } = useEmotion();
   const minuteTick = useMinuteTick();
 
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
@@ -111,24 +110,6 @@ function AppInner() {
       alive = false;
     };
   }, []);
-
-  // ✅ 現在画面を常に通知
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    window.dispatchEvent(
-      new CustomEvent("tsuduri-screen-change", {
-        detail: { screen },
-      }),
-    );
-  }, [screen]);
-
-  // ✅ 親側でも保険で weather 感情を消す
-  useEffect(() => {
-    if (screen !== "weather") {
-      clearEmotion("weather");
-    }
-  }, [screen, clearEmotion]);
 
   const backHome = () => setScreen("home");
 
@@ -304,7 +285,10 @@ function AppInner() {
             pointerEvents: "none",
           }}
         >
-          <Stage activeKey={screen} />
+          <Stage
+            activeKey={screen}
+            forcedExpression={screen === "home" ? "neutral" : undefined}
+          />
         </div>
       )}
 
