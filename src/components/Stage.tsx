@@ -20,6 +20,9 @@ type Props = {
 
   /** ✅ 直接propsで渡したい場合の受け口（任意） */
   displayCharacterId?: string;
+
+  /** ✅ この画面では表情を強制したい時用 */
+  forcedExpression?: Emotion;
 };
 
 type StoredCharacterLike = {
@@ -162,7 +165,11 @@ export default function Stage(props: Props) {
     : DEFAULT_SETTINGS.characterOpacity;
 
   const characterOverrideSrc = (settings.characterOverrideSrc ?? "").trim();
-  const effectiveExpression = normalizeExpression(globalEmotion);
+
+  // ✅ HOMEなどではここで強制neutralできる
+  const effectiveExpression = normalizeExpression(
+    props.forcedExpression ?? globalEmotion,
+  );
 
   const reducedMotion = useMemo(() => prefersReducedMotion(), []);
   const fadeMs = reducedMotion ? 0 : 500;
