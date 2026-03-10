@@ -112,6 +112,18 @@ function AppInner() {
     };
   }, []);
 
+  // ✅ 現在画面を常に通知
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    window.dispatchEvent(
+      new CustomEvent("tsuduri-screen-change", {
+        detail: { screen },
+      }),
+    );
+  }, [screen]);
+
+  // ✅ 親側でも保険で weather 感情を消す
   useEffect(() => {
     if (screen !== "weather") {
       clearEmotion("weather");
@@ -145,7 +157,7 @@ function AppInner() {
   } else if (screen === "recordAnalysis") {
     content = <RecordAnalysis back={backHome} />;
   } else if (screen === "weather") {
-    content = <Weather back={backHome} isActive={screen === "weather"} />;
+    content = <Weather back={backHome} />;
   } else if (screen === "settings") {
     content = <Settings back={backHome} />;
   } else if (screen === "chat") {

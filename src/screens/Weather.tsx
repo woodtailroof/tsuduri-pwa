@@ -366,7 +366,7 @@ function saveWeatherCache(day: string, summary: WeatherSummary) {
   }
 }
 
-expexport default function Weather({ back, isActive = true }: Props) {
+export default function Weather({ back, isActive = true }: Props) {
   console.log("Weather render");
 
   useAppSettings();
@@ -569,19 +569,19 @@ expexport default function Weather({ back, isActive = true }: Props) {
     });
   }, [wState, state]);
 
-   useEffect(() => {
-  if (!isActive) {
-    clearEmotion("weather");
-    return;
-  }
+  useEffect(() => {
+    if (!isActive) {
+      clearEmotion("weather");
+      return;
+    }
 
-  emitEmotion({
-    source: "weather",
-    emotion: weatherEmotion,
-    priority: 10,
-    ttlMs: 30 * 60 * 1000,
-  });
-}, [isActive, emitEmotion, clearEmotion, weatherEmotion]);
+    emitEmotion({
+      source: "weather",
+      emotion: weatherEmotion,
+      priority: 10,
+      ttlMs: 30 * 60 * 1000,
+    });
+  }, [isActive, emitEmotion, clearEmotion, weatherEmotion]);
 
   useEffect(() => {
     return () => {
