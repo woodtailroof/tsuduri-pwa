@@ -434,12 +434,17 @@ export default function RecordHistory({ back }: Props) {
   }
 
   function setCoverThumbUrl(tripId: number, blob: Blob) {
-    // 既存があれば解放して置き換え
     const prev = coverThumbUrlRef.current.get(tripId);
     if (prev) URL.revokeObjectURL(prev);
 
     const url = URL.createObjectURL(blob);
     coverThumbUrlRef.current.set(tripId, url);
+  }
+
+  function clearCoverThumbUrl(tripId: number) {
+    const prev = coverThumbUrlRef.current.get(tripId);
+    if (prev) URL.revokeObjectURL(prev);
+    coverThumbUrlRef.current.delete(tripId);
   }
 
   useEffect(() => {
@@ -468,19 +473,20 @@ export default function RecordHistory({ back }: Props) {
   async function loadAll() {
     setAllLoading(true);
     try {
-      const list = await db.trips.orderBy("createdAt").reverse().toArray();
+      const raw = await db.trips.orderBy("createdAt").reverse().toArray();
+      const list = raw.filter((r) => !r.deletedAt);
       setAll(list);
       setAllLoadedOnce(true);
 
-      // 表示用のcoverサムネを先読み（上から archivePageSize 分くらい）
       const top = list
         .slice(0, Math.max(50, archivePageSize))
         .filter((t) => t.id != null) as Array<TripRecord & { id: number }>;
       const ids = top.map((t) => t.id);
 
       if (ids.length > 0) {
-        // tripId でまとめて取り、各tripの cover を決める
-        const photos = await db.tripPhotos.where("tripId").anyOf(ids).toArray();
+        const photos = (
+          await db.tripPhotos.where("tripId").anyOf(ids).toArray()
+        ).filter((p) => !p.deletedAt);
 
         const byTrip = new Map<number, TripPhoto[]>();
         for (const p of photos) {
@@ -490,11 +496,18 @@ export default function RecordHistory({ back }: Props) {
 
         for (const id of ids) {
           const ps = byTrip.get(id) ?? [];
-          if (ps.length === 0) continue;
+          if (ps.length === 0) {
+            clearCoverThumbUrl(id);
+            continue;
+          }
           const cover =
             ps.find((x) => x.isCover === 1) ??
             [...ps].sort((a, b) => a.order - b.order)[0];
-          if (cover?.photoBlob) setCoverThumbUrl(id, cover.photoBlob);
+          if (cover?.photoBlob) {
+            setCoverThumbUrl(id, cover.photoBlob);
+          } else {
+            clearCoverThumbUrl(id);
+          }
         }
       }
     } finally {
@@ -590,8 +603,10 @@ export default function RecordHistory({ back }: Props) {
 
   async function onDelete(id?: number) {
     if (!id) return;
-    const ok = confirm("この記録を削除する？（戻せないよ）");
+    const ok = confirm("この記録を削除する？（同期用に論理削除されるよ）");
     if (!ok) return;
+
+    const nowIso = new Date().toISOString();
 
     await db.transaction(
       "rw",
@@ -599,12 +614,38 @@ export default function RecordHistory({ back }: Props) {
       db.tripPhotos,
       db.tripFish,
       async () => {
-        await db.tripPhotos.where("tripId").equals(id).delete();
-        await db.tripFish.where("tripId").equals(id).delete();
-        await db.trips.delete(id);
+        const trip = await db.trips.get(id);
+        if (!trip) return;
+
+        await db.trips.update(id, {
+          deletedAt: nowIso,
+          updatedAt: nowIso,
+          syncStatus: "pending",
+        });
+
+        const photos = await db.tripPhotos.where("tripId").equals(id).toArray();
+        for (const photo of photos) {
+          if (!photo.id) continue;
+          await db.tripPhotos.update(photo.id, {
+            deletedAt: nowIso,
+            updatedAt: nowIso,
+            syncStatus: "pending",
+          });
+        }
+
+        const fish = await db.tripFish.where("tripId").equals(id).toArray();
+        for (const row of fish) {
+          if (!row.id) continue;
+          await db.tripFish.update(row.id, {
+            deletedAt: nowIso,
+            updatedAt: nowIso,
+            syncStatus: "pending",
+          });
+        }
       },
     );
 
+    clearCoverThumbUrl(id);
     await loadAll();
     if (selectedId === id) setSelectedId(null);
     if (isMobile) setSheetOpen(false);
@@ -627,10 +668,13 @@ export default function RecordHistory({ back }: Props) {
     try {
       const tripId = t.id;
 
-      const [photos, fish] = await Promise.all([
+      const [photosRaw, fishRaw] = await Promise.all([
         db.tripPhotos.where("tripId").equals(tripId).sortBy("order"),
         db.tripFish.where("tripId").equals(tripId).toArray(),
       ]);
+
+      const photos = photosRaw.filter((p) => !p.deletedAt);
+      const fish = fishRaw.filter((f) => !f.deletedAt);
 
       setDetailPhotos(photos);
       setDetailFish(fish);
@@ -638,7 +682,6 @@ export default function RecordHistory({ back }: Props) {
       const cover = photos.find((p) => p.isCover === 1) ?? photos[0] ?? null;
       if (cover?.id) setSelectedPhotoId(cover.id);
 
-      // tide graph（startedAt基準。保存済みスナップショットとは別にseriesで描画）
       const shotIso = t.startedAt ?? t.createdAt;
       const shot = new Date(shotIso);
       if (!Number.isFinite(shot.getTime())) {
@@ -784,7 +827,6 @@ export default function RecordHistory({ back }: Props) {
           </div>
         </div>
 
-        {/* 写真一覧 */}
         <div style={{ display: "grid", gap: 10 }}>
           <div style={{ fontWeight: 900 }}>🖼 写真</div>
 
@@ -905,7 +947,6 @@ export default function RecordHistory({ back }: Props) {
           )}
         </div>
 
-        {/* タイドグラフ */}
         <div style={{ display: "grid", gap: 10 }}>
           <div style={{ fontWeight: 900 }}>📈 タイドグラフ</div>
 
@@ -1340,7 +1381,6 @@ export default function RecordHistory({ back }: Props) {
               height: "100%",
             }}
           >
-            {/* 左（リスト） */}
             <div
               className="glass glass-strong"
               style={{
@@ -1373,7 +1413,6 @@ export default function RecordHistory({ back }: Props) {
               </div>
             </div>
 
-            {/* 中央（操作） */}
             <div
               style={{
                 display: "grid",
@@ -1422,7 +1461,6 @@ export default function RecordHistory({ back }: Props) {
               </div>
             </div>
 
-            {/* 右（詳細） */}
             <div
               ref={detailPaneRef}
               className="glass glass-strong"

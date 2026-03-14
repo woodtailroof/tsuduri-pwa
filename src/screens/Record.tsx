@@ -101,13 +101,19 @@ function displayPhaseForHeader(phase: string) {
   return hide.has(phase) ? "" : phase;
 }
 
-function uuidLike() {
+function makeUid() {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID();
+  }
   return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
 }
 
 function emptyFishDraft(): FishDraft {
   return {
-    id: uuidLike(),
+    id: makeUid(),
     species: "",
     sizeCm: "",
     count: "1",
@@ -541,7 +547,7 @@ export default function Record({ back }: Props) {
       }
 
       next.push({
-        id: uuidLike(),
+        id: makeUid(),
         file,
         previewUrl,
         capturedAt: captured,
@@ -599,6 +605,7 @@ export default function Record({ back }: Props) {
     setSaving(true);
     try {
       const nowIso = new Date().toISOString();
+      const tripUid = makeUid();
 
       const startedAt =
         baseCapturedAt?.toISOString() ?? (allowUnknown ? nowIso : nowIso);
@@ -613,7 +620,12 @@ export default function Record({ back }: Props) {
           : null;
 
       const trip: TripRecord = {
+        uid: tripUid,
         createdAt: nowIso,
+        updatedAt: nowIso,
+        deletedAt: null,
+        syncStatus: "pending",
+
         startedAt,
         pointId: FIXED_PORT.id,
         memo,
@@ -663,8 +675,15 @@ export default function Record({ back }: Props) {
           const ordered = [...photos].map((p, idx) => ({ p, idx }));
           for (const { p, idx } of ordered) {
             const row: TripPhoto = {
+              uid: makeUid(),
+              tripUid,
               tripId,
               createdAt: nowIso,
+              updatedAt: nowIso,
+              deletedAt: null,
+              syncStatus: "pending",
+              remoteKey: null,
+
               capturedAt: p.capturedAt ? p.capturedAt.toISOString() : null,
               photoName: p.file.name,
               photoType: p.file.type || "image/*",
@@ -678,8 +697,14 @@ export default function Record({ back }: Props) {
           if (outcome === "caught") {
             for (const f of fishDrafts) {
               const fish: TripFish = {
+                uid: makeUid(),
+                tripUid,
                 tripId,
                 createdAt: nowIso,
+                updatedAt: nowIso,
+                deletedAt: null,
+                syncStatus: "pending",
+
                 species: f.species.trim(),
                 sizeCm:
                   f.sizeCm.trim() === "" ? null : parsePositiveNumber(f.sizeCm),

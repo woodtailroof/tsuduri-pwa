@@ -8,6 +8,8 @@ export type TideTrend = "up" | "down" | "flat" | "unknown";
 export type SpotType = "port" | "surf";
 export type WaterClarity = "clear" | "normal" | "muddy";
 
+export type SyncStatus = "pending" | "synced" | "error";
+
 // ルアーは“ジャンル”だけ（モデル名は入れない方針）
 export type LureType =
   | "metaljig"
@@ -21,6 +23,12 @@ export type LureType =
 
 export type TripRecord = {
   id?: number;
+
+  // 同期用
+  uid: string;
+  updatedAt: string; // 最終更新日時 ISO
+  deletedAt?: string | null; // 論理削除日時 ISO
+  syncStatus: SyncStatus;
 
   createdAt: string; // 投稿作成（=保存）日時 ISO
   startedAt: string; // 釣行の基準時刻（写真EXIF最古 or 手動入力）ISO
@@ -69,6 +77,15 @@ export type TripRecord = {
 
 export type TripFish = {
   id?: number;
+
+  // 同期用
+  uid: string;
+  tripUid: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  syncStatus: SyncStatus;
+
+  // ローカル関連用
   tripId: number;
 
   species: string;
@@ -86,6 +103,16 @@ export type TripFish = {
 
 export type TripPhoto = {
   id?: number;
+
+  // 同期用
+  uid: string;
+  tripUid: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  syncStatus: SyncStatus;
+  remoteKey?: string | null;
+
+  // ローカル関連用
   tripId: number;
 
   createdAt: string; // 追加日時 ISO
@@ -181,6 +208,25 @@ class AppDB extends Dexie {
       })
       .upgrade(async () => {
         // 運用前想定。既存データ補完は今は不要。
+      });
+
+    this.version(4)
+      .stores({
+        trips:
+          "++id, uid, createdAt, updatedAt, deletedAt, syncStatus, startedAt, endedAt, pointId, outcome, timeBand, lureType, spotType, waterClarity, baitPresent, lat, lon, tideDayKey, tideName, tidePhase, tideTrend, weatherCode",
+
+        tripFish:
+          "++id, uid, tripId, tripUid, species, lureType, timeBand, createdAt, updatedAt, deletedAt, syncStatus, [tripId+species], [tripId+lureType], [tripId+timeBand], [tripId+species+timeBand], [tripUid+species], [tripUid+lureType], [tripUid+timeBand]",
+
+        tripPhotos:
+          "++id, uid, tripId, tripUid, createdAt, updatedAt, deletedAt, syncStatus, remoteKey, capturedAt, isCover, order, [tripId+order], [tripId+isCover], [tripUid+order], [tripUid+isCover]",
+
+        tideCache: "key, day, pc, hc, fetchedAt",
+
+        catches: "++id, createdAt, capturedAt, result",
+      })
+      .upgrade(async () => {
+        // 既存データ配慮不要の前提なので、補完処理は入れない
       });
   }
 }
