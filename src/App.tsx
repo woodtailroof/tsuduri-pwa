@@ -2,6 +2,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -29,6 +30,7 @@ import {
 } from "./lib/appSettings";
 import { EmotionProvider } from "./lib/emotion";
 import { isSessionUnlocked, migrateLegacyPlaintextLock } from "./lib/appLock";
+import { syncTrips } from "./lib/tripSync";
 
 type Screen =
   | "home"
@@ -87,6 +89,12 @@ function AppInner() {
   const [lockReady, setLockReady] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
 
+  // 同期状態
+  const syncRunningRef = useRef(false);
+  const initialSyncDoneRef = useRef(false);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncError, setSyncError] = useState("");
+
   useEffect(() => {
     let alive = true;
 
@@ -111,6 +119,63 @@ function AppInner() {
     };
   }, []);
 
+  async function runAppSync(reason: "boot" | "online" | "manual-save") {
+    if (syncRunningRef.current) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+
+    syncRunningRef.current = true;
+    setSyncBusy(true);
+    setSyncError("");
+
+    try {
+      const result = await syncTrips();
+
+      if (!result.ok) {
+        const msg =
+          result.errors && result.errors.length > 0
+            ? result.errors.join(" / ")
+            : "同期に失敗したよ";
+        setSyncError(msg);
+        console.warn(`[tripSync:${reason}]`, msg);
+      } else {
+        setSyncError("");
+        console.info(
+          `[tripSync:${reason}] pushed=${result.pushedTrips}/${result.pushedFish}/${result.pushedPhotos}, pulled=${result.pulledTrips}/${result.pulledFish}/${result.pulledPhotos}`,
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSyncError(msg);
+      console.error(`[tripSync:${reason}]`, err);
+    } finally {
+      syncRunningRef.current = false;
+      setSyncBusy(false);
+    }
+  }
+
+  // 起動後の初回同期
+  useEffect(() => {
+    if (!lockReady || !unlocked) return;
+    if (initialSyncDoneRef.current) return;
+
+    initialSyncDoneRef.current = true;
+    void runAppSync("boot");
+  }, [lockReady, unlocked]);
+
+  // オンライン復帰で再同期
+  useEffect(() => {
+    if (!lockReady || !unlocked) return;
+
+    const onOnline = () => {
+      void runAppSync("online");
+    };
+
+    window.addEventListener("online", onOnline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+    };
+  }, [lockReady, unlocked]);
+
   const backHome = () => setScreen("home");
 
   const goFromHome = (
@@ -132,7 +197,14 @@ function AppInner() {
   let content: ReactNode;
 
   if (screen === "record") {
-    content = <Record back={backHome} />;
+    content = (
+      <Record
+        back={backHome}
+        onSaved={() => {
+          void runAppSync("manual-save");
+        }}
+      />
+    );
   } else if (screen === "recordHistory") {
     content = <RecordHistory back={backHome} />;
   } else if (screen === "recordAnalysis") {
@@ -301,6 +373,57 @@ function AppInner() {
           pointerEvents: "auto",
         }}
       >
+        {(syncBusy || syncError) && (
+          <div
+            style={{
+              position: "absolute",
+              top: 10,
+              right: 12,
+              zIndex: 999,
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+              pointerEvents: "none",
+            }}
+          >
+            {syncBusy && (
+              <div
+                className="glass glass-strong"
+                style={{
+                  borderRadius: 999,
+                  padding: "6px 10px",
+                  fontSize: 12,
+                  color: "rgba(255,255,255,0.82)",
+                  background: "rgba(0,0,0,0.26)",
+                }}
+              >
+                ☁️ 同期中…
+              </div>
+            )}
+
+            {!syncBusy && syncError && (
+              <div
+                className="glass glass-strong"
+                style={{
+                  borderRadius: 999,
+                  padding: "6px 10px",
+                  fontSize: 12,
+                  color: "#ffb3c1",
+                  background: "rgba(0,0,0,0.30)",
+                  maxWidth: "min(80vw, 480px)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={syncError}
+              >
+                ⚠ 同期失敗
+              </div>
+            )}
+          </div>
+        )}
+
         {skipFade ? (
           content
         ) : (

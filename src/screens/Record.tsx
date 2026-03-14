@@ -21,6 +21,7 @@ import { useAppSettings } from "../lib/appSettings";
 
 type Props = {
   back: () => void;
+  onSaved?: () => void;
 };
 
 type TidePoint = { unix?: number; cm: number; time?: string };
@@ -136,7 +137,7 @@ function parsePositiveInt(raw: string): number | null {
   return v;
 }
 
-export default function Record({ back }: Props) {
+export default function Record({ back, onSaved }: Props) {
   const { settings } = useAppSettings();
 
   const glassVars = {
@@ -720,6 +721,12 @@ export default function Record({ back }: Props) {
 
       resetAll();
       alert("記録したよ！");
+
+      try {
+        onSaved?.();
+      } catch (syncKickError) {
+        console.error(syncKickError);
+      }
     } catch (e) {
       console.error(e);
       alert("保存に失敗したよ…");
