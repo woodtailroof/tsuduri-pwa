@@ -1,0 +1,11 @@
+name = "tsuduri-pwa"
+compatibility_date = "2026-03-16"
+
+# Pages Functions を使う前提
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "tsuduri-db"
+database_id = "ここを wrangler d1 create で出た database_id に置き換え"
+migrations_dir = "migrations"
