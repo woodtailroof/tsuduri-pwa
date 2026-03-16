@@ -24,3 +24,13 @@ dist-ssr
 *.sw?
 
 .vercel
+.wrangler/
+.wrangler/state/
+.env.local
+.dev.vars
+
+functionsWorker-*
+functionsRoutes-*
+middleware-*
+
+*.sqlite
