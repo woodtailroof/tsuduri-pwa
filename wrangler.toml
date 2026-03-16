@@ -7,5 +7,5 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "tsuduri-db"
-database_id = "ここを wrangler d1 create で出た database_id に置き換え"
+database_id = "5a5dc7f2-7f70-443a-8f30-4baddef1e241"
 migrations_dir = "migrations"
