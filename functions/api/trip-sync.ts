@@ -141,8 +141,8 @@ function asNumberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function asBooleanOrNull(value: unknown): boolean | null {
-  return typeof value === "boolean" ? value : null;
+function asBooleanOrNull(value: unknown): number | null {
+  return typeof value === "boolean" ? (value ? 1 : 0) : null;
 }
 
 function asStringOrNull(value: unknown): string | null {
@@ -577,7 +577,7 @@ async function fetchPhotosSince(db: D1Database, since: string | null) {
           photo_name as photoName,
           photo_type as photoType,
           remote_key as remoteKey,
-          photo_order as order,
+          photo_order as "order",
           is_cover as isCover
         FROM sync_trip_photos
         WHERE updated_at > ?
@@ -598,7 +598,7 @@ async function fetchPhotosSince(db: D1Database, since: string | null) {
           photo_name as photoName,
           photo_type as photoType,
           remote_key as remoteKey,
-          photo_order as order,
+          photo_order as "order",
           is_cover as isCover
         FROM sync_trip_photos
         ORDER BY updated_at ASC
