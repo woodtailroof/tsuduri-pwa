@@ -1,6 +1,7 @@
 // functions/api/trip-sync.ts
 
 type SyncStatus = "pending" | "synced" | "error";
+type TimeBand = "morning" | "day" | "evening" | "night" | "unknown";
 
 type TripSyncRecord = {
   uid: string;
@@ -16,7 +17,7 @@ type TripSyncRecord = {
   memo: string;
 
   outcome: "caught" | "skunk";
-  timeBand: "morning" | "day" | "evening" | "night" | "unknown";
+  timeBand: string;
 
   lureType?:
     | "metaljig"
@@ -75,7 +76,7 @@ type TripSyncFish = {
     | "other"
     | null;
 
-  timeBand?: "morning" | "day" | "evening" | "night" | "unknown" | null;
+  timeBand?: string | null;
 };
 
 type TripSyncPhoto = {
@@ -149,6 +150,24 @@ function asStringOrNull(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
+function normalizeTimeBand(value: unknown): TimeBand {
+  if (typeof value !== "string") return "unknown";
+
+  const v = value.trim().toLowerCase();
+
+  if (v === "morning" || v === "朝" || v === "早朝") return "morning";
+  if (v === "day" || v === "昼" || v === "日中") return "day";
+  if (v === "evening" || v === "夕" || v === "夕方") return "evening";
+  if (v === "night" || v === "夜" || v === "深夜") return "night";
+  if (v === "unknown" || v === "不明" || v === "") return "unknown";
+
+  return "unknown";
+}
+
+function normalizeOutcome(value: unknown): "caught" | "skunk" {
+  return value === "caught" ? "caught" : "skunk";
+}
+
 function isTripRecord(value: unknown): value is TripSyncRecord {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
@@ -159,7 +178,6 @@ function isTripRecord(value: unknown): value is TripSyncRecord {
     typeof v.startedAt === "string" &&
     typeof v.pointId === "string" &&
     typeof v.memo === "string" &&
-    typeof v.outcome === "string" &&
     typeof v.timeBand === "string"
   );
 }
@@ -247,8 +265,8 @@ async function upsertTrip(db: D1Database, row: TripSyncRecord) {
 
       row.pointId,
       row.memo,
-      row.outcome,
-      row.timeBand,
+      normalizeOutcome(row.outcome),
+      normalizeTimeBand(row.timeBand),
 
       asStringOrNull(row.lureType),
       asStringOrNull(row.spotType),
@@ -310,7 +328,7 @@ async function upsertFish(db: D1Database, row: TripSyncFish) {
       asNumberOrNull(row.sizeCm),
       asNumberOrNull(row.count),
       asStringOrNull(row.lureType),
-      asStringOrNull(row.timeBand),
+      row.timeBand == null ? null : normalizeTimeBand(row.timeBand),
     )
     .run();
 }
