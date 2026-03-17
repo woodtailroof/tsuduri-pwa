@@ -18,6 +18,13 @@
       "tags": []
     },
     {
+      "id": "matsuri/swimsuit",
+      "title": "まつり：水着",
+      "thumb": "/assets/slides/matsuri/swimsuit/from-PixAI-1990206757966185059-1.png",
+      "characterId": "matsuri",
+      "tags": []
+    },
+    {
       "id": "tsuduri/sailor",
       "title": "つづり：セーラー",
       "thumb": "/assets/slides/tsuduri/sailor/000.png",
