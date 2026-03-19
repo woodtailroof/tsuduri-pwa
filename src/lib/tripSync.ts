@@ -371,10 +371,6 @@ async function upsertPulledPhotos(rows: TripSyncPhoto[]): Promise<number> {
       if (!parentTrip?.id) continue;
 
       if (!local) {
-        /**
-         * photoBlob が無いので、ここでは空 Blob を仮置き
-         * 後で写真取得 API を作ったら差し替える
-         */
         await db.tripPhotos.add({
           ...remote,
           tripId: parentTrip.id,
@@ -486,10 +482,6 @@ export async function pushTripSync(
       };
     }
 
-    const syncedAt = nowIso();
-    await markBundleAsSynced(bundle, syncedAt);
-    setLastSyncAt(syncedAt);
-
     return {
       ok: true,
       pushedTrips: payload.trips.length,
@@ -520,7 +512,7 @@ export async function pushTripSync(
  */
 export async function pullTripSync(
   endpoint = DEFAULT_SYNC_ENDPOINT,
-  since = getLastSyncAt(),
+  since?: string | null,
 ): Promise<SyncResult> {
   try {
     if (typeof window === "undefined") {
@@ -536,9 +528,11 @@ export async function pullTripSync(
       };
     }
 
+    const effectiveSince = since ?? getLastSyncAt();
+
     const url = new URL(endpoint, window.location.origin);
-    if (since) {
-      url.searchParams.set("since", since);
+    if (effectiveSince) {
+      url.searchParams.set("since", effectiveSince);
     }
     url.searchParams.set("deviceId", getOrCreateSyncDeviceId());
 
@@ -592,17 +586,35 @@ export async function pullTripSync(
 }
 
 /**
- * 全同期: push → pull
+ * 全同期: push → local mark synced → pull
+ *
+ * 重要:
+ * - push前の lastSyncAt を保持しておく
+ * - push成功だけでは lastSyncAt を進めない
+ * - pull成功後の serverTime で初めて lastSyncAt を進める
+ *
+ * これで他端末の更新を取りこぼしにくくする
  */
 export async function syncTrips(
   endpoint = DEFAULT_SYNC_ENDPOINT,
 ): Promise<SyncResult> {
+  const beforeSyncAt = getLastSyncAt();
+  const pendingBundle = await collectPendingTripBundle();
+
   const pushResult = await pushTripSync(endpoint);
   if (!pushResult.ok) {
     return pushResult;
   }
 
-  const pullResult = await pullTripSync(endpoint);
+  if (
+    pendingBundle.trips.length > 0 ||
+    pendingBundle.fish.length > 0 ||
+    pendingBundle.photos.length > 0
+  ) {
+    await markBundleAsSynced(pendingBundle, nowIso());
+  }
+
+  const pullResult = await pullTripSync(endpoint, beforeSyncAt);
 
   return {
     ok: pullResult.ok,
