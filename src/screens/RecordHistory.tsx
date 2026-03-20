@@ -137,11 +137,115 @@ function pushUniqueLine(target: string[], value: unknown) {
   if (!target.includes(s)) target.push(s);
 }
 
+function humanizeToken(value: string) {
+  return value.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function normalizeSpeciesLabel(raw: string) {
+  const src = raw.trim();
+  if (!src) return "魚種不明";
+
+  const key = src.toLowerCase().replace(/[\s-]+/g, "_");
+
+  const map: Record<string, string> = {
+    spanish_mackerel: "サワラ",
+    japanese_spanish_mackerel: "サワラ",
+    yellowtail: "ブリ",
+    amberjack: "カンパチ",
+    greater_amberjack: "ヒラマサ",
+    seabass: "シーバス",
+    sea_bass: "シーバス",
+    japanese_seabass: "シーバス",
+    black_seabream: "チヌ",
+    black_bream: "チヌ",
+    red_seabream: "マダイ",
+    sea_bream: "タイ",
+    horse_mackerel: "アジ",
+    mackerel: "サバ",
+    chub_mackerel: "サバ",
+    sardine: "イワシ",
+    flounder: "ヒラメ",
+    olive_flounder: "ヒラメ",
+    halibut: "ヒラメ",
+    flathead: "マゴチ",
+    goby: "ハゼ",
+    mullet: "ボラ",
+    catfish: "ナマズ",
+    largemouth_bass: "ブラックバス",
+    smallmouth_bass: "スモールマウスバス",
+    bass: "バス",
+    snakehead: "ライギョ",
+    trout: "トラウト",
+    rainbow_trout: "ニジマス",
+    char: "イワナ",
+    salmon: "サケ",
+    tuna: "マグロ",
+    bonito: "カツオ",
+    barracuda: "カマス",
+    rockfish: "カサゴ",
+    scorpionfish: "カサゴ",
+    grunt: "メッキ",
+    trevally: "メッキ",
+  };
+
+  if (map[key]) return map[key];
+
+  if (/^[a-z0-9 _-]+$/i.test(src)) {
+    return humanizeToken(src);
+  }
+
+  return src;
+}
+
+function collectLureCandidatesFromValue(value: unknown, out: string[]) {
+  if (value == null) return;
+
+  if (typeof value === "string" || typeof value === "number") {
+    pushUniqueLine(out, value);
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) collectLureCandidatesFromValue(item, out);
+    return;
+  }
+
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const preferred = ["name", "model", "brand", "maker", "series", "color"];
+    const parts = preferred
+      .map((k) => obj[k])
+      .filter((v) => v != null && String(v).trim() !== "")
+      .map((v) => String(v).trim());
+
+    if (parts.length > 0) {
+      pushUniqueLine(out, parts.join(" / "));
+      return;
+    }
+
+    for (const v of Object.values(obj)) {
+      if (typeof v === "string" || typeof v === "number") {
+        pushUniqueLine(out, v);
+      }
+    }
+  }
+}
+
 function extractLureLines(trip: TripRecord, fish: TripFish[]) {
   const lines: string[] = [];
 
-  const tripObj = asObj(trip);
-  const tripCandidates = [
+  const scan = (obj: Record<string, unknown>) => {
+    for (const [key, value] of Object.entries(obj)) {
+      if (/lure|ルアー/i.test(key)) {
+        collectLureCandidatesFromValue(value, lines);
+      }
+    }
+  };
+
+  scan(asObj(trip));
+  for (const row of fish) scan(asObj(row));
+
+  const explicitKeys = [
     "lure",
     "lureName",
     "lureNames",
@@ -152,39 +256,25 @@ function extractLureLines(trip: TripRecord, fish: TripFish[]) {
     "lures",
     "hitLure",
     "hitLureName",
+    "selectedLure",
+    "selectedLures",
+    "used_lure",
+    "used_lures",
   ];
 
-  for (const key of tripCandidates) {
-    const raw = tripObj[key];
-    if (Array.isArray(raw)) {
-      for (const item of raw) pushUniqueLine(lines, item);
-    } else {
-      pushUniqueLine(lines, raw);
-    }
+  const tripObj = asObj(trip);
+  for (const key of explicitKeys) {
+    collectLureCandidatesFromValue(tripObj[key], lines);
   }
 
   for (const row of fish) {
     const obj = asObj(row);
-    const fishCandidates = [
-      "lure",
-      "lureName",
-      "usedLure",
-      "usedLures",
-      "hitLure",
-      "hitLureName",
-      "memo",
-    ];
-    for (const key of fishCandidates) {
-      const raw = obj[key];
-      if (Array.isArray(raw)) {
-        for (const item of raw) pushUniqueLine(lines, item);
-      } else {
-        pushUniqueLine(lines, raw);
-      }
+    for (const key of explicitKeys) {
+      collectLureCandidatesFromValue(obj[key], lines);
     }
   }
 
-  return lines;
+  return lines.filter((v) => !/^(なし|no|none)$/i.test(v.trim()));
 }
 
 function extractWeatherLines(
@@ -263,7 +353,9 @@ function formatOutcomeLine(trip: TripRecord, fish: TripFish[]) {
   if (trip.outcome === "caught") {
     if (fish.length === 0) return "🎣 釣れた：不明";
     const top = fish[0];
-    const sp = top.species?.trim() ? top.species.trim() : "不明";
+    const sp = top.species?.trim()
+      ? normalizeSpeciesLabel(top.species.trim())
+      : "不明";
     const sz =
       typeof top.sizeCm === "number" && Number.isFinite(top.sizeCm)
         ? `${top.sizeCm}cm`
@@ -274,7 +366,9 @@ function formatOutcomeLine(trip: TripRecord, fish: TripFish[]) {
 }
 
 function formatFishLine(row: TripFish) {
-  const sp = row.species?.trim() ? row.species.trim() : "魚種不明";
+  const sp = row.species?.trim()
+    ? normalizeSpeciesLabel(row.species.trim())
+    : "魚種不明";
   const parts: string[] = [sp];
 
   if (typeof row.sizeCm === "number" && Number.isFinite(row.sizeCm)) {
@@ -1116,7 +1210,7 @@ export default function RecordHistory({ back }: Props) {
               style={{
                 borderRadius: 16,
                 padding: 10,
-                minHeight: isDesktop ? 280 : 320,
+                minHeight: isDesktop ? 300 : 320,
                 display: "grid",
                 alignItems: "center",
                 overflow: "hidden",
@@ -1176,7 +1270,7 @@ export default function RecordHistory({ back }: Props) {
     const lureLines = extractLureLines(trip, detailFish);
 
     return (
-      <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ display: "grid", gap: 12, minHeight: 0, height: "100%" }}>
         <div className="glass glass-strong" style={detailCardStyle}>
           <div style={{ fontWeight: 900 }}>🎣 釣れた魚</div>
 
@@ -1239,7 +1333,15 @@ export default function RecordHistory({ back }: Props) {
           )}
         </div>
 
-        <div style={{ display: "grid", gap: 10 }}>
+        <div
+          style={{
+            display: "grid",
+            gap: 10,
+            minHeight: 0,
+            gridTemplateRows: "auto auto minmax(340px, 1fr)",
+            height: "100%",
+          }}
+        >
           <div style={{ fontWeight: 900 }}>🖼 写真</div>
 
           {detailPhotos.length === 0 ? (
@@ -1247,7 +1349,7 @@ export default function RecordHistory({ back }: Props) {
               写真なし
             </div>
           ) : (
-            <div style={{ display: "grid", gap: 10 }}>
+            <>
               <div
                 style={{
                   display: "grid",
@@ -1316,8 +1418,8 @@ export default function RecordHistory({ back }: Props) {
                 style={{
                   borderRadius: 16,
                   padding: 10,
-                  minHeight: isDesktop ? 300 : 260,
-                  maxHeight: isDesktop ? "46dvh" : undefined,
+                  minHeight: 340,
+                  height: "100%",
                   display: "grid",
                   alignItems: "center",
                   overflow: "hidden",
@@ -1356,7 +1458,7 @@ export default function RecordHistory({ back }: Props) {
                   </div>
                 )}
               </div>
-            </div>
+            </>
           )}
         </div>
       </div>
@@ -1681,7 +1783,7 @@ export default function RecordHistory({ back }: Props) {
       title={titleNode}
       subtitle={headerSubNode}
       titleLayout="left"
-      maxWidth={1400}
+      maxWidth={1500}
       showBack
       onBack={back}
       scrollY={isDesktop ? "hidden" : "auto"}
@@ -1693,8 +1795,9 @@ export default function RecordHistory({ back }: Props) {
           maxWidth: "100vw",
           minHeight: 0,
           height: isDesktop
-            ? "calc(100dvh - var(--shell-header-h) - 8px)"
+            ? "calc(100dvh - var(--shell-header-h) - 20px)"
             : "auto",
+          paddingBottom: isDesktop ? 8 : 0,
         }}
       >
         {isMobile ? (
@@ -1738,7 +1841,7 @@ export default function RecordHistory({ back }: Props) {
             style={{
               display: "grid",
               gridTemplateColumns:
-                "minmax(260px, 400px) minmax(420px, 1fr) minmax(420px, 1.05fr)",
+                "minmax(300px, 430px) minmax(380px, 0.95fr) minmax(420px, 1.05fr)",
               gap: 14,
               alignItems: "stretch",
               minWidth: 0,
@@ -1755,10 +1858,12 @@ export default function RecordHistory({ back }: Props) {
                 height: "100%",
                 overflow: "hidden",
                 display: "grid",
-                gridTemplateRows: "auto 1fr",
+                gridTemplateRows: "auto auto 1fr",
                 gap: 10,
               }}
             >
+              {Controls}
+
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
                 絞り込み {filteredArchive.length} 件（表示{" "}
                 {Math.min(archivePageSize, filteredArchive.length)} 件）
@@ -1787,13 +1892,8 @@ export default function RecordHistory({ back }: Props) {
                 minHeight: 0,
                 height: "100%",
                 overflow: "hidden",
-                display: "grid",
-                gridTemplateRows: "auto 1fr",
-                gap: 12,
               }}
             >
-              {Controls}
-
               <div
                 ref={detailCenterPaneRef}
                 style={{
