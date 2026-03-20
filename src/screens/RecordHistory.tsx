@@ -186,9 +186,68 @@ function normalizeSpeciesLabel(raw: string) {
     scorpionfish: "カサゴ",
     grunt: "メッキ",
     trevally: "メッキ",
+    cutlassfish: "タチウオ",
+    hairtail: "タチウオ",
   };
 
   if (map[key]) return map[key];
+
+  if (/^[a-z0-9 _-]+$/i.test(src)) {
+    return humanizeToken(src);
+  }
+
+  return src;
+}
+
+function normalizeLureLabel(raw: string) {
+  const src = raw.trim();
+  if (!src) return "";
+
+  const key = src.toLowerCase().replace(/[\s-]+/g, "_");
+
+  const exactMap: Record<string, string> = {
+    top: "トップ",
+    topwater: "トップウォーター",
+    blade: "ブレード",
+    minnow: "ミノー",
+    sinking_minnow: "シンキングミノー",
+    floating_minnow: "フローティングミノー",
+    suspending_minnow: "サスペンドミノー",
+    pencil: "ペンシル",
+    pencil_bait: "ペンシルベイト",
+    popper: "ポッパー",
+    vib: "バイブ",
+    vibration: "バイブレーション",
+    metal_vib: "メタルバイブ",
+    metal_jig: "メタルジグ",
+    jig: "ジグ",
+    spin_tail: "スピンテール",
+    spinnerbait: "スピナーベイト",
+    buzzbait: "バズベイト",
+    chatterbait: "チャターベイト",
+    crankbait: "クランクベイト",
+    jerkbait: "ジャークベイト",
+    swimbait: "スイムベイト",
+    worm: "ワーム",
+    softbait: "ソフトベイト",
+    soft_bait: "ソフトベイト",
+    frog: "フロッグ",
+    spoon: "スプーン",
+  };
+
+  if (exactMap[key]) return exactMap[key];
+
+  const parts = src
+    .split(/[\/|,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (parts.length > 1) {
+    return parts
+      .map((p) => normalizeLureLabel(p))
+      .filter(Boolean)
+      .join(" / ");
+  }
 
   if (/^[a-z0-9 _-]+$/i.test(src)) {
     return humanizeToken(src);
@@ -201,7 +260,8 @@ function collectLureCandidatesFromValue(value: unknown, out: string[]) {
   if (value == null) return;
 
   if (typeof value === "string" || typeof value === "number") {
-    pushUniqueLine(out, value);
+    const normalized = normalizeLureLabel(String(value));
+    pushUniqueLine(out, normalized);
     return;
   }
 
@@ -216,7 +276,7 @@ function collectLureCandidatesFromValue(value: unknown, out: string[]) {
     const parts = preferred
       .map((k) => obj[k])
       .filter((v) => v != null && String(v).trim() !== "")
-      .map((v) => String(v).trim());
+      .map((v) => normalizeLureLabel(String(v).trim()));
 
     if (parts.length > 0) {
       pushUniqueLine(out, parts.join(" / "));
@@ -225,7 +285,7 @@ function collectLureCandidatesFromValue(value: unknown, out: string[]) {
 
     for (const v of Object.values(obj)) {
       if (typeof v === "string" || typeof v === "number") {
-        pushUniqueLine(out, v);
+        pushUniqueLine(out, normalizeLureLabel(String(v)));
       }
     }
   }
@@ -567,6 +627,125 @@ function BottomSheet({
   return createPortal(node, document.body);
 }
 
+function PhotoLightbox({
+  open,
+  src,
+  onClose,
+}: {
+  open: boolean;
+  src: string | null;
+  onClose: () => void;
+}) {
+  const [mounted, setMounted] = useState(false);
+  const [active, setActive] = useState(false);
+  const reduce = prefersReducedMotion();
+
+  useEffect(() => {
+    if (!open) return;
+    setMounted(true);
+    const id = requestAnimationFrame(() => setActive(true));
+    return () => cancelAnimationFrame(id);
+  }, [open]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (open) return;
+
+    setActive(false);
+    const t = window.setTimeout(() => setMounted(false), reduce ? 0 : 180);
+    return () => window.clearTimeout(t);
+  }, [open, mounted, reduce]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mounted, onClose]);
+
+  useEffect(() => {
+    if (!mounted || typeof document === "undefined") return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mounted]);
+
+  if (!mounted || !src || typeof document === "undefined") return null;
+
+  const overlayStyle: CSSProperties = {
+    position: "fixed",
+    inset: 0,
+    zIndex: 100000,
+    background: active ? "rgba(0,0,0,0.82)" : "rgba(0,0,0,0)",
+    backdropFilter: active ? "blur(8px)" : "blur(0px)",
+    WebkitBackdropFilter: active ? "blur(8px)" : "blur(0px)",
+    display: "grid",
+    placeItems: "center",
+    padding: 20,
+    transition: `background ${reduce ? 0 : 180}ms ease, backdrop-filter ${
+      reduce ? 0 : 180
+    }ms ease`,
+  };
+
+  const frameStyle: CSSProperties = {
+    position: "relative",
+    width: "min(96vw, 1400px)",
+    height: "min(92vh, 980px)",
+    borderRadius: 18,
+    overflow: "hidden",
+    background: "rgba(10,10,10,0.88)",
+    boxShadow: "0 20px 60px rgba(0,0,0,0.45)",
+    transform: active ? "scale(1)" : "scale(0.985)",
+    opacity: active ? 1 : 0.001,
+    transition: `transform ${reduce ? 0 : 180}ms ease, opacity ${
+      reduce ? 0 : 180
+    }ms ease`,
+    display: "grid",
+    placeItems: "center",
+  };
+
+  const closeBtnStyle: CSSProperties = {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    zIndex: 2,
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(0,0,0,0.42)",
+    color: "#fff",
+    padding: "10px 14px",
+    cursor: "pointer",
+    fontSize: 13,
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+  };
+
+  return createPortal(
+    <div style={overlayStyle} onClick={onClose}>
+      <div style={frameStyle} onClick={(e) => e.stopPropagation()}>
+        <button type="button" onClick={onClose} style={closeBtnStyle}>
+          ✕ 閉じる
+        </button>
+        <img
+          src={src}
+          alt="preview"
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
+            display: "block",
+          }}
+        />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export default function RecordHistory({ back }: Props) {
   const { settings } = useAppSettings();
 
@@ -712,6 +891,7 @@ export default function RecordHistory({ back }: Props) {
   const [detailPhotos, setDetailPhotos] = useState<TripPhoto[]>([]);
   const [detailFish, setDetailFish] = useState<TripFish[]>([]);
   const [selectedPhotoId, setSelectedPhotoId] = useState<number | null>(null);
+  const [lightboxPhotoId, setLightboxPhotoId] = useState<number | null>(null);
 
   const detailCenterPaneRef = useRef<HTMLDivElement | null>(null);
   const detailRightPaneRef = useRef<HTMLDivElement | null>(null);
@@ -937,6 +1117,11 @@ export default function RecordHistory({ back }: Props) {
     return filteredArchive.find((r) => r.id === selectedId) ?? null;
   }, [filteredArchive, selectedId]);
 
+  const lightboxSrc = useMemo(() => {
+    if (lightboxPhotoId == null) return null;
+    return getPhotoUrlByPhotoId(lightboxPhotoId);
+  }, [lightboxPhotoId, detailPhotos]);
+
   async function onDelete(id?: number) {
     if (!id) return;
     const ok = confirm("この記録を削除する？（同期用に論理削除されるよ）");
@@ -999,6 +1184,7 @@ export default function RecordHistory({ back }: Props) {
     setDetailPhotos([]);
     setDetailFish([]);
     setSelectedPhotoId(null);
+    setLightboxPhotoId(null);
     setDetailLoading(true);
 
     try {
@@ -1365,7 +1551,11 @@ export default function RecordHistory({ back }: Props) {
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => p.id && setSelectedPhotoId(p.id)}
+                      onClick={() => {
+                        if (!p.id) return;
+                        setSelectedPhotoId(p.id);
+                        setLightboxPhotoId(p.id);
+                      }}
                       className="glass"
                       style={{
                         borderRadius: 12,
@@ -1376,7 +1566,7 @@ export default function RecordHistory({ back }: Props) {
                         background: "rgba(0,0,0,0.18)",
                         aspectRatio: "1 / 1",
                         padding: 0,
-                        cursor: "pointer",
+                        cursor: "zoom-in",
                       }}
                       title={
                         p.capturedAt
@@ -1413,8 +1603,13 @@ export default function RecordHistory({ back }: Props) {
                 })}
               </div>
 
-              <div
+              <button
+                type="button"
                 className="glass glass-strong"
+                onClick={() => {
+                  if (selectedPhotoId != null)
+                    setLightboxPhotoId(selectedPhotoId);
+                }}
                 style={{
                   borderRadius: 16,
                   padding: 10,
@@ -1423,7 +1618,12 @@ export default function RecordHistory({ back }: Props) {
                   display: "grid",
                   alignItems: "center",
                   overflow: "hidden",
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(255,255,255,0.03)",
+                  cursor: selectedPhotoId != null ? "zoom-in" : "default",
                 }}
+                disabled={selectedPhotoId == null}
+                title={selectedPhotoId != null ? "クリックで拡大表示" : ""}
               >
                 {selectedPhotoId != null ? (
                   (() => {
@@ -1457,7 +1657,7 @@ export default function RecordHistory({ back }: Props) {
                     画像なし
                   </div>
                 )}
-              </div>
+              </button>
             </>
           )}
         </div>
@@ -2008,6 +2208,12 @@ export default function RecordHistory({ back }: Props) {
           </div>
         )}
       </div>
+
+      <PhotoLightbox
+        open={lightboxPhotoId != null}
+        src={lightboxSrc}
+        onClose={() => setLightboxPhotoId(null)}
+      />
     </PageShell>
   );
 }
