@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { db, type TripRecord, type TripPhoto, type TripFish } from "../db";
@@ -33,29 +34,34 @@ type CachedUrl = {
   revoke: boolean;
 };
 
-function pad2(n: number) {
+function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-function dayKeyFromISO(iso: string) {
+function dayKeyFromISO(iso: string): { d: Date; key: string } {
   const d = new Date(iso);
-  const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(
+    d.getDate(),
+  )}`;
   return { d, key };
 }
 
-function displayPhaseForHeader(phase: string) {
+function displayPhaseForHeader(phase: string): string {
   const hide = new Set(["上げ", "下げ", "上げ始め", "下げ始め", "止まり"]);
   return hide.has(phase) ? "" : phase;
 }
 
-function sourceLabel(source: TideCacheSource | null, isStale: boolean) {
+function sourceLabel(
+  source: TideCacheSource | null,
+  isStale: boolean,
+): { text: string; color: string } | null {
   if (!source) return null;
   if (source === "fetch") return { text: "取得", color: "#0a6" };
   if (source === "cache") return { text: "キャッシュ", color: "#6cf" };
   return { text: isStale ? "期限切れキャッシュ" : "キャッシュ", color: "#f6c" };
 }
 
-function useIsMobile() {
+function useIsMobile(): boolean {
   const [isMobile, setIsMobile] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     const mq = window.matchMedia("(max-width: 820px)");
@@ -84,7 +90,7 @@ function useIsMobile() {
   return isMobile;
 }
 
-function prefersReducedMotion() {
+function prefersReducedMotion(): boolean {
   try {
     return (
       typeof window !== "undefined" &&
@@ -112,7 +118,7 @@ function pickUnknown(
   return undefined;
 }
 
-function pickText(obj: Record<string, unknown>, keys: string[]) {
+function pickText(obj: Record<string, unknown>, keys: string[]): string {
   const v = pickUnknown(obj, keys);
   if (v == null) return "";
   if (typeof v === "string") return v.trim();
@@ -120,7 +126,10 @@ function pickText(obj: Record<string, unknown>, keys: string[]) {
   return "";
 }
 
-function pickNumber(obj: Record<string, unknown>, keys: string[]) {
+function pickNumber(
+  obj: Record<string, unknown>,
+  keys: string[],
+): number | null {
   const v = pickUnknown(obj, keys);
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string") {
@@ -130,18 +139,18 @@ function pickNumber(obj: Record<string, unknown>, keys: string[]) {
   return null;
 }
 
-function pushUniqueLine(target: string[], value: unknown) {
+function pushUniqueLine(target: string[], value: unknown): void {
   if (value == null) return;
   const s = String(value).trim();
   if (!s) return;
   if (!target.includes(s)) target.push(s);
 }
 
-function humanizeToken(value: string) {
+function humanizeToken(value: string): string {
   return value.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function normalizeSpeciesLabel(raw: string) {
+function normalizeSpeciesLabel(raw: string): string {
   const src = raw.trim();
   if (!src) return "魚種不明";
 
@@ -199,7 +208,7 @@ function normalizeSpeciesLabel(raw: string) {
   return src;
 }
 
-function normalizeLureLabel(raw: string) {
+function normalizeLureLabel(raw: string): string {
   const src = raw.trim();
   if (!src) return "";
 
@@ -256,7 +265,7 @@ function normalizeLureLabel(raw: string) {
   return src;
 }
 
-function collectLureCandidatesFromValue(value: unknown, out: string[]) {
+function collectLureCandidatesFromValue(value: unknown, out: string[]): void {
   if (value == null) return;
 
   if (typeof value === "string" || typeof value === "number") {
@@ -291,7 +300,7 @@ function collectLureCandidatesFromValue(value: unknown, out: string[]) {
   }
 }
 
-function extractLureLines(trip: TripRecord, fish: TripFish[]) {
+function extractLureLines(trip: TripRecord, fish: TripFish[]): string[] {
   const lines: string[] = [];
 
   const scan = (obj: Record<string, unknown>) => {
@@ -343,7 +352,7 @@ function extractWeatherLines(
   tide: TideInfo | undefined,
   detailTide: DetailTide | null,
   phase: string,
-) {
+): Array<{ label: string; value: string }> {
   const tripObj = asObj(trip);
   const rows: Array<{ label: string; value: string }> = [];
 
@@ -408,7 +417,7 @@ function extractWeatherLines(
   return rows;
 }
 
-function formatOutcomeLine(trip: TripRecord, fish: TripFish[]) {
+function formatOutcomeLine(trip: TripRecord, fish: TripFish[]): string {
   if (trip.outcome === "skunk") return "😇 釣れなかった（ボウズ）";
   if (trip.outcome === "caught") {
     if (fish.length === 0) return "🎣 釣れた：不明";
@@ -425,7 +434,7 @@ function formatOutcomeLine(trip: TripRecord, fish: TripFish[]) {
   return "❔ 結果未入力";
 }
 
-function formatFishLine(row: TripFish) {
+function formatFishLine(row: TripFish): string {
   const sp = row.species?.trim()
     ? normalizeSpeciesLabel(row.species.trim())
     : "魚種不明";
@@ -444,12 +453,12 @@ function formatFishLine(row: TripFish) {
   return parts.join(" / ");
 }
 
-function hasUsableLocalBlob(photo: TripPhoto | undefined | null) {
+function hasUsableLocalBlob(photo: TripPhoto | undefined | null): boolean {
   if (!photo?.photoBlob) return false;
   return photo.photoBlob.size > 0;
 }
 
-function buildRemotePhotoUrl(remoteKey: string) {
+function buildRemotePhotoUrl(remoteKey: string): string {
   return `/api/photo-file?key=${encodeURIComponent(remoteKey)}`;
 }
 
@@ -463,7 +472,7 @@ function BottomSheet({
   open: boolean;
   onClose: () => void;
   title?: string;
-  children: React.ReactNode;
+  children: ReactNode;
   pillBtnStyle: CSSProperties;
 }) {
   const [mounted, setMounted] = useState(false);
@@ -529,8 +538,7 @@ function BottomSheet({
       window.clearTimeout(t1);
       window.clearTimeout(t2);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, mounted, reduce]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -899,7 +907,7 @@ export default function RecordHistory({ back }: Props) {
   const thumbUrlMapRef = useRef<Map<number, CachedUrl>>(new Map());
   const coverThumbUrlRef = useRef<Map<number, CachedUrl>>(new Map());
 
-  function revokeCachedUrl(item: CachedUrl | undefined) {
+  function revokeCachedUrl(item: CachedUrl | undefined): void {
     if (!item) return;
     if (item.revoke) {
       URL.revokeObjectURL(item.url);
@@ -932,12 +940,12 @@ export default function RecordHistory({ back }: Props) {
     return null;
   }
 
-  function setCoverThumbUrl(tripId: number, item: CachedUrl) {
+  function setCoverThumbUrl(tripId: number, item: CachedUrl): void {
     revokeCachedUrl(coverThumbUrlRef.current.get(tripId));
     coverThumbUrlRef.current.set(tripId, item);
   }
 
-  function clearCoverThumbUrl(tripId: number) {
+  function clearCoverThumbUrl(tripId: number): void {
     revokeCachedUrl(coverThumbUrlRef.current.get(tripId));
     coverThumbUrlRef.current.delete(tripId);
   }
@@ -967,7 +975,7 @@ export default function RecordHistory({ back }: Props) {
     };
   }, []);
 
-  async function loadAll() {
+  async function loadAll(): Promise<void> {
     setAllLoading(true);
     try {
       const raw = await db.trips.orderBy("createdAt").reverse().toArray();
@@ -1032,8 +1040,7 @@ export default function RecordHistory({ back }: Props) {
   }
 
   useEffect(() => {
-    loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void loadAll();
   }, []);
 
   const yearMonthsMap = useMemo(() => {
@@ -1122,7 +1129,7 @@ export default function RecordHistory({ back }: Props) {
     return getPhotoUrlByPhotoId(lightboxPhotoId);
   }, [lightboxPhotoId, detailPhotos]);
 
-  async function onDelete(id?: number) {
+  async function onDelete(id?: number): Promise<void> {
     if (!id) return;
     const ok = confirm("この記録を削除する？（同期用に論理削除されるよ）");
     if (!ok) return;
@@ -1172,7 +1179,7 @@ export default function RecordHistory({ back }: Props) {
     if (isMobile) setSheetOpen(false);
   }
 
-  async function openDetailForTrip(t: TripRecord) {
+  async function openDetailForTrip(t: TripRecord): Promise<void> {
     if (!t.id) return;
     setSelectedId(t.id);
 
@@ -1324,7 +1331,7 @@ export default function RecordHistory({ back }: Props) {
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <button
               type="button"
-              onClick={() => onDelete(trip.id)}
+              onClick={() => void onDelete(trip.id)}
               style={{
                 fontSize: 12,
                 color: "#ff7a7a",
@@ -1698,7 +1705,7 @@ export default function RecordHistory({ back }: Props) {
       >
         <button
           type="button"
-          onClick={() => loadAll()}
+          onClick={() => void loadAll()}
           disabled={allLoading}
           style={allLoading ? pillBtnStyleDisabled : pillBtnStyle}
         >
@@ -1880,7 +1887,7 @@ export default function RecordHistory({ back }: Props) {
           <button
             key={t.id}
             type="button"
-            onClick={() => openDetailForTrip(t)}
+            onClick={() => void openDetailForTrip(t)}
             className="glass"
             style={historyCardStyle}
             title="この記録を開く"
