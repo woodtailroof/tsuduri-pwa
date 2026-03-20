@@ -28,6 +28,11 @@ type DetailTide = {
   isStale: boolean;
 };
 
+type CachedUrl = {
+  url: string;
+  revoke: boolean;
+};
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
@@ -281,6 +286,15 @@ function formatOutcomeLine(trip: TripRecord, fish: TripFish[]) {
   return "❔ 結果未入力";
 }
 
+function hasUsableLocalBlob(photo: TripPhoto | undefined | null) {
+  if (!photo?.photoBlob) return false;
+  return photo.photoBlob.size > 0;
+}
+
+function buildRemotePhotoUrl(remoteKey: string) {
+  return `/api/photo-file?key=${encodeURIComponent(remoteKey)}`;
+}
+
 export default function RecordHistory({ back }: Props) {
   const { settings } = useAppSettings();
 
@@ -414,36 +428,49 @@ export default function RecordHistory({ back }: Props) {
 
   const detailPaneRef = useRef<HTMLDivElement | null>(null);
 
-  const thumbUrlMapRef = useRef<Map<number, string>>(new Map()); // photoId -> url
-  const coverThumbUrlRef = useRef<Map<number, string>>(new Map()); // tripId -> url
+  const thumbUrlMapRef = useRef<Map<number, CachedUrl>>(new Map());
+  const coverThumbUrlRef = useRef<Map<number, CachedUrl>>(new Map());
 
-  function getPhotoUrlByPhotoId(photoId: number): string | null {
-    const cached = thumbUrlMapRef.current.get(photoId);
-    if (cached) return cached;
-
-    const photo = detailPhotos.find((p) => p.id === photoId);
-    if (!photo?.photoBlob) return null;
-
-    try {
-      const url = URL.createObjectURL(photo.photoBlob);
-      thumbUrlMapRef.current.set(photoId, url);
-      return url;
-    } catch {
-      return null;
+  function revokeCachedUrl(item: CachedUrl | undefined) {
+    if (!item) return;
+    if (item.revoke) {
+      URL.revokeObjectURL(item.url);
     }
   }
 
-  function setCoverThumbUrl(tripId: number, blob: Blob) {
-    const prev = coverThumbUrlRef.current.get(tripId);
-    if (prev) URL.revokeObjectURL(prev);
+  function getPhotoUrlByPhotoId(photoId: number): string | null {
+    const cached = thumbUrlMapRef.current.get(photoId);
+    if (cached) return cached.url;
 
-    const url = URL.createObjectURL(blob);
-    coverThumbUrlRef.current.set(tripId, url);
+    const photo = detailPhotos.find((p) => p.id === photoId);
+    if (!photo) return null;
+
+    if (hasUsableLocalBlob(photo)) {
+      try {
+        const url = URL.createObjectURL(photo.photoBlob);
+        thumbUrlMapRef.current.set(photoId, { url, revoke: true });
+        return url;
+      } catch {
+        // noop
+      }
+    }
+
+    if (photo.remoteKey) {
+      const url = buildRemotePhotoUrl(photo.remoteKey);
+      thumbUrlMapRef.current.set(photoId, { url, revoke: false });
+      return url;
+    }
+
+    return null;
+  }
+
+  function setCoverThumbUrl(tripId: number, item: CachedUrl) {
+    revokeCachedUrl(coverThumbUrlRef.current.get(tripId));
+    coverThumbUrlRef.current.set(tripId, item);
   }
 
   function clearCoverThumbUrl(tripId: number) {
-    const prev = coverThumbUrlRef.current.get(tripId);
-    if (prev) URL.revokeObjectURL(prev);
+    revokeCachedUrl(coverThumbUrlRef.current.get(tripId));
     coverThumbUrlRef.current.delete(tripId);
   }
 
@@ -460,12 +487,14 @@ export default function RecordHistory({ back }: Props) {
 
   useEffect(() => {
     return () => {
-      for (const url of thumbUrlMapRef.current.values())
-        URL.revokeObjectURL(url);
+      for (const item of thumbUrlMapRef.current.values()) {
+        revokeCachedUrl(item);
+      }
       thumbUrlMapRef.current.clear();
 
-      for (const url of coverThumbUrlRef.current.values())
-        URL.revokeObjectURL(url);
+      for (const item of coverThumbUrlRef.current.values()) {
+        revokeCachedUrl(item);
+      }
       coverThumbUrlRef.current.clear();
     };
   }, []);
@@ -503,8 +532,27 @@ export default function RecordHistory({ back }: Props) {
           const cover =
             ps.find((x) => x.isCover === 1) ??
             [...ps].sort((a, b) => a.order - b.order)[0];
-          if (cover?.photoBlob) {
-            setCoverThumbUrl(id, cover.photoBlob);
+
+          if (!cover) {
+            clearCoverThumbUrl(id);
+            continue;
+          }
+
+          if (hasUsableLocalBlob(cover)) {
+            try {
+              const url = URL.createObjectURL(cover.photoBlob);
+              setCoverThumbUrl(id, { url, revoke: true });
+              continue;
+            } catch {
+              // noop
+            }
+          }
+
+          if (cover.remoteKey) {
+            setCoverThumbUrl(id, {
+              url: buildRemotePhotoUrl(cover.remoteKey),
+              revoke: false,
+            });
           } else {
             clearCoverThumbUrl(id);
           }
@@ -1208,7 +1256,7 @@ export default function RecordHistory({ back }: Props) {
         const tripId = t.id ?? 0;
 
         const finalThumb = tripId
-          ? (coverThumbUrlRef.current.get(tripId) ?? null)
+          ? (coverThumbUrlRef.current.get(tripId)?.url ?? null)
           : null;
 
         return (

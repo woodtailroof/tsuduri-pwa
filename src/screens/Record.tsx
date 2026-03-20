@@ -18,6 +18,7 @@ import { getTide736DayCached, type TideCacheSource } from "../lib/tide736Cache";
 import { getTidePhaseFromSeries } from "../lib/tidePhase736";
 import { getTimeBand } from "../lib/timeband";
 import { useAppSettings } from "../lib/appSettings";
+import { uploadPhoto } from "../lib/photoUpload";
 
 type Props = {
   back: () => void;
@@ -44,6 +45,14 @@ type FishDraft = {
   sizeCm: string;
   count: string;
   lureType: LureType | "";
+};
+
+type SavedPhotoUploadTarget = {
+  photoId: number;
+  photoUid: string;
+  tripUid: string;
+  file: File;
+  fileName: string;
 };
 
 const SPECIES_OPTIONS: Array<{ value: string; label: string }> = [
@@ -665,6 +674,8 @@ export default function Record({ back, onSaved }: Props) {
         envFetchedAt: null,
       };
 
+      const savedPhotoTargets: SavedPhotoUploadTarget[] = [];
+
       await db.transaction(
         "rw",
         db.trips,
@@ -692,7 +703,15 @@ export default function Record({ back, onSaved }: Props) {
               order: idx,
               isCover: p.isCover ? 1 : 0,
             };
-            await db.tripPhotos.add(row);
+            const photoId = await db.tripPhotos.add(row);
+
+            savedPhotoTargets.push({
+              photoId,
+              photoUid: row.uid,
+              tripUid,
+              file: p.file,
+              fileName: p.file.name,
+            });
           }
 
           if (outcome === "caught") {
@@ -719,8 +738,37 @@ export default function Record({ back, onSaved }: Props) {
         },
       );
 
+      const uploadFailures: string[] = [];
+
+      for (const target of savedPhotoTargets) {
+        const result = await uploadPhoto({
+          photoUid: target.photoUid,
+          tripUid: target.tripUid,
+          file: target.file,
+          fileName: target.fileName,
+        });
+
+        if (result.ok) {
+          await db.tripPhotos.update(target.photoId, {
+            remoteKey: result.remoteKey,
+            updatedAt: new Date().toISOString(),
+            syncStatus: "pending",
+          });
+        } else {
+          console.warn("photo upload failed:", result.error);
+          uploadFailures.push(target.fileName);
+        }
+      }
+
       resetAll();
-      alert("記録したよ！");
+
+      if (uploadFailures.length > 0) {
+        alert(
+          `記録したよ！\nただし一部の写真アップロードに失敗したよ:\n${uploadFailures.join("\n")}`,
+        );
+      } else {
+        alert("記録したよ！");
+      }
 
       try {
         onSaved?.();
@@ -900,7 +948,7 @@ export default function Record({ back, onSaved }: Props) {
                     <div
                       style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
                     >
-                      基準時刻（最古EXIF）：{" "}
+                      基準時刻（最古EXIF）:{" "}
                       {autoBaseCapturedAt
                         ? autoBaseCapturedAt.toLocaleString()
                         : "（なし）"}
