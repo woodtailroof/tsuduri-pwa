@@ -962,7 +962,7 @@ export default function RecordHistory({ back }: Props) {
     }
   }
 
-  function DetailView({ trip }: { trip: TripRecord }) {
+  function DetailCenterContent({ trip }: { trip: TripRecord }) {
     const baseIso = trip.startedAt ?? trip.createdAt;
     const base = new Date(baseIso);
     const created = new Date(trip.createdAt);
@@ -978,8 +978,6 @@ export default function RecordHistory({ back }: Props) {
       ? sourceLabel(detailTide.source, detailTide.isStale)
       : null;
 
-    const fishLines = detailFish.map(formatFishLine);
-    const lureLines = extractLureLines(trip, detailFish);
     const weatherLines = extractWeatherLines(
       trip,
       base,
@@ -988,438 +986,388 @@ export default function RecordHistory({ back }: Props) {
       phase,
     );
 
-    const SummaryCard = (
-      <div className="glass glass-strong" style={detailCardStyle}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ fontWeight: 900, ...ellipsis1 }}>🧾 記録の概要</div>
-          {lab && (
-            <div
-              style={{ fontSize: 11, color: lab.color, whiteSpace: "nowrap" }}
-              title="tide736取得元"
+    return (
+      <div style={{ display: "grid", gap: 12 }}>
+        <div className="glass glass-strong" style={detailCardStyle}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ fontWeight: 900, ...ellipsis1 }}>🧾 記録の概要</div>
+            {lab && (
+              <div
+                style={{ fontSize: 11, color: lab.color, whiteSpace: "nowrap" }}
+                title="tide736取得元"
+              >
+                🌊 {lab.text}
+              </div>
+            )}
+          </div>
+
+          <div
+            style={{
+              fontSize: 12,
+              color: "rgba(255,255,255,0.72)",
+              ...ellipsis1,
+            }}
+          >
+            記録：{created.toLocaleString()}
+          </div>
+
+          <div
+            style={{ fontSize: 12, color: "#6cf", overflowWrap: "anywhere" }}
+          >
+            🕒 基準：
+            {Number.isFinite(base.getTime())
+              ? base.toLocaleString()
+              : "（不明）"}
+            {Number.isFinite(base.getTime())
+              ? ` / 🕒 ${getTimeBand(base)}`
+              : ""}
+            {detailTide?.tideName ? ` / 🌙 ${detailTide.tideName}` : ""}
+            {phase ? ` / 🌊 ${phase}` : ""}
+          </div>
+
+          <div style={{ fontSize: 12, color: "#ffd166" }}>
+            {formatOutcomeLine(trip, detailFish)}
+          </div>
+
+          <div style={{ color: "#eee", overflowWrap: "anywhere" }}>
+            {trip.memo || "（メモなし）"}
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={() => onDelete(trip.id)}
+              style={{
+                fontSize: 12,
+                color: "#ff7a7a",
+                border: "1px solid rgba(255, 122, 122, 0.35)",
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: "rgba(0,0,0,0.18)",
+                cursor: "pointer",
+                backdropFilter: "blur(var(--glass-blur,10px))",
+                WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+              }}
             >
-              🌊 {lab.text}
+              🗑 削除
+            </button>
+          </div>
+        </div>
+
+        <div className="glass glass-strong" style={detailCardStyle}>
+          <div style={{ fontWeight: 900 }}>🌤 天気・潮の概況</div>
+
+          {detailLoading ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+              取得中…
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {weatherLines.length > 0 ? (
+                weatherLines.map((row) => (
+                  <div key={row.label} style={infoRowGridStyle}>
+                    <div style={{ color: "rgba(255,255,255,0.62)" }}>
+                      {row.label}
+                    </div>
+                    <div
+                      style={{
+                        color: "#eaf6ff",
+                        overflowWrap: "anywhere",
+                        minWidth: 0,
+                      }}
+                    >
+                      {row.value || "（なし）"}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                  概況データなし
+                </div>
+              )}
+
+              {detailError && (
+                <div style={{ fontSize: 12, color: "#ff7a7a" }}>
+                  潮データ取得失敗 → {detailError}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ fontWeight: 900 }}>📈 タイドグラフ</div>
+
+          {!Number.isFinite(base.getTime()) ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+              基準時刻が無いから、この記録はタイドを紐づけられないよ
+            </div>
+          ) : (
+            <div
+              className="glass glass-strong"
+              style={{
+                borderRadius: 16,
+                padding: 10,
+                minHeight: isDesktop ? 280 : 320,
+                display: "grid",
+                alignItems: "center",
+                overflow: "hidden",
+              }}
+            >
+              {detailTide && detailTide.series.length > 0 ? (
+                <div
+                  style={{
+                    opacity: detailLoading ? 0.65 : 1,
+                    transform: detailLoading
+                      ? "translateY(4px)"
+                      : "translateY(0px)",
+                    transition: "opacity 220ms ease, transform 220ms ease",
+                    willChange: "opacity, transform",
+                  }}
+                >
+                  <TideGraph
+                    series={detailTide.series}
+                    baseDate={base}
+                    highlightAt={base}
+                    yDomain={{ min: -50, max: 200 }}
+                  />
+                </div>
+              ) : detailLoading ? (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                  準備中…
+                </div>
+              ) : detailError ? (
+                <div style={{ fontSize: 12, color: "#ff7a7a" }}>
+                  グラフの準備に失敗… → {detailError}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                  この日のタイドデータがまだ無いよ（取得待ち/なし）
+                </div>
+              )}
             </div>
           )}
         </div>
 
         <div
           style={{
-            fontSize: 12,
-            color: "rgba(255,255,255,0.72)",
-            ...ellipsis1,
+            fontSize: 11,
+            color: "rgba(255,255,255,0.55)",
+            paddingInline: 2,
           }}
         >
-          記録：{created.toLocaleString()}
-        </div>
-
-        <div style={{ fontSize: 12, color: "#6cf", overflowWrap: "anywhere" }}>
-          🕒 基準：
-          {Number.isFinite(base.getTime()) ? base.toLocaleString() : "（不明）"}
-          {Number.isFinite(base.getTime()) ? ` / 🕒 ${getTimeBand(base)}` : ""}
-          {detailTide?.tideName ? ` / 🌙 ${detailTide.tideName}` : ""}
-          {phase ? ` / 🌊 ${phase}` : ""}
-        </div>
-
-        <div style={{ fontSize: 12, color: "#ffd166" }}>
-          {formatOutcomeLine(trip, detailFish)}
-        </div>
-
-        <div style={{ color: "#eee", overflowWrap: "anywhere" }}>
-          {trip.memo || "（メモなし）"}
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            onClick={() => onDelete(trip.id)}
-            style={{
-              fontSize: 12,
-              color: "#ff7a7a",
-              border: "1px solid rgba(255, 122, 122, 0.35)",
-              padding: "6px 10px",
-              borderRadius: 999,
-              background: "rgba(0,0,0,0.18)",
-              cursor: "pointer",
-              backdropFilter: "blur(var(--glass-blur,10px))",
-              WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
-            }}
-          >
-            🗑 削除
-          </button>
+          key: {FIXED_PORT.pc}:{FIXED_PORT.hc}:
+          {Number.isFinite(base.getTime()) ? dayKeyFromISO(baseIso).key : "—"}
         </div>
       </div>
     );
+  }
 
-    const EnvironmentCard = (
-      <div className="glass glass-strong" style={detailCardStyle}>
-        <div style={{ fontWeight: 900 }}>🌤 天気・潮の概況</div>
+  function DetailRightContent({ trip }: { trip: TripRecord }) {
+    const fishLines = detailFish.map(formatFishLine);
+    const lureLines = extractLureLines(trip, detailFish);
 
-        {detailLoading ? (
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
-            取得中…
-          </div>
-        ) : (
-          <div style={{ display: "grid", gap: 8 }}>
-            {weatherLines.length > 0 ? (
-              weatherLines.map((row) => (
-                <div key={row.label} style={infoRowGridStyle}>
-                  <div style={{ color: "rgba(255,255,255,0.62)" }}>
-                    {row.label}
-                  </div>
-                  <div
-                    style={{
-                      color: "#eaf6ff",
-                      overflowWrap: "anywhere",
-                      minWidth: 0,
-                    }}
-                  >
-                    {row.value || "（なし）"}
-                  </div>
+    return (
+      <div style={{ display: "grid", gap: 12 }}>
+        <div className="glass glass-strong" style={detailCardStyle}>
+          <div style={{ fontWeight: 900 }}>🎣 釣れた魚</div>
+
+          {trip.outcome === "skunk" ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+              今回はボウズ
+            </div>
+          ) : fishLines.length > 0 ? (
+            <div style={{ display: "grid", gap: 8 }}>
+              {fishLines.map((line, i) => (
+                <div
+                  key={`${line}-${i}`}
+                  style={{
+                    fontSize: 13,
+                    color: "#ffd166",
+                    overflowWrap: "anywhere",
+                    padding: "8px 10px",
+                    borderRadius: 12,
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                  }}
+                >
+                  {line}
                 </div>
-              ))
-            ) : (
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-                概況データなし
-              </div>
-            )}
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+              魚データなし
+            </div>
+          )}
+        </div>
 
-            {detailError && (
-              <div style={{ fontSize: 12, color: "#ff7a7a" }}>
-                潮データ取得失敗 → {detailError}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
+        <div className="glass glass-strong" style={detailCardStyle}>
+          <div style={{ fontWeight: 900 }}>🪤 使用したルアー</div>
 
-    const TideGraphCard = (
-      <div style={{ display: "grid", gap: 10 }}>
-        <div style={{ fontWeight: 900 }}>📈 タイドグラフ</div>
+          {lureLines.length > 0 ? (
+            <div style={{ display: "grid", gap: 8 }}>
+              {lureLines.map((line, i) => (
+                <div
+                  key={`${line}-${i}`}
+                  style={{
+                    fontSize: 13,
+                    color: "#9fe7ff",
+                    overflowWrap: "anywhere",
+                    padding: "8px 10px",
+                    borderRadius: 12,
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                  }}
+                >
+                  {line}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+              ルアー情報なし
+            </div>
+          )}
+        </div>
 
-        {!Number.isFinite(base.getTime()) ? (
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-            基準時刻が無いから、この記録はタイドを紐づけられないよ
-          </div>
-        ) : (
-          <div
-            className="glass glass-strong"
-            style={{
-              borderRadius: 16,
-              padding: 10,
-              minHeight: isDesktop ? 280 : 320,
-              display: "grid",
-              alignItems: "center",
-              overflow: "hidden",
-            }}
-          >
-            {detailTide && detailTide.series.length > 0 ? (
+        <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ fontWeight: 900 }}>🖼 写真</div>
+
+          {detailPhotos.length === 0 ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+              写真なし
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
               <div
                 style={{
-                  opacity: detailLoading ? 0.65 : 1,
-                  transform: detailLoading
-                    ? "translateY(4px)"
-                    : "translateY(0px)",
-                  transition: "opacity 220ms ease, transform 220ms ease",
-                  willChange: "opacity, transform",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(5, minmax(0,1fr))",
+                  gap: 8,
                 }}
               >
-                <TideGraph
-                  series={detailTide.series}
-                  baseDate={base}
-                  highlightAt={base}
-                  yDomain={{ min: -50, max: 200 }}
-                />
-              </div>
-            ) : detailLoading ? (
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
-                準備中…
-              </div>
-            ) : detailError ? (
-              <div style={{ fontSize: 12, color: "#ff7a7a" }}>
-                グラフの準備に失敗… → {detailError}
-              </div>
-            ) : (
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-                この日のタイドデータがまだ無いよ（取得待ち/なし）
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
+                {detailPhotos.map((p) => {
+                  const url = p.id ? getPhotoUrlByPhotoId(p.id) : null;
+                  const active = p.id != null && p.id === selectedPhotoId;
 
-    const FishCard = (
-      <div className="glass glass-strong" style={detailCardStyle}>
-        <div style={{ fontWeight: 900 }}>🎣 釣れた魚</div>
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => p.id && setSelectedPhotoId(p.id)}
+                      className="glass"
+                      style={{
+                        borderRadius: 12,
+                        overflow: "hidden",
+                        border: active
+                          ? "2px solid #ff4d6d"
+                          : "1px solid rgba(255,255,255,0.12)",
+                        background: "rgba(0,0,0,0.18)",
+                        aspectRatio: "1 / 1",
+                        padding: 0,
+                        cursor: "pointer",
+                      }}
+                      title={
+                        p.capturedAt
+                          ? new Date(p.capturedAt).toLocaleString()
+                          : "日時なし"
+                      }
+                    >
+                      {url ? (
+                        <img
+                          src={url}
+                          alt="thumb"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                            display: "block",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "rgba(255,255,255,0.62)",
+                            display: "grid",
+                            placeItems: "center",
+                            height: "100%",
+                          }}
+                        >
+                          No Photo
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
 
-        {trip.outcome === "skunk" ? (
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-            今回はボウズ
-          </div>
-        ) : fishLines.length > 0 ? (
-          <div style={{ display: "grid", gap: 8 }}>
-            {fishLines.map((line, i) => (
               <div
-                key={`${line}-${i}`}
+                className="glass glass-strong"
                 style={{
-                  fontSize: 13,
-                  color: "#ffd166",
-                  overflowWrap: "anywhere",
-                  padding: "8px 10px",
-                  borderRadius: 12,
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: 16,
+                  padding: 10,
+                  minHeight: isDesktop ? 300 : 260,
+                  maxHeight: isDesktop ? "46dvh" : undefined,
+                  display: "grid",
+                  alignItems: "center",
+                  overflow: "hidden",
                 }}
               >
-                {line}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-            魚データなし
-          </div>
-        )}
-      </div>
-    );
-
-    const LureCard = (
-      <div className="glass glass-strong" style={detailCardStyle}>
-        <div style={{ fontWeight: 900 }}>🪤 使用したルアー</div>
-
-        {lureLines.length > 0 ? (
-          <div style={{ display: "grid", gap: 8 }}>
-            {lureLines.map((line, i) => (
-              <div
-                key={`${line}-${i}`}
-                style={{
-                  fontSize: 13,
-                  color: "#9fe7ff",
-                  overflowWrap: "anywhere",
-                  padding: "8px 10px",
-                  borderRadius: 12,
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                }}
-              >
-                {line}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-            ルアー情報なし
-          </div>
-        )}
-      </div>
-    );
-
-    const PhotoCard = (
-      <div style={{ display: "grid", gap: 10 }}>
-        <div style={{ fontWeight: 900 }}>🖼 写真</div>
-
-        {detailPhotos.length === 0 ? (
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-            写真なし
-          </div>
-        ) : (
-          <div style={{ display: "grid", gap: 10 }}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(5, minmax(0,1fr))",
-                gap: 8,
-              }}
-            >
-              {detailPhotos.map((p) => {
-                const url = p.id ? getPhotoUrlByPhotoId(p.id) : null;
-                const active = p.id != null && p.id === selectedPhotoId;
-
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => p.id && setSelectedPhotoId(p.id)}
-                    className="glass"
-                    style={{
-                      borderRadius: 12,
-                      overflow: "hidden",
-                      border: active
-                        ? "2px solid #ff4d6d"
-                        : "1px solid rgba(255,255,255,0.12)",
-                      background: "rgba(0,0,0,0.18)",
-                      aspectRatio: "1 / 1",
-                      padding: 0,
-                      cursor: "pointer",
-                    }}
-                    title={
-                      p.capturedAt
-                        ? new Date(p.capturedAt).toLocaleString()
-                        : "日時なし"
-                    }
-                  >
-                    {url ? (
+                {selectedPhotoId != null ? (
+                  (() => {
+                    const url = getPhotoUrlByPhotoId(selectedPhotoId);
+                    return url ? (
                       <img
                         src={url}
-                        alt="thumb"
+                        alt="selected"
                         style={{
                           width: "100%",
                           height: "100%",
-                          objectFit: "cover",
+                          objectFit: "contain",
                           display: "block",
                         }}
                       />
                     ) : (
                       <div
                         style={{
-                          fontSize: 11,
-                          color: "rgba(255,255,255,0.62)",
-                          display: "grid",
-                          placeItems: "center",
-                          height: "100%",
+                          fontSize: 12,
+                          color: "rgba(255,255,255,0.68)",
                         }}
                       >
-                        No Photo
+                        画像の表示に失敗
                       </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div
-              className="glass glass-strong"
-              style={{
-                borderRadius: 16,
-                padding: 10,
-                minHeight: isDesktop ? 300 : 260,
-                maxHeight: isDesktop ? "46dvh" : undefined,
-                display: "grid",
-                alignItems: "center",
-                overflow: "hidden",
-              }}
-            >
-              {selectedPhotoId != null ? (
-                (() => {
-                  const url = getPhotoUrlByPhotoId(selectedPhotoId);
-                  return url ? (
-                    <img
-                      src={url}
-                      alt="selected"
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "contain",
-                        display: "block",
-                      }}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "rgba(255,255,255,0.68)",
-                      }}
-                    >
-                      画像の表示に失敗
-                    </div>
-                  );
-                })()
-              ) : (
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-                  画像なし
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-
-    if (isDesktop) {
-      return (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(340px, 1fr) minmax(320px, 0.95fr)",
-            gap: 12,
-            minHeight: 0,
-            height: "100%",
-          }}
-        >
-          <div
-            ref={detailCenterPaneRef}
-            style={{
-              minHeight: 0,
-              height: "100%",
-              overflowY: "auto",
-              paddingRight: 4,
-              overscrollBehavior: "contain",
-              WebkitOverflowScrolling: "touch",
-            }}
-          >
-            <div style={{ display: "grid", gap: 12 }}>
-              {SummaryCard}
-              {EnvironmentCard}
-              {TideGraphCard}
-
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "rgba(255,255,255,0.55)",
-                  paddingInline: 2,
-                }}
-              >
-                key: {FIXED_PORT.pc}:{FIXED_PORT.hc}:
-                {Number.isFinite(base.getTime())
-                  ? dayKeyFromISO(baseIso).key
-                  : "—"}
+                    );
+                  })()
+                ) : (
+                  <div
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}
+                  >
+                    画像なし
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-
-          <div
-            ref={detailRightPaneRef}
-            style={{
-              minHeight: 0,
-              height: "100%",
-              overflowY: "auto",
-              paddingRight: 4,
-              overscrollBehavior: "contain",
-              WebkitOverflowScrolling: "touch",
-            }}
-          >
-            <div style={{ display: "grid", gap: 12 }}>
-              {FishCard}
-              {LureCard}
-              {PhotoCard}
-            </div>
-          </div>
+          )}
         </div>
-      );
-    }
+      </div>
+    );
+  }
 
+  function MobileDetailContent({ trip }: { trip: TripRecord }) {
     return (
       <div style={{ display: "grid", gap: 12 }}>
-        {SummaryCard}
-        {EnvironmentCard}
-        {FishCard}
-        {LureCard}
-        {PhotoCard}
-        {TideGraphCard}
-
-        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
-          key: {FIXED_PORT.pc}:{FIXED_PORT.hc}:
-          {Number.isFinite(base.getTime()) ? dayKeyFromISO(baseIso).key : "—"}
-        </div>
+        <DetailCenterContent trip={trip} />
+        <DetailRightContent trip={trip} />
       </div>
     );
   }
@@ -1773,7 +1721,7 @@ export default function RecordHistory({ back }: Props) {
                   pillBtnStyle={pillBtnStyle}
                 >
                   {selected ? (
-                    <DetailView trip={selected} />
+                    <MobileDetailContent trip={selected} />
                   ) : (
                     <div
                       style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}
@@ -1847,11 +1795,15 @@ export default function RecordHistory({ back }: Props) {
               {Controls}
 
               <div
+                ref={detailCenterPaneRef}
                 style={{
                   minWidth: 0,
                   minHeight: 0,
                   height: "100%",
-                  overflow: "hidden",
+                  overflowY: "auto",
+                  paddingRight: 4,
+                  overscrollBehavior: "contain",
+                  WebkitOverflowScrolling: "touch",
                 }}
               >
                 {!allLoadedOnce && allLoading ? (
@@ -1867,7 +1819,7 @@ export default function RecordHistory({ back }: Props) {
                     まだ記録がないよ
                   </div>
                 ) : selected ? (
-                  <DetailView trip={selected} />
+                  <DetailCenterContent trip={selected} />
                 ) : (
                   <div
                     className="glass"
@@ -1903,38 +1855,55 @@ export default function RecordHistory({ back }: Props) {
                 overflow: "hidden",
               }}
             >
-              {!allLoadedOnce && allLoading ? (
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-                  読み込み中…
-                </div>
-              ) : all.length === 0 ? (
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-                  まだ記録がないよ
-                </div>
-              ) : selected ? (
-                <DetailView trip={selected} />
-              ) : (
-                <div
-                  className="glass"
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    borderRadius: 14,
-                    overflow: "hidden",
-                    background: "rgba(0,0,0,0.14)",
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    display: "grid",
-                    alignItems: "center",
-                    justifyItems: "center",
-                    color: "rgba(255,255,255,0.62)",
-                    fontSize: 13,
-                    padding: 16,
-                    textAlign: "center",
-                  }}
-                >
-                  左の履歴から選択してね
-                </div>
-              )}
+              <div
+                ref={detailRightPaneRef}
+                style={{
+                  minWidth: 0,
+                  minHeight: 0,
+                  height: "100%",
+                  overflowY: "auto",
+                  paddingRight: 4,
+                  overscrollBehavior: "contain",
+                  WebkitOverflowScrolling: "touch",
+                }}
+              >
+                {!allLoadedOnce && allLoading ? (
+                  <div
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}
+                  >
+                    読み込み中…
+                  </div>
+                ) : all.length === 0 ? (
+                  <div
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}
+                  >
+                    まだ記録がないよ
+                  </div>
+                ) : selected ? (
+                  <DetailRightContent trip={selected} />
+                ) : (
+                  <div
+                    className="glass"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      borderRadius: 14,
+                      overflow: "hidden",
+                      background: "rgba(0,0,0,0.14)",
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      display: "grid",
+                      alignItems: "center",
+                      justifyItems: "center",
+                      color: "rgba(255,255,255,0.62)",
+                      fontSize: 13,
+                      padding: 16,
+                      textAlign: "center",
+                    }}
+                  >
+                    左の履歴から選択してね
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
