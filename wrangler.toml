@@ -9,3 +9,8 @@ binding = "DB"
 database_name = "tsuduri-db"
 database_id = "5a5dc7f2-7f70-443a-8f30-4baddef1e241"
 migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "tsuduri-photos"
+preview_bucket_name = "tsuduri-photos"
