@@ -25,6 +25,23 @@ const TIMEBAND_LABEL: Record<TripRecord["timeBand"], string> = {
   unknown: "不明",
 };
 
+/**
+ * ✅ Record.ts の SPECIES_OPTIONS と表示を一致させる
+ */
+const SPECIES_LABEL: Record<string, string> = {
+  seabass: "シーバス",
+  flounder: "ヒラメ",
+  flathead: "マゴチ",
+  black_seabream: "クロダイ",
+  trevally: "メッキ",
+  spanish_mackerel: "サワラ（サゴシ）",
+  yellowtail: "ブリ（ワカシ / イナダ / ワラサ）",
+  cutlassfish: "タチウオ",
+  bass: "ブラックバス",
+  catfish: "ナマズ",
+  other: "その他",
+};
+
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
@@ -58,7 +75,8 @@ function fmtN(n: number): string {
 
 function normalizeSpecies(raw: string | null | undefined): string {
   const s = (raw ?? "").trim();
-  return s ? s : "不明";
+  if (!s) return "不明";
+  return SPECIES_LABEL[s] ?? s;
 }
 
 type LureType =
@@ -270,7 +288,8 @@ export default function RecordAnalysis({ back }: Props) {
     const m = new Map<string, number>();
     for (const jf of joinedFish) {
       const sp = normalizeSpecies(jf.species);
-      m.set(sp, (m.get(sp) ?? 0) + 1);
+      const count = jf.count && jf.count > 0 ? jf.count : 1;
+      m.set(sp, (m.get(sp) ?? 0) + count);
     }
     const rows: RowKV[] = Array.from(m.entries()).map(([key, value]) => ({
       key,
@@ -345,10 +364,11 @@ export default function RecordAnalysis({ back }: Props) {
       if (!mk) continue;
 
       const sp = normalizeSpecies(jf.species);
+      const count = jf.count && jf.count > 0 ? jf.count : 1;
 
       if (!monthMap.has(mk)) monthMap.set(mk, new Map<string, number>());
       const inner = monthMap.get(mk)!;
-      inner.set(sp, (inner.get(sp) ?? 0) + 1);
+      inner.set(sp, (inner.get(sp) ?? 0) + count);
     }
 
     const months = Array.from(monthMap.keys()).sort((a, b) => (a < b ? 1 : -1));
@@ -382,7 +402,8 @@ export default function RecordAnalysis({ back }: Props) {
 
     for (const f of joinedFish) {
       const k = f.lureType ?? "unknown";
-      totalBy.set(k, (totalBy.get(k) ?? 0) + 1);
+      const count = f.count && f.count > 0 ? f.count : 1;
+      totalBy.set(k, (totalBy.get(k) ?? 0) + count);
     }
 
     const rows = Array.from(totalBy.entries()).map(([k, total]) => ({
@@ -595,7 +616,7 @@ export default function RecordAnalysis({ back }: Props) {
 
         <div className="glass-panel strong" style={cardStyle}>
           <div style={{ fontWeight: 900, fontSize: 14 }}>
-            🐟 魚種トップ（魚=1行）
+            🐟 魚種トップ（魚の数ベース）
           </div>
           <div style={{ height: 8 }} />
 
@@ -619,7 +640,7 @@ export default function RecordAnalysis({ back }: Props) {
                   <div
                     style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}
                   >
-                    {fmtN(r.value)} 件
+                    {fmtN(r.value)} 匹
                   </div>
                 </div>
               ))}
@@ -628,7 +649,7 @@ export default function RecordAnalysis({ back }: Props) {
 
           <div style={{ height: 10 }} />
           <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
-            ※1投稿で複数魚が入る想定なので、投稿数とは一致しないよ
+            ※count を反映した合計匹数だよ
           </div>
         </div>
 
@@ -659,7 +680,7 @@ export default function RecordAnalysis({ back }: Props) {
                     <div
                       style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
                     >
-                      魚データ {fmtN(m.totalFish)} 件
+                      魚データ {fmtN(m.totalFish)} 匹
                     </div>
                   </div>
 
@@ -681,7 +702,7 @@ export default function RecordAnalysis({ back }: Props) {
                             color: "rgba(255,255,255,0.75)",
                           }}
                         >
-                          {fmtN(r.value)} 件
+                          {fmtN(r.value)} 匹
                         </div>
                       </div>
                     ))}
@@ -699,7 +720,7 @@ export default function RecordAnalysis({ back }: Props) {
 
         <div className="glass-panel strong" style={cardStyle}>
           <div style={{ fontWeight: 900, fontSize: 14 }}>
-            🧲 ルアージャンル別（魚単位）
+            🧲 ルアージャンル別（魚の数ベース）
           </div>
           <div style={{ height: 8 }} />
 
@@ -725,12 +746,17 @@ export default function RecordAnalysis({ back }: Props) {
                   <div
                     style={{ fontSize: 12, color: "rgba(255,255,255,0.78)" }}
                   >
-                    {fmtN(r.total)} 件
+                    {fmtN(r.total)} 匹
                   </div>
                 </div>
               ))}
             </div>
           )}
+
+          <div style={{ height: 10 }} />
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
+            ※count を反映した合計匹数だよ
+          </div>
         </div>
 
         <div className="glass-panel strong" style={cardStyle}>
