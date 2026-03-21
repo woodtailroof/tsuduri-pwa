@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import PageShell from "../components/PageShell";
 import { db, type TripFish, type TripRecord } from "../db";
+import { getTimeBand } from "../lib/timeband";
 
 type Props = {
   back: () => void;
@@ -25,9 +26,6 @@ const TIMEBAND_LABEL: Record<TripRecord["timeBand"], string> = {
   unknown: "不明",
 };
 
-/**
- * ✅ Record.ts の SPECIES_OPTIONS と表示を一致
- */
 const SPECIES_LABEL: Record<string, string> = {
   seabass: "シーバス",
   flounder: "ヒラメ",
@@ -63,6 +61,53 @@ const LURE_LABEL: Record<LureType, string> = {
   bigbait: "ビッグベイト",
   other: "その他",
   unknown: "不明",
+};
+
+type JoinedFish = {
+  tripId: number;
+  tripCreatedAt: string;
+  tripStartedAt: string;
+  timeBand: TripRecord["timeBand"];
+  tideName: string;
+  tidePhase: string;
+  tideTrend: string;
+  weatherCode: number | null;
+  windSpeedMs: number | null;
+  waveHeightM: number | null;
+  lureType: LureType;
+  species: string;
+  sizeCm: number | null;
+  count: number | null;
+};
+
+type JoinedTrip = {
+  id: number;
+  createdAt: string;
+  startedAt: string;
+  timeBand: TripRecord["timeBand"];
+  outcome: TripRecord["outcome"];
+  tideName: string;
+  tidePhase: string;
+  tideTrend: string;
+  weatherCode: number | null;
+  windSpeedMs: number | null;
+  waveHeightM: number | null;
+};
+
+type SpeciesInsight = {
+  species: string;
+  totalCount: number;
+  fishRows: number;
+  avgSizeCm: number | null;
+  bestTimeBand: string;
+  bestTimeBandCount: number;
+  bestLure: string;
+  bestLureCount: number;
+  bestTideTrend: string;
+  bestTideTrendCount: number;
+  timeRows: RowKV[];
+  lureRows: RowKV[];
+  trendRows: RowKV[];
 };
 
 function clamp(n: number, min: number, max: number) {
@@ -125,54 +170,6 @@ function getLureTypeFromFish(fish: TripFish): LureType {
   return "unknown";
 }
 
-type JoinedFish = {
-  tripId: number;
-  tripCreatedAt: string;
-  tripStartedAt: string;
-  timeBand: TripRecord["timeBand"];
-  tideName: string;
-  tidePhase: string;
-  tideTrend: string;
-  weatherCode: number | null;
-  windSpeedMs: number | null;
-  waveHeightM: number | null;
-  lureType: LureType;
-
-  species: string;
-  sizeCm: number | null;
-  count: number | null;
-};
-
-type JoinedTrip = {
-  id: number;
-  createdAt: string;
-  startedAt: string;
-  timeBand: TripRecord["timeBand"];
-  outcome: TripRecord["outcome"];
-  tideName: string;
-  tidePhase: string;
-  tideTrend: string;
-  weatherCode: number | null;
-  windSpeedMs: number | null;
-  waveHeightM: number | null;
-};
-
-type SpeciesInsight = {
-  species: string;
-  totalCount: number;
-  fishRows: number;
-  avgSizeCm: number | null;
-  bestTimeBand: string;
-  bestTimeBandCount: number;
-  bestLure: string;
-  bestLureCount: number;
-  bestTideTrend: string;
-  bestTideTrendCount: number;
-  timeRows: RowKV[];
-  lureRows: RowKV[];
-  trendRows: RowKV[];
-};
-
 function makeTripMap(trips: Array<TripRecord & { id: number }>) {
   const map = new Map<number, TripRecord & { id: number }>();
   for (const t of trips) map.set(t.id, t);
@@ -208,6 +205,50 @@ function getBestKey(
 ): { key: string; value: number } {
   if (!rows.length) return { key: fallback, value: 0 };
   return { key: rows[0].key, value: rows[0].value };
+}
+
+function normalizeTimeBandValue(
+  raw: unknown,
+  startedAt?: string | null,
+): TripRecord["timeBand"] {
+  const s = String(raw ?? "").trim();
+
+  if (
+    s === "morning" ||
+    s === "day" ||
+    s === "evening" ||
+    s === "night" ||
+    s === "unknown"
+  ) {
+    return s;
+  }
+
+  if (s === "朝") return "morning";
+  if (s === "昼") return "day";
+  if (s === "夕") return "evening";
+  if (s === "夜") return "night";
+  if (s === "不明") return "unknown";
+
+  if (startedAt) {
+    const d = new Date(startedAt);
+    if (Number.isFinite(d.getTime())) {
+      const band = String(getTimeBand(d)).trim();
+      if (
+        band === "morning" ||
+        band === "day" ||
+        band === "evening" ||
+        band === "night"
+      ) {
+        return band;
+      }
+      if (band === "朝") return "morning";
+      if (band === "昼") return "day";
+      if (band === "夕") return "evening";
+      if (band === "夜") return "night";
+    }
+  }
+
+  return "unknown";
 }
 
 export default function RecordAnalysis({ back }: Props) {
@@ -270,7 +311,7 @@ export default function RecordAnalysis({ back }: Props) {
         id: t.id as number,
         createdAt: t.createdAt,
         startedAt: t.startedAt,
-        timeBand: t.timeBand ?? "unknown",
+        timeBand: normalizeTimeBandValue(t.timeBand, t.startedAt),
         outcome: t.outcome ?? "skunk",
         tideName: labelNullDash(t.tideName ?? null),
         tidePhase: labelNullDash(t.tidePhase ?? null),
@@ -296,7 +337,7 @@ export default function RecordAnalysis({ back }: Props) {
         tripId,
         tripCreatedAt: t.createdAt,
         tripStartedAt: t.startedAt,
-        timeBand: t.timeBand ?? "unknown",
+        timeBand: normalizeTimeBandValue(t.timeBand, t.startedAt),
         tideName: labelNullDash(t.tideName ?? null),
         tidePhase: labelNullDash(t.tidePhase ?? null),
         tideTrend: labelTrend(t.tideTrend ?? "unknown"),
