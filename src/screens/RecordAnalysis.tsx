@@ -26,7 +26,7 @@ const TIMEBAND_LABEL: Record<TripRecord["timeBand"], string> = {
 };
 
 /**
- * ✅ Record.ts の SPECIES_OPTIONS と表示を一致させる
+ * ✅ Record.ts の SPECIES_OPTIONS と表示を一致
  */
 const SPECIES_LABEL: Record<string, string> = {
   seabass: "シーバス",
@@ -40,6 +40,29 @@ const SPECIES_LABEL: Record<string, string> = {
   bass: "ブラックバス",
   catfish: "ナマズ",
   other: "その他",
+};
+
+type LureType =
+  | "metaljig"
+  | "minnow"
+  | "sinkingpencil"
+  | "top"
+  | "worm"
+  | "blade"
+  | "bigbait"
+  | "other"
+  | "unknown";
+
+const LURE_LABEL: Record<LureType, string> = {
+  metaljig: "メタルジグ",
+  minnow: "ミノー",
+  sinkingpencil: "シンペン",
+  top: "トップ",
+  worm: "ワーム",
+  blade: "ブレード",
+  bigbait: "ビッグベイト",
+  other: "その他",
+  unknown: "不明",
 };
 
 function clamp(n: number, min: number, max: number) {
@@ -73,34 +96,17 @@ function fmtN(n: number): string {
   return String(Math.max(0, Math.floor(n)));
 }
 
+function fmtSizeCm(n: number | null): string {
+  if (typeof n !== "number" || !Number.isFinite(n) || n <= 0) return "—";
+  const v = Math.round(n * 10) / 10;
+  return `${v.toFixed(v % 1 === 0 ? 0 : 1)}cm`;
+}
+
 function normalizeSpecies(raw: string | null | undefined): string {
   const s = (raw ?? "").trim();
   if (!s) return "不明";
   return SPECIES_LABEL[s] ?? s;
 }
-
-type LureType =
-  | "metaljig"
-  | "minnow"
-  | "sinkingpencil"
-  | "top"
-  | "worm"
-  | "blade"
-  | "bigbait"
-  | "other"
-  | "unknown";
-
-const LURE_LABEL: Record<LureType, string> = {
-  metaljig: "メタルジグ",
-  minnow: "ミノー",
-  sinkingpencil: "シンペン",
-  top: "トップ",
-  worm: "ワーム",
-  blade: "ブレード",
-  bigbait: "ビッグベイト",
-  other: "その他",
-  unknown: "不明",
-};
 
 function getLureTypeFromFish(fish: TripFish): LureType {
   const v = fish.lureType;
@@ -151,6 +157,22 @@ type JoinedTrip = {
   waveHeightM: number | null;
 };
 
+type SpeciesInsight = {
+  species: string;
+  totalCount: number;
+  fishRows: number;
+  avgSizeCm: number | null;
+  bestTimeBand: string;
+  bestTimeBandCount: number;
+  bestLure: string;
+  bestLureCount: number;
+  bestTideTrend: string;
+  bestTideTrendCount: number;
+  timeRows: RowKV[];
+  lureRows: RowKV[];
+  trendRows: RowKV[];
+};
+
 function makeTripMap(trips: Array<TripRecord & { id: number }>) {
   const map = new Map<number, TripRecord & { id: number }>();
   for (const t of trips) map.set(t.id, t);
@@ -171,6 +193,21 @@ function labelTrend(v: TripRecord["tideTrend"]): string {
 
 function sortDescByValue(a: RowKV, b: RowKV) {
   return b.value - a.value;
+}
+
+function getSafeCount(count: number | null | undefined): number {
+  if (typeof count !== "number" || !Number.isFinite(count) || count <= 0) {
+    return 1;
+  }
+  return Math.floor(count);
+}
+
+function getBestKey(
+  rows: RowKV[],
+  fallback = "—",
+): { key: string; value: number } {
+  if (!rows.length) return { key: fallback, value: 0 };
+  return { key: rows[0].key, value: rows[0].value };
 }
 
 export default function RecordAnalysis({ back }: Props) {
@@ -288,7 +325,7 @@ export default function RecordAnalysis({ back }: Props) {
     const m = new Map<string, number>();
     for (const jf of joinedFish) {
       const sp = normalizeSpecies(jf.species);
-      const count = jf.count && jf.count > 0 ? jf.count : 1;
+      const count = getSafeCount(jf.count);
       m.set(sp, (m.get(sp) ?? 0) + count);
     }
     const rows: RowKV[] = Array.from(m.entries()).map(([key, value]) => ({
@@ -364,7 +401,7 @@ export default function RecordAnalysis({ back }: Props) {
       if (!mk) continue;
 
       const sp = normalizeSpecies(jf.species);
-      const count = jf.count && jf.count > 0 ? jf.count : 1;
+      const count = getSafeCount(jf.count);
 
       if (!monthMap.has(mk)) monthMap.set(mk, new Map<string, number>());
       const inner = monthMap.get(mk)!;
@@ -402,7 +439,7 @@ export default function RecordAnalysis({ back }: Props) {
 
     for (const f of joinedFish) {
       const k = f.lureType ?? "unknown";
-      const count = f.count && f.count > 0 ? f.count : 1;
+      const count = getSafeCount(f.count);
       totalBy.set(k, (totalBy.get(k) ?? 0) + count);
     }
 
@@ -423,6 +460,100 @@ export default function RecordAnalysis({ back }: Props) {
         typeof t.waveHeightM === "number",
     );
   }, [joinedTrips]);
+
+  const speciesInsights = useMemo(() => {
+    const speciesMap = new Map<
+      string,
+      {
+        totalCount: number;
+        fishRows: number;
+        sizeWeightedSum: number;
+        sizeWeight: number;
+        timeMap: Map<string, number>;
+        lureMap: Map<string, number>;
+        trendMap: Map<string, number>;
+      }
+    >();
+
+    for (const jf of joinedFish) {
+      const species = normalizeSpecies(jf.species);
+      const count = getSafeCount(jf.count);
+
+      if (!speciesMap.has(species)) {
+        speciesMap.set(species, {
+          totalCount: 0,
+          fishRows: 0,
+          sizeWeightedSum: 0,
+          sizeWeight: 0,
+          timeMap: new Map<string, number>(),
+          lureMap: new Map<string, number>(),
+          trendMap: new Map<string, number>(),
+        });
+      }
+
+      const cur = speciesMap.get(species)!;
+      cur.totalCount += count;
+      cur.fishRows += 1;
+
+      if (
+        typeof jf.sizeCm === "number" &&
+        Number.isFinite(jf.sizeCm) &&
+        jf.sizeCm > 0
+      ) {
+        cur.sizeWeightedSum += jf.sizeCm * count;
+        cur.sizeWeight += count;
+      }
+
+      const timeLabel = TIMEBAND_LABEL[jf.timeBand ?? "unknown"] ?? "不明";
+      cur.timeMap.set(timeLabel, (cur.timeMap.get(timeLabel) ?? 0) + count);
+
+      const lureLabel = LURE_LABEL[jf.lureType] ?? "不明";
+      cur.lureMap.set(lureLabel, (cur.lureMap.get(lureLabel) ?? 0) + count);
+
+      const trendLabel = jf.tideTrend || "不明";
+      cur.trendMap.set(trendLabel, (cur.trendMap.get(trendLabel) ?? 0) + count);
+    }
+
+    const rows: SpeciesInsight[] = [];
+
+    for (const [species, cur] of speciesMap.entries()) {
+      const timeRows: RowKV[] = Array.from(cur.timeMap.entries())
+        .map(([key, value]) => ({ key, value }))
+        .sort(sortDescByValue);
+
+      const lureRows: RowKV[] = Array.from(cur.lureMap.entries())
+        .map(([key, value]) => ({ key, value }))
+        .sort(sortDescByValue);
+
+      const trendRows: RowKV[] = Array.from(cur.trendMap.entries())
+        .map(([key, value]) => ({ key, value }))
+        .sort(sortDescByValue);
+
+      const bestTime = getBestKey(timeRows, "—");
+      const bestLure = getBestKey(lureRows, "—");
+      const bestTrend = getBestKey(trendRows, "—");
+
+      rows.push({
+        species,
+        totalCount: cur.totalCount,
+        fishRows: cur.fishRows,
+        avgSizeCm:
+          cur.sizeWeight > 0 ? cur.sizeWeightedSum / cur.sizeWeight : null,
+        bestTimeBand: bestTime.key,
+        bestTimeBandCount: bestTime.value,
+        bestLure: bestLure.key,
+        bestLureCount: bestLure.value,
+        bestTideTrend: bestTrend.key,
+        bestTideTrendCount: bestTrend.value,
+        timeRows: timeRows.slice(0, 4),
+        lureRows: lureRows.slice(0, 4),
+        trendRows: trendRows.slice(0, 4),
+      });
+    }
+
+    rows.sort((a, b) => b.totalCount - a.totalCount);
+    return rows.slice(0, Math.max(1, limitTop));
+  }, [joinedFish, limitTop]);
 
   return (
     <PageShell
@@ -499,6 +630,157 @@ export default function RecordAnalysis({ back }: Props) {
             読み込みエラー：{error}
           </div>
         )}
+
+        <div className="glass-panel strong" style={cardStyle}>
+          <div style={{ fontWeight: 900, fontSize: 16 }}>
+            🏆 魚種ごとの勝ちパターン
+          </div>
+          <div style={{ height: 8 }} />
+
+          {speciesInsights.length === 0 ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+              まだ魚データが少ないから、ここはこれから育つよ
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {speciesInsights.map((row) => (
+                <div
+                  key={row.species}
+                  className="glass"
+                  style={subtlePanelStyle}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      alignItems: "baseline",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ fontWeight: 900, fontSize: 15 }}>
+                      {row.species}
+                    </div>
+                    <div
+                      style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
+                    >
+                      合計 {fmtN(row.totalCount)}匹 / 平均サイズ{" "}
+                      {fmtSizeCm(row.avgSizeCm)}
+                    </div>
+                  </div>
+
+                  <div style={{ height: 8 }} />
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(200px, 1fr))",
+                      gap: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        borderRadius: 12,
+                        padding: 10,
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "rgba(255,255,255,0.60)",
+                          marginBottom: 4,
+                        }}
+                      >
+                        よく釣れる時間帯
+                      </div>
+                      <div style={{ fontWeight: 800 }}>
+                        {row.bestTimeBand}
+                        <span
+                          style={{
+                            marginLeft: 8,
+                            fontSize: 12,
+                            color: "rgba(255,255,255,0.72)",
+                          }}
+                        >
+                          {fmtN(row.bestTimeBandCount)}匹
+                        </span>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 12,
+                        padding: 10,
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "rgba(255,255,255,0.60)",
+                          marginBottom: 4,
+                        }}
+                      >
+                        相性のいいルアー
+                      </div>
+                      <div style={{ fontWeight: 800 }}>
+                        {row.bestLure}
+                        <span
+                          style={{
+                            marginLeft: 8,
+                            fontSize: 12,
+                            color: "rgba(255,255,255,0.72)",
+                          }}
+                        >
+                          {fmtN(row.bestLureCount)}匹
+                        </span>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 12,
+                        padding: 10,
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "rgba(255,255,255,0.60)",
+                          marginBottom: 4,
+                        }}
+                      >
+                        強い潮の動き
+                      </div>
+                      <div style={{ fontWeight: 800 }}>
+                        {row.bestTideTrend}
+                        <span
+                          style={{
+                            marginLeft: 8,
+                            fontSize: 12,
+                            color: "rgba(255,255,255,0.72)",
+                          }}
+                        >
+                          {fmtN(row.bestTideTrendCount)}匹
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ height: 10 }} />
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
+            ※「次に何を狙うか」を先に見やすくした要約だよ
+          </div>
+        </div>
 
         <div className="glass-panel strong" style={cardStyle}>
           <div style={{ fontWeight: 900, fontSize: 14 }}>
@@ -654,6 +936,257 @@ export default function RecordAnalysis({ back }: Props) {
         </div>
 
         <div className="glass-panel strong" style={cardStyle}>
+          <div style={{ fontWeight: 900, fontSize: 14 }}>🕒 時間帯 × 魚種</div>
+          <div style={{ height: 8 }} />
+
+          {speciesInsights.length === 0 ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+              まだ魚データが無いよ
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {speciesInsights.map((row) => (
+                <div
+                  key={`time:${row.species}`}
+                  className="glass"
+                  style={subtlePanelStyle}
+                >
+                  <div
+                    style={{
+                      fontWeight: 900,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span>{row.species}</span>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: "rgba(255,255,255,0.70)",
+                        fontWeight: 500,
+                      }}
+                    >
+                      合計 {fmtN(row.totalCount)}匹
+                    </span>
+                  </div>
+
+                  <div style={{ height: 8 }} />
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {row.timeRows.length === 0 ? (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "rgba(255,255,255,0.62)",
+                        }}
+                      >
+                        データなし
+                      </div>
+                    ) : (
+                      row.timeRows.map((r) => (
+                        <div
+                          key={`${row.species}:time:${r.key}`}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            alignItems: "center",
+                          }}
+                        >
+                          <div style={{ fontWeight: 700 }}>{r.key}</div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: "rgba(255,255,255,0.75)",
+                            }}
+                          >
+                            {fmtN(r.value)} 匹
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ height: 10 }} />
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
+            ※魚種ごとに、どの時間帯で出ているかを見やすくしたよ
+          </div>
+        </div>
+
+        <div className="glass-panel strong" style={cardStyle}>
+          <div style={{ fontWeight: 900, fontSize: 14 }}>🧲 ルアー × 魚種</div>
+          <div style={{ height: 8 }} />
+
+          {speciesInsights.length === 0 ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+              まだルアーデータが無いよ
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {speciesInsights.map((row) => (
+                <div
+                  key={`lure:${row.species}`}
+                  className="glass"
+                  style={subtlePanelStyle}
+                >
+                  <div
+                    style={{
+                      fontWeight: 900,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span>{row.species}</span>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: "rgba(255,255,255,0.70)",
+                        fontWeight: 500,
+                      }}
+                    >
+                      合計 {fmtN(row.totalCount)}匹
+                    </span>
+                  </div>
+
+                  <div style={{ height: 8 }} />
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {row.lureRows.length === 0 ? (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "rgba(255,255,255,0.62)",
+                        }}
+                      >
+                        データなし
+                      </div>
+                    ) : (
+                      row.lureRows.map((r) => (
+                        <div
+                          key={`${row.species}:lure:${r.key}`}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            alignItems: "center",
+                          }}
+                        >
+                          <div style={{ fontWeight: 700 }}>{r.key}</div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: "rgba(255,255,255,0.75)",
+                            }}
+                          >
+                            {fmtN(r.value)} 匹
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ height: 10 }} />
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
+            ※「この魚には何を投げるか」の判断用
+          </div>
+        </div>
+
+        <div className="glass-panel strong" style={cardStyle}>
+          <div style={{ fontWeight: 900, fontSize: 14 }}>
+            🌊 潮の動き × 魚種
+          </div>
+          <div style={{ height: 8 }} />
+
+          {speciesInsights.length === 0 ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+              まだ潮データが無いよ
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {speciesInsights.map((row) => (
+                <div
+                  key={`trend:${row.species}`}
+                  className="glass"
+                  style={subtlePanelStyle}
+                >
+                  <div
+                    style={{
+                      fontWeight: 900,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span>{row.species}</span>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: "rgba(255,255,255,0.70)",
+                        fontWeight: 500,
+                      }}
+                    >
+                      合計 {fmtN(row.totalCount)}匹
+                    </span>
+                  </div>
+
+                  <div style={{ height: 8 }} />
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {row.trendRows.length === 0 ? (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "rgba(255,255,255,0.62)",
+                        }}
+                      >
+                        データなし
+                      </div>
+                    ) : (
+                      row.trendRows.map((r) => (
+                        <div
+                          key={`${row.species}:trend:${r.key}`}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            alignItems: "center",
+                          }}
+                        >
+                          <div style={{ fontWeight: 700 }}>{r.key}</div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: "rgba(255,255,255,0.75)",
+                            }}
+                          >
+                            {fmtN(r.value)} 匹
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ height: 10 }} />
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
+            ※潮名より実戦寄りの「上げ / 下げ / 止まり」を見やすくしたよ
+          </div>
+        </div>
+
+        <div className="glass-panel strong" style={cardStyle}>
           <div style={{ fontWeight: 900, fontSize: 14 }}>
             🗓 月別 × 魚種（上位）
           </div>
@@ -780,8 +1313,7 @@ export default function RecordAnalysis({ back }: Props) {
         </div>
 
         <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
-          データ量が少ないうちはブレるけど、週1〜2のペースなら “3か月”
-          くらいで偏りが見え始めるよ🎣✨
+          データ量が少ないうちはブレるけど、溜まってくると「この魚はいつ・何で・どの潮で強いか」が見えてくるよ🎣
         </div>
       </div>
     </PageShell>
