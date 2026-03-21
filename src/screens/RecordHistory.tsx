@@ -248,7 +248,7 @@ function normalizeLureLabel(raw: string): string {
   if (exactMap[key]) return exactMap[key];
 
   const parts = src
-    .split(/[\/|,]+/)
+    .split(/[|/,]+/)
     .map((s) => s.trim())
     .filter(Boolean);
 
@@ -504,14 +504,13 @@ function BottomSheet({
 
   useEffect(() => {
     if (open) {
-      setMounted(true);
-
-      setOverlayActive(false);
-      setSheetActive(false);
-
       raf1Ref.current = requestAnimationFrame(() => {
-        setOverlayActive(true);
+        setMounted(true);
+        setOverlayActive(false);
+        setSheetActive(false);
+
         raf2Ref.current = requestAnimationFrame(() => {
+          setOverlayActive(true);
           setSheetActive(true);
         });
       });
@@ -526,16 +525,15 @@ function BottomSheet({
 
     if (!mounted) return;
 
-    setSheetActive(false);
+    const t0 = window.setTimeout(() => setSheetActive(false), 0);
     const t1 = window.setTimeout(
       () => setOverlayActive(false),
       reduce ? 0 : 120,
     );
-
-    const ms = reduce ? 0 : 280;
-    const t2 = window.setTimeout(() => setMounted(false), ms);
+    const t2 = window.setTimeout(() => setMounted(false), reduce ? 0 : 280);
 
     return () => {
+      window.clearTimeout(t0);
       window.clearTimeout(t1);
       window.clearTimeout(t2);
     };
@@ -650,19 +648,25 @@ function PhotoLightbox({
   const reduce = prefersReducedMotion();
 
   useEffect(() => {
-    if (!open) return;
-    setMounted(true);
-    const id = requestAnimationFrame(() => setActive(true));
-    return () => cancelAnimationFrame(id);
-  }, [open]);
+    if (open) {
+      const raf = requestAnimationFrame(() => {
+        setMounted(true);
+        requestAnimationFrame(() => {
+          setActive(true);
+        });
+      });
+      return () => cancelAnimationFrame(raf);
+    }
 
-  useEffect(() => {
     if (!mounted) return;
-    if (open) return;
 
-    setActive(false);
-    const t = window.setTimeout(() => setMounted(false), reduce ? 0 : 180);
-    return () => window.clearTimeout(t);
+    const t0 = window.setTimeout(() => setActive(false), 0);
+    const t1 = window.setTimeout(() => setMounted(false), reduce ? 0 : 180);
+
+    return () => {
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
+    };
   }, [open, mounted, reduce]);
 
   useEffect(() => {
@@ -1064,8 +1068,9 @@ export default function RecordHistory({ back }: Props) {
     }
 
     const out: Record<number, number[]> = {};
-    for (const [y, set] of map.entries())
+    for (const [y, set] of map.entries()) {
       out[y] = Array.from(set).sort((a, b) => a - b);
+    }
     return out;
   }, [all]);
 
