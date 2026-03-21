@@ -12,10 +12,7 @@ import { db, type TripRecord, type TripPhoto, type TripFish } from "../db";
 import { getTimeBand } from "../lib/timeband";
 import { FIXED_PORT } from "../points";
 import { getTideAtTime } from "../lib/tide736";
-import {
-  getTide736DayCached,
-  type TideCacheSource,
-} from "../lib/tide736Cache";
+import { getTide736DayCached, type TideCacheSource } from "../lib/tide736Cache";
 import { getTidePhaseFromSeries } from "../lib/tidePhase736";
 import TideGraph from "../components/TideGraph";
 import PageShell from "../components/PageShell";
@@ -382,7 +379,12 @@ function extractWeatherLines(
     rows.push({
       label: "風",
       value:
-        [windDir, windSpeed ? `${windSpeed}${windSpeed.includes("m") ? "" : "m/s"}` : ""]
+        [
+          windDir,
+          windSpeed
+            ? `${windSpeed}${windSpeed.includes("m") ? "" : "m/s"}`
+            : "",
+        ]
           .filter(Boolean)
           .join(" / ") || "（なし）",
     });
@@ -710,9 +712,8 @@ function PhotoLightbox({
     transition: `transform ${reduce ? 0 : 180}ms ease, opacity ${
       reduce ? 0 : 180
     }ms ease`,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    display: "grid",
+    placeItems: "center",
     padding: 20,
     boxSizing: "border-box",
   };
@@ -743,12 +744,13 @@ function PhotoLightbox({
           src={src}
           alt="preview"
           style={{
-            display: "block",
-            width: "auto",
-            height: "auto",
             maxWidth: "100%",
             maxHeight: "100%",
+            width: "auto",
+            height: "auto",
             objectFit: "contain",
+            display: "block",
+            userSelect: "none",
           }}
         />
       </div>
@@ -1139,36 +1141,42 @@ export default function RecordHistory({ back }: Props) {
 
     const nowIso = new Date().toISOString();
 
-    await db.transaction("rw", db.trips, db.tripPhotos, db.tripFish, async () => {
-      const trip = await db.trips.get(id);
-      if (!trip) return;
+    await db.transaction(
+      "rw",
+      db.trips,
+      db.tripPhotos,
+      db.tripFish,
+      async () => {
+        const trip = await db.trips.get(id);
+        if (!trip) return;
 
-      await db.trips.update(id, {
-        deletedAt: nowIso,
-        updatedAt: nowIso,
-        syncStatus: "pending",
-      });
-
-      const photos = await db.tripPhotos.where("tripId").equals(id).toArray();
-      for (const photo of photos) {
-        if (!photo.id) continue;
-        await db.tripPhotos.update(photo.id, {
+        await db.trips.update(id, {
           deletedAt: nowIso,
           updatedAt: nowIso,
           syncStatus: "pending",
         });
-      }
 
-      const fish = await db.tripFish.where("tripId").equals(id).toArray();
-      for (const row of fish) {
-        if (!row.id) continue;
-        await db.tripFish.update(row.id, {
-          deletedAt: nowIso,
-          updatedAt: nowIso,
-          syncStatus: "pending",
-        });
-      }
-    });
+        const photos = await db.tripPhotos.where("tripId").equals(id).toArray();
+        for (const photo of photos) {
+          if (!photo.id) continue;
+          await db.tripPhotos.update(photo.id, {
+            deletedAt: nowIso,
+            updatedAt: nowIso,
+            syncStatus: "pending",
+          });
+        }
+
+        const fish = await db.tripFish.where("tripId").equals(id).toArray();
+        for (const row of fish) {
+          if (!row.id) continue;
+          await db.tripFish.update(row.id, {
+            deletedAt: nowIso,
+            updatedAt: nowIso,
+            syncStatus: "pending",
+          });
+        }
+      },
+    );
 
     clearCoverThumbUrl(id);
     await loadAll();
@@ -1262,7 +1270,13 @@ export default function RecordHistory({ back }: Props) {
       ? sourceLabel(detailTide.source, detailTide.isStale)
       : null;
 
-    const weatherLines = extractWeatherLines(trip, base, tide, detailTide, phase);
+    const weatherLines = extractWeatherLines(
+      trip,
+      base,
+      tide,
+      detailTide,
+      phase,
+    );
 
     return (
       <div style={{ display: "grid", gap: 12 }}>
@@ -1301,8 +1315,12 @@ export default function RecordHistory({ back }: Props) {
             style={{ fontSize: 12, color: "#6cf", overflowWrap: "anywhere" }}
           >
             🕒 基準：
-            {Number.isFinite(base.getTime()) ? base.toLocaleString() : "（不明）"}
-            {Number.isFinite(base.getTime()) ? ` / 🕒 ${getTimeBand(base)}` : ""}
+            {Number.isFinite(base.getTime())
+              ? base.toLocaleString()
+              : "（不明）"}
+            {Number.isFinite(base.getTime())
+              ? ` / 🕒 ${getTimeBand(base)}`
+              : ""}
             {detailTide?.tideName ? ` / 🌙 ${detailTide.tideName}` : ""}
             {phase ? ` / 🌊 ${phase}` : ""}
           </div>
@@ -1601,7 +1619,8 @@ export default function RecordHistory({ back }: Props) {
                 type="button"
                 className="glass glass-strong"
                 onClick={() => {
-                  if (selectedPhotoId != null) setLightboxPhotoId(selectedPhotoId);
+                  if (selectedPhotoId != null)
+                    setLightboxPhotoId(selectedPhotoId);
                 }}
                 style={{
                   borderRadius: 16,
@@ -1865,4 +1884,348 @@ export default function RecordHistory({ back }: Props) {
         const base = new Date(t.startedAt ?? t.createdAt);
         const tripId = t.id ?? 0;
 
-        const finalThumb =
+        const finalThumb = tripId
+          ? (coverThumbUrlRef.current.get(tripId)?.url ?? null)
+          : null;
+
+        return (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => void openDetailForTrip(t)}
+            className="glass"
+            style={historyCardStyle}
+            title="この記録を開く"
+          >
+            <div
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: 12,
+                overflow: "hidden",
+                background: "rgba(0,0,0,0.18)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                border: "1px solid rgba(255,255,255,0.10)",
+              }}
+            >
+              {finalThumb ? (
+                <img
+                  src={finalThumb}
+                  alt="thumb"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : (
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+                  No Photo
+                </span>
+              )}
+            </div>
+
+            <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "rgba(255,255,255,0.72)",
+                  ...ellipsis1,
+                }}
+              >
+                記録：{created.toLocaleString()}
+              </div>
+
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#6cf",
+                  overflowWrap: "anywhere",
+                }}
+              >
+                🕒 基準：
+                {Number.isFinite(base.getTime())
+                  ? base.toLocaleString()
+                  : "（不明）"}
+                {Number.isFinite(base.getTime())
+                  ? ` / 🕒 ${getTimeBand(base)}`
+                  : ""}
+              </div>
+
+              <div style={{ fontSize: 12, color: "#ffd166" }}>
+                {t.outcome === "skunk"
+                  ? "😇 釣れなかった（ボウズ）"
+                  : "🎣 釣れた"}
+              </div>
+
+              <div style={{ color: "#eee", overflowWrap: "anywhere" }}>
+                {t.memo || "（メモなし）"}
+              </div>
+            </div>
+          </button>
+        );
+      })}
+
+      {filteredArchive.length > archivePageSize && (
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
+          ※「表示件数」を増やすと、もっと下まで見れるよ（スクロール長くなるから段階にしてる）
+        </div>
+      )}
+    </div>
+  );
+
+  const titleNode = (
+    <h1
+      style={{
+        margin: 0,
+        fontSize: "clamp(20px, 3.2vw, 32px)",
+        lineHeight: 1.15,
+      }}
+    >
+      🗃 履歴をみる
+    </h1>
+  );
+
+  const glassVars = {
+    "--glass-alpha": String(settings.glassAlpha ?? 0.22),
+    "--glass-blur": `${settings.glassBlur ?? 10}px`,
+  } as unknown as CSSProperties;
+
+  return (
+    <PageShell
+      title={titleNode}
+      subtitle={headerSubNode}
+      titleLayout="left"
+      maxWidth={1500}
+      showBack
+      onBack={back}
+      scrollY={isDesktop ? "hidden" : "auto"}
+    >
+      <div
+        style={{
+          ...glassVars,
+          overflowX: "clip",
+          maxWidth: "100vw",
+          minHeight: 0,
+          height: isDesktop
+            ? "calc(100dvh - var(--shell-header-h) - 20px)"
+            : "auto",
+          paddingBottom: isDesktop ? 8 : 0,
+        }}
+      >
+        {isMobile ? (
+          <div style={{ display: "grid", gap: 12 }}>
+            {Controls}
+
+            {!allLoadedOnce && allLoading ? (
+              <p>読み込み中…</p>
+            ) : all.length === 0 ? (
+              <p>まだ記録がないよ</p>
+            ) : (
+              <div style={{ display: "grid", gap: 10 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+                  絞り込み {filteredArchive.length} 件（表示{" "}
+                  {Math.min(archivePageSize, filteredArchive.length)} 件）
+                </div>
+
+                {ListView}
+
+                <BottomSheet
+                  open={sheetOpen}
+                  onClose={() => setSheetOpen(false)}
+                  title="📌 記録の詳細"
+                  pillBtnStyle={pillBtnStyle}
+                >
+                  {selected ? (
+                    <MobileDetailContent trip={selected} />
+                  ) : (
+                    <div
+                      style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}
+                    >
+                      —
+                    </div>
+                  )}
+                </BottomSheet>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "minmax(300px, 430px) minmax(380px, 0.95fr) minmax(420px, 1.05fr)",
+              gap: 14,
+              alignItems: "stretch",
+              minWidth: 0,
+              minHeight: 0,
+              height: "100%",
+            }}
+          >
+            <div
+              className="glass glass-strong"
+              style={{
+                borderRadius: 16,
+                padding: 12,
+                minHeight: 0,
+                height: "100%",
+                overflow: "hidden",
+                display: "grid",
+                gridTemplateRows: "auto auto 1fr",
+                gap: 10,
+              }}
+            >
+              {Controls}
+
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+                絞り込み {filteredArchive.length} 件（表示{" "}
+                {Math.min(archivePageSize, filteredArchive.length)} 件）
+              </div>
+
+              <div
+                style={{
+                  minHeight: 0,
+                  height: "100%",
+                  overflowY: "auto",
+                  paddingRight: 4,
+                  overscrollBehavior: "contain",
+                  WebkitOverflowScrolling: "touch",
+                }}
+              >
+                {ListView}
+              </div>
+            </div>
+
+            <div
+              className="glass glass-strong"
+              style={{
+                borderRadius: 16,
+                padding: 12,
+                minWidth: 0,
+                minHeight: 0,
+                height: "100%",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                ref={detailCenterPaneRef}
+                style={{
+                  minWidth: 0,
+                  minHeight: 0,
+                  height: "100%",
+                  overflowY: "auto",
+                  paddingRight: 4,
+                  overscrollBehavior: "contain",
+                  WebkitOverflowScrolling: "touch",
+                }}
+              >
+                {!allLoadedOnce && allLoading ? (
+                  <div
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}
+                  >
+                    読み込み中…
+                  </div>
+                ) : all.length === 0 ? (
+                  <div
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}
+                  >
+                    まだ記録がないよ
+                  </div>
+                ) : selected ? (
+                  <DetailCenterContent trip={selected} />
+                ) : (
+                  <div
+                    className="glass"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      borderRadius: 14,
+                      overflow: "hidden",
+                      background: "rgba(0,0,0,0.14)",
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      display: "grid",
+                      alignItems: "center",
+                      justifyItems: "center",
+                      color: "rgba(255,255,255,0.62)",
+                      fontSize: 13,
+                      padding: 16,
+                      textAlign: "center",
+                    }}
+                  >
+                    左の履歴から選択してね
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div
+              className="glass glass-strong"
+              style={{
+                borderRadius: 16,
+                padding: 12,
+                minHeight: 0,
+                height: "100%",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                ref={detailRightPaneRef}
+                style={{
+                  minWidth: 0,
+                  minHeight: 0,
+                  height: "100%",
+                  overflowY: "auto",
+                  paddingRight: 4,
+                  overscrollBehavior: "contain",
+                  WebkitOverflowScrolling: "touch",
+                }}
+              >
+                {!allLoadedOnce && allLoading ? (
+                  <div
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}
+                  >
+                    読み込み中…
+                  </div>
+                ) : all.length === 0 ? (
+                  <div
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}
+                  >
+                    まだ記録がないよ
+                  </div>
+                ) : selected ? (
+                  <DetailRightContent trip={selected} />
+                ) : (
+                  <div
+                    className="glass"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      borderRadius: 14,
+                      overflow: "hidden",
+                      background: "rgba(0,0,0,0.14)",
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      display: "grid",
+                      alignItems: "center",
+                      justifyItems: "center",
+                      color: "rgba(255,255,255,0.62)",
+                      fontSize: 13,
+                      padding: 16,
+                      textAlign: "center",
+                    }}
+                  >
+                    左の履歴から選択してね
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <PhotoLightbox
+        open={lightboxPhotoId != null}
+        src={lightboxSrc}
+        onClose={() => setLightboxPhotoId(null)}
+      />
+    </PageShell>
+  );
+}
