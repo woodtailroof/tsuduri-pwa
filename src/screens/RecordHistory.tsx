@@ -215,6 +215,8 @@ function normalizeLureLabel(raw: string): string {
   const key = src.toLowerCase().replace(/[\s-]+/g, "_");
 
   const exactMap: Record<string, string> = {
+    metaljig: "メタルジグ",
+    metal_jig: "メタルジグ",
     top: "トップ",
     topwater: "トップウォーター",
     blade: "ブレード",
@@ -228,7 +230,6 @@ function normalizeLureLabel(raw: string): string {
     vib: "バイブ",
     vibration: "バイブレーション",
     metal_vib: "メタルバイブ",
-    metal_jig: "メタルジグ",
     jig: "ジグ",
     spin_tail: "スピンテール",
     spinnerbait: "スピナーベイト",
@@ -712,8 +713,9 @@ function PhotoLightbox({
     transition: `transform ${reduce ? 0 : 180}ms ease, opacity ${
       reduce ? 0 : 180
     }ms ease`,
-    display: "grid",
-    placeItems: "center",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 20,
     boxSizing: "border-box",
   };
@@ -744,12 +746,12 @@ function PhotoLightbox({
           src={src}
           alt="preview"
           style={{
-            maxWidth: "100%",
-            maxHeight: "100%",
+            display: "block",
             width: "auto",
             height: "auto",
+            maxWidth: "calc(96vw - 80px)",
+            maxHeight: "calc(92vh - 80px)",
             objectFit: "contain",
-            display: "block",
             userSelect: "none",
           }}
         />
@@ -1579,6 +1581,9 @@ export default function RecordHistory({ back }: Props) {
                         aspectRatio: "1 / 1",
                         padding: 0,
                         cursor: "zoom-in",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
                       }}
                       title={
                         p.capturedAt
@@ -1591,10 +1596,12 @@ export default function RecordHistory({ back }: Props) {
                           src={url}
                           alt="thumb"
                           style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
                             display: "block",
+                            maxWidth: "100%",
+                            maxHeight: "100%",
+                            width: "auto",
+                            height: "auto",
+                            objectFit: "contain",
                           }}
                         />
                       ) : (
@@ -1628,7 +1635,8 @@ export default function RecordHistory({ back }: Props) {
                   minHeight: 340,
                   height: "100%",
                   display: "grid",
-                  alignItems: "center",
+                  alignItems: "stretch",
+                  justifyItems: "stretch",
                   overflow: "hidden",
                   border: "1px solid rgba(255,255,255,0.10)",
                   background: "rgba(255,255,255,0.03)",
@@ -1641,16 +1649,29 @@ export default function RecordHistory({ back }: Props) {
                   (() => {
                     const url = getPhotoUrlByPhotoId(selectedPhotoId);
                     return url ? (
-                      <img
-                        src={url}
-                        alt="selected"
+                      <div
                         style={{
                           width: "100%",
                           height: "100%",
-                          objectFit: "contain",
-                          display: "block",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          overflow: "hidden",
                         }}
-                      />
+                      >
+                        <img
+                          src={url}
+                          alt="selected"
+                          style={{
+                            display: "block",
+                            maxWidth: "100%",
+                            maxHeight: "100%",
+                            width: "auto",
+                            height: "auto",
+                            objectFit: "contain",
+                          }}
+                        />
+                      </div>
                     ) : (
                       <div
                         style={{
@@ -1915,7 +1936,14 @@ export default function RecordHistory({ back }: Props) {
                 <img
                   src={finalThumb}
                   alt="thumb"
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  style={{
+                    display: "block",
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                    width: "auto",
+                    height: "auto",
+                    objectFit: "contain",
+                  }}
                 />
               ) : (
                 <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
