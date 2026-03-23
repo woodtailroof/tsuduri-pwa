@@ -26,6 +26,9 @@ const TIMEBAND_LABEL: Record<TripRecord["timeBand"], string> = {
   unknown: "不明",
 };
 
+/**
+ * ✅ Record.ts の SPECIES_OPTIONS と表示を一致
+ */
 const SPECIES_LABEL: Record<string, string> = {
   seabass: "シーバス",
   flounder: "ヒラメ",
@@ -207,12 +210,21 @@ function getBestKey(
   return { key: rows[0].key, value: rows[0].value };
 }
 
+/**
+ * ✅ 保存済みデータが
+ * - morning/day/evening/night
+ * - 朝/昼/夕/夜
+ * - 朝マズメ/デイ/夕マズメ/ナイト
+ * のどれでも吸収する
+ * さらに startedAt があれば再計算で補完する
+ */
 function normalizeTimeBandValue(
   raw: unknown,
   startedAt?: string | null,
 ): TripRecord["timeBand"] {
   const s = String(raw ?? "").trim();
 
+  // 英語保存
   if (
     s === "morning" ||
     s === "day" ||
@@ -223,28 +235,39 @@ function normalizeTimeBandValue(
     return s;
   }
 
+  // 日本語短縮
   if (s === "朝") return "morning";
   if (s === "昼") return "day";
   if (s === "夕") return "evening";
   if (s === "夜") return "night";
   if (s === "不明") return "unknown";
 
+  // 実際の getTimeBand 返り値
+  if (s === "朝マズメ") return "morning";
+  if (s === "デイ") return "day";
+  if (s === "夕マズメ") return "evening";
+  if (s === "ナイト") return "night";
+
+  // fallback: startedAt から再計算
   if (startedAt) {
     const d = new Date(startedAt);
     if (Number.isFinite(d.getTime())) {
       const band = String(getTimeBand(d)).trim();
-      if (
-        band === "morning" ||
-        band === "day" ||
-        band === "evening" ||
-        band === "night"
-      ) {
-        return band;
-      }
+
+      if (band === "morning") return "morning";
+      if (band === "day") return "day";
+      if (band === "evening") return "evening";
+      if (band === "night") return "night";
+
       if (band === "朝") return "morning";
       if (band === "昼") return "day";
       if (band === "夕") return "evening";
       if (band === "夜") return "night";
+
+      if (band === "朝マズメ") return "morning";
+      if (band === "デイ") return "day";
+      if (band === "夕マズメ") return "evening";
+      if (band === "ナイト") return "night";
     }
   }
 
