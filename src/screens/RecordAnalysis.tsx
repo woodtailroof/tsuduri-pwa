@@ -311,10 +311,23 @@ export default function RecordAnalysis({ back }: Props) {
     setLoading(true);
     setError("");
     try {
-      const t = await db.trips.orderBy("createdAt").reverse().toArray();
-      const f = await db.tripFish.orderBy("createdAt").reverse().toArray();
-      setTrips(t as Array<TripRecord & { id: number }>);
-      setFish(f as Array<TripFish & { id: number }>);
+      const [tripsRaw, fishRaw] = await Promise.all([
+        db.trips.orderBy("createdAt").reverse().toArray(),
+        db.tripFish.orderBy("createdAt").reverse().toArray(),
+      ]);
+
+      const activeTrips = tripsRaw.filter(
+        (r): r is TripRecord & { id: number } =>
+          typeof r.id === "number" && Number.isFinite(r.id) && !r.deletedAt,
+      );
+
+      const activeFish = fishRaw.filter(
+        (r): r is TripFish & { id: number } =>
+          typeof r.id === "number" && Number.isFinite(r.id) && !r.deletedAt,
+      );
+
+      setTrips(activeTrips);
+      setFish(activeFish);
     } catch (e) {
       console.error(e);
       setError(e instanceof Error ? e.message : String(e));
