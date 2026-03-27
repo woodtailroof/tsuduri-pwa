@@ -153,13 +153,34 @@ function asStringOrNull(value: unknown): string | null {
 function normalizeTimeBand(value: unknown): TimeBand {
   if (typeof value !== "string") return "unknown";
 
-  const v = value.trim().toLowerCase();
+  const raw = value.trim();
+  const v = raw.toLowerCase();
 
-  if (v === "morning" || v === "朝" || v === "早朝") return "morning";
-  if (v === "day" || v === "昼" || v === "日中") return "day";
-  if (v === "evening" || v === "夕" || v === "夕方") return "evening";
-  if (v === "night" || v === "夜" || v === "深夜") return "night";
-  if (v === "unknown" || v === "不明" || v === "") return "unknown";
+  // 英語
+  if (v === "morning") return "morning";
+  if (v === "day") return "day";
+  if (v === "evening") return "evening";
+  if (v === "night") return "night";
+  if (v === "unknown" || v === "") return "unknown";
+
+  // 日本語短縮
+  if (raw === "朝") return "morning";
+  if (raw === "昼") return "day";
+  if (raw === "夕") return "evening";
+  if (raw === "夜") return "night";
+  if (raw === "不明") return "unknown";
+
+  // 既存 getTimeBand の返り値
+  if (raw === "朝マズメ") return "morning";
+  if (raw === "デイ") return "day";
+  if (raw === "夕マズメ") return "evening";
+  if (raw === "ナイト") return "night";
+
+  // 別表現も吸収
+  if (raw === "早朝") return "morning";
+  if (raw === "日中") return "day";
+  if (raw === "夕方") return "evening";
+  if (raw === "深夜") return "night";
 
   return "unknown";
 }
