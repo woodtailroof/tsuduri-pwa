@@ -28,6 +28,29 @@ type Props = {
   goSecret?: () => void;
 };
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(max-width: 720px)");
+    const update = () => setIsMobile(mq.matches);
+
+    update();
+
+    if (typeof mq.addEventListener === "function") {
+      mq.addEventListener("change", update);
+      return () => mq.removeEventListener("change", update);
+    }
+
+    mq.addListener(update);
+    return () => mq.removeListener(update);
+  }, []);
+
+  return isMobile;
+}
+
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
@@ -474,7 +497,9 @@ function SmartButton({
             </div>
 
             <div style={textWrap}>
-              <div style={labelStyle}>{fallbackLabel}</div>
+              <div style={labelStyle} className="home-btn-label">
+                {fallbackLabel}
+              </div>
               {fallbackSub ? <div style={subStyle}>{fallbackSub}</div> : null}
             </div>
           </div>
@@ -503,6 +528,7 @@ function SmartButton({
 
 export default function Home({ go, goSecret }: Props) {
   const { settings } = useAppSettings();
+  const isMobile = useIsMobile();
 
   const assetVersion = String(settings.assetVersion ?? "").trim();
 
@@ -901,6 +927,12 @@ export default function Home({ go, goSecret }: Props) {
           }
         }
 
+        @media (max-width:720px){
+          .home-fallback-btn .home-btn-label{
+            letter-spacing:0;
+          }
+        }
+
         @media (prefers-reduced-motion: reduce){
           .home-smart-btn,
           .home-smart-btn:hover .home-fallback-btn,
@@ -953,7 +985,7 @@ export default function Home({ go, goSecret }: Props) {
                         alt="記録する"
                         onClick={() => go("record")}
                         style={{ width: "var(--btnw)" }}
-                        fallbackLabel="記録する"
+                        fallbackLabel={isMobile ? "記録" : "記録する"}
                         fallbackSub="写真/潮を保存"
                         fallbackIcon="📸"
                       />
@@ -963,7 +995,7 @@ export default function Home({ go, goSecret }: Props) {
                         alt="履歴をみる"
                         onClick={() => go("recordHistory")}
                         style={{ width: "var(--btnw)" }}
-                        fallbackLabel="履歴をみる"
+                        fallbackLabel={isMobile ? "履歴" : "履歴をみる"}
                         fallbackSub="過去ログを確認"
                         fallbackIcon="🗃"
                       />
@@ -973,7 +1005,7 @@ export default function Home({ go, goSecret }: Props) {
                         alt="釣行分析"
                         onClick={() => go("recordAnalysis")}
                         style={{ width: "var(--btnw)" }}
-                        fallbackLabel="釣行分析"
+                        fallbackLabel={isMobile ? "分析" : "釣行分析"}
                         fallbackSub="相関/時間帯を掘る"
                         fallbackIcon="📊"
                       />
@@ -983,7 +1015,7 @@ export default function Home({ go, goSecret }: Props) {
                         alt="天気・潮をみる"
                         onClick={() => go("weather")}
                         style={{ width: "var(--btnw)" }}
-                        fallbackLabel="天気・潮をみる"
+                        fallbackLabel={isMobile ? "天気" : "天気・潮をみる"}
                         fallbackSub="予報/タイド"
                         fallbackIcon="🌦"
                       />
