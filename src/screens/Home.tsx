@@ -347,13 +347,8 @@ function SmartButton({
 
   const textWrap: CSSProperties = {
     display: "grid",
-    gap: 4,
+    alignItems: "center",
     minWidth: 0,
-    padding: "2px 6px",
-    borderRadius: 8,
-    background: "rgba(0,0,0,0.08)",
-    backdropFilter: "blur(4px)",
-    WebkitBackdropFilter: "blur(4px)",
   };
 
   const labelStyle: CSSProperties = {
@@ -364,21 +359,15 @@ function SmartButton({
     overflow: "hidden",
     textOverflow: "ellipsis",
     lineHeight: 1.15,
-    color: "rgba(250,253,255,0.95)",
+    color: "rgba(250,253,255,0.96)",
     textShadow: `
-      0 1px 2px rgba(0,0,0,0.35),
-      0 0 6px rgba(0,0,0,0.25)
+      0 1px 2px rgba(0,0,0,0.30),
+      0 0 5px rgba(0,0,0,0.18)
     `,
   };
 
   const subStyle: CSSProperties = {
-    fontSize: 12,
-    color: "rgba(240,248,255,0.82)",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    lineHeight: 1.1,
-    textShadow: "0 1px 2px rgba(0,0,0,0.28)",
+    display: "none",
   };
 
   const chevron: CSSProperties = {
