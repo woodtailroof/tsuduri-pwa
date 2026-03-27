@@ -222,34 +222,33 @@ function normalizeTimeBandValue(
   raw: unknown,
   startedAt?: string | null,
 ): TripRecord["timeBand"] {
-  const s = String(raw ?? "").trim();
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    const lower = s.toLowerCase();
 
-  // 英語保存
-  if (
-    s === "morning" ||
-    s === "day" ||
-    s === "evening" ||
-    s === "night" ||
-    s === "unknown"
-  ) {
-    return s;
+    // 英語保存
+    if (lower === "morning") return "morning";
+    if (lower === "day") return "day";
+    if (lower === "evening") return "evening";
+    if (lower === "night") return "night";
+    if (lower === "unknown") return "unknown";
+
+    // 日本語短縮
+    if (s === "朝") return "morning";
+    if (s === "昼") return "day";
+    if (s === "夕") return "evening";
+    if (s === "夜") return "night";
+    if (s === "不明") return "unknown";
+
+    // 実際の getTimeBand 返り値
+    if (s === "朝マズメ") return "morning";
+    if (s === "デイ") return "day";
+    if (s === "夕マズメ") return "evening";
+    if (s === "ナイト") return "night";
   }
 
-  // 日本語短縮
-  if (s === "朝") return "morning";
-  if (s === "昼") return "day";
-  if (s === "夕") return "evening";
-  if (s === "夜") return "night";
-  if (s === "不明") return "unknown";
-
-  // 実際の getTimeBand 返り値
-  if (s === "朝マズメ") return "morning";
-  if (s === "デイ") return "day";
-  if (s === "夕マズメ") return "evening";
-  if (s === "ナイト") return "night";
-
   // fallback: startedAt から再計算
-  if (startedAt) {
+  if (typeof startedAt === "string" && startedAt.trim()) {
     const d = new Date(startedAt);
     if (Number.isFinite(d.getTime())) {
       const band = String(getTimeBand(d)).trim();
@@ -373,7 +372,7 @@ export default function RecordAnalysis({ back }: Props) {
         tripId,
         tripCreatedAt: t.createdAt,
         tripStartedAt: t.startedAt,
-        timeBand: normalizeTimeBandValue(t.timeBand, t.startedAt),
+        timeBand: normalizeTimeBandValue(f.timeBand ?? t.timeBand, t.startedAt),
         tideName: labelNullDash(t.tideName ?? null),
         tidePhase: labelNullDash(t.tidePhase ?? null),
         tideTrend: labelTrend(t.tideTrend ?? "unknown"),
