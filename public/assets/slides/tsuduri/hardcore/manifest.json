@@ -1,7 +1,5 @@
 {
   "title": "つづり：ハードコア",
   "intervalMs": 1200,
-  "files": [
-    "000.png"
-  ]
+  "files": ["000.png"]
 }
