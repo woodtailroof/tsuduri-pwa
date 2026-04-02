@@ -8,7 +8,13 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { db, type TripRecord, type TripPhoto, type TripFish } from "../db";
+import {
+  db,
+  type TripRecord,
+  type TripPhoto,
+  type TripFish,
+  type TackleItem,
+} from "../db";
 import { getTimeBand } from "../lib/timeband";
 import { FIXED_PORT } from "../points";
 import { getTideAtTime } from "../lib/tide736";
@@ -17,6 +23,7 @@ import { getTidePhaseFromSeries } from "../lib/tidePhase736";
 import TideGraph from "../components/TideGraph";
 import PageShell from "../components/PageShell";
 import { useAppSettings } from "../lib/appSettings";
+import { formatRodLabel, formatReelLabel } from "../lib/tackle";
 
 type Props = { back: () => void };
 
@@ -461,6 +468,26 @@ function hasUsableLocalBlob(photo: TripPhoto | undefined | null): boolean {
 
 function buildRemotePhotoUrl(remoteKey: string): string {
   return `/api/photo-file?key=${encodeURIComponent(remoteKey)}`;
+}
+
+function getRodDisplay(
+  trip: TripRecord,
+  tackleMap: Map<number, TackleItem>,
+): string {
+  if (trip.rodId == null) return "—";
+  const tackle = tackleMap.get(trip.rodId);
+  if (!tackle || tackle.kind !== "rod") return "不明なロッド";
+  return formatRodLabel(tackle);
+}
+
+function getReelDisplay(
+  trip: TripRecord,
+  tackleMap: Map<number, TackleItem>,
+): string {
+  if (trip.reelId == null) return "—";
+  const tackle = tackleMap.get(trip.reelId);
+  if (!tackle || tackle.kind !== "reel") return "不明なリール";
+  return formatReelLabel(tackle);
 }
 
 function BottomSheet({
@@ -911,6 +938,9 @@ export default function RecordHistory({ back }: Props) {
   const [detailFish, setDetailFish] = useState<TripFish[]>([]);
   const [selectedPhotoId, setSelectedPhotoId] = useState<number | null>(null);
   const [lightboxPhotoId, setLightboxPhotoId] = useState<number | null>(null);
+  const [tackleMap, setTackleMap] = useState<Map<number, TackleItem>>(
+    new Map(),
+  );
 
   const detailCenterPaneRef = useRef<HTMLDivElement | null>(null);
   const detailRightPaneRef = useRef<HTMLDivElement | null>(null);
@@ -970,6 +1000,23 @@ export default function RecordHistory({ back }: Props) {
       window.removeEventListener("online", onUp);
       window.removeEventListener("offline", onDown);
     };
+  }, []);
+
+  useEffect(() => {
+    void db.tackleItems
+      .filter((item) => !item.deletedAt)
+      .toArray()
+      .then((items) => {
+        const next = new Map<number, TackleItem>();
+        for (const item of items) {
+          if (item.id != null) next.set(item.id, item);
+        }
+        setTackleMap(next);
+      })
+      .catch((e) => {
+        console.error(e);
+        setTackleMap(new Map());
+      });
   }, []);
 
   useEffect(() => {
@@ -1285,6 +1332,9 @@ export default function RecordHistory({ back }: Props) {
       phase,
     );
 
+    const rodLabel = getRodDisplay(trip, tackleMap);
+    const reelLabel = getReelDisplay(trip, tackleMap);
+
     return (
       <div style={{ display: "grid", gap: 12 }}>
         <div className="glass glass-strong" style={detailCardStyle}>
@@ -1334,6 +1384,28 @@ export default function RecordHistory({ back }: Props) {
 
           <div style={{ fontSize: 12, color: "#ffd166" }}>
             {formatOutcomeLine(trip, detailFish)}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gap: 8,
+              fontSize: 12,
+              color: "rgba(255,255,255,0.80)",
+            }}
+          >
+            <div style={infoRowGridStyle}>
+              <div style={{ color: "rgba(255,255,255,0.62)" }}>ロッド</div>
+              <div style={{ overflowWrap: "anywhere", minWidth: 0 }}>
+                {rodLabel}
+              </div>
+            </div>
+            <div style={infoRowGridStyle}>
+              <div style={{ color: "rgba(255,255,255,0.62)" }}>リール</div>
+              <div style={{ overflowWrap: "anywhere", minWidth: 0 }}>
+                {reelLabel}
+              </div>
+            </div>
           </div>
 
           <div style={{ color: "#eee", overflowWrap: "anywhere" }}>
@@ -1473,9 +1545,30 @@ export default function RecordHistory({ back }: Props) {
   function DetailRightContent({ trip }: { trip: TripRecord }) {
     const fishLines = detailFish.map(formatFishLine);
     const lureLines = extractLureLines(trip, detailFish);
+    const rodLabel = getRodDisplay(trip, tackleMap);
+    const reelLabel = getReelDisplay(trip, tackleMap);
 
     return (
       <div style={{ display: "grid", gap: 12, minHeight: 0, height: "100%" }}>
+        <div className="glass glass-strong" style={detailCardStyle}>
+          <div style={{ fontWeight: 900 }}>🛠 使用タックル</div>
+
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={infoRowGridStyle}>
+              <div style={{ color: "rgba(255,255,255,0.62)" }}>ロッド</div>
+              <div style={{ overflowWrap: "anywhere", minWidth: 0 }}>
+                {rodLabel}
+              </div>
+            </div>
+            <div style={infoRowGridStyle}>
+              <div style={{ color: "rgba(255,255,255,0.62)" }}>リール</div>
+              <div style={{ overflowWrap: "anywhere", minWidth: 0 }}>
+                {reelLabel}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="glass glass-strong" style={detailCardStyle}>
           <div style={{ fontWeight: 900 }}>🎣 釣れた魚</div>
 
@@ -1914,6 +2007,9 @@ export default function RecordHistory({ back }: Props) {
           ? (coverThumbUrlRef.current.get(tripId)?.url ?? null)
           : null;
 
+        const rodLabel = getRodDisplay(t, tackleMap);
+        const reelLabel = getReelDisplay(t, tackleMap);
+
         return (
           <button
             key={t.id}
@@ -1988,6 +2084,26 @@ export default function RecordHistory({ back }: Props) {
                 {t.outcome === "skunk"
                   ? "😇 釣れなかった（ボウズ）"
                   : "🎣 釣れた"}
+              </div>
+
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "rgba(255,255,255,0.78)",
+                  overflowWrap: "anywhere",
+                }}
+              >
+                ロッド：{rodLabel}
+              </div>
+
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "rgba(255,255,255,0.78)",
+                  overflowWrap: "anywhere",
+                }}
+              >
+                リール：{reelLabel}
               </div>
 
               <div style={{ color: "#eee", overflowWrap: "anywhere" }}>

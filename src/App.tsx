@@ -11,6 +11,7 @@ import Home from "./screens/Home";
 import Record from "./screens/Record";
 import RecordHistory from "./screens/RecordHistory";
 import RecordAnalysis from "./screens/RecordAnalysis";
+import TackleManager from "./screens/TackleManager";
 import Weather from "./screens/Weather";
 import Chat from "./screens/Chat";
 import Settings from "./screens/Settings";
@@ -37,6 +38,7 @@ type Screen =
   | "record"
   | "recordHistory"
   | "recordAnalysis"
+  | "tackleManager"
   | "weather"
   | "chat"
   | "settings"
@@ -183,6 +185,7 @@ function AppInner() {
       | "record"
       | "recordHistory"
       | "recordAnalysis"
+      | "tackleManager"
       | "weather"
       | "chat"
       | "settings",
@@ -209,6 +212,8 @@ function AppInner() {
     content = <RecordHistory back={backHome} />;
   } else if (screen === "recordAnalysis") {
     content = <RecordAnalysis back={backHome} />;
+  } else if (screen === "tackleManager") {
+    content = <TackleManager back={backHome} />;
   } else if (screen === "weather") {
     content = <Weather back={backHome} />;
   } else if (screen === "settings") {

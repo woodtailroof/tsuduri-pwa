@@ -10,6 +10,7 @@ import {
   type SpotType,
   type WaterClarity,
   type LureType,
+  type TackleItem,
 } from "../db";
 import PageShell from "../components/PageShell";
 import { FIXED_PORT } from "../points";
@@ -19,6 +20,12 @@ import { getTidePhaseFromSeries } from "../lib/tidePhase736";
 import { getTimeBand } from "../lib/timeband";
 import { useAppSettings } from "../lib/appSettings";
 import { uploadPhoto } from "../lib/photoUpload";
+import {
+  sortRods,
+  sortReels,
+  formatRodLabel,
+  formatReelLabel,
+} from "../lib/tackle";
 
 type Props = {
   back: () => void;
@@ -303,6 +310,10 @@ export default function Record({ back, onSaved }: Props) {
 
   const [fishDrafts, setFishDrafts] = useState<FishDraft[]>([emptyFishDraft()]);
 
+  const [tackles, setTackles] = useState<TackleItem[]>([]);
+  const [rodId, setRodId] = useState<number | null>(null);
+  const [reelId, setReelId] = useState<number | null>(null);
+
   const [saving, setSaving] = useState(false);
 
   const [online, setOnline] = useState<boolean>(
@@ -327,6 +338,17 @@ export default function Record({ back, onSaved }: Props) {
       window.removeEventListener("online", onUp);
       window.removeEventListener("offline", onDown);
     };
+  }, []);
+
+  useEffect(() => {
+    void db.tackleItems
+      .filter((item) => !item.deletedAt)
+      .toArray()
+      .then(setTackles)
+      .catch((e) => {
+        console.error(e);
+        setTackles([]);
+      });
   }, []);
 
   useEffect(() => {
@@ -399,6 +421,9 @@ export default function Record({ back, onSaved }: Props) {
     };
   }, [photos]);
 
+  const rodOptions = useMemo(() => sortRods(tackles), [tackles]);
+  const reelOptions = useMemo(() => sortReels(tackles), [tackles]);
+
   useEffect(() => {
     if (manualMode) return;
     setBaseCapturedAt(autoBaseCapturedAt);
@@ -427,6 +452,9 @@ export default function Record({ back, onSaved }: Props) {
     setBaitPresent(false);
 
     setFishDrafts([emptyFishDraft()]);
+
+    setRodId(null);
+    setReelId(null);
 
     setTideLoading(false);
     setTideError("");
@@ -486,7 +514,7 @@ export default function Record({ back, onSaved }: Props) {
       }
     }
 
-    run();
+    void run();
     return () => {
       cancelled = true;
     };
@@ -644,6 +672,9 @@ export default function Record({ back, onSaved }: Props) {
 
         // 互換・暫定橋
         lureType: primaryLure || null,
+
+        rodId,
+        reelId,
 
         spotType,
         waterClarity,
@@ -1176,6 +1207,61 @@ export default function Record({ back, onSaved }: Props) {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* 使用タックル */}
+            <div className="glass glass-strong" style={glassBoxStyle}>
+              <div style={{ fontWeight: 700 }}>🛠 使用タックル</div>
+
+              <label
+                style={{
+                  fontSize: 12,
+                  color: "rgba(255,255,255,0.72)",
+                  display: "grid",
+                  gap: 6,
+                }}
+              >
+                ロッド
+                <select
+                  value={rodId ?? ""}
+                  onChange={(e) =>
+                    setRodId(e.target.value ? Number(e.target.value) : null)
+                  }
+                  style={selectStyle}
+                >
+                  <option value="">未選択</option>
+                  {rodOptions.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {formatRodLabel(t)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label
+                style={{
+                  fontSize: 12,
+                  color: "rgba(255,255,255,0.72)",
+                  display: "grid",
+                  gap: 6,
+                }}
+              >
+                リール
+                <select
+                  value={reelId ?? ""}
+                  onChange={(e) =>
+                    setReelId(e.target.value ? Number(e.target.value) : null)
+                  }
+                  style={selectStyle}
+                >
+                  <option value="">未選択</option>
+                  {reelOptions.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {formatReelLabel(t)}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
             {/* 分析用条件 */}

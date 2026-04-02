@@ -19,6 +19,7 @@ type Props = {
       | "record"
       | "recordHistory"
       | "recordAnalysis"
+      | "tackleManager"
       | "weather"
       | "chat"
       | "settings",
@@ -548,6 +549,10 @@ export default function Home({ go, goSecret }: Props) {
     "/assets/buttons/btn-analysis.png",
     assetVersion,
   );
+  const btnTackle = appendAssetVersion(
+    "/assets/buttons/btn-tackle.png",
+    assetVersion,
+  );
   const btnWeather = appendAssetVersion(
     "/assets/buttons/btn-weather.png",
     assetVersion,
@@ -1008,6 +1013,16 @@ export default function Home({ go, goSecret }: Props) {
                         fallbackLabel={isMobile ? "分析" : "釣行分析"}
                         fallbackSub="相関/時間帯を掘る"
                         fallbackIcon="📊"
+                      />
+
+                      <SmartButton
+                        src={btnTackle}
+                        alt="タックル管理"
+                        onClick={() => go("tackleManager")}
+                        style={{ width: "var(--btnw)" }}
+                        fallbackLabel={isMobile ? "タックル" : "タックル管理"}
+                        fallbackSub="ロッド/リールを管理"
+                        fallbackIcon="🎣"
                       />
 
                       <SmartButton

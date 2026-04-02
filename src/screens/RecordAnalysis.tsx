@@ -1,7 +1,7 @@
 // src/screens/RecordAnalysis.tsx
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import PageShell from "../components/PageShell";
-import { db, type TripFish, type TripRecord } from "../db";
+import { db, type TripFish, type TripRecord, type TackleItem } from "../db";
 import { getTimeBand } from "../lib/timeband";
 
 type Props = {
@@ -95,6 +95,8 @@ type JoinedTrip = {
   weatherCode: number | null;
   windSpeedMs: number | null;
   waveHeightM: number | null;
+  rodId: number | null;
+  reelId: number | null;
 };
 
 type SpeciesInsight = {
@@ -111,6 +113,15 @@ type SpeciesInsight = {
   timeRows: RowKV[];
   lureRows: RowKV[];
   trendRows: RowKV[];
+};
+
+type TackleInsight = {
+  id: number;
+  label: string;
+  active: boolean;
+  useCount: number;
+  totalCount: number;
+  speciesRows: RowKV[];
 };
 
 function clamp(n: number, min: number, max: number) {
@@ -210,6 +221,38 @@ function getBestKey(
   return { key: rows[0].key, value: rows[0].value };
 }
 
+function formatRodLabel(tackle: TackleItem): string {
+  if (!tackle.rod) return "不明なロッド";
+
+  const len =
+    tackle.rod.lengthFeet != null
+      ? `${tackle.rod.lengthFeet}'${tackle.rod.lengthInches ?? 0}"`
+      : "";
+
+  const weight =
+    tackle.rod.castWeightMinG != null && tackle.rod.castWeightMaxG != null
+      ? `${tackle.rod.castWeightMinG}-${tackle.rod.castWeightMaxG}g`
+      : "";
+
+  const prefix = tackle.active ? "" : "【過去】";
+  return `${prefix}${tackle.maker} ${tackle.model} ${tackle.rod.sizeLabel} ${len} ${weight}`.trim();
+}
+
+function formatReelLabel(tackle: TackleItem): string {
+  if (!tackle.reel) return "不明なリール";
+
+  const weight =
+    typeof tackle.reel.weightG === "number" ? `${tackle.reel.weightG}g` : "";
+
+  const retrieve =
+    typeof tackle.reel.retrieveCm === "number"
+      ? `${tackle.reel.retrieveCm}cm`
+      : "";
+
+  const prefix = tackle.active ? "" : "【過去】";
+  return `${prefix}${tackle.maker} ${tackle.model} ${tackle.reel.sizeLabel} ${weight} ${retrieve}`.trim();
+}
+
 /**
  * ✅ 保存済みデータが
  * - morning/day/evening/night
@@ -277,6 +320,9 @@ export default function RecordAnalysis({ back }: Props) {
   const [loading, setLoading] = useState(false);
   const [trips, setTrips] = useState<Array<TripRecord & { id: number }>>([]);
   const [fish, setFish] = useState<Array<TripFish & { id: number }>>([]);
+  const [tackles, setTackles] = useState<Array<TackleItem & { id: number }>>(
+    [],
+  );
   const [error, setError] = useState("");
   const [limitTop, setLimitTop] = useState<number>(8);
 
@@ -310,9 +356,10 @@ export default function RecordAnalysis({ back }: Props) {
     setLoading(true);
     setError("");
     try {
-      const [tripsRaw, fishRaw] = await Promise.all([
+      const [tripsRaw, fishRaw, tackleRaw] = await Promise.all([
         db.trips.orderBy("createdAt").reverse().toArray(),
         db.tripFish.orderBy("createdAt").reverse().toArray(),
+        db.tackleItems.toArray(),
       ]);
 
       const activeTrips = tripsRaw.filter(
@@ -325,8 +372,14 @@ export default function RecordAnalysis({ back }: Props) {
           typeof r.id === "number" && Number.isFinite(r.id) && !r.deletedAt,
       );
 
+      const activeTackles = tackleRaw.filter(
+        (r): r is TackleItem & { id: number } =>
+          typeof r.id === "number" && Number.isFinite(r.id) && !r.deletedAt,
+      );
+
       setTrips(activeTrips);
       setFish(activeFish);
+      setTackles(activeTackles);
     } catch (e) {
       console.error(e);
       setError(e instanceof Error ? e.message : String(e));
@@ -336,7 +389,7 @@ export default function RecordAnalysis({ back }: Props) {
   }
 
   useEffect(() => {
-    reload();
+    void reload();
   }, []);
 
   const joinedTrips: JoinedTrip[] = useMemo(() => {
@@ -354,6 +407,14 @@ export default function RecordAnalysis({ back }: Props) {
         weatherCode: typeof t.weatherCode === "number" ? t.weatherCode : null,
         windSpeedMs: typeof t.windSpeedMs === "number" ? t.windSpeedMs : null,
         waveHeightM: typeof t.waveHeightM === "number" ? t.waveHeightM : null,
+        rodId:
+          typeof t.rodId === "number" && Number.isFinite(t.rodId)
+            ? t.rodId
+            : null,
+        reelId:
+          typeof t.reelId === "number" && Number.isFinite(t.reelId)
+            ? t.reelId
+            : null,
       }));
   }, [trips]);
 
@@ -631,6 +692,117 @@ export default function RecordAnalysis({ back }: Props) {
     return rows.slice(0, Math.max(1, limitTop));
   }, [joinedFish, limitTop]);
 
+  const tackleMap = useMemo(() => {
+    const map = new Map<number, TackleItem & { id: number }>();
+    for (const tackle of tackles) {
+      map.set(tackle.id, tackle);
+    }
+    return map;
+  }, [tackles]);
+
+  const rodInsights = useMemo(() => {
+    const useMap = new Map<number, number>();
+    const fishMap = new Map<number, Map<string, number>>();
+
+    for (const trip of joinedTrips) {
+      if (trip.rodId == null) continue;
+      useMap.set(trip.rodId, (useMap.get(trip.rodId) ?? 0) + 1);
+      if (!fishMap.has(trip.rodId)) fishMap.set(trip.rodId, new Map());
+    }
+
+    for (const jf of joinedFish) {
+      const trip = joinedTrips.find((t) => t.id === jf.tripId);
+      if (!trip || trip.rodId == null) continue;
+
+      const speciesMap = fishMap.get(trip.rodId) ?? new Map<string, number>();
+      const count = getSafeCount(jf.count);
+      speciesMap.set(jf.species, (speciesMap.get(jf.species) ?? 0) + count);
+      fishMap.set(trip.rodId, speciesMap);
+    }
+
+    const rows: TackleInsight[] = [];
+    for (const [id, useCount] of useMap.entries()) {
+      const tackle = tackleMap.get(id);
+      const speciesMap = fishMap.get(id) ?? new Map<string, number>();
+
+      const speciesRows = Array.from(speciesMap.entries())
+        .map(([key, value]) => ({ key, value }))
+        .sort(sortDescByValue);
+
+      const totalCount = speciesRows.reduce((sum, row) => sum + row.value, 0);
+
+      rows.push({
+        id,
+        label: tackle?.kind === "rod" ? formatRodLabel(tackle) : "不明なロッド",
+        active: tackle?.active ?? false,
+        useCount,
+        totalCount,
+        speciesRows,
+      });
+    }
+
+    rows.sort((a, b) => {
+      if (a.active !== b.active) return a.active ? -1 : 1;
+      if (b.useCount !== a.useCount) return b.useCount - a.useCount;
+      if (b.totalCount !== a.totalCount) return b.totalCount - a.totalCount;
+      return a.label.localeCompare(b.label, "ja");
+    });
+
+    return rows;
+  }, [joinedTrips, joinedFish, tackleMap]);
+
+  const reelInsights = useMemo(() => {
+    const useMap = new Map<number, number>();
+    const fishMap = new Map<number, Map<string, number>>();
+
+    for (const trip of joinedTrips) {
+      if (trip.reelId == null) continue;
+      useMap.set(trip.reelId, (useMap.get(trip.reelId) ?? 0) + 1);
+      if (!fishMap.has(trip.reelId)) fishMap.set(trip.reelId, new Map());
+    }
+
+    for (const jf of joinedFish) {
+      const trip = joinedTrips.find((t) => t.id === jf.tripId);
+      if (!trip || trip.reelId == null) continue;
+
+      const speciesMap = fishMap.get(trip.reelId) ?? new Map<string, number>();
+      const count = getSafeCount(jf.count);
+      speciesMap.set(jf.species, (speciesMap.get(jf.species) ?? 0) + count);
+      fishMap.set(trip.reelId, speciesMap);
+    }
+
+    const rows: TackleInsight[] = [];
+    for (const [id, useCount] of useMap.entries()) {
+      const tackle = tackleMap.get(id);
+      const speciesMap = fishMap.get(id) ?? new Map<string, number>();
+
+      const speciesRows = Array.from(speciesMap.entries())
+        .map(([key, value]) => ({ key, value }))
+        .sort(sortDescByValue);
+
+      const totalCount = speciesRows.reduce((sum, row) => sum + row.value, 0);
+
+      rows.push({
+        id,
+        label:
+          tackle?.kind === "reel" ? formatReelLabel(tackle) : "不明なリール",
+        active: tackle?.active ?? false,
+        useCount,
+        totalCount,
+        speciesRows,
+      });
+    }
+
+    rows.sort((a, b) => {
+      if (a.active !== b.active) return a.active ? -1 : 1;
+      if (b.useCount !== a.useCount) return b.useCount - a.useCount;
+      if (b.totalCount !== a.totalCount) return b.totalCount - a.totalCount;
+      return a.label.localeCompare(b.label, "ja");
+    });
+
+    return rows;
+  }, [joinedTrips, joinedFish, tackleMap]);
+
   return (
     <PageShell
       title={
@@ -662,7 +834,7 @@ export default function RecordAnalysis({ back }: Props) {
 
           <button
             type="button"
-            onClick={reload}
+            onClick={() => void reload()}
             disabled={loading}
             style={{
               cursor: loading ? "not-allowed" : "pointer",
@@ -855,6 +1027,164 @@ export default function RecordAnalysis({ back }: Props) {
           <div style={{ height: 10 }} />
           <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
             ※「次に何を狙うか」を先に見やすくした要約だよ
+          </div>
+        </div>
+
+        <div className="glass-panel strong" style={cardStyle}>
+          <div style={{ fontWeight: 900, fontSize: 16 }}>🛠 ロッド戦績</div>
+          <div style={{ height: 8 }} />
+
+          {rodInsights.length === 0 ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+              まだロッド記録が無いよ
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {rodInsights.map((row) => (
+                <div
+                  key={`rod:${row.id}`}
+                  className="glass"
+                  style={subtlePanelStyle}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      alignItems: "baseline",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ fontWeight: 900, fontSize: 15 }}>
+                      {row.label}
+                    </div>
+                    <div
+                      style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
+                    >
+                      使用 {fmtN(row.useCount)} 回 / 釣果 {fmtN(row.totalCount)}{" "}
+                      匹
+                    </div>
+                  </div>
+
+                  <div style={{ height: 8 }} />
+                  {row.speciesRows.length === 0 ? (
+                    <div
+                      style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}
+                    >
+                      まだこのロッドで魚は釣れていないよ
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 6 }}>
+                      {row.speciesRows.map((sp) => (
+                        <div
+                          key={`rod:${row.id}:species:${sp.key}`}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            alignItems: "center",
+                          }}
+                        >
+                          <div style={{ fontWeight: 700 }}>{sp.key}</div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: "rgba(255,255,255,0.75)",
+                            }}
+                          >
+                            {fmtN(sp.value)} 匹
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ height: 10 }} />
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
+            ※使用回数はボウズも含むよ
+          </div>
+        </div>
+
+        <div className="glass-panel strong" style={cardStyle}>
+          <div style={{ fontWeight: 900, fontSize: 16 }}>⚙️ リール戦績</div>
+          <div style={{ height: 8 }} />
+
+          {reelInsights.length === 0 ? (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+              まだリール記録が無いよ
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {reelInsights.map((row) => (
+                <div
+                  key={`reel:${row.id}`}
+                  className="glass"
+                  style={subtlePanelStyle}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      alignItems: "baseline",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ fontWeight: 900, fontSize: 15 }}>
+                      {row.label}
+                    </div>
+                    <div
+                      style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
+                    >
+                      使用 {fmtN(row.useCount)} 回 / 釣果 {fmtN(row.totalCount)}{" "}
+                      匹
+                    </div>
+                  </div>
+
+                  <div style={{ height: 8 }} />
+                  {row.speciesRows.length === 0 ? (
+                    <div
+                      style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}
+                    >
+                      まだこのリールで魚は釣れていないよ
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 6 }}>
+                      {row.speciesRows.map((sp) => (
+                        <div
+                          key={`reel:${row.id}:species:${sp.key}`}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            alignItems: "center",
+                          }}
+                        >
+                          <div style={{ fontWeight: 700 }}>{sp.key}</div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: "rgba(255,255,255,0.75)",
+                            }}
+                          >
+                            {fmtN(sp.value)} 匹
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ height: 10 }} />
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
+            ※使用回数はボウズも含むよ
           </div>
         </div>
 
