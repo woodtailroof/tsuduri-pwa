@@ -33,6 +33,12 @@ export type TripSyncRecord = {
     | "other"
     | null;
 
+  // 🔥追加（タックル）
+  rodId?: number | null;
+  reelId?: number | null;
+  rodUid?: string | null;
+  reelUid?: string | null;
+
   spotType?: "port" | "surf" | null;
   waterClarity?: "clear" | "normal" | "muddy" | null;
   baitPresent?: boolean | null;
@@ -111,7 +117,6 @@ export type TripSyncPhoto = {
 
 /**
  * 端末 -> サーバ に送るメタデータ同期 payload
- * ここには photoBlob を含めない
  */
 export type TripPushPayload = {
   deviceId: string;
@@ -124,7 +129,6 @@ export type TripPushPayload = {
 
 /**
  * サーバ -> 端末 の pull レスポンス
- * ここでも photoBlob は返さない
  */
 export type TripPullResponse = {
   serverTime: string;
@@ -161,8 +165,7 @@ export type SyncApiResponse = {
 };
 
 /**
- * ローカルの未同期データをまとめたもの
- * これはクライアント内部用で、まだ DB 型のまま持つ
+ * ローカル未同期データ
  */
 export type PendingTripBundle = {
   trips: Array<{
@@ -192,6 +195,12 @@ export type PendingTripBundle = {
       | "bigbait"
       | "other"
       | null;
+
+    // 🔥追加
+    rodId?: number | null;
+    reelId?: number | null;
+    rodUid?: string | null;
+    reelUid?: string | null;
 
     spotType?: "port" | "surf" | null;
     waterClarity?: "clear" | "normal" | "muddy" | null;
@@ -279,8 +288,7 @@ export type SyncConfig = {
 };
 
 /**
- * 写真アップロード用のメタ情報
- * 写真本体は FormData など別経路で送る
+ * 写真アップロード用
  */
 export type PhotoUploadTarget = {
   photoUid: string;
@@ -290,9 +298,6 @@ export type PhotoUploadTarget = {
   remoteKey: string;
 };
 
-/**
- * 写真アップロード完了レスポンス
- */
 export type PhotoUploadResponse = {
   ok: boolean;
   photoUid: string;

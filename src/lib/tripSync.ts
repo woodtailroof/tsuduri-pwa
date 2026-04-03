@@ -103,6 +103,13 @@ function serializeTrip(row: TripRecord): TripSyncRecord {
     timeBand: row.timeBand,
 
     lureType: row.lureType ?? null,
+
+    // ✅ タックル
+    rodId: row.rodId ?? null,
+    reelId: row.reelId ?? null,
+    rodUid: row.rodUid ?? null,
+    reelUid: row.reelUid ?? null,
+
     spotType: row.spotType ?? null,
     waterClarity: row.waterClarity ?? null,
     baitPresent: row.baitPresent ?? null,

@@ -424,6 +424,16 @@ export default function Record({ back, onSaved }: Props) {
   const rodOptions = useMemo(() => sortRods(tackles), [tackles]);
   const reelOptions = useMemo(() => sortReels(tackles), [tackles]);
 
+  const tackleMap = useMemo(() => {
+    const map = new Map<number, TackleItem>();
+    for (const item of tackles) {
+      if (item.id != null) {
+        map.set(item.id, item);
+      }
+    }
+    return map;
+  }, [tackles]);
+
   useEffect(() => {
     if (manualMode) return;
     setBaseCapturedAt(autoBaseCapturedAt);
@@ -657,6 +667,10 @@ export default function Record({ back, onSaved }: Props) {
           ? (fishDrafts.find((f) => f.lureType !== "")?.lureType ?? null)
           : null;
 
+      const selectedRod = rodId != null ? (tackleMap.get(rodId) ?? null) : null;
+      const selectedReel =
+        reelId != null ? (tackleMap.get(reelId) ?? null) : null;
+
       const trip: TripRecord = {
         uid: tripUid,
         createdAt: nowIso,
@@ -675,6 +689,8 @@ export default function Record({ back, onSaved }: Props) {
 
         rodId,
         reelId,
+        rodUid: selectedRod?.uid ?? null,
+        reelUid: selectedReel?.uid ?? null,
 
         spotType,
         waterClarity,

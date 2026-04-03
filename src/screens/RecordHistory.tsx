@@ -228,6 +228,10 @@ function normalizeLureLabel(raw: string): string {
     topwater: "トップウォーター",
     blade: "ブレード",
     minnow: "ミノー",
+    sinkingpencil: "シンペン",
+    sinking_pencil: "シンペン",
+    bigbait: "ビッグベイト",
+    big_bait: "ビッグベイト",
     sinking_minnow: "シンキングミノー",
     floating_minnow: "フローティングミノー",
     suspending_minnow: "サスペンドミノー",
@@ -473,21 +477,45 @@ function buildRemotePhotoUrl(remoteKey: string): string {
 function getRodDisplay(
   trip: TripRecord,
   tackleMap: Map<number, TackleItem>,
+  tackleMapByUid: Map<string, TackleItem>,
 ): string {
-  if (trip.rodId == null) return "—";
-  const tackle = tackleMap.get(trip.rodId);
-  if (!tackle || tackle.kind !== "rod") return "不明なロッド";
-  return formatRodLabel(tackle);
+  if (trip.rodId != null) {
+    const tackle = tackleMap.get(trip.rodId);
+    if (tackle && tackle.kind === "rod") {
+      return formatRodLabel(tackle);
+    }
+  }
+
+  if (trip.rodUid) {
+    const tackle = tackleMapByUid.get(trip.rodUid);
+    if (tackle && tackle.kind === "rod") {
+      return formatRodLabel(tackle);
+    }
+  }
+
+  return "不明なロッド";
 }
 
 function getReelDisplay(
   trip: TripRecord,
   tackleMap: Map<number, TackleItem>,
+  tackleMapByUid: Map<string, TackleItem>,
 ): string {
-  if (trip.reelId == null) return "—";
-  const tackle = tackleMap.get(trip.reelId);
-  if (!tackle || tackle.kind !== "reel") return "不明なリール";
-  return formatReelLabel(tackle);
+  if (trip.reelId != null) {
+    const tackle = tackleMap.get(trip.reelId);
+    if (tackle && tackle.kind === "reel") {
+      return formatReelLabel(tackle);
+    }
+  }
+
+  if (trip.reelUid) {
+    const tackle = tackleMapByUid.get(trip.reelUid);
+    if (tackle && tackle.kind === "reel") {
+      return formatReelLabel(tackle);
+    }
+  }
+
+  return "不明なリール";
 }
 
 function BottomSheet({
@@ -941,6 +969,9 @@ export default function RecordHistory({ back }: Props) {
   const [tackleMap, setTackleMap] = useState<Map<number, TackleItem>>(
     new Map(),
   );
+  const [tackleMapByUid, setTackleMapByUid] = useState<Map<string, TackleItem>>(
+    new Map(),
+  );
 
   const detailCenterPaneRef = useRef<HTMLDivElement | null>(null);
   const detailRightPaneRef = useRef<HTMLDivElement | null>(null);
@@ -1007,15 +1038,21 @@ export default function RecordHistory({ back }: Props) {
       .filter((item) => !item.deletedAt)
       .toArray()
       .then((items) => {
-        const next = new Map<number, TackleItem>();
+        const nextById = new Map<number, TackleItem>();
+        const nextByUid = new Map<string, TackleItem>();
+
         for (const item of items) {
-          if (item.id != null) next.set(item.id, item);
+          if (item.id != null) nextById.set(item.id, item);
+          if (item.uid) nextByUid.set(item.uid, item);
         }
-        setTackleMap(next);
+
+        setTackleMap(nextById);
+        setTackleMapByUid(nextByUid);
       })
       .catch((e) => {
         console.error(e);
         setTackleMap(new Map());
+        setTackleMapByUid(new Map());
       });
   }, []);
 
@@ -1332,8 +1369,8 @@ export default function RecordHistory({ back }: Props) {
       phase,
     );
 
-    const rodLabel = getRodDisplay(trip, tackleMap);
-    const reelLabel = getReelDisplay(trip, tackleMap);
+    const rodLabel = getRodDisplay(trip, tackleMap, tackleMapByUid);
+    const reelLabel = getReelDisplay(trip, tackleMap, tackleMapByUid);
 
     return (
       <div style={{ display: "grid", gap: 12 }}>
@@ -1545,30 +1582,9 @@ export default function RecordHistory({ back }: Props) {
   function DetailRightContent({ trip }: { trip: TripRecord }) {
     const fishLines = detailFish.map(formatFishLine);
     const lureLines = extractLureLines(trip, detailFish);
-    const rodLabel = getRodDisplay(trip, tackleMap);
-    const reelLabel = getReelDisplay(trip, tackleMap);
 
     return (
       <div style={{ display: "grid", gap: 12, minHeight: 0, height: "100%" }}>
-        <div className="glass glass-strong" style={detailCardStyle}>
-          <div style={{ fontWeight: 900 }}>🛠 使用タックル</div>
-
-          <div style={{ display: "grid", gap: 8 }}>
-            <div style={infoRowGridStyle}>
-              <div style={{ color: "rgba(255,255,255,0.62)" }}>ロッド</div>
-              <div style={{ overflowWrap: "anywhere", minWidth: 0 }}>
-                {rodLabel}
-              </div>
-            </div>
-            <div style={infoRowGridStyle}>
-              <div style={{ color: "rgba(255,255,255,0.62)" }}>リール</div>
-              <div style={{ overflowWrap: "anywhere", minWidth: 0 }}>
-                {reelLabel}
-              </div>
-            </div>
-          </div>
-        </div>
-
         <div className="glass glass-strong" style={detailCardStyle}>
           <div style={{ fontWeight: 900 }}>🎣 釣れた魚</div>
 
@@ -2007,8 +2023,8 @@ export default function RecordHistory({ back }: Props) {
           ? (coverThumbUrlRef.current.get(tripId)?.url ?? null)
           : null;
 
-        const rodLabel = getRodDisplay(t, tackleMap);
-        const reelLabel = getReelDisplay(t, tackleMap);
+        const rodLabel = getRodDisplay(t, tackleMap, tackleMapByUid);
+        const reelLabel = getReelDisplay(t, tackleMap, tackleMapByUid);
 
         return (
           <button

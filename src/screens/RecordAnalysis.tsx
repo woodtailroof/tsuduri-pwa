@@ -97,6 +97,8 @@ type JoinedTrip = {
   waveHeightM: number | null;
   rodId: number | null;
   reelId: number | null;
+  rodUid: string | null;
+  reelUid: string | null;
 };
 
 type SpeciesInsight = {
@@ -116,7 +118,7 @@ type SpeciesInsight = {
 };
 
 type TackleInsight = {
-  id: number;
+  id: string;
   label: string;
   active: boolean;
   useCount: number;
@@ -415,6 +417,10 @@ export default function RecordAnalysis({ back }: Props) {
           typeof t.reelId === "number" && Number.isFinite(t.reelId)
             ? t.reelId
             : null,
+        rodUid:
+          typeof t.rodUid === "string" && t.rodUid.trim() ? t.rodUid : null,
+        reelUid:
+          typeof t.reelUid === "string" && t.reelUid.trim() ? t.reelUid : null,
       }));
   }, [trips]);
 
@@ -692,7 +698,7 @@ export default function RecordAnalysis({ back }: Props) {
     return rows.slice(0, Math.max(1, limitTop));
   }, [joinedFish, limitTop]);
 
-  const tackleMap = useMemo(() => {
+  const tackleMapById = useMemo(() => {
     const map = new Map<number, TackleItem & { id: number }>();
     for (const tackle of tackles) {
       map.set(tackle.id, tackle);
@@ -700,29 +706,104 @@ export default function RecordAnalysis({ back }: Props) {
     return map;
   }, [tackles]);
 
+  const tackleMapByUid = useMemo(() => {
+    const map = new Map<string, TackleItem & { id: number }>();
+    for (const tackle of tackles) {
+      if (typeof tackle.uid === "string" && tackle.uid.trim()) {
+        map.set(tackle.uid, tackle);
+      }
+    }
+    return map;
+  }, [tackles]);
+
   const rodInsights = useMemo(() => {
-    const useMap = new Map<number, number>();
-    const fishMap = new Map<number, Map<string, number>>();
+    const useMap = new Map<string, number>();
+    const fishMap = new Map<string, Map<string, number>>();
+    const metaMap = new Map<
+      string,
+      {
+        label: string;
+        active: boolean;
+      }
+    >();
 
     for (const trip of joinedTrips) {
-      if (trip.rodId == null) continue;
-      useMap.set(trip.rodId, (useMap.get(trip.rodId) ?? 0) + 1);
-      if (!fishMap.has(trip.rodId)) fishMap.set(trip.rodId, new Map());
+      const tackle =
+        trip.rodId != null
+          ? (tackleMapById.get(trip.rodId) ??
+            (trip.rodUid ? tackleMapByUid.get(trip.rodUid) : undefined))
+          : trip.rodUid
+            ? tackleMapByUid.get(trip.rodUid)
+            : undefined;
+
+      const key =
+        tackle?.uid ??
+        (trip.rodUid && trip.rodUid.trim()
+          ? trip.rodUid
+          : trip.rodId != null
+            ? `id:${trip.rodId}`
+            : "");
+
+      if (!key) continue;
+
+      useMap.set(key, (useMap.get(key) ?? 0) + 1);
+      if (!fishMap.has(key)) fishMap.set(key, new Map());
+
+      metaMap.set(key, {
+        label:
+          tackle?.kind === "rod"
+            ? formatRodLabel(tackle)
+            : trip.rodUid || trip.rodId != null
+              ? "不明なロッド"
+              : "不明なロッド",
+        active: tackle?.active ?? false,
+      });
+    }
+
+    const tripMap = new Map<number, JoinedTrip>();
+    for (const trip of joinedTrips) {
+      tripMap.set(trip.id, trip);
     }
 
     for (const jf of joinedFish) {
-      const trip = joinedTrips.find((t) => t.id === jf.tripId);
-      if (!trip || trip.rodId == null) continue;
+      const trip = tripMap.get(jf.tripId);
+      if (!trip) continue;
 
-      const speciesMap = fishMap.get(trip.rodId) ?? new Map<string, number>();
+      const tackle =
+        trip.rodId != null
+          ? (tackleMapById.get(trip.rodId) ??
+            (trip.rodUid ? tackleMapByUid.get(trip.rodUid) : undefined))
+          : trip.rodUid
+            ? tackleMapByUid.get(trip.rodUid)
+            : undefined;
+
+      const key =
+        tackle?.uid ??
+        (trip.rodUid && trip.rodUid.trim()
+          ? trip.rodUid
+          : trip.rodId != null
+            ? `id:${trip.rodId}`
+            : "");
+
+      if (!key) continue;
+
+      const speciesMap = fishMap.get(key) ?? new Map<string, number>();
       const count = getSafeCount(jf.count);
       speciesMap.set(jf.species, (speciesMap.get(jf.species) ?? 0) + count);
-      fishMap.set(trip.rodId, speciesMap);
+      fishMap.set(key, speciesMap);
+
+      if (!metaMap.has(key)) {
+        metaMap.set(key, {
+          label:
+            tackle?.kind === "rod" ? formatRodLabel(tackle) : "不明なロッド",
+          active: tackle?.active ?? false,
+        });
+      }
     }
 
     const rows: TackleInsight[] = [];
     for (const [id, useCount] of useMap.entries()) {
-      const tackle = tackleMap.get(id);
+      const meta = metaMap.get(id);
       const speciesMap = fishMap.get(id) ?? new Map<string, number>();
 
       const speciesRows = Array.from(speciesMap.entries())
@@ -733,8 +814,8 @@ export default function RecordAnalysis({ back }: Props) {
 
       rows.push({
         id,
-        label: tackle?.kind === "rod" ? formatRodLabel(tackle) : "不明なロッド",
-        active: tackle?.active ?? false,
+        label: meta?.label ?? "不明なロッド",
+        active: meta?.active ?? false,
         useCount,
         totalCount,
         speciesRows,
@@ -749,31 +830,96 @@ export default function RecordAnalysis({ back }: Props) {
     });
 
     return rows;
-  }, [joinedTrips, joinedFish, tackleMap]);
+  }, [joinedTrips, joinedFish, tackleMapById, tackleMapByUid]);
 
   const reelInsights = useMemo(() => {
-    const useMap = new Map<number, number>();
-    const fishMap = new Map<number, Map<string, number>>();
+    const useMap = new Map<string, number>();
+    const fishMap = new Map<string, Map<string, number>>();
+    const metaMap = new Map<
+      string,
+      {
+        label: string;
+        active: boolean;
+      }
+    >();
 
     for (const trip of joinedTrips) {
-      if (trip.reelId == null) continue;
-      useMap.set(trip.reelId, (useMap.get(trip.reelId) ?? 0) + 1);
-      if (!fishMap.has(trip.reelId)) fishMap.set(trip.reelId, new Map());
+      const tackle =
+        trip.reelId != null
+          ? (tackleMapById.get(trip.reelId) ??
+            (trip.reelUid ? tackleMapByUid.get(trip.reelUid) : undefined))
+          : trip.reelUid
+            ? tackleMapByUid.get(trip.reelUid)
+            : undefined;
+
+      const key =
+        tackle?.uid ??
+        (trip.reelUid && trip.reelUid.trim()
+          ? trip.reelUid
+          : trip.reelId != null
+            ? `id:${trip.reelId}`
+            : "");
+
+      if (!key) continue;
+
+      useMap.set(key, (useMap.get(key) ?? 0) + 1);
+      if (!fishMap.has(key)) fishMap.set(key, new Map());
+
+      metaMap.set(key, {
+        label:
+          tackle?.kind === "reel"
+            ? formatReelLabel(tackle)
+            : trip.reelUid || trip.reelId != null
+              ? "不明なリール"
+              : "不明なリール",
+        active: tackle?.active ?? false,
+      });
+    }
+
+    const tripMap = new Map<number, JoinedTrip>();
+    for (const trip of joinedTrips) {
+      tripMap.set(trip.id, trip);
     }
 
     for (const jf of joinedFish) {
-      const trip = joinedTrips.find((t) => t.id === jf.tripId);
-      if (!trip || trip.reelId == null) continue;
+      const trip = tripMap.get(jf.tripId);
+      if (!trip) continue;
 
-      const speciesMap = fishMap.get(trip.reelId) ?? new Map<string, number>();
+      const tackle =
+        trip.reelId != null
+          ? (tackleMapById.get(trip.reelId) ??
+            (trip.reelUid ? tackleMapByUid.get(trip.reelUid) : undefined))
+          : trip.reelUid
+            ? tackleMapByUid.get(trip.reelUid)
+            : undefined;
+
+      const key =
+        tackle?.uid ??
+        (trip.reelUid && trip.reelUid.trim()
+          ? trip.reelUid
+          : trip.reelId != null
+            ? `id:${trip.reelId}`
+            : "");
+
+      if (!key) continue;
+
+      const speciesMap = fishMap.get(key) ?? new Map<string, number>();
       const count = getSafeCount(jf.count);
       speciesMap.set(jf.species, (speciesMap.get(jf.species) ?? 0) + count);
-      fishMap.set(trip.reelId, speciesMap);
+      fishMap.set(key, speciesMap);
+
+      if (!metaMap.has(key)) {
+        metaMap.set(key, {
+          label:
+            tackle?.kind === "reel" ? formatReelLabel(tackle) : "不明なリール",
+          active: tackle?.active ?? false,
+        });
+      }
     }
 
     const rows: TackleInsight[] = [];
     for (const [id, useCount] of useMap.entries()) {
-      const tackle = tackleMap.get(id);
+      const meta = metaMap.get(id);
       const speciesMap = fishMap.get(id) ?? new Map<string, number>();
 
       const speciesRows = Array.from(speciesMap.entries())
@@ -784,9 +930,8 @@ export default function RecordAnalysis({ back }: Props) {
 
       rows.push({
         id,
-        label:
-          tackle?.kind === "reel" ? formatReelLabel(tackle) : "不明なリール",
-        active: tackle?.active ?? false,
+        label: meta?.label ?? "不明なリール",
+        active: meta?.active ?? false,
         useCount,
         totalCount,
         speciesRows,
@@ -801,7 +946,7 @@ export default function RecordAnalysis({ back }: Props) {
     });
 
     return rows;
-  }, [joinedTrips, joinedFish, tackleMap]);
+  }, [joinedTrips, joinedFish, tackleMapById, tackleMapByUid]);
 
   return (
     <PageShell

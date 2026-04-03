@@ -20,7 +20,6 @@ type Props = {
 };
 
 type TabKind = "rod" | "reel";
-type KindFilter = "all" | "spinning" | "bait";
 
 type RodForm = {
   maker: string;
@@ -110,18 +109,6 @@ function emptyReelForm(): ReelForm {
   };
 }
 
-function isRodTypeMatch(item: TackleItem, filter: KindFilter): boolean {
-  if (item.kind !== "rod") return false;
-  if (filter === "all") return true;
-  return item.rod?.rodType === filter;
-}
-
-function isReelTypeMatch(item: TackleItem, filter: KindFilter): boolean {
-  if (item.kind !== "reel") return false;
-  if (filter === "all") return true;
-  return item.reel?.reelType === filter;
-}
-
 function fmtMaybeNumber(value?: number | null, suffix = ""): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "—";
   return `${value}${suffix}`;
@@ -168,7 +155,6 @@ export default function TackleManager({ back }: Props) {
   const [saving, setSaving] = useState(false);
   const [items, setItems] = useState<TackleItem[]>([]);
   const [tab, setTab] = useState<TabKind>("rod");
-  const [filter, setFilter] = useState<KindFilter>("all");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [rodForm, setRodForm] = useState<RodForm>(emptyRodForm());
   const [reelForm, setReelForm] = useState<ReelForm>(emptyReelForm());
@@ -194,13 +180,8 @@ export default function TackleManager({ back }: Props) {
     void reload();
   }, []);
 
-  const rodList = useMemo(() => {
-    return sortRods(items).filter((item) => isRodTypeMatch(item, filter));
-  }, [items, filter]);
-
-  const reelList = useMemo(() => {
-    return sortReels(items).filter((item) => isReelTypeMatch(item, filter));
-  }, [items, filter]);
+  const rodList = useMemo(() => sortRods(items), [items]);
+  const reelList = useMemo(() => sortReels(items), [items]);
 
   const currentList = tab === "rod" ? rodList : reelList;
 
@@ -513,30 +494,6 @@ export default function TackleManager({ back }: Props) {
               style={activeBtnStyle(tab === "reel")}
             >
               リール
-            </button>
-          </div>
-
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => setFilter("all")}
-              style={activeBtnStyle(filter === "all")}
-            >
-              すべて
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilter("spinning")}
-              style={activeBtnStyle(filter === "spinning")}
-            >
-              スピニング
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilter("bait")}
-              style={activeBtnStyle(filter === "bait")}
-            >
-              ベイト
             </button>
           </div>
 
