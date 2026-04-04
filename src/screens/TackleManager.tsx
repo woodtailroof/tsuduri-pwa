@@ -150,6 +150,27 @@ function buildReelCardSub(item: TackleItem): string {
   return `${fmtReelType(reel.reelType)} / ${fmtMaybeNumber(reel.weightG, "g")} / ${fmtMaybeNumber(reel.retrieveCm, "cm")}${spool}`;
 }
 
+function useIsMobileLayout(): boolean {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth < 768;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    onResize();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, []);
+
+  return isMobile;
+}
+
 export default function TackleManager({ back }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -159,6 +180,7 @@ export default function TackleManager({ back }: Props) {
   const [rodForm, setRodForm] = useState<RodForm>(emptyRodForm());
   const [reelForm, setReelForm] = useState<ReelForm>(emptyReelForm());
   const [error, setError] = useState("");
+  const isMobileLayout = useIsMobileLayout();
 
   async function reload() {
     setLoading(true);
@@ -532,7 +554,7 @@ export default function TackleManager({ back }: Props) {
           style={{
             display: "grid",
             gap: 12,
-            gridTemplateColumns: "minmax(320px, 460px) minmax(0, 1fr)",
+            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
             alignItems: "start",
           }}
         >
@@ -540,8 +562,8 @@ export default function TackleManager({ back }: Props) {
             className="glass glass-strong"
             style={{
               ...sectionCard,
-              position: "sticky",
-              top: 12,
+              position: isMobileLayout ? "static" : "sticky",
+              top: isMobileLayout ? undefined : 12,
             }}
           >
             <div

@@ -30,6 +30,12 @@ type TripSyncRecord = {
     | "other"
     | null;
 
+  // ✅ タックル参照
+  rodId?: number | null;
+  reelId?: number | null;
+  rodUid?: string | null;
+  reelUid?: string | null;
+
   spotType?: "port" | "surf" | null;
   waterClarity?: "clear" | "normal" | "muddy" | null;
   baitPresent?: boolean | null;
@@ -97,12 +103,52 @@ type TripSyncPhoto = {
   isCover: 0 | 1;
 };
 
+type TackleSyncRod = {
+  rodType: "spinning" | "bait";
+  sizeLabel: string;
+  lengthFeet?: number | null;
+  lengthInches?: number | null;
+  tipMm?: number | null;
+  buttMm?: number | null;
+  weightG?: number | null;
+  castWeightMinG?: number | null;
+  castWeightMaxG?: number | null;
+};
+
+type TackleSyncReel = {
+  reelType: "spinning" | "bait";
+  sizeLabel: string;
+  weightG?: number | null;
+  spoolDiameterMm?: number | null;
+  spoolWidthMm?: number | null;
+  retrieveCm?: number | null;
+};
+
+type TripSyncTackle = {
+  uid: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  syncStatus: SyncStatus;
+
+  kind: "rod" | "reel";
+  maker: string;
+  model: string;
+  memo?: string | null;
+  active: boolean;
+  retiredAt?: string | null;
+
+  rod?: TackleSyncRod | null;
+  reel?: TackleSyncReel | null;
+};
+
 type TripPushPayload = {
   deviceId: string;
   pushedAt: string;
   trips: TripSyncRecord[];
   fish: TripSyncFish[];
   photos: TripSyncPhoto[];
+  tackles: TripSyncTackle[];
 };
 
 type TripPullResponse = {
@@ -110,6 +156,7 @@ type TripPullResponse = {
   trips: TripSyncRecord[];
   fish: TripSyncFish[];
   photos: TripSyncPhoto[];
+  tackles: TripSyncTackle[];
 };
 
 type Env = {
@@ -150,33 +197,38 @@ function asStringOrNull(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
+function asJsonStringOrNull(value: unknown): string | null {
+  if (value == null) return null;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
 function normalizeTimeBand(value: unknown): TimeBand {
   if (typeof value !== "string") return "unknown";
 
   const raw = value.trim();
   const v = raw.toLowerCase();
 
-  // 英語
   if (v === "morning") return "morning";
   if (v === "day") return "day";
   if (v === "evening") return "evening";
   if (v === "night") return "night";
   if (v === "unknown" || v === "") return "unknown";
 
-  // 日本語短縮
   if (raw === "朝") return "morning";
   if (raw === "昼") return "day";
   if (raw === "夕") return "evening";
   if (raw === "夜") return "night";
   if (raw === "不明") return "unknown";
 
-  // 既存 getTimeBand の返り値
   if (raw === "朝マズメ") return "morning";
   if (raw === "デイ") return "day";
   if (raw === "夕マズメ") return "evening";
   if (raw === "ナイト") return "night";
 
-  // 別表現も吸収
   if (raw === "早朝") return "morning";
   if (raw === "日中") return "day";
   if (raw === "夕方") return "evening";
@@ -229,6 +281,20 @@ function isTripPhoto(value: unknown): value is TripSyncPhoto {
   );
 }
 
+function isTripTackle(value: unknown): value is TripSyncTackle {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.uid === "string" &&
+    typeof v.createdAt === "string" &&
+    typeof v.updatedAt === "string" &&
+    (v.kind === "rod" || v.kind === "reel") &&
+    typeof v.maker === "string" &&
+    typeof v.model === "string" &&
+    typeof v.active === "boolean"
+  );
+}
+
 async function upsertTrip(db: D1Database, row: TripSyncRecord) {
   await db
     .prepare(
@@ -237,12 +303,14 @@ async function upsertTrip(db: D1Database, row: TripSyncRecord) {
         uid, created_at, updated_at, deleted_at, sync_status,
         started_at, ended_at,
         point_id, memo, outcome, time_band,
-        lure_type, spot_type, water_clarity, bait_present,
+        lure_type,
+        rod_id, reel_id, rod_uid, reel_uid,
+        spot_type, water_clarity, bait_present,
         lat, lon,
         tide_day_key, tide_name, tide_phase, tide_trend, tide_cm,
         weather_code, wind_speed_ms, wind_dir_deg, wave_height_m, air_temp_c,
         env_fetched_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(uid) DO UPDATE SET
         created_at = excluded.created_at,
         updated_at = excluded.updated_at,
@@ -255,6 +323,10 @@ async function upsertTrip(db: D1Database, row: TripSyncRecord) {
         outcome = excluded.outcome,
         time_band = excluded.time_band,
         lure_type = excluded.lure_type,
+        rod_id = excluded.rod_id,
+        reel_id = excluded.reel_id,
+        rod_uid = excluded.rod_uid,
+        reel_uid = excluded.reel_uid,
         spot_type = excluded.spot_type,
         water_clarity = excluded.water_clarity,
         bait_present = excluded.bait_present,
@@ -290,6 +362,12 @@ async function upsertTrip(db: D1Database, row: TripSyncRecord) {
       normalizeTimeBand(row.timeBand),
 
       asStringOrNull(row.lureType),
+
+      asNumberOrNull(row.rodId),
+      asNumberOrNull(row.reelId),
+      asStringOrNull(row.rodUid),
+      asStringOrNull(row.reelUid),
+
       asStringOrNull(row.spotType),
       asStringOrNull(row.waterClarity),
       asBooleanOrNull(row.baitPresent),
@@ -396,6 +474,49 @@ async function upsertPhoto(db: D1Database, row: TripSyncPhoto) {
     .run();
 }
 
+async function upsertTackle(db: D1Database, row: TripSyncTackle) {
+  await db
+    .prepare(
+      `
+      INSERT INTO sync_tackles (
+        uid, created_at, updated_at, deleted_at, sync_status,
+        kind, maker, model, memo, active, retired_at,
+        rod_json, reel_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(uid) DO UPDATE SET
+        created_at = excluded.created_at,
+        updated_at = excluded.updated_at,
+        deleted_at = excluded.deleted_at,
+        sync_status = excluded.sync_status,
+        kind = excluded.kind,
+        maker = excluded.maker,
+        model = excluded.model,
+        memo = excluded.memo,
+        active = excluded.active,
+        retired_at = excluded.retired_at,
+        rod_json = excluded.rod_json,
+        reel_json = excluded.reel_json
+      WHERE excluded.updated_at > sync_tackles.updated_at
+      `,
+    )
+    .bind(
+      row.uid,
+      row.createdAt,
+      row.updatedAt,
+      asIsoOrNull(row.deletedAt),
+      row.syncStatus,
+      row.kind,
+      row.maker,
+      row.model,
+      asStringOrNull(row.memo),
+      row.active ? 1 : 0,
+      asIsoOrNull(row.retiredAt),
+      asJsonStringOrNull(row.rod),
+      asJsonStringOrNull(row.reel),
+    )
+    .run();
+}
+
 async function handlePost(request: Request, env: Env) {
   let body: unknown;
   try {
@@ -417,6 +538,8 @@ async function handlePost(request: Request, env: Env) {
     return badRequest("invalid payload");
   }
 
+  const tackles = Array.isArray(payload.tackles) ? payload.tackles : [];
+
   for (const row of payload.trips) {
     if (!isTripRecord(row)) {
       return badRequest("invalid trip row");
@@ -430,6 +553,11 @@ async function handlePost(request: Request, env: Env) {
   for (const row of payload.photos) {
     if (!isTripPhoto(row)) {
       return badRequest("invalid photo row");
+    }
+  }
+  for (const row of tackles) {
+    if (!isTripTackle(row)) {
+      return badRequest("invalid tackle row");
     }
   }
 
@@ -454,6 +582,9 @@ async function handlePost(request: Request, env: Env) {
     for (const row of payload.photos) {
       await upsertPhoto(env.DB, row);
     }
+    for (const row of tackles) {
+      await upsertTackle(env.DB, row);
+    }
 
     return json({
       ok: true,
@@ -462,9 +593,11 @@ async function handlePost(request: Request, env: Env) {
         pushedTrips: payload.trips.length,
         pushedFish: payload.fish.length,
         pushedPhotos: payload.photos.length,
+        pushedTackles: tackles.length,
         pulledTrips: 0,
         pulledFish: 0,
         pulledPhotos: 0,
+        pulledTackles: 0,
         errors: [],
       },
     });
@@ -492,6 +625,10 @@ async function fetchTripsSince(db: D1Database, since: string | null) {
           outcome,
           time_band as timeBand,
           lure_type as lureType,
+          rod_id as rodId,
+          reel_id as reelId,
+          rod_uid as rodUid,
+          reel_uid as reelUid,
           spot_type as spotType,
           water_clarity as waterClarity,
           bait_present as baitPresent,
@@ -529,6 +666,10 @@ async function fetchTripsSince(db: D1Database, since: string | null) {
           outcome,
           time_band as timeBand,
           lure_type as lureType,
+          rod_id as rodId,
+          reel_id as reelId,
+          rod_uid as rodUid,
+          reel_uid as reelUid,
           spot_type as spotType,
           water_clarity as waterClarity,
           bait_present as baitPresent,
@@ -648,6 +789,102 @@ async function fetchPhotosSince(db: D1Database, since: string | null) {
   return result.results ?? [];
 }
 
+async function fetchTacklesSince(db: D1Database, since: string | null) {
+  const stmt = since
+    ? db
+        .prepare(
+          `
+        SELECT
+          uid,
+          created_at as createdAt,
+          updated_at as updatedAt,
+          deleted_at as deletedAt,
+          sync_status as syncStatus,
+          kind,
+          maker,
+          model,
+          memo,
+          active,
+          retired_at as retiredAt,
+          rod_json as rodJson,
+          reel_json as reelJson
+        FROM sync_tackles
+        WHERE updated_at > ?
+        ORDER BY updated_at ASC
+        `,
+        )
+        .bind(since)
+    : db.prepare(
+        `
+        SELECT
+          uid,
+          created_at as createdAt,
+          updated_at as updatedAt,
+          deleted_at as deletedAt,
+          sync_status as syncStatus,
+          kind,
+          maker,
+          model,
+          memo,
+          active,
+          retired_at as retiredAt,
+          rod_json as rodJson,
+          reel_json as reelJson
+        FROM sync_tackles
+        ORDER BY updated_at ASC
+        `,
+      );
+
+  const result = await stmt.all<{
+    uid: string;
+    createdAt: string;
+    updatedAt: string;
+    deletedAt?: string | null;
+    syncStatus: SyncStatus;
+    kind: "rod" | "reel";
+    maker: string;
+    model: string;
+    memo?: string | null;
+    active: number | boolean;
+    retiredAt?: string | null;
+    rodJson?: string | null;
+    reelJson?: string | null;
+  }>();
+
+  return (result.results ?? []).map((row) => {
+    let rod: TackleSyncRod | null = null;
+    let reel: TackleSyncReel | null = null;
+
+    try {
+      rod = row.rodJson ? (JSON.parse(row.rodJson) as TackleSyncRod) : null;
+    } catch {
+      rod = null;
+    }
+
+    try {
+      reel = row.reelJson ? (JSON.parse(row.reelJson) as TackleSyncReel) : null;
+    } catch {
+      reel = null;
+    }
+
+    return {
+      uid: row.uid,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      deletedAt: row.deletedAt ?? null,
+      syncStatus: row.syncStatus,
+      kind: row.kind,
+      maker: row.maker,
+      model: row.model,
+      memo: row.memo ?? null,
+      active: row.active === true || row.active === 1,
+      retiredAt: row.retiredAt ?? null,
+      rod,
+      reel,
+    } satisfies TripSyncTackle;
+  });
+}
+
 async function handleGet(request: Request, env: Env) {
   try {
     const url = new URL(request.url);
@@ -668,10 +905,11 @@ async function handleGet(request: Request, env: Env) {
         .run();
     }
 
-    const [trips, fish, photos] = await Promise.all([
+    const [trips, fish, photos, tackles] = await Promise.all([
       fetchTripsSince(env.DB, since),
       fetchFishSince(env.DB, since),
       fetchPhotosSince(env.DB, since),
+      fetchTacklesSince(env.DB, since),
     ]);
 
     const response: TripPullResponse = {
@@ -679,6 +917,7 @@ async function handleGet(request: Request, env: Env) {
       trips,
       fish,
       photos,
+      tackles,
     };
 
     return json(response);
