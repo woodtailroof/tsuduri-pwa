@@ -131,7 +131,7 @@ function serializeTrip(row: TripRecord): TripSyncRecord {
     syncStatus: row.syncStatus,
 
     startedAt: row.startedAt,
-    endedAt: row.endedAt,
+    endedAt: row.endedAt ?? null,
 
     pointId: row.pointId,
     memo: row.memo,
@@ -203,7 +203,7 @@ function serializePhoto(row: TripPhoto): TripSyncPhoto {
     remoteKey: row.remoteKey ?? null,
 
     order: row.order,
-    isCover: row.isCover,
+    isCover: row.isCover === 1,
   };
 }
 
@@ -453,15 +453,32 @@ async function upsertPulledPhotos(rows: TripSyncPhoto[]): Promise<number> {
 
       if (!parentTrip?.id) continue;
 
+      const normalizedIsCover: 0 | 1 = remote.isCover ? 1 : 0;
+
       if (!local) {
-        await db.tripPhotos.add({
-          ...remote,
+        const newPhoto: TripPhoto = {
+          uid: remote.uid,
+          tripUid: remote.tripUid,
           tripId: parentTrip.id,
+
+          createdAt: remote.createdAt,
+          updatedAt: remote.updatedAt,
+          deletedAt: remote.deletedAt ?? null,
+          syncStatus: "synced",
+          remoteKey: remote.remoteKey ?? null,
+
+          capturedAt: remote.capturedAt ?? null,
+          photoName: remote.photoName ?? null,
+          photoType: remote.photoType || "application/octet-stream",
           photoBlob: new Blob([], {
             type: remote.photoType || "application/octet-stream",
           }),
-          syncStatus: "synced",
-        } as TripPhoto);
+
+          order: remote.order,
+          isCover: normalizedIsCover,
+        };
+
+        await db.tripPhotos.add(newPhoto);
         changed += 1;
         continue;
       }
@@ -474,11 +491,23 @@ async function upsertPulledPhotos(rows: TripSyncPhoto[]): Promise<number> {
         (!Number.isFinite(localUpdatedAt) || remoteUpdatedAt > localUpdatedAt)
       ) {
         await db.tripPhotos.update(local.id!, {
-          ...remote,
-          id: local.id,
+          uid: remote.uid,
+          tripUid: remote.tripUid,
           tripId: parentTrip.id,
-          photoBlob: local.photoBlob,
+
+          createdAt: remote.createdAt,
+          updatedAt: remote.updatedAt,
+          deletedAt: remote.deletedAt ?? null,
           syncStatus: "synced",
+          remoteKey: remote.remoteKey ?? null,
+
+          capturedAt: remote.capturedAt ?? null,
+          photoName: remote.photoName ?? null,
+          photoType: remote.photoType || local.photoType,
+          photoBlob: local.photoBlob,
+
+          order: remote.order,
+          isCover: normalizedIsCover,
         });
         changed += 1;
       }
