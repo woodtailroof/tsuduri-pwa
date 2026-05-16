@@ -1,8 +1,13 @@
 // src/lib/tripSync.ts
 
-import { db, type TripFish, type TripPhoto, type TripRecord } from "../db";
+import {
+  db,
+  type TackleItem,
+  type TripFish,
+  type TripPhoto,
+  type TripRecord,
+} from "../db";
 import type {
-  PendingTripBundle,
   SyncApiResponse,
   SyncConfig,
   SyncResult,
@@ -16,6 +21,39 @@ import type {
 const DEVICE_ID_STORAGE_KEY = "tsuduri_sync_device_id_v1";
 const LAST_SYNC_AT_STORAGE_KEY = "tsuduri_last_sync_at_v1";
 const DEFAULT_SYNC_ENDPOINT = "/api/trip-sync";
+
+type TripSyncTackle = {
+  uid: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  syncStatus: "pending" | "synced" | "error";
+
+  kind: "rod" | "reel";
+  maker: string;
+  model: string;
+  memo?: string | null;
+  active: boolean;
+  retiredAt?: string | null;
+
+  rod?: TackleItem["rod"] | null;
+  reel?: TackleItem["reel"] | null;
+};
+
+type PendingSyncBundle = {
+  trips: TripRecord[];
+  fish: TripFish[];
+  photos: TripPhoto[];
+  tackles: TackleItem[];
+};
+
+type ExtendedTripPushPayload = TripPushPayload & {
+  tackles: TripSyncTackle[];
+};
+
+type ExtendedTripPullResponse = TripPullResponse & {
+  tackles?: TripSyncTackle[];
+};
 
 function makeUid() {
   if (
@@ -68,21 +106,20 @@ export function getSyncConfig(endpoint = DEFAULT_SYNC_ENDPOINT): SyncConfig {
   };
 }
 
-/**
- * pending / error を再送対象として集める
- */
-export async function collectPendingTripBundle(): Promise<PendingTripBundle> {
-  const [tripsRaw, fishRaw, photosRaw] = await Promise.all([
+export async function collectPendingTripBundle(): Promise<PendingSyncBundle> {
+  const [tripsRaw, fishRaw, photosRaw, tacklesRaw] = await Promise.all([
     db.trips.where("syncStatus").anyOf("pending", "error").toArray(),
     db.tripFish.where("syncStatus").anyOf("pending", "error").toArray(),
     db.tripPhotos.where("syncStatus").anyOf("pending", "error").toArray(),
+    db.tackleItems.where("syncStatus").anyOf("pending", "error").toArray(),
   ]);
 
   const trips = tripsRaw.filter((x) => !!x.uid);
   const fish = fishRaw.filter((x) => !!x.uid && !!x.tripUid);
   const photos = photosRaw.filter((x) => !!x.uid && !!x.tripUid);
+  const tackles = tacklesRaw.filter((x) => !!x.uid);
 
-  return { trips, fish, photos };
+  return { trips, fish, photos, tackles };
 }
 
 function serializeTrip(row: TripRecord): TripSyncRecord {
@@ -104,7 +141,6 @@ function serializeTrip(row: TripRecord): TripSyncRecord {
 
     lureType: row.lureType ?? null,
 
-    // ✅ タックル
     rodId: row.rodId ?? null,
     reelId: row.reelId ?? null,
     rodUid: row.rodUid ?? null,
@@ -171,7 +207,27 @@ function serializePhoto(row: TripPhoto): TripSyncPhoto {
   };
 }
 
-export async function buildTripPushPayload(): Promise<TripPushPayload> {
+function serializeTackle(row: TackleItem): TripSyncTackle {
+  return {
+    uid: row.uid,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    deletedAt: row.deletedAt ?? null,
+    syncStatus: row.syncStatus,
+
+    kind: row.kind,
+    maker: row.maker,
+    model: row.model,
+    memo: row.memo ?? null,
+    active: row.active,
+    retiredAt: row.retiredAt ?? null,
+
+    rod: row.rod ?? null,
+    reel: row.reel ?? null,
+  };
+}
+
+export async function buildTripPushPayload(): Promise<ExtendedTripPushPayload> {
   const bundle = await collectPendingTripBundle();
 
   return {
@@ -180,6 +236,7 @@ export async function buildTripPushPayload(): Promise<TripPushPayload> {
     trips: bundle.trips.map(serializeTrip),
     fish: bundle.fish.map(serializeFish),
     photos: bundle.photos.map(serializePhoto),
+    tackles: bundle.tackles.map(serializeTackle),
   };
 }
 
@@ -188,7 +245,8 @@ export async function hasPendingSyncData(): Promise<boolean> {
   return (
     bundle.trips.length > 0 ||
     bundle.fish.length > 0 ||
-    bundle.photos.length > 0
+    bundle.photos.length > 0 ||
+    bundle.tackles.length > 0
   );
 }
 
@@ -228,6 +286,18 @@ async function markPhotosAsSynced(photos: TripPhoto[], syncedAt: string) {
   });
 }
 
+async function markTacklesAsSynced(tackles: TackleItem[], syncedAt: string) {
+  await db.transaction("rw", db.tackleItems, async () => {
+    for (const row of tackles) {
+      if (!row.id) continue;
+      await db.tackleItems.update(row.id, {
+        syncStatus: "synced",
+        updatedAt: row.deletedAt ? row.updatedAt : syncedAt,
+      });
+    }
+  });
+}
+
 async function markTripsAsError(trips: TripRecord[]) {
   await db.transaction("rw", db.trips, async () => {
     for (const row of trips) {
@@ -255,25 +325,33 @@ async function markPhotosAsError(photos: TripPhoto[]) {
   });
 }
 
-async function markBundleAsSynced(bundle: PendingTripBundle, syncedAt: string) {
+async function markTacklesAsError(tackles: TackleItem[]) {
+  await db.transaction("rw", db.tackleItems, async () => {
+    for (const row of tackles) {
+      if (!row.id) continue;
+      await db.tackleItems.update(row.id, { syncStatus: "error" });
+    }
+  });
+}
+
+async function markBundleAsSynced(bundle: PendingSyncBundle, syncedAt: string) {
   await Promise.all([
     markTripsAsSynced(bundle.trips, syncedAt),
     markFishAsSynced(bundle.fish, syncedAt),
     markPhotosAsSynced(bundle.photos, syncedAt),
+    markTacklesAsSynced(bundle.tackles, syncedAt),
   ]);
 }
 
-async function markBundleAsError(bundle: PendingTripBundle) {
+async function markBundleAsError(bundle: PendingSyncBundle) {
   await Promise.all([
     markTripsAsError(bundle.trips),
     markFishAsError(bundle.fish),
     markPhotosAsError(bundle.photos),
+    markTacklesAsError(bundle.tackles),
   ]);
 }
 
-/**
- * サーバから pull した trips を upsert
- */
 async function upsertPulledTrips(rows: TripSyncRecord[]): Promise<number> {
   let changed = 0;
 
@@ -283,10 +361,13 @@ async function upsertPulledTrips(rows: TripSyncRecord[]): Promise<number> {
 
       const local = await db.trips.where("uid").equals(remote.uid).first();
 
+      const normalized: TripRecord = {
+        ...(remote as TripRecord),
+        syncStatus: "synced",
+      };
+
       if (!local) {
-        await db.trips.add({
-          ...remote,
-        } as TripRecord);
+        await db.trips.add(normalized);
         changed += 1;
         continue;
       }
@@ -299,7 +380,7 @@ async function upsertPulledTrips(rows: TripSyncRecord[]): Promise<number> {
         (!Number.isFinite(localUpdatedAt) || remoteUpdatedAt > localUpdatedAt)
       ) {
         await db.trips.update(local.id!, {
-          ...remote,
+          ...normalized,
           id: local.id,
         });
         changed += 1;
@@ -310,10 +391,6 @@ async function upsertPulledTrips(rows: TripSyncRecord[]): Promise<number> {
   return changed;
 }
 
-/**
- * サーバから pull した fish を upsert
- * 親 tripUid からローカル tripId を再解決する
- */
 async function upsertPulledFish(rows: TripSyncFish[]): Promise<number> {
   let changed = 0;
 
@@ -329,11 +406,14 @@ async function upsertPulledFish(rows: TripSyncFish[]): Promise<number> {
 
       if (!parentTrip?.id) continue;
 
+      const normalized: TripFish = {
+        ...(remote as TripFish),
+        tripId: parentTrip.id,
+        syncStatus: "synced",
+      };
+
       if (!local) {
-        await db.tripFish.add({
-          ...remote,
-          tripId: parentTrip.id,
-        } as TripFish);
+        await db.tripFish.add(normalized);
         changed += 1;
         continue;
       }
@@ -346,7 +426,7 @@ async function upsertPulledFish(rows: TripSyncFish[]): Promise<number> {
         (!Number.isFinite(localUpdatedAt) || remoteUpdatedAt > localUpdatedAt)
       ) {
         await db.tripFish.update(local.id!, {
-          ...remote,
+          ...normalized,
           id: local.id,
           tripId: parentTrip.id,
         });
@@ -358,10 +438,6 @@ async function upsertPulledFish(rows: TripSyncFish[]): Promise<number> {
   return changed;
 }
 
-/**
- * サーバから pull した photo メタ情報を upsert
- * photoBlob 自体はここでは扱わない
- */
 async function upsertPulledPhotos(rows: TripSyncPhoto[]): Promise<number> {
   let changed = 0;
 
@@ -384,6 +460,7 @@ async function upsertPulledPhotos(rows: TripSyncPhoto[]): Promise<number> {
           photoBlob: new Blob([], {
             type: remote.photoType || "application/octet-stream",
           }),
+          syncStatus: "synced",
         } as TripPhoto);
         changed += 1;
         continue;
@@ -401,6 +478,60 @@ async function upsertPulledPhotos(rows: TripSyncPhoto[]): Promise<number> {
           id: local.id,
           tripId: parentTrip.id,
           photoBlob: local.photoBlob,
+          syncStatus: "synced",
+        });
+        changed += 1;
+      }
+    }
+  });
+
+  return changed;
+}
+
+async function upsertPulledTackles(rows: TripSyncTackle[]): Promise<number> {
+  let changed = 0;
+
+  await db.transaction("rw", db.tackleItems, async () => {
+    for (const remote of rows) {
+      if (!remote.uid) continue;
+
+      const local = await db.tackleItems
+        .where("uid")
+        .equals(remote.uid)
+        .first();
+
+      const normalized: TackleItem = {
+        uid: remote.uid,
+        createdAt: remote.createdAt,
+        updatedAt: remote.updatedAt,
+        deletedAt: remote.deletedAt ?? null,
+        syncStatus: "synced",
+        kind: remote.kind,
+        maker: remote.maker,
+        model: remote.model,
+        memo: remote.memo ?? null,
+        active: remote.active,
+        retiredAt: remote.retiredAt ?? null,
+        rod: remote.rod ?? null,
+        reel: remote.reel ?? null,
+      };
+
+      if (!local) {
+        await db.tackleItems.add(normalized);
+        changed += 1;
+        continue;
+      }
+
+      const localUpdatedAt = Date.parse(local.updatedAt || local.createdAt);
+      const remoteUpdatedAt = Date.parse(remote.updatedAt || remote.createdAt);
+
+      if (
+        Number.isFinite(remoteUpdatedAt) &&
+        (!Number.isFinite(localUpdatedAt) || remoteUpdatedAt > localUpdatedAt)
+      ) {
+        await db.tackleItems.update(local.id!, {
+          ...normalized,
+          id: local.id,
         });
         changed += 1;
       }
@@ -413,9 +544,12 @@ async function upsertPulledPhotos(rows: TripSyncPhoto[]): Promise<number> {
 export async function applyPullResponse(
   response: TripPullResponse,
 ): Promise<Pick<SyncResult, "pulledTrips" | "pulledFish" | "pulledPhotos">> {
-  const pulledTrips = await upsertPulledTrips(response.trips ?? []);
-  const pulledFish = await upsertPulledFish(response.fish ?? []);
-  const pulledPhotos = await upsertPulledPhotos(response.photos ?? []);
+  const extended = response as ExtendedTripPullResponse;
+
+  const pulledTrips = await upsertPulledTrips(extended.trips ?? []);
+  const pulledFish = await upsertPulledFish(extended.fish ?? []);
+  const pulledPhotos = await upsertPulledPhotos(extended.photos ?? []);
+  await upsertPulledTackles(extended.tackles ?? []);
 
   return {
     pulledTrips,
@@ -424,9 +558,6 @@ export async function applyPullResponse(
   };
 }
 
-/**
- * push: メタ情報のみ
- */
 export async function pushTripSync(
   endpoint = DEFAULT_SYNC_ENDPOINT,
 ): Promise<SyncResult> {
@@ -435,7 +566,8 @@ export async function pushTripSync(
   if (
     bundle.trips.length === 0 &&
     bundle.fish.length === 0 &&
-    bundle.photos.length === 0
+    bundle.photos.length === 0 &&
+    bundle.tackles.length === 0
   ) {
     return {
       ok: true,
@@ -514,9 +646,6 @@ export async function pushTripSync(
   }
 }
 
-/**
- * pull: メタ情報のみ
- */
 export async function pullTripSync(
   endpoint = DEFAULT_SYNC_ENDPOINT,
   since?: string | null,
@@ -563,7 +692,7 @@ export async function pullTripSync(
       };
     }
 
-    const data = (await res.json()) as TripPullResponse;
+    const data = (await res.json()) as ExtendedTripPullResponse;
     const applied = await applyPullResponse(data);
 
     setLastSyncAt(data.serverTime || nowIso());
@@ -592,16 +721,6 @@ export async function pullTripSync(
   }
 }
 
-/**
- * 全同期: push → local mark synced → pull
- *
- * 重要:
- * - push前の lastSyncAt を保持しておく
- * - push成功だけでは lastSyncAt を進めない
- * - pull成功後の serverTime で初めて lastSyncAt を進める
- *
- * これで他端末の更新を取りこぼしにくくする
- */
 export async function syncTrips(
   endpoint = DEFAULT_SYNC_ENDPOINT,
 ): Promise<SyncResult> {
@@ -616,7 +735,8 @@ export async function syncTrips(
   if (
     pendingBundle.trips.length > 0 ||
     pendingBundle.fish.length > 0 ||
-    pendingBundle.photos.length > 0
+    pendingBundle.photos.length > 0 ||
+    pendingBundle.tackles.length > 0
   ) {
     await markBundleAsSynced(pendingBundle, nowIso());
   }
