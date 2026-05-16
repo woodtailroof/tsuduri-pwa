@@ -11,9 +11,16 @@
       ]
     },
     {
-      "id": "matsuri/sailor",
-      "title": "まつり：セーラー",
-      "thumb": "/assets/slides/matsuri/sailor/000.png",
+      "id": "kokoro/nude",
+      "title": "こころ：ヌード",
+      "thumb": "/assets/slides/kokoro/nude/000.png",
+      "characterId": "kokoro",
+      "tags": []
+    },
+    {
+      "id": "matsuri/hardcore",
+      "title": "まつり：ハードコア",
+      "thumb": "/assets/slides/matsuri/hardcore/000.png",
       "characterId": "matsuri",
       "tags": []
     },
@@ -33,6 +40,13 @@
         "tsuduri",
         "sailor"
       ]
+    },
+    {
+      "id": "tsuduri/hardcore",
+      "title": "つづり：ハードコア",
+      "thumb": "/assets/slides/tsuduri/hardcore/000.png",
+      "characterId": "tsuduri",
+      "tags": []
     }
   ]
 }
