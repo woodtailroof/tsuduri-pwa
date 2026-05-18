@@ -90,7 +90,7 @@ export type TripSyncPhoto = {
   remoteKey?: string | null;
 
   order: number;
-  isCover: boolean;
+  isCover: 0 | 1;
 };
 
 export type TripPushPayload = {

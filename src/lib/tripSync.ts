@@ -203,7 +203,7 @@ function serializePhoto(row: TripPhoto): TripSyncPhoto {
     remoteKey: row.remoteKey ?? null,
 
     order: row.order,
-    isCover: row.isCover === 1,
+    isCover: row.isCover,
   };
 }
 
