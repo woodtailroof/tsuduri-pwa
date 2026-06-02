@@ -200,6 +200,30 @@ export default function TackleManager({ back }: Props) {
 
   useEffect(() => {
     void reload();
+
+    const onSyncComplete = () => {
+      void reload();
+    };
+
+    const onFocus = () => {
+      void reload();
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        void reload();
+      }
+    };
+
+    window.addEventListener("tsuduri-sync-complete", onSyncComplete);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      window.removeEventListener("tsuduri-sync-complete", onSyncComplete);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   const rodList = useMemo(() => sortRods(items), [items]);
@@ -1082,7 +1106,7 @@ export default function TackleManager({ back }: Props) {
 
                   return (
                     <div
-                      key={item.id}
+                      key={item.id ?? item.uid}
                       className="glass"
                       style={{
                         borderRadius: 14,
