@@ -14,6 +14,7 @@ import {
   formatRodLabel,
   formatReelLabel,
 } from "../lib/tackle";
+import { syncTrips } from "../lib/tripSync";
 
 type Props = {
   back: () => void;
@@ -174,6 +175,7 @@ function useIsMobileLayout(): boolean {
 export default function TackleManager({ back }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [items, setItems] = useState<TackleItem[]>([]);
   const [tab, setTab] = useState<TabKind>("rod");
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -198,20 +200,36 @@ export default function TackleManager({ back }: Props) {
     }
   }
 
+  async function syncAndReload() {
+    setSyncing(true);
+    try {
+      const result = await syncTrips();
+      if (!result.ok) {
+        console.warn("tackle sync failed", result.errors);
+      }
+      window.dispatchEvent(new CustomEvent("tsuduri-sync-complete"));
+    } catch (e) {
+      console.warn("tackle sync failed", e);
+    } finally {
+      setSyncing(false);
+      await reload();
+    }
+  }
+
   useEffect(() => {
-    void reload();
+    void syncAndReload();
 
     const onSyncComplete = () => {
       void reload();
     };
 
     const onFocus = () => {
-      void reload();
+      void syncAndReload();
     };
 
     const onVisible = () => {
       if (document.visibilityState === "visible") {
-        void reload();
+        void syncAndReload();
       }
     };
 
@@ -345,7 +363,7 @@ export default function TackleManager({ back }: Props) {
 
       setEditingId(null);
       setRodForm(emptyRodForm());
-      await reload();
+      await syncAndReload();
     } catch (e) {
       console.error(e);
       setError(e instanceof Error ? e.message : String(e));
@@ -409,7 +427,7 @@ export default function TackleManager({ back }: Props) {
 
       setEditingId(null);
       setReelForm(emptyReelForm());
-      await reload();
+      await syncAndReload();
     } catch (e) {
       console.error(e);
       setError(e instanceof Error ? e.message : String(e));
@@ -437,7 +455,42 @@ export default function TackleManager({ back }: Props) {
           retiredAt: item.active ? now : null,
         });
       }
-      await reload();
+      await syncAndReload();
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteItem(item: TackleItem) {
+    if (item.id == null) return;
+
+    const ok = window.confirm(
+      `${item.maker} / ${item.model} を削除する？\n\n間違えて登録したタックル用の削除だよ。過去の記録に使っているタックルは、削除より「過去所持にする」がおすすめ。`,
+    );
+
+    if (!ok) return;
+
+    setSaving(true);
+    setError("");
+    try {
+      const now = new Date().toISOString();
+
+      await db.tackleItems.update(item.id, {
+        deletedAt: now,
+        updatedAt: now,
+        syncStatus: "pending",
+      });
+
+      if (editingId === item.id) {
+        setEditingId(null);
+        setRodForm(emptyRodForm());
+        setReelForm(emptyReelForm());
+      }
+
+      await syncAndReload();
     } catch (e) {
       console.error(e);
       setError(e instanceof Error ? e.message : String(e));
@@ -479,6 +532,12 @@ export default function TackleManager({ back }: Props) {
     color: "rgba(255,255,255,0.86)",
     cursor: "pointer",
     lineHeight: 1,
+  };
+
+  const dangerBtnStyle: CSSProperties = {
+    ...btnStyle,
+    border: "1px solid rgba(255,120,120,0.45)",
+    color: "#ffd0d0",
   };
 
   const activeBtnStyle = (on: boolean): CSSProperties => ({
@@ -553,11 +612,11 @@ export default function TackleManager({ back }: Props) {
             </button>
             <button
               type="button"
-              onClick={() => void reload()}
+              onClick={() => void syncAndReload()}
               style={btnStyle}
-              disabled={loading}
+              disabled={loading || syncing}
             >
-              {loading ? "読み込み中…" : "↻ 更新"}
+              {syncing ? "同期中…" : loading ? "読み込み中…" : "↻ 更新"}
             </button>
           </div>
         </div>
@@ -836,7 +895,7 @@ export default function TackleManager({ back }: Props) {
                     type="button"
                     onClick={() => void saveRod()}
                     style={btnStyle}
-                    disabled={saving}
+                    disabled={saving || syncing}
                   >
                     {saving
                       ? "保存中…"
@@ -1034,7 +1093,7 @@ export default function TackleManager({ back }: Props) {
                     type="button"
                     onClick={() => void saveReel()}
                     style={btnStyle}
-                    disabled={saving}
+                    disabled={saving || syncing}
                   >
                     {saving
                       ? "保存中…"
@@ -1079,7 +1138,7 @@ export default function TackleManager({ back }: Props) {
                 {tab === "rod" ? "ロッド一覧" : "リール一覧"}
               </div>
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-                現役が先、過去所持は後ろに並ぶよ
+                {syncing ? "同期中…" : "現役が先、過去所持は後ろに並ぶよ"}
               </div>
             </div>
 
@@ -1178,6 +1237,7 @@ export default function TackleManager({ back }: Props) {
                           type="button"
                           onClick={() => loadIntoForm(item)}
                           style={btnStyle}
+                          disabled={saving || syncing}
                         >
                           編集
                         </button>
@@ -1186,9 +1246,18 @@ export default function TackleManager({ back }: Props) {
                           type="button"
                           onClick={() => void toggleActive(item)}
                           style={btnStyle}
-                          disabled={saving}
+                          disabled={saving || syncing}
                         >
                           {item.active ? "過去所持にする" : "現役に戻す"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void deleteItem(item)}
+                          style={dangerBtnStyle}
+                          disabled={saving || syncing}
+                        >
+                          削除
                         </button>
                       </div>
                     </div>
