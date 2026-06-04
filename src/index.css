@@ -169,22 +169,41 @@ li {
 
   filter: blur(var(--bg-blur, 0px));
 
-  /* ←ここを大きく変更 */
-  transform: scale(1.08) translate3d(-4%, 0, 0);
+  /* PCでは視点が奪われないよう背景は固定 */
+  transform: scale(1.035);
   transform-origin: center center;
-  animation: tsuduri-bg-drift 24s linear infinite alternate;
-
-  will-change: transform;
 }
 
-@keyframes tsuduri-bg-drift {
+/* スマホだけ、ほんの少し背景を流す */
+@media (max-width: 768px) {
+  #layer-bg {
+    transform: scale(1.055) translate3d(-0.9%, 0, 0);
+    animation: tsuduri-bg-mobile-pan 64s ease-in-out infinite alternate;
+    will-change: transform;
+  }
+}
+
+@keyframes tsuduri-bg-mobile-pan {
   0% {
-    transform: scale(1.08) translate3d(-4%, 0, 0);
+    transform: scale(1.055) translate3d(-0.9%, 0, 0);
+  }
+
+  50% {
+    transform: scale(1.065) translate3d(0.2%, -0.12%, 0);
   }
 
   100% {
-    transform: scale(1.08) translate3d(4%, 0, 0);
+    transform: scale(1.06) translate3d(0.9%, 0, 0);
   }
+}
+
+/* =========================================================
+   ほんの少しだけ画面に呼吸を足す演出
+   ========================================================= */
+
+.tsuduri-character-breath {
+  animation: tsuduri-character-breath 7.5s ease-in-out infinite;
+  will-change: transform;
 }
 
 @keyframes tsuduri-character-breath {
