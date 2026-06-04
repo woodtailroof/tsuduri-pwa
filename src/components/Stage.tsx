@@ -513,6 +513,13 @@ export default function Stage(props: Props) {
     filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.45))",
   };
 
+  const breathWrapStyle: CSSProperties = {
+    position: "relative",
+    width: "100%",
+    aspectRatio: "768 / 1280",
+    transformOrigin: "bottom center",
+  };
+
   const imgCommon: CSSProperties = {
     position: "absolute",
     right: 0,
@@ -528,21 +535,23 @@ export default function Stage(props: Props) {
     <div style={{ position: "absolute", inset: 0 }} aria-hidden="true">
       {characterEnabled ? (
         <div style={charWrapStyle}>
-          {frontSrc ? (
-            <img
-              src={frontSrc}
-              alt=""
-              style={{ ...imgCommon, opacity: frontVisible ? 1 : 0 }}
-            />
-          ) : null}
+          <div className="tsuduri-character-breath" style={breathWrapStyle}>
+            {frontSrc ? (
+              <img
+                src={frontSrc}
+                alt=""
+                style={{ ...imgCommon, opacity: frontVisible ? 1 : 0 }}
+              />
+            ) : null}
 
-          {backSrc ? (
-            <img
-              src={backSrc}
-              alt=""
-              style={{ ...imgCommon, opacity: frontVisible ? 0 : 1 }}
-            />
-          ) : null}
+            {backSrc ? (
+              <img
+                src={backSrc}
+                alt=""
+                style={{ ...imgCommon, opacity: frontVisible ? 0 : 1 }}
+              />
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>
