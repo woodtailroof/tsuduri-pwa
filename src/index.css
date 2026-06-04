@@ -168,32 +168,22 @@ li {
   background-repeat: no-repeat;
 
   filter: blur(var(--bg-blur, 0px));
-  transform: scale(1.035) translate3d(-0.35%, -0.2%, 0);
+
+  /* ←ここを大きく変更 */
+  transform: scale(1.08) translate3d(-4%, 0, 0);
   transform-origin: center center;
-  animation: tsuduri-bg-drift 48s ease-in-out infinite alternate;
-  will-change: transform;
-}
+  animation: tsuduri-bg-drift 24s linear infinite alternate;
 
-/* =========================================================
-   ほんの少しだけ画面に呼吸を足す演出
-   ========================================================= */
-
-.tsuduri-character-breath {
-  animation: tsuduri-character-breath 7.5s ease-in-out infinite;
   will-change: transform;
 }
 
 @keyframes tsuduri-bg-drift {
   0% {
-    transform: scale(1.035) translate3d(-0.35%, -0.2%, 0);
-  }
-
-  50% {
-    transform: scale(1.052) translate3d(0.18%, 0.08%, 0);
+    transform: scale(1.08) translate3d(-4%, 0, 0);
   }
 
   100% {
-    transform: scale(1.045) translate3d(0.38%, -0.12%, 0);
+    transform: scale(1.08) translate3d(4%, 0, 0);
   }
 }
 
