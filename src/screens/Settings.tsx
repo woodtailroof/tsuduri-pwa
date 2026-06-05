@@ -13,12 +13,15 @@ import type { TideCacheEntry } from "../db";
 import PageShell from "../components/PageShell";
 import {
   AUTO_BG_SETS,
+  CHARACTER_COSTUME_OPTIONS,
   DEFAULT_SETTINGS,
   getTimeBand,
   normalizePublicPath,
   resolveAutoBackgroundSrc,
+  resolveCharacterCostumeId,
   type BgMode,
   type BgTimeBand,
+  type CharacterCostumeMode,
   useAppSettings,
 } from "../lib/appSettings";
 import { CHARACTERS_STORAGE_KEY } from "./CharacterSettings";
@@ -171,6 +174,21 @@ function resolveCharacterPreviewSrc(raw: string, key: string) {
 
   const dir = ensureTrailingSlash(normalized);
   return normalizePublicPath(`${dir}${key}.png`) || "";
+}
+
+function resolveCharacterCostumePreviewSrc(
+  raw: string,
+  costumeId: string,
+  key: string,
+) {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return "";
+  const normalized = normalizePublicPath(trimmed);
+  if (!normalized) return "";
+  if (looksLikeImageFilePath(normalized)) return normalized;
+
+  const dir = ensureTrailingSlash(normalized);
+  return normalizePublicPath(`${dir}${costumeId}/${key}.png`) || "";
 }
 
 function appendAssetVersion(url: string, assetVersion: string) {
@@ -357,6 +375,9 @@ export default function Settings({ back }: Props) {
     settings.characterEnabled ?? DEFAULT_SETTINGS.characterEnabled;
   const characterMode =
     settings.characterMode ?? DEFAULT_SETTINGS.characterMode;
+  const characterCostumeMode: CharacterCostumeMode =
+    settings.characterCostumeMode ?? DEFAULT_SETTINGS.characterCostumeMode;
+  const effectiveCostumeId = resolveCharacterCostumeId(characterCostumeMode);
 
   const createdIds = useMemo(
     () => new Set(createdCharacters.map((c) => c.id)),
@@ -710,6 +731,48 @@ export default function Settings({ back }: Props) {
                 </div>
 
                 <div style={row}>
+                  <div style={label}>衣装テーマ</div>
+                  <div style={rowStack}>
+                    <div
+                      style={{
+                        ...radioLine,
+                        opacity: characterEnabled ? 1 : 0.5,
+                      }}
+                    >
+                      {CHARACTER_COSTUME_OPTIONS.map((x) => (
+                        <label
+                          key={x.id}
+                          style={{
+                            display: "inline-flex",
+                            gap: 8,
+                            alignItems: "center",
+                            cursor: characterEnabled
+                              ? "pointer"
+                              : "not-allowed",
+                          }}
+                          title={x.description}
+                        >
+                          <input
+                            type="radio"
+                            name="characterCostumeMode"
+                            checked={characterCostumeMode === x.id}
+                            disabled={isCharControlsDisabled}
+                            onChange={() => set({ characterCostumeMode: x.id })}
+                          />
+                          <span>{x.label}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    <div style={help}>
+                      日替わりは朝5時更新。衣装テーマは全キャラ共通で、
+                      表情や画面遷移によるキャラ切替では変わらないよ。
+                      現在の有効衣装: <code>{effectiveCostumeId}</code>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={row}>
                   <div style={label}>作成キャラ画像</div>
                   <div style={rowStack}>
                     {createdCharacters.length === 0 ? (
@@ -733,10 +796,17 @@ export default function Settings({ back }: Props) {
                             : "";
                           const previewList = !isFile
                             ? EXPRESSION_KEYS.map((x) => {
-                                const base = resolveCharacterPreviewSrc(
+                                const costumeBase =
+                                  resolveCharacterCostumePreviewSrc(
+                                    raw,
+                                    effectiveCostumeId,
+                                    x.key,
+                                  );
+                                const legacyBase = resolveCharacterPreviewSrc(
                                   raw,
                                   x.key,
                                 );
+                                const base = costumeBase || legacyBase;
                                 return {
                                   key: x.key,
                                   label: x.label,
@@ -816,8 +886,10 @@ export default function Settings({ back }: Props) {
                                 public 配下のパスを指定。
                                 <br />✅ <b>おすすめ:</b>{" "}
                                 <code>/assets/characters/tsuduri/</code>{" "}
-                                のようにフォルダ指定（中に{" "}
-                                <code>neutral.png</code>, <code>happy.png</code>
+                                のようにフォルダ指定（中に <code>uniform/</code>
+                                , <code>casual/</code>
+                                を作り、その中に <code>neutral.png</code>,{" "}
+                                <code>happy.png</code>
                                 … を置く）。
                                 <br />
                                 🛟 旧互換: 単一画像（例{" "}
@@ -913,8 +985,7 @@ export default function Settings({ back }: Props) {
                                   </div>
                                   <div style={help}>
                                     ※ 画像が無い表情はブラウザで 404
-                                    になるけど、 PageShell
-                                    側は自動で次候補へフォールバックするよ。
+                                    になるけど、Stage側は自動で次候補へフォールバックするよ。
                                   </div>
                                 </div>
                               )}

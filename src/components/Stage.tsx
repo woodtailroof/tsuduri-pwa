@@ -9,6 +9,7 @@ import {
 import {
   DEFAULT_SETTINGS,
   normalizePublicPath,
+  resolveCharacterCostumeId,
   useAppSettings,
 } from "../lib/appSettings";
 import { CHARACTERS_STORAGE_KEY } from "../screens/CharacterSettings";
@@ -166,6 +167,10 @@ export default function Stage(props: Props) {
 
   const characterOverrideSrc = (settings.characterOverrideSrc ?? "").trim();
 
+  const effectiveCostumeId = resolveCharacterCostumeId(
+    settings.characterCostumeMode ?? DEFAULT_SETTINGS.characterCostumeMode,
+  );
+
   // ✅ HOMEなどではここで強制neutralできる
   const effectiveExpression = normalizeExpression(
     props.forcedExpression ?? globalEmotion,
@@ -296,6 +301,15 @@ export default function Stage(props: Props) {
     const mappedDir =
       mappedNorm && !mappedIsFile ? ensureTrailingSlash(mappedNorm) : "";
 
+    const mappedCostumeExpressionSrc = mappedDir
+      ? normalizePublicPath(
+          `${mappedDir}${effectiveCostumeId}/${effectiveExpression}.png`,
+        )
+      : "";
+    const mappedCostumeNeutralSrc = mappedDir
+      ? normalizePublicPath(`${mappedDir}${effectiveCostumeId}/neutral.png`)
+      : "";
+
     const mappedExpressionSrc = mappedDir
       ? normalizePublicPath(`${mappedDir}${effectiveExpression}.png`)
       : "";
@@ -303,6 +317,20 @@ export default function Stage(props: Props) {
       ? normalizePublicPath(`${mappedDir}neutral.png`)
       : "";
     const mappedSingleSrc = mappedIsFile ? mappedNorm : "";
+
+    const costumeExpressionSrc = normalizePublicPath(
+      `/assets/characters/${effectiveCharacterId}/${effectiveCostumeId}/${effectiveExpression}.png`,
+    );
+    const costumeNeutralSrc = normalizePublicPath(
+      `/assets/characters/${effectiveCharacterId}/${effectiveCostumeId}/neutral.png`,
+    );
+
+    const uniformExpressionSrc = normalizePublicPath(
+      `/assets/characters/${effectiveCharacterId}/uniform/${effectiveExpression}.png`,
+    );
+    const uniformNeutralSrc = normalizePublicPath(
+      `/assets/characters/${effectiveCharacterId}/uniform/neutral.png`,
+    );
 
     const expressionSrc = normalizePublicPath(
       `/assets/characters/${effectiveCharacterId}/${effectiveExpression}.png`,
@@ -319,13 +347,34 @@ export default function Stage(props: Props) {
         normalizePublicPath(characterOverrideSrc),
         assetVersion,
       ),
+
       mappedIsFile
         ? appendAssetVersion(mappedSingleSrc, assetVersion)
-        : appendAssetVersion(mappedExpressionSrc, assetVersion),
+        : appendAssetVersion(mappedCostumeExpressionSrc, assetVersion),
+      mappedIsFile
+        ? ""
+        : appendAssetVersion(mappedCostumeNeutralSrc, assetVersion),
+      mappedIsFile ? "" : appendAssetVersion(mappedExpressionSrc, assetVersion),
       mappedIsFile ? "" : appendAssetVersion(mappedNeutralSrc, assetVersion),
+
+      appendAssetVersion(costumeExpressionSrc, assetVersion),
+      appendAssetVersion(costumeNeutralSrc, assetVersion),
+
+      appendAssetVersion(uniformExpressionSrc, assetVersion),
+      appendAssetVersion(uniformNeutralSrc, assetVersion),
+
       appendAssetVersion(expressionSrc, assetVersion),
       appendAssetVersion(neutralSrc, assetVersion),
       appendAssetVersion(fallbackSrc, assetVersion),
+
+      appendAssetVersion(
+        `/assets/characters/tsuduri/${effectiveCostumeId}/neutral.png`,
+        assetVersion,
+      ),
+      appendAssetVersion(
+        "/assets/characters/tsuduri/uniform/neutral.png",
+        assetVersion,
+      ),
       appendAssetVersion(
         "/assets/characters/tsuduri/neutral.png",
         assetVersion,
@@ -345,6 +394,7 @@ export default function Stage(props: Props) {
   }, [
     charImageMap,
     effectiveCharacterId,
+    effectiveCostumeId,
     effectiveExpression,
     characterOverrideSrc,
     assetVersion,
