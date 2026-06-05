@@ -15,6 +15,7 @@ import {
   AUTO_BG_SETS,
   CHARACTER_COSTUME_OPTIONS,
   DEFAULT_SETTINGS,
+  getCostumeDateKey,
   getTimeBand,
   normalizePublicPath,
   resolveAutoBackgroundSrc,
@@ -378,6 +379,9 @@ export default function Settings({ back }: Props) {
   const characterCostumeMode: CharacterCostumeMode =
     settings.characterCostumeMode ?? DEFAULT_SETTINGS.characterCostumeMode;
   const effectiveCostumeId = resolveCharacterCostumeId(characterCostumeMode);
+  const costumeDateKey = getCostumeDateKey();
+  const effectiveCostumeLabel =
+    effectiveCostumeId === "casual" ? "私服" : "制服";
 
   const createdIds = useMemo(
     () => new Set(createdCharacters.map((c) => c.id)),
@@ -767,7 +771,49 @@ export default function Settings({ back }: Props) {
                     <div style={help}>
                       日替わりは朝5時更新。衣装テーマは全キャラ共通で、
                       表情や画面遷移によるキャラ切替では変わらないよ。
-                      現在の有効衣装: <code>{effectiveCostumeId}</code>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        background: "rgba(0,0,0,0.16)",
+                        padding: "10px 12px",
+                        display: "grid",
+                        gap: 4,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "rgba(255,255,255,0.72)",
+                        }}
+                      >
+                        今日の衣装
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 15,
+                          fontWeight: 900,
+                          color: "rgba(255,255,255,0.92)",
+                        }}
+                      >
+                        {effectiveCostumeLabel}
+                        <span
+                          style={{
+                            marginLeft: 8,
+                            fontSize: 12,
+                            fontWeight: 500,
+                            color: "rgba(255,255,255,0.58)",
+                          }}
+                        >
+                          ({effectiveCostumeId})
+                        </span>
+                      </div>
+                      <div style={help}>
+                        判定日: <code>{costumeDateKey}</code> / 更新タイミング:
+                        毎朝5時
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1223,50 +1269,21 @@ export default function Settings({ back }: Props) {
                         )}
                       </>
                     )}
-
-                    <div style={help}>
-                      ルール：
-                      <code>{`/assets/bg/${autoBgSet}_morning.png`}</code>{" "}
-                      みたいに、
-                      <code>_morning / _day / _evening / _night</code>{" "}
-                      の4枚を用意すると自動で切り替わるよ。
-                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
             <div className={cardClass} style={card}>
-              <h2 style={sectionTitle}>🪟 表示</h2>
+              <h2 style={sectionTitle}>✨ 見た目</h2>
 
               <div style={formGrid}>
                 <div style={row}>
-                  <div style={label}>背景ぼかし</div>
+                  <div style={label}>ガラス濃さ</div>
                   <div style={rowStack}>
                     <div style={controlLine}>
-                      <span style={help}>雰囲気だけ残して情報を強調</span>
-                      <span style={help}>{bgBlur}px</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={24}
-                      step={1}
-                      value={bgBlur}
-                      onChange={(e) =>
-                        set({ bgBlur: clamp(Number(e.target.value), 0, 24) })
-                      }
-                      style={fullWidthControl}
-                    />
-                  </div>
-                </div>
-
-                <div style={row}>
-                  <div style={label}>すりガラス濃さ</div>
-                  <div style={rowStack}>
-                    <div style={controlLine}>
-                      <span style={help}>UIの黒さ（薄いほど透明）</span>
-                      <span style={help}>{Math.round(glassAlpha * 100)}%</span>
+                      <span style={help}>UIパネルの濃さ</span>
+                      <span style={help}>{glassAlpha.toFixed(2)}</span>
                     </div>
                     <input
                       type="range"
@@ -1285,20 +1302,41 @@ export default function Settings({ back }: Props) {
                 </div>
 
                 <div style={row}>
-                  <div style={label}>すりガラスぼかし</div>
+                  <div style={label}>ガラスぼかし</div>
                   <div style={rowStack}>
                     <div style={controlLine}>
-                      <span style={help}>ガラス越しのぼかし</span>
-                      <span style={help}>{glassBlur}px</span>
+                      <span style={help}>backdrop-filter blur</span>
+                      <span style={help}>{Math.round(glassBlur)}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={40}
+                      step={1}
+                      value={glassBlur}
+                      onChange={(e) =>
+                        set({ glassBlur: clamp(Number(e.target.value), 0, 40) })
+                      }
+                      style={fullWidthControl}
+                    />
+                  </div>
+                </div>
+
+                <div style={row}>
+                  <div style={label}>背景ぼかし</div>
+                  <div style={rowStack}>
+                    <div style={controlLine}>
+                      <span style={help}>背景画像のぼかし</span>
+                      <span style={help}>{Math.round(bgBlur)}px</span>
                     </div>
                     <input
                       type="range"
                       min={0}
                       max={24}
                       step={1}
-                      value={glassBlur}
+                      value={bgBlur}
                       onChange={(e) =>
-                        set({ glassBlur: clamp(Number(e.target.value), 0, 24) })
+                        set({ bgBlur: clamp(Number(e.target.value), 0, 24) })
                       }
                       style={fullWidthControl}
                     />
@@ -1315,8 +1353,8 @@ export default function Settings({ back }: Props) {
               <h2 style={sectionTitle}>🌊 tide736 キャッシュ</h2>
 
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-                基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:{FIXED_PORT.hc}
-                ）
+                基準：{FIXED_PORT.name}（pc:{FIXED_PORT.pc} / hc:
+                {FIXED_PORT.hc}）
               </div>
 
               <div
