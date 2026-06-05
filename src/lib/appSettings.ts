@@ -212,10 +212,6 @@ export function getCostumeDateKey(d = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 
-function normalizeCostumeId(raw: unknown): CharacterCostumeId {
-  return raw === "casual" ? "casual" : "uniform";
-}
-
 function normalizeCostumeMode(raw: unknown): CharacterCostumeMode {
   if (raw === "uniform" || raw === "casual" || raw === "daily") return raw;
   return DEFAULT_SETTINGS.characterCostumeMode;
