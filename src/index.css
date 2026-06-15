@@ -177,19 +177,9 @@ li {
 /* スマホだけ、ほんの少し背景を流す */
 @media (hover: none) and (pointer: coarse) {
   #layer-bg {
-    transform: scale(1.08) translate3d(-4%, 0, 0);
-    animation: tsuduri-bg-mobile-pan 20s linear infinite alternate;
-    will-change: transform;
-  }
-}
-
-@keyframes tsuduri-bg-mobile-pan {
-  0% {
-    transform: scale(1.08) translate3d(-4%, 0, 0);
-  }
-
-  100% {
-    transform: scale(1.08) translate3d(4%, 0, 0);
+    transform: scale(1.035);
+    animation: none;
+    will-change: auto;
   }
 }
 
