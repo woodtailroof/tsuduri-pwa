@@ -1,5 +1,11 @@
 // src/screens/AlbumViewer.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type SyntheticEvent,
+} from "react";
 import { useAppSettings } from "../lib/appSettings";
 
 type Props = {
@@ -56,7 +62,7 @@ function canUseFullscreenApi(): boolean {
   );
 }
 
-function isMobile(): boolean {
+function isMobileDevice(): boolean {
   const ua = navigator.userAgent || "";
   return /iPhone|iPad|iPod|Android/i.test(ua);
 }
@@ -108,7 +114,6 @@ export default function AlbumViewer(props: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const stripRef = useRef<HTMLDivElement | null>(null);
   const thumbRefs = useRef<Record<number, HTMLButtonElement | null>>({});
-  const overlayTimerRef = useRef<number | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -118,9 +123,10 @@ export default function AlbumViewer(props: Props) {
   const [idx, setIdx] = useState(0);
 
   const [fs, setFs] = useState(false);
-  const [controlsVisible, setControlsVisible] = useState(true);
+  const [controlsVisible, setControlsVisible] = useState(false);
 
-  const showFullscreenButton = !isMobile() && canUseFullscreenApi();
+  const mobile = isMobileDevice();
+  const showFullscreenButton = !mobile && canUseFullscreenApi();
 
   const albumBase = useMemo(() => {
     const id = (props.albumId ?? "").trim();
@@ -140,33 +146,6 @@ export default function AlbumViewer(props: Props) {
 
   const [shownSrc, setShownSrc] = useState<string>("");
 
-  function showControls(autoHide = true) {
-    setControlsVisible(true);
-
-    if (overlayTimerRef.current != null) {
-      window.clearTimeout(overlayTimerRef.current);
-      overlayTimerRef.current = null;
-    }
-
-    if (!autoHide) return;
-
-    overlayTimerRef.current = window.setTimeout(() => {
-      setControlsVisible(false);
-      overlayTimerRef.current = null;
-    }, 3200);
-  }
-
-  useEffect(() => {
-    showControls(true);
-
-    return () => {
-      if (overlayTimerRef.current != null) {
-        window.clearTimeout(overlayTimerRef.current);
-        overlayTimerRef.current = null;
-      }
-    };
-  }, []);
-
   useEffect(() => {
     let cancelled = false;
 
@@ -174,6 +153,7 @@ export default function AlbumViewer(props: Props) {
       setLoading(true);
       setErr(null);
       setIdx(0);
+      setControlsVisible(false);
 
       try {
         if (!manifestUrl) {
@@ -249,6 +229,8 @@ export default function AlbumViewer(props: Props) {
   }, [buildSlideSrc, files, idx, shownSrc]);
 
   useEffect(() => {
+    if (!controlsVisible) return;
+
     const el = thumbRefs.current[idx];
     if (!el) return;
 
@@ -257,12 +239,11 @@ export default function AlbumViewer(props: Props) {
       block: "nearest",
       inline: "center",
     });
-  }, [idx]);
+  }, [idx, controlsVisible]);
 
   useEffect(() => {
     const onFsChange = () => {
       setFs(isFullscreenNow());
-      showControls(true);
     };
 
     document.addEventListener("fullscreenchange", onFsChange);
@@ -314,27 +295,43 @@ export default function AlbumViewer(props: Props) {
   const prev = () => {
     if (!files.length) return;
     setIdx((v) => (v - 1 + files.length) % files.length);
-    showControls(true);
   };
 
   const next = () => {
     if (!files.length) return;
     setIdx((v) => (v + 1) % files.length);
-    showControls(true);
   };
 
   const jumpTo = (nextIndex: number) => {
     if (!files.length) return;
     setIdx(clampIndex(nextIndex, files.length));
-    showControls(true);
   };
 
-  const onTap = (clientX: number, width: number) => {
+  const onTap = (
+    clientX: number,
+    width: number,
+    clientY: number,
+    height: number,
+  ) => {
     if (!files.length) return;
+
+    const bottomHotZone = clientY > height * 0.72;
+
+    if (mobile && bottomHotZone) {
+      setControlsVisible((v) => !v);
+      return;
+    }
+
     const leftSide = clientX < width * 0.4;
     if (leftSide) prev();
     else next();
   };
+
+  function handleMouseMove(clientY: number, height: number) {
+    if (mobile) return;
+    const bottomHotZone = clientY > height * 0.72;
+    setControlsVisible(bottomHotZone);
+  }
 
   async function toggleFullscreen() {
     const root = rootRef.current;
@@ -344,12 +341,10 @@ export default function AlbumViewer(props: Props) {
     else await requestFs(root);
 
     setFs(isFullscreenNow());
-    showControls(true);
   }
 
-  const stopOverlayEvent = (e: React.SyntheticEvent) => {
+  const stopOverlayEvent = (e: SyntheticEvent) => {
     e.stopPropagation();
-    showControls(true);
   };
 
   return (
@@ -364,7 +359,13 @@ export default function AlbumViewer(props: Props) {
         overflow: "hidden",
         touchAction: "manipulation",
       }}
-      onMouseMove={() => showControls(true)}
+      onMouseMove={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        handleMouseMove(e.clientY - rect.top, rect.height);
+      }}
+      onMouseLeave={() => {
+        if (!mobile) setControlsVisible(false);
+      }}
     >
       <div
         style={{ position: "absolute", inset: 0 }}
@@ -372,7 +373,12 @@ export default function AlbumViewer(props: Props) {
           const rect = (
             e.currentTarget as HTMLDivElement
           ).getBoundingClientRect();
-          onTap(e.clientX - rect.left, rect.width);
+          onTap(
+            e.clientX - rect.left,
+            rect.width,
+            e.clientY - rect.top,
+            rect.height,
+          );
         }}
       >
         {shownSrc ? (
@@ -413,9 +419,8 @@ export default function AlbumViewer(props: Props) {
           display: "flex",
           justifyContent: "space-between",
           pointerEvents: "none",
-          opacity: controlsVisible ? 1 : 0,
-          transform: controlsVisible ? "translateY(0)" : "translateY(-8px)",
-          transition: "opacity 220ms ease, transform 220ms ease",
+          opacity: controlsVisible || !shownSrc ? 1 : 0.25,
+          transition: "opacity 180ms ease",
         }}
       >
         <div style={{ pointerEvents: "none" }}>
@@ -480,13 +485,13 @@ export default function AlbumViewer(props: Props) {
             background: "rgba(0,0,0,0.42)",
             backdropFilter: "blur(14px)",
             WebkitBackdropFilter: "blur(14px)",
-            padding: "10px 12px 12px",
+            padding: mobile ? "10px 10px 12px" : "10px 12px 12px",
             display: "grid",
             gap: 10,
             pointerEvents: controlsVisible ? "auto" : "none",
             opacity: controlsVisible ? 1 : 0,
-            transform: controlsVisible ? "translateY(0)" : "translateY(14px)",
-            transition: "opacity 220ms ease, transform 220ms ease",
+            transform: controlsVisible ? "translateY(0)" : "translateY(18px)",
+            transition: "opacity 180ms ease, transform 180ms ease",
           }}
         >
           <div
@@ -525,8 +530,8 @@ export default function AlbumViewer(props: Props) {
                   title={`${i + 1} / ${files.length}`}
                   style={{
                     flex: "0 0 auto",
-                    width: "clamp(54px, 8vw, 86px)",
-                    height: "clamp(54px, 8vw, 86px)",
+                    width: mobile ? 58 : "clamp(54px, 8vw, 86px)",
+                    height: mobile ? 58 : "clamp(54px, 8vw, 86px)",
                     borderRadius: 12,
                     border: selected
                       ? "2px solid rgba(255,255,255,0.95)"
@@ -560,63 +565,77 @@ export default function AlbumViewer(props: Props) {
             })}
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "46px 1fr 46px",
-              gap: 10,
-              alignItems: "center",
-            }}
-          >
+          {!mobile && (
             <div
               style={{
-                fontSize: 12,
-                opacity: 0.72,
-                textAlign: "left",
-                fontVariantNumeric: "tabular-nums",
+                display: "grid",
+                gridTemplateColumns: "46px 1fr 46px",
+                gap: 10,
+                alignItems: "center",
               }}
             >
-              1
-            </div>
-
-            <div style={{ display: "grid", gap: 4 }}>
-              <input
-                type="range"
-                min={0}
-                max={files.length - 1}
-                step={1}
-                value={idx}
-                onChange={(e) => jumpTo(Number(e.target.value))}
-                onInput={(e) => jumpTo(Number(e.currentTarget.value))}
+              <div
                 style={{
-                  width: "100%",
-                  accentColor: "#ff7aa2",
+                  fontSize: 12,
+                  opacity: 0.72,
+                  textAlign: "left",
+                  fontVariantNumeric: "tabular-nums",
                 }}
-              />
+              >
+                1
+              </div>
+
+              <div style={{ display: "grid", gap: 4 }}>
+                <input
+                  type="range"
+                  min={0}
+                  max={files.length - 1}
+                  step={1}
+                  value={idx}
+                  onChange={(e) => jumpTo(Number(e.target.value))}
+                  style={{
+                    width: "100%",
+                    accentColor: "#ff7aa2",
+                  }}
+                />
+
+                <div
+                  style={{
+                    fontSize: 12,
+                    opacity: 0.86,
+                    textAlign: "center",
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {idx + 1} / {files.length}
+                </div>
+              </div>
 
               <div
                 style={{
                   fontSize: 12,
-                  opacity: 0.86,
-                  textAlign: "center",
+                  opacity: 0.72,
+                  textAlign: "right",
                   fontVariantNumeric: "tabular-nums",
                 }}
               >
-                {idx + 1} / {files.length}
+                {files.length}
               </div>
             </div>
+          )}
 
+          {mobile && (
             <div
               style={{
                 fontSize: 12,
-                opacity: 0.72,
-                textAlign: "right",
+                opacity: 0.86,
+                textAlign: "center",
                 fontVariantNumeric: "tabular-nums",
               }}
             >
-              {files.length}
+              {idx + 1} / {files.length}
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>
