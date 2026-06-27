@@ -96,11 +96,19 @@ function preloadImage(src: string): Promise<void> {
   });
 }
 
+function clampIndex(n: number, length: number) {
+  if (length <= 0) return 0;
+  return Math.max(0, Math.min(length - 1, n));
+}
+
 export default function AlbumViewer(props: Props) {
   const { settings } = useAppSettings();
   const assetVersion = String(settings.assetVersion ?? "").trim();
 
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const stripRef = useRef<HTMLDivElement | null>(null);
+  const thumbRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+  const overlayTimerRef = useRef<number | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -110,6 +118,7 @@ export default function AlbumViewer(props: Props) {
   const [idx, setIdx] = useState(0);
 
   const [fs, setFs] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
 
   const showFullscreenButton = !isMobile() && canUseFullscreenApi();
 
@@ -130,6 +139,33 @@ export default function AlbumViewer(props: Props) {
   }, [albumBase, assetVersion]);
 
   const [shownSrc, setShownSrc] = useState<string>("");
+
+  function showControls(autoHide = true) {
+    setControlsVisible(true);
+
+    if (overlayTimerRef.current != null) {
+      window.clearTimeout(overlayTimerRef.current);
+      overlayTimerRef.current = null;
+    }
+
+    if (!autoHide) return;
+
+    overlayTimerRef.current = window.setTimeout(() => {
+      setControlsVisible(false);
+      overlayTimerRef.current = null;
+    }, 3200);
+  }
+
+  useEffect(() => {
+    showControls(true);
+
+    return () => {
+      if (overlayTimerRef.current != null) {
+        window.clearTimeout(overlayTimerRef.current);
+        overlayTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -212,14 +248,85 @@ export default function AlbumViewer(props: Props) {
     };
   }, [buildSlideSrc, files, idx, shownSrc]);
 
+  useEffect(() => {
+    const el = thumbRefs.current[idx];
+    if (!el) return;
+
+    el.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [idx]);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      setFs(isFullscreenNow());
+      showControls(true);
+    };
+
+    document.addEventListener("fullscreenchange", onFsChange);
+    document.addEventListener("webkitfullscreenchange", onFsChange);
+    document.addEventListener("mozfullscreenchange", onFsChange);
+    document.addEventListener("MSFullscreenChange", onFsChange);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", onFsChange);
+      document.removeEventListener("webkitfullscreenchange", onFsChange);
+      document.removeEventListener("mozfullscreenchange", onFsChange);
+      document.removeEventListener("MSFullscreenChange", onFsChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!files.length) return;
+
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        prev();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        next();
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        jumpTo(0);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        jumpTo(files.length - 1);
+      } else if (e.key === " ") {
+        e.preventDefault();
+        setControlsVisible((v) => !v);
+      } else if (e.key.toLowerCase() === "f" && showFullscreenButton) {
+        e.preventDefault();
+        void toggleFullscreen();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        props.back();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files.length, showFullscreenButton, props.back]);
+
   const prev = () => {
     if (!files.length) return;
     setIdx((v) => (v - 1 + files.length) % files.length);
+    showControls(true);
   };
 
   const next = () => {
     if (!files.length) return;
     setIdx((v) => (v + 1) % files.length);
+    showControls(true);
+  };
+
+  const jumpTo = (nextIndex: number) => {
+    if (!files.length) return;
+    setIdx(clampIndex(nextIndex, files.length));
+    showControls(true);
   };
 
   const onTap = (clientX: number, width: number) => {
@@ -237,7 +344,13 @@ export default function AlbumViewer(props: Props) {
     else await requestFs(root);
 
     setFs(isFullscreenNow());
+    showControls(true);
   }
+
+  const stopOverlayEvent = (e: React.SyntheticEvent) => {
+    e.stopPropagation();
+    showControls(true);
+  };
 
   return (
     <div
@@ -249,7 +362,9 @@ export default function AlbumViewer(props: Props) {
         background: "rgba(0,0,0,0.92)",
         color: "#fff",
         overflow: "hidden",
+        touchAction: "manipulation",
       }}
+      onMouseMove={() => showControls(true)}
     >
       <div
         style={{ position: "absolute", inset: 0 }}
@@ -269,6 +384,7 @@ export default function AlbumViewer(props: Props) {
               height: "100%",
               objectFit: "contain",
               display: "block",
+              userSelect: "none",
             }}
             draggable={false}
           />
@@ -297,22 +413,23 @@ export default function AlbumViewer(props: Props) {
           display: "flex",
           justifyContent: "space-between",
           pointerEvents: "none",
+          opacity: controlsVisible ? 1 : 0,
+          transform: controlsVisible ? "translateY(0)" : "translateY(-8px)",
+          transition: "opacity 220ms ease, transform 220ms ease",
         }}
       >
         <div style={{ pointerEvents: "none" }}>
           <div style={{ fontWeight: 900 }}>{title}</div>
-          {files.length > 0 && (
-            <div style={{ fontSize: 12, opacity: 0.7 }}>
-              {idx + 1} / {files.length}
-            </div>
-          )}
         </div>
 
         <div style={{ display: "flex", gap: 8, pointerEvents: "auto" }}>
           {showFullscreenButton && (
             <button
               type="button"
-              onClick={() => void toggleFullscreen()}
+              onClick={(e) => {
+                e.stopPropagation();
+                void toggleFullscreen();
+              }}
               style={{
                 padding: "6px 10px",
                 borderRadius: 999,
@@ -329,7 +446,10 @@ export default function AlbumViewer(props: Props) {
 
           <button
             type="button"
-            onClick={props.back}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.back();
+            }}
             style={{
               padding: "6px 10px",
               borderRadius: 999,
@@ -344,6 +464,161 @@ export default function AlbumViewer(props: Props) {
           </button>
         </div>
       </div>
+
+      {files.length > 0 && (
+        <div
+          onClick={stopOverlayEvent}
+          onPointerDown={stopOverlayEvent}
+          onTouchStart={stopOverlayEvent}
+          style={{
+            position: "absolute",
+            left: "max(10px, env(safe-area-inset-left))",
+            right: "max(10px, env(safe-area-inset-right))",
+            bottom: "max(10px, env(safe-area-inset-bottom))",
+            borderRadius: 18,
+            border: "1px solid rgba(255,255,255,0.18)",
+            background: "rgba(0,0,0,0.42)",
+            backdropFilter: "blur(14px)",
+            WebkitBackdropFilter: "blur(14px)",
+            padding: "10px 12px 12px",
+            display: "grid",
+            gap: 10,
+            pointerEvents: controlsVisible ? "auto" : "none",
+            opacity: controlsVisible ? 1 : 0,
+            transform: controlsVisible ? "translateY(0)" : "translateY(14px)",
+            transition: "opacity 220ms ease, transform 220ms ease",
+          }}
+        >
+          <div
+            ref={stripRef}
+            onWheel={(e) => {
+              const el = stripRef.current;
+              if (!el) return;
+              if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+                el.scrollLeft += e.deltaY;
+              }
+            }}
+            style={{
+              display: "flex",
+              gap: 8,
+              overflowX: "auto",
+              overscrollBehaviorX: "contain",
+              paddingBottom: 2,
+              scrollbarWidth: "thin",
+            }}
+          >
+            {files.map((file, i) => {
+              const selected = i === idx;
+              const src = buildSlideSrc(file);
+
+              return (
+                <button
+                  key={`${file}-${i}`}
+                  ref={(el) => {
+                    thumbRefs.current[i] = el;
+                  }}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    jumpTo(i);
+                  }}
+                  title={`${i + 1} / ${files.length}`}
+                  style={{
+                    flex: "0 0 auto",
+                    width: "clamp(54px, 8vw, 86px)",
+                    height: "clamp(54px, 8vw, 86px)",
+                    borderRadius: 12,
+                    border: selected
+                      ? "2px solid rgba(255,255,255,0.95)"
+                      : "1px solid rgba(255,255,255,0.20)",
+                    background: selected
+                      ? "rgba(255,255,255,0.18)"
+                      : "rgba(0,0,0,0.28)",
+                    padding: 3,
+                    cursor: "pointer",
+                    boxShadow: selected
+                      ? "0 0 0 3px rgba(255,122,162,0.35)"
+                      : "none",
+                  }}
+                >
+                  <img
+                    src={src}
+                    alt=""
+                    loading="lazy"
+                    draggable={false}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      borderRadius: 9,
+                      display: "block",
+                      opacity: selected ? 1 : 0.76,
+                    }}
+                  />
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "46px 1fr 46px",
+              gap: 10,
+              alignItems: "center",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                opacity: 0.72,
+                textAlign: "left",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              1
+            </div>
+
+            <div style={{ display: "grid", gap: 4 }}>
+              <input
+                type="range"
+                min={0}
+                max={files.length - 1}
+                step={1}
+                value={idx}
+                onChange={(e) => jumpTo(Number(e.target.value))}
+                onInput={(e) => jumpTo(Number(e.currentTarget.value))}
+                style={{
+                  width: "100%",
+                  accentColor: "#ff7aa2",
+                }}
+              />
+
+              <div
+                style={{
+                  fontSize: 12,
+                  opacity: 0.86,
+                  textAlign: "center",
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {idx + 1} / {files.length}
+              </div>
+            </div>
+
+            <div
+              style={{
+                fontSize: 12,
+                opacity: 0.72,
+                textAlign: "right",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {files.length}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
