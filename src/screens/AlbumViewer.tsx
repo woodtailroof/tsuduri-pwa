@@ -317,9 +317,21 @@ export default function AlbumViewer(props: Props) {
 
     const bottomHotZone = clientY > height * 0.72;
 
-    if (mobile && bottomHotZone) {
-      setControlsVisible((v) => !v);
-      return;
+    if (mobile) {
+      if (controlsVisible) {
+        if (bottomHotZone) {
+          setControlsVisible(false);
+          return;
+        }
+
+        setControlsVisible(false);
+        return;
+      }
+
+      if (bottomHotZone) {
+        setControlsVisible(true);
+        return;
+      }
     }
 
     const leftSide = clientX < width * 0.4;
@@ -565,77 +577,16 @@ export default function AlbumViewer(props: Props) {
             })}
           </div>
 
-          {!mobile && (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "46px 1fr 46px",
-                gap: 10,
-                alignItems: "center",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 12,
-                  opacity: 0.72,
-                  textAlign: "left",
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                1
-              </div>
-
-              <div style={{ display: "grid", gap: 4 }}>
-                <input
-                  type="range"
-                  min={0}
-                  max={files.length - 1}
-                  step={1}
-                  value={idx}
-                  onChange={(e) => jumpTo(Number(e.target.value))}
-                  style={{
-                    width: "100%",
-                    accentColor: "#ff7aa2",
-                  }}
-                />
-
-                <div
-                  style={{
-                    fontSize: 12,
-                    opacity: 0.86,
-                    textAlign: "center",
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  {idx + 1} / {files.length}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  fontSize: 12,
-                  opacity: 0.72,
-                  textAlign: "right",
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                {files.length}
-              </div>
-            </div>
-          )}
-
-          {mobile && (
-            <div
-              style={{
-                fontSize: 12,
-                opacity: 0.86,
-                textAlign: "center",
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {idx + 1} / {files.length}
-            </div>
-          )}
+          <div
+            style={{
+              fontSize: 12,
+              opacity: 0.86,
+              textAlign: "center",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {idx + 1} / {files.length}
+          </div>
         </div>
       )}
     </div>
