@@ -746,7 +746,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                   }}
                 />
                 <div style={{ marginTop: 6, ...smallHint }}>
-                  コツ：ルールを増やしすぎず、“雰囲気”を先に書くと安定しやすいよ。
+                  コツ：自称・ユーザー呼び・返答の長さは上の入力欄が優先。ここには性格・世界観・口調・得意不得意を書くと安定しやすいよ。
                 </div>
               </div>
 

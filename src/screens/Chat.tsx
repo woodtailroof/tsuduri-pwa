@@ -891,7 +891,8 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         >
           {messages.length === 0 ? (
             <div style={{ color: "rgba(255,255,255,0.60)", fontSize: 13 }}>
-              {selectedCharacter.name}「ひろっち、今日はどうする？🎣」
+              {selectedCharacter.name}「{selectedCharacter.callUser}
+              、今日はどうする？🎣」
             </div>
           ) : (
             messages.map((m, index) => {

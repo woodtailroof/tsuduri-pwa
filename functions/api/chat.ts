@@ -10,9 +10,6 @@ type Msg = {
 
 type ReplyLength = "short" | "standard" | "long" | "verylong";
 
-/**
- * ✅ emotion（Stageで扱ってる6種に合わせる）
- */
 type Emotion = "neutral" | "happy" | "sad" | "think" | "surprise" | "love";
 const ALLOWED_EMOTIONS: Emotion[] = [
   "neutral",
@@ -30,41 +27,21 @@ function normalizeEmotion(v: unknown): Emotion {
   return "neutral";
 }
 
-/**
- * ✅ 表示用テキスト正規化（スマホで無駄スクロールを出さない）
- * - 空行（連続改行）を潰す
- * - 行頭末尾の余計な空白を軽く整理
- */
 function normalizeAssistantText(raw: string): string {
   const s = String(raw ?? "")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n");
 
-  // 行末スペースを削除
   const noTrail = s
     .split("\n")
     .map((line) => line.replace(/[ \t]+$/g, ""))
     .join("\n");
 
-  // ✅ 空行を全部つぶす（\n\n や \n  \n を禁止）
-  // 「段落」は改行1つで表現してもらう運用
   const collapsed = noTrail.replace(/\n\s*\n+/g, "\n");
 
   return collapsed.trim();
 }
 
-/**
- * GPTの返答が
- *  - 普通の本文だけ
- *  - 末尾にJSONを付けてくる
- * どちらでも安全に拾う
- *
- * 期待形：
- * {
- *   "text": "本文...",
- *   "emotion": "neutral|happy|sad|think|surprise|love"
- * }
- */
 function extractTextAndEmotion(raw: string): {
   text: string;
   emotion: Emotion;
@@ -72,8 +49,6 @@ function extractTextAndEmotion(raw: string): {
   const s = String(raw ?? "").trim();
   if (!s) return { text: "", emotion: "neutral" };
 
-  // 末尾のJSONらしきものを拾う（最後の { ... }）
-  // ※厳密パースで失敗したら本文扱い
   try {
     const m = s.match(/\{[\s\S]*\}$/);
     if (!m) return { text: s, emotion: "neutral" };
@@ -83,8 +58,7 @@ function extractTextAndEmotion(raw: string): {
     const text =
       typeof parsed.text === "string" && parsed.text.trim()
         ? parsed.text.trim()
-        : // textが空なら、JSONを除いた部分を本文として採用
-          s.replace(m[0], "").trim() || s;
+        : s.replace(m[0], "").trim() || s;
 
     const emotion = normalizeEmotion(parsed.emotion);
     return { text, emotion };
@@ -93,9 +67,6 @@ function extractTextAndEmotion(raw: string): {
   }
 }
 
-/**
- * 新フォーマット（推奨）
- */
 type CharacterV2 = {
   id: string;
   name: string;
@@ -105,9 +76,6 @@ type CharacterV2 = {
   prompt: string;
 };
 
-/**
- * 旧フォーマット（互換）
- */
 type CharacterLegacy = {
   id?: string;
   label?: string;
@@ -156,8 +124,14 @@ function replyLengthFromVolume(volume: number): ReplyLength {
 function normalizeReplyLength(x: unknown): ReplyLength {
   const rl = String(x ?? "").trim();
   if (rl === "medium") return "standard";
-  if (rl === "short" || rl === "standard" || rl === "long" || rl === "verylong")
+  if (
+    rl === "short" ||
+    rl === "standard" ||
+    rl === "long" ||
+    rl === "verylong"
+  ) {
     return rl;
+  }
   return DEFAULT_CHARACTER.replyLength;
 }
 
@@ -211,7 +185,6 @@ function safeCharacter(raw: unknown): CharacterV2 {
   }
 }
 
-// 簡易レート制限（軽い抑止）
 const bucket = new Map<string, { ts: number; count: number }>();
 function rateLimit(ip: string) {
   const now = Date.now();
@@ -236,8 +209,9 @@ function isFishingJudgeText(text: string) {
 
 function detectTargetDay(text: string): "today" | "tomorrow" {
   const s = text ?? "";
-  if (/(明日|あした|アシタ|tomorrow|明日の|明日行く|明日どう|明日は)/.test(s))
+  if (/(明日|あした|アシタ|tomorrow|明日の|明日行く|明日どう|明日は)/.test(s)) {
     return "tomorrow";
+  }
   return "today";
 }
 
@@ -249,9 +223,6 @@ function dayKey(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-/**
- * ===== tide736（潮）=====
- */
 type TidePoint = { unix?: number; cm: number; time?: string };
 type TideDayInfo = {
   day: string;
@@ -386,8 +357,9 @@ async function fetchTide736JSON(pc: string, hc: string, date: Date) {
   }
 
   if (!res.ok) throw new Error(`tide736_http_${res.status}`);
-  if (!isRecordLike(json) || !(json as any).status)
-    throw new Error(`tide736_status_false`);
+  if (!isRecordLike(json) || !(json as any).status) {
+    throw new Error("tide736_status_false");
+  }
 
   return json as any;
 }
@@ -467,7 +439,7 @@ async function buildTideMemo(pc: string, hc: string) {
   }
 
   const lines: string[] = [];
-  lines.push(`【潮ソース】tide736（https://api.tide736.net/get_tide.php）`);
+  lines.push("【潮ソース】tide736（https://api.tide736.net/get_tide.php）");
 
   if (t) {
     lines.push(`- 今日（${t.day}）：潮名 ${t.tideName ?? "不明"}`);
@@ -497,17 +469,21 @@ function maxOutputByLength(replyLength: ReplyLength, isJudge: boolean) {
 }
 
 function lengthRules(replyLength: ReplyLength, isJudge: boolean) {
-  if (isJudge)
+  if (isJudge) {
     return {
       lines: "20〜40行（フォーマット優先）",
       paragraphs: "段落は3〜6個",
     };
-  if (replyLength === "short")
-    return { lines: "6〜10行", paragraphs: "段落は2〜3個" };
-  if (replyLength === "standard")
-    return { lines: "10〜16行", paragraphs: "段落は3〜5個" };
-  if (replyLength === "long")
-    return { lines: "16〜24行", paragraphs: "段落は4〜6個" };
+  }
+  if (replyLength === "short") {
+    return { lines: "3〜8行", paragraphs: "段落は1〜3個" };
+  }
+  if (replyLength === "standard") {
+    return { lines: "8〜14行", paragraphs: "段落は2〜4個" };
+  }
+  if (replyLength === "long") {
+    return { lines: "14〜24行", paragraphs: "段落は3〜6個" };
+  }
   return { lines: "24〜36行", paragraphs: "段落は5〜7個" };
 }
 
@@ -517,48 +493,58 @@ function buildCharacterSystem(ch: CharacterV2, isJudge: boolean): Msg {
   const emotionRule = isJudge
     ? `- emotion は必ず "think" を指定する（釣行判断モード固定）`
     : `
-【emotion決定ルール（重要）】
-emotion は UI演出制御タグであり、本文の感情トーンと必ず一致させること。
+【emotion決定ルール】
+emotion は UI演出制御タグ。本文の感情トーンと一致させる。
 
 - 嬉しい・楽しい・前向き・成功・ワクワク → "happy"
 - 落胆・失敗・寂しい・心配・しょんぼり → "sad"
 - 迷い・相談・分析・考察・判断中 → "think"
 - 驚き・予想外・テンション急上昇 → "surprise"
-- 愛情・好意・「好き」・甘え・恋愛ニュアンス → "love"
+- 愛情・好意・甘え・親密さ → "love"
 - 上記に明確に当てはまらない場合のみ "neutral"
 
-neutral は消極的選択肢。多用しないこと。
 emotion は必ず 1つだけ選ぶ。
 `;
 
   return {
     role: "system",
     content: `
-【最優先：キャラクター憑依】
+【最優先：UI固定キャラクター設定】
 あなたは「${ch.name}」として会話する。日本語のみ。
 
+このブロックは自由記述より優先される。矛盾した場合は必ずこのブロックに従う。
 - 一人称は必ず「${ch.self}」
-- ユーザーは必ず「${ch.callUser}」と呼ぶ（別名禁止）
-- 口調/ノリ/価値観/距離感は「キャラ設定（自由記述）」を最優先に反映する
-- 他のモード指示よりも「キャラ設定（自由記述）」を優先する
+- ユーザーは必ず「${ch.callUser}」と呼ぶ
+- 別の一人称、別のユーザー呼びは禁止
+- 返答の長さは replyLength 設定に従う
+- 出力形式は必ず指定JSON形式に従う
+
+【自由記述の扱い】
+「キャラ設定（自由記述）」は、世界観・性格・口調・得意不得意・他キャラとの関係を補助する情報。
+ただし、以下は自由記述で上書きしてはいけない。
+- 一人称
+- ユーザーの呼び方
+- 返答の長さ
+- 出力形式
+- 釣行判断モードの必須フォーマット
 
 【返答の長さ】
 - ${r.lines}
 - ${r.paragraphs}
 - ユーザー文から具体ワードを1つ拾って反応してから話を進める
 
-【表示上の重要ルール（スマホ対策）】
+【表示上の重要ルール】
 - 空行（連続改行）を入れない。「\\n\\n」を作らない
 - 段落を分けたい時は空行ではなく、改行1つで区切る
 - 箇条書きも空行なしで詰めて書く
 
-【キャラ設定（自由記述）※最重要】
+【キャラ設定（自由記述）】
 ${(ch.prompt ?? "").trim() || "（未設定）"}
 
 ${emotionRule}
 
-【出力形式（最重要）】
-最後に必ず JSON を1つだけ出力する（JSON以外は末尾に置かない）：
+【出力形式】
+最後に必ず JSON を1つだけ出力する。JSON以外は末尾に置かない。
 
 {
   "text": "ユーザーに見せる本文",
@@ -601,11 +587,6 @@ function checkPasscode(env: Env, body: any, req: Request) {
   return (inHeader && inHeader === need) || (inBody && inBody === need);
 }
 
-/**
- * systemHints から Weather テキストを拾う
- * - Chat.tsx が judge の時だけ push する想定
- * - 見つからなければ null
- */
 function pickWeatherHint(systemHints: string[]): string | null {
   for (const s of systemHints) {
     const t = String(s ?? "").trim();
@@ -672,10 +653,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         ? {
             role: "system",
             content: `
-【ひろっち前提（釣りの話では反映）】
-- ルアー縛り。徒歩/自転車/車で動ける。
-- 仕事終わり22時以降 or 休日が主。
-- 特に「ド日中でも成立する釣り」が好き。
+【ユーザー前提（釣りの話では反映）】
+- ユーザーはルアー釣り中心。
+- 徒歩・自転車・車で移動できる。
+- 仕事終わり22時以降または休日の釣行が多い。
+- 日中でも成立する釣りに関心がある。
+※呼び方は必ずキャラクター設定の「${character.callUser}」を使う。
 `.trim(),
           }
         : null;
@@ -684,31 +667,25 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       ? {
           role: "system",
           content: `
-【MODE:釣行判断（総合）】
-主目的は「${targetDay === "tomorrow" ? "明日" : "今日"}の釣行判断」。結論も必ず“${
-            targetDay === "tomorrow" ? "明日" : "今日"
-          }”について出す。
+【MODE:釣行判断】
+主目的は「${targetDay === "tomorrow" ? "明日" : "今日"}の釣行判断」。
+結論も必ず「${targetDay === "tomorrow" ? "明日" : "今日"}」について出す。
 
-【出力フォーマット（順番厳守）】
-1) 結論：行く / 様子見 / やめる（最初に1行）
-2) Weather：数値を最低2つ引用。取得失敗なら「Weather：取得失敗（理由: ...）」と明記（ごまかし禁止）
-3) Tide：潮名＋満潮/干潮（時間orcm）を最低2つ引用
+【出力フォーマット】
+1) 結論：行く / 様子見 / やめる
+2) Weather：数値を最低2つ引用。取得失敗なら明記
+3) Tide：潮名＋満潮/干潮を最低2つ引用
 4) 根拠まとめ：3〜6点
 5) 作戦：2〜5点
 6) 撤収ライン
-7) 一言（説教しない）
+7) 一言
 
 【重要】
-欠落/失敗は明言。盛らない。情報が無いのに推測で埋めない。
+欠落や失敗は明言する。情報が無いのに推測で埋めない。
 `.trim(),
         }
       : null;
 
-    /**
-     * ✅ 釣行判断用のメモ
-     * - Weather：クライアント（Chat.tsx）から systemHints で来たものを使う
-     * - Tide：従来通り tide736（サーバ側）で作る
-     */
     let judgeDataMemo: Msg | null = null;
     if (isJudge) {
       const PC = "22";
@@ -726,7 +703,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       }
 
       const parts: string[] = [];
-      parts.push(`【釣行判断用データ（焼津周辺）】`);
+      parts.push("【釣行判断用データ（焼津周辺）】");
       parts.push(
         `【対象】${
           targetDay === "tomorrow"
@@ -739,7 +716,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       if (weatherFromClient) {
         parts.push(weatherFromClient);
       } else {
-        parts.push(`【Weather】取得失敗（client_hint_missing）`);
+        parts.push("【Weather】取得失敗（client_hint_missing）");
       }
 
       parts.push("");
@@ -754,16 +731,21 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const characterSystem = buildCharacterSystem(character, isJudge);
 
-    // （systemHintsは今のまま。将来の拡張に使える）
-    const hintMsgs: Msg[] = systemHints.map((s) => ({
-      role: "system",
-      content: s,
-    }));
+    const hintMsgs: Msg[] = systemHints
+      .filter((s) => {
+        if (!isJudge) return true;
+        const t = String(s ?? "").trim();
+        return !(t.startsWith("【Weather：") || t.startsWith("【Weather】"));
+      })
+      .map((s) => ({
+        role: "system",
+        content: s,
+      }));
 
     const input: Msg[] = [
+      characterSystem,
       ...(profileMemo ? [profileMemo] : []),
       ...(judgeHint ? [judgeHint] : []),
-      characterSystem,
       ...(judgeDataMemo ? [judgeDataMemo] : []),
       ...hintMsgs,
       ...trimmed,
@@ -789,11 +771,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       `${character.callUser}…ごめん、ちょっと言葉が絡まった。もう一回聞いて？`;
 
     const parsed = extractTextAndEmotion(raw);
-
-    // ✅ 表示用テキストを正規化（空行潰し）
     const normalizedText = normalizeAssistantText(parsed.text);
-
-    // ✅ isJudge はブレ抑制。味で揺らしたいならここを parsed.emotion に戻せる
     const finalEmotion: Emotion = isJudge ? "think" : parsed.emotion;
 
     return jsonResponse(200, {
