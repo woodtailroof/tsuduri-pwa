@@ -1,5 +1,15 @@
 {
   "albums": [
+     {
+      "id": "lulu/maid",
+      "title": "るる：メイド",
+      "thumb": "/assets/slides/lulu/maid/000.png",
+      "characterId": "lulu",
+      "tags": [
+        "lulu",
+        "maid"
+      ]
+    },
     {
       "id": "kokoro/sailor",
       "title": "こころ：セーラー",
