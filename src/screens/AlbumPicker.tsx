@@ -33,12 +33,13 @@ function appendAssetVersion(url: string, assetVersion: string) {
   return u.includes("?") ? `${u}&av=${encoded}` : `${u}?av=${encoded}`;
 }
 
-const CHARACTER_ORDER = ["tsuduri", "matsuri", "kokoro"] as const;
+const CHARACTER_ORDER = ["tsuduri", "matsuri", "kokoro", "lulu"] as const;
 
 const CHARACTER_LABEL: Record<string, string> = {
   tsuduri: "つづり",
   matsuri: "まつり",
   kokoro: "こころ",
+  lulu: "るる",
   other: "その他",
 };
 
