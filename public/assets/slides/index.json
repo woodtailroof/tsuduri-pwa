@@ -1,29 +1,16 @@
 {
   "albums": [
-     {
-      "id": "lulu/maid",
-      "title": "るる：メイド",
-      "thumb": "/assets/slides/lulu/maid/000.png",
-      "characterId": "lulu",
-      "tags": [
-        "lulu",
-        "maid"
-      ]
-    },
-    {
-      "id": "kokoro/sailor",
-      "title": "こころ：セーラー",
-      "thumb": "/assets/slides/kokoro/sailor/000.png",
-      "characterId": "kokoro",
-      "tags": [
-        "kokoro",
-        "sailor"
-      ]
-    },
     {
       "id": "kokoro/nude",
       "title": "こころ：ヌード",
       "thumb": "/assets/slides/kokoro/nude/000.png",
+      "characterId": "kokoro",
+      "tags": []
+    },
+    {
+      "id": "kokoro/hardcore",
+      "title": "こころ：ハードコア",
+      "thumb": "/assets/slides/kokoro/hardcore/000.png",
       "characterId": "kokoro",
       "tags": []
     },
