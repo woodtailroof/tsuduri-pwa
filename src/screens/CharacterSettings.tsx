@@ -30,8 +30,7 @@ export type CharacterProfile = {
   relationships?: string;
 
   /**
-   * V2以前との互換用。
-   * V3移行後もしばらく保持する。
+   * V2以前との互換・補足設定用。
    */
   description?: string;
 };
@@ -44,11 +43,9 @@ type CharacterExportV3 = {
   selectedId: string;
 };
 
-// ✅ 既存キーは変更しない
 export const CHARACTERS_STORAGE_KEY = "tsuduri_characters_v2";
 export const SELECTED_CHARACTER_ID_KEY = "tsuduri_selected_character_id_v2";
 
-// 直近バックアップ
 const BACKUP_KEY = "tsuduri_characters_backup_v1";
 
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
@@ -65,13 +62,14 @@ function clamp(n: number, min: number, max: number) {
 }
 
 function uid() {
-  return `c_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+  return `c_${Math.random()
+    .toString(36)
+    .slice(2, 10)}${Date.now().toString(36)}`;
 }
 
 function normalizeColor(s: string) {
   const t = String(s ?? "").trim();
-  if (!t) return "#ff7aa2";
-  return t;
+  return t || "#ff7aa2";
 }
 
 function normalizeReplyLength(raw: unknown): ReplyLength {
@@ -79,7 +77,6 @@ function normalizeReplyLength(raw: unknown): ReplyLength {
     return raw;
   }
 
-  // API側や将来形式から戻ってきた場合の互換
   if (raw === "standard") return "medium";
   if (raw === "verylong") return "long";
 
@@ -90,10 +87,6 @@ function normalizeOptionalText(raw: unknown): string {
   return typeof raw === "string" ? raw : "";
 }
 
-/**
- * V2・V3・不完全な旧データを、
- * 現行CharacterProfileへ安全に揃える。
- */
 function normalizeCharacter(
   raw: unknown,
   fallbackId?: string,
@@ -102,12 +95,12 @@ function normalizeCharacter(
 
   const source = raw as Record<string, unknown>;
 
-  const rawId =
+  const id =
     typeof source.id === "string" && source.id.trim()
       ? source.id.trim()
       : fallbackId?.trim() || uid();
 
-  const rawName =
+  const name =
     typeof source.name === "string" && source.name.trim()
       ? source.name.trim()
       : typeof source.label === "string" && source.label.trim()
@@ -134,8 +127,8 @@ function normalizeCharacter(
           : "";
 
   return {
-    id: rawId,
-    name: rawName,
+    id,
+    name,
     selfName,
     callUser,
     replyLength: normalizeReplyLength(source.replyLength),
@@ -161,8 +154,7 @@ function normalizeCharacterList(raw: unknown): CharacterProfile[] {
 
   for (const item of raw) {
     const normalized = normalizeCharacter(item);
-    if (!normalized) continue;
-    out.push(normalized);
+    if (normalized) out.push(normalized);
   }
 
   return out;
@@ -183,8 +175,7 @@ function defaultCharacter(): CharacterProfile {
     thinkingStyle: "",
     fishingRole: "",
     relationships: "",
-
-    description: "性格・口調・距離感などを書いてね。",
+    description: "",
   };
 }
 
@@ -198,15 +189,16 @@ function fallbackCharacters(): CharacterProfile[] {
       replyLength: "medium",
       color: "#ff7aa2",
 
-      worldview: "",
-      personality: "",
-      speakingStyle: "",
-      thinkingStyle: "",
-      fishingRole: "",
-      relationships: "",
-
-      description:
-        "元気で可愛い、少し甘え＆少し世話焼き。釣りは現実的に頼れる相棒。説教しない。危ないことは心配として止める。",
+      worldview: "釣嫁プロジェクトのリーダー。",
+      personality:
+        "元気で可愛く、少し甘えんぼで少し世話焼き。責任感の強い頑張り屋。",
+      speakingStyle: "明るく感情豊かで、親しみと信頼を前提に距離が近い。",
+      thinkingStyle: "要点を整理し、現実的な提案や作戦を出してから背中を押す。",
+      fishingRole:
+        "釣り経験と判断力の中心。潮・風・波・時間帯・ルアー選択を現実的に見る。",
+      relationships:
+        "ユーザーを大切な相棒として信頼し、他のメンバーをまとめる。",
+      description: "",
     },
   ];
 }
@@ -218,9 +210,7 @@ function safeLoadCharacters(): CharacterProfile[] {
   );
 
   const normalized = normalizeCharacterList(parsed);
-  if (normalized.length > 0) return normalized;
-
-  return fallbackCharacters();
+  return normalized.length > 0 ? normalized : fallbackCharacters();
 }
 
 function safeSaveCharacters(list: CharacterProfile[]) {
@@ -307,8 +297,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
       return;
     }
 
-    const exists = list.some((c) => c.id === selectedId);
-    if (!exists) {
+    if (!list.some((c) => c.id === selectedId)) {
       setSelectedId(list[0]?.id ?? "tsuduri");
     }
   }, [list, selectedId]);
@@ -319,18 +308,13 @@ export default function CharacterSettings({ back }: { back: () => void }) {
 
   function updateSelected(patch: Partial<CharacterProfile>) {
     setList((prev) =>
-      prev.map((c) => {
-        if (c.id !== selectedId) return c;
-        return { ...c, ...patch };
-      }),
+      prev.map((c) => (c.id === selectedId ? { ...c, ...patch } : c)),
     );
   }
 
   function createNew() {
     const c = defaultCharacter();
-    const next = [c, ...list];
-
-    setList(next);
+    setList((prev) => [c, ...prev]);
     setSelectedId(c.id);
   }
 
@@ -343,9 +327,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
       name: `${selected.name}（複製）`,
     };
 
-    const next = [copy, ...list];
-
-    setList(next);
+    setList((prev) => [copy, ...prev]);
     setSelectedId(copy.id);
   }
 
@@ -357,7 +339,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
 
     const next = list.filter((c) => c.id !== selected.id);
 
-    if (next.length === 0) {
+    if (!next.length) {
       const fallback = defaultCharacter();
       setList([fallback]);
       setSelectedId(fallback.id);
@@ -371,8 +353,9 @@ export default function CharacterSettings({ back }: { back: () => void }) {
   function normalizeAndSave(showToast: boolean) {
     const fixed = normalizeCharacterList(list);
 
-    if (fixed.length === 0) {
+    if (!fixed.length) {
       const fallback = fallbackCharacters();
+
       setList(fallback);
       setSelectedId(fallback[0]?.id ?? "tsuduri");
       safeSaveCharacters(fallback);
@@ -386,8 +369,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     setList(fixed);
     safeSaveCharacters(fixed);
 
-    const selectedExists = fixed.some((c) => c.id === selectedId);
-    if (!selectedExists) {
+    if (!fixed.some((c) => c.id === selectedId)) {
       const nextId = fixed[0]?.id ?? "tsuduri";
       setSelectedId(nextId);
       safeSaveSelectedId(nextId);
@@ -510,7 +492,6 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     alert("復元したよ！");
   }
 
-  // ===== 見た目 =====
   const cardBg = "rgba(0,0,0,calc(0.10 + var(--glass-alpha,0.22) * 0.70))";
   const fieldBg = "rgba(0,0,0,calc(0.16 + var(--glass-alpha,0.22) * 0.65))";
   const btnBg = "rgba(0,0,0,calc(0.12 + var(--glass-alpha,0.22) * 0.55))";
@@ -525,7 +506,8 @@ export default function CharacterSettings({ back }: { back: () => void }) {
 
   const sectionTitle: CSSProperties = {
     fontSize: 12,
-    color: "rgba(255,255,255,0.60)",
+    fontWeight: 800,
+    color: "rgba(255,255,255,0.72)",
     marginBottom: 6,
   };
 
@@ -569,11 +551,19 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     paddingRight: 34,
   };
 
+  const textareaStyle: CSSProperties = {
+    ...inputStyle,
+    resize: "vertical",
+    minHeight: 120,
+    lineHeight: 1.7,
+  };
+
   return (
     <PageShell
       title={
         <div>
           <h1 style={{ margin: 0 }}>🎭 キャラ管理</h1>
+
           <div
             style={{
               fontSize: 12,
@@ -591,10 +581,13 @@ export default function CharacterSettings({ back }: { back: () => void }) {
       onBack={back}
       titleLayout="left"
       scrollY="auto"
-      contentPadding={"clamp(10px, 2vw, 18px)"}
+      contentPadding="clamp(10px, 2vw, 18px)"
     >
       <style>{`
-        .cs-wrap { overflow-x: hidden; }
+        .cs-wrap {
+          overflow-x: hidden;
+        }
+
         .cs-grid {
           display: grid;
           grid-template-columns: 320px 1fr;
@@ -602,26 +595,67 @@ export default function CharacterSettings({ back }: { back: () => void }) {
           align-items: start;
           min-width: 0;
         }
-        .cs-panel { min-width: 0; }
+
+        .cs-panel {
+          min-width: 0;
+        }
+
+        .cs-basic-grid {
+          display: grid;
+          grid-template-columns: 1fr 220px;
+          gap: 12px;
+          min-width: 0;
+        }
+
+        .cs-meta-grid {
+          display: grid;
+          grid-template-columns: 260px 1fr;
+          gap: 12px;
+          min-width: 0;
+        }
+
+        .cs-personality-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+          min-width: 0;
+        }
 
         @media (max-width: 900px) {
-          .cs-grid { grid-template-columns: 1fr; }
+          .cs-grid {
+            grid-template-columns: 1fr;
+          }
+
           .cs-actions {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 10px;
           }
-          .cs-actions .full { grid-column: 1 / -1; }
+
+          .cs-actions .full {
+            grid-column: 1 / -1;
+          }
+
+          .cs-basic-grid,
+          .cs-meta-grid,
+          .cs-personality-grid {
+            grid-template-columns: 1fr;
+          }
         }
 
         @media (max-width: 380px) {
-          .cs-actions { grid-template-columns: 1fr; }
+          .cs-actions {
+            grid-template-columns: 1fr;
+          }
+
+          .cs-actions .full {
+            grid-column: auto;
+          }
         }
       `}</style>
 
       <div className="cs-wrap" style={{ ...glassVars }}>
         <div className="cs-grid">
-          {/* 左：操作＆一覧 */}
           <div className="cs-panel" style={{ ...glassCard, padding: 12 }}>
             <div className="cs-actions">
               <button type="button" onClick={createNew} style={btn}>
@@ -667,9 +701,10 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                 🛟 直近バックアップから復元
               </button>
 
-              <div className="full" style={{ ...smallHint }}>
-                保存先: localStorage key = {CHARACTERS_STORAGE_KEY} / 選択中 ={" "}
-                {SELECTED_CHARACTER_ID_KEY}
+              <div className="full" style={smallHint}>
+                保存先: localStorage key = {CHARACTERS_STORAGE_KEY}
+                <br />
+                選択中: {SELECTED_CHARACTER_ID_KEY}
               </div>
             </div>
 
@@ -777,7 +812,6 @@ export default function CharacterSettings({ back }: { back: () => void }) {
             </div>
           </div>
 
-          {/* 右：編集 */}
           <div className="cs-panel" style={{ ...glassCard, padding: 12 }}>
             <div
               style={{
@@ -843,21 +877,18 @@ export default function CharacterSettings({ back }: { back: () => void }) {
               }}
             />
 
-            <div style={{ display: "grid", gap: 12 }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 220px",
-                  gap: 12,
-                  minWidth: 0,
-                }}
-              >
+            <div style={{ display: "grid", gap: 14 }}>
+              <div className="cs-basic-grid">
                 <div style={{ minWidth: 0 }}>
                   <div style={sectionTitle}>名前（表示名）</div>
 
                   <input
                     value={selected?.name ?? ""}
-                    onChange={(e) => updateSelected({ name: e.target.value })}
+                    onChange={(e) =>
+                      updateSelected({
+                        name: e.target.value,
+                      })
+                    }
                     style={inputStyle}
                   />
                 </div>
@@ -868,28 +899,25 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                   <input
                     value={selected?.selfName ?? ""}
                     onChange={(e) =>
-                      updateSelected({ selfName: e.target.value })
+                      updateSelected({
+                        selfName: e.target.value,
+                      })
                     }
                     style={inputStyle}
                   />
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "260px 1fr",
-                  gap: 12,
-                  minWidth: 0,
-                }}
-              >
+              <div className="cs-meta-grid">
                 <div style={{ minWidth: 0 }}>
                   <div style={sectionTitle}>ユーザー呼び</div>
 
                   <input
                     value={selected?.callUser ?? ""}
                     onChange={(e) =>
-                      updateSelected({ callUser: e.target.value })
+                      updateSelected({
+                        callUser: e.target.value,
+                      })
                     }
                     style={inputStyle}
                   />
@@ -929,7 +957,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                   </div>
 
                   <div style={{ marginTop: 6, ...smallHint }}>
-                    ※現在はV2互換の short / medium / long
+                    ※現在は short / medium / long
                   </div>
                 </div>
               </div>
@@ -939,7 +967,11 @@ export default function CharacterSettings({ back }: { back: () => void }) {
 
                 <input
                   value={selected?.color ?? ""}
-                  onChange={(e) => updateSelected({ color: e.target.value })}
+                  onChange={(e) =>
+                    updateSelected({
+                      color: e.target.value,
+                    })
+                  }
                   style={inputStyle}
                   placeholder="#ff7aa2"
                 />
@@ -952,7 +984,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                     gap: 10,
                   }}
                 >
-                  <span style={{ ...smallHint }}>プレビュー</span>
+                  <span style={smallHint}>プレビュー</span>
 
                   <span
                     aria-hidden="true"
@@ -967,8 +999,129 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                 </div>
               </div>
 
+              <div
+                style={{
+                  height: 1,
+                  background: "rgba(255,255,255,0.10)",
+                  margin: "2px 0",
+                }}
+              />
+
+              <div
+                style={{
+                  fontWeight: 900,
+                  fontSize: 14,
+                  color: "rgba(255,255,255,0.92)",
+                }}
+              >
+                🧠 Character Profile V3
+              </div>
+
+              <div style={smallHint}>
+                自称・ユーザー呼び・返答の長さは上の専用項目が優先されるよ。
+                ここでは、人格・話し方・考え方を分けて設定する。
+              </div>
+
+              <div className="cs-personality-grid">
+                <div style={{ minWidth: 0 }}>
+                  <div style={sectionTitle}>世界観・人物像</div>
+
+                  <textarea
+                    value={selected?.worldview ?? ""}
+                    onChange={(e) =>
+                      updateSelected({
+                        worldview: e.target.value,
+                      })
+                    }
+                    rows={6}
+                    style={textareaStyle}
+                    placeholder="生い立ち、立場、現在の暮らし、プロジェクト内での役割など"
+                  />
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <div style={sectionTitle}>性格</div>
+
+                  <textarea
+                    value={selected?.personality ?? ""}
+                    onChange={(e) =>
+                      updateSelected({
+                        personality: e.target.value,
+                      })
+                    }
+                    rows={6}
+                    style={textareaStyle}
+                    placeholder="明るい、慎重、甘えんぼ、天然、負けず嫌いなど"
+                  />
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <div style={sectionTitle}>話し方</div>
+
+                  <textarea
+                    value={selected?.speakingStyle ?? ""}
+                    onChange={(e) =>
+                      updateSelected({
+                        speakingStyle: e.target.value,
+                      })
+                    }
+                    rows={6}
+                    style={textareaStyle}
+                    placeholder="口調、テンポ、距離感、説明の仕方、感情表現など"
+                  />
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <div style={sectionTitle}>考え方・判断の傾向</div>
+
+                  <textarea
+                    value={selected?.thinkingStyle ?? ""}
+                    onChange={(e) =>
+                      updateSelected({
+                        thinkingStyle: e.target.value,
+                      })
+                    }
+                    rows={6}
+                    style={textareaStyle}
+                    placeholder="まず結論を出す、慎重に比較する、直感で動く、整理して提案するなど"
+                  />
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <div style={sectionTitle}>釣りでの立ち位置</div>
+
+                  <textarea
+                    value={selected?.fishingRole ?? ""}
+                    onChange={(e) =>
+                      updateSelected({
+                        fishingRole: e.target.value,
+                      })
+                    }
+                    rows={6}
+                    style={textareaStyle}
+                    placeholder="経験、知識量、得意な釣り、苦手な釣り、チーム内の役割など"
+                  />
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <div style={sectionTitle}>ユーザー・他キャラとの関係</div>
+
+                  <textarea
+                    value={selected?.relationships ?? ""}
+                    onChange={(e) =>
+                      updateSelected({
+                        relationships: e.target.value,
+                      })
+                    }
+                    rows={6}
+                    style={textareaStyle}
+                    placeholder="ユーザーとの距離感、他キャラへの見方や呼び方、チーム内の関係など"
+                  />
+                </div>
+              </div>
+
               <div style={{ minWidth: 0 }}>
-                <div style={sectionTitle}>キャラクター設定（旧V2自由記述）</div>
+                <div style={sectionTitle}>補足設定（旧description互換）</div>
 
                 <textarea
                   value={selected?.description ?? ""}
@@ -977,28 +1130,23 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                       description: e.target.value,
                     })
                   }
-                  rows={10}
+                  rows={6}
                   style={{
-                    ...inputStyle,
-                    resize: "vertical",
-                    minHeight: 220,
-                    lineHeight: 1.7,
+                    ...textareaStyle,
+                    minHeight: 140,
                   }}
+                  placeholder="上の項目に収まりにくい補足だけを書く。自称・呼称・返答長さは書かない。"
                 />
 
                 <div style={{ marginTop: 6, ...smallHint }}>
-                  Phase1では旧設定を維持。次のPhaseで、世界観・性格・話し方・考え方・釣りでの立ち位置・関係性に分割するよ。
+                  旧V2データとの互換用。V3項目に移し終わったら空欄でも大丈夫。
                 </div>
               </div>
 
-              <div style={{ ...smallHint }}>
-                V3項目は保存・読込・インポート・エクスポートに対応済み。
-                現在の画面ではまだ編集欄を表示していません。
-              </div>
-
-              <div style={{ ...smallHint }}>
-                保存先: localStorage key = {CHARACTERS_STORAGE_KEY} / 選択中 ={" "}
-                {SELECTED_CHARACTER_ID_KEY}
+              <div style={smallHint}>
+                保存先: localStorage key = {CHARACTERS_STORAGE_KEY}
+                <br />
+                選択中: {SELECTED_CHARACTER_ID_KEY}
               </div>
             </div>
           </div>
