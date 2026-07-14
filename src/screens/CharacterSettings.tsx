@@ -17,15 +17,38 @@ export type CharacterProfile = {
   selfName?: string;
   callUser?: string;
   replyLength?: ReplyLength;
-  description?: string;
   color?: string;
+
+  /**
+   * Character Profile V3
+   */
+  worldview?: string;
+  personality?: string;
+  speakingStyle?: string;
+  thinkingStyle?: string;
+  fishingRole?: string;
+  relationships?: string;
+
+  /**
+   * V2以前との互換用。
+   * V3移行後もしばらく保持する。
+   */
+  description?: string;
 };
 
-// ✅ 既存キー（プロジェクト内で参照されてる前提）
+type CharacterExportV3 = {
+  version: 3;
+  schema: "character-profile-v3";
+  exportedAt: string;
+  characters: CharacterProfile[];
+  selectedId: string;
+};
+
+// ✅ 既存キーは変更しない
 export const CHARACTERS_STORAGE_KEY = "tsuduri_characters_v2";
 export const SELECTED_CHARACTER_ID_KEY = "tsuduri_selected_character_id_v2";
 
-// ちょい保険
+// 直近バックアップ
 const BACKUP_KEY = "tsuduri_characters_backup_v1";
 
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
@@ -46,9 +69,103 @@ function uid() {
 }
 
 function normalizeColor(s: string) {
-  const t = (s ?? "").trim();
+  const t = String(s ?? "").trim();
   if (!t) return "#ff7aa2";
   return t;
+}
+
+function normalizeReplyLength(raw: unknown): ReplyLength {
+  if (raw === "short" || raw === "medium" || raw === "long") {
+    return raw;
+  }
+
+  // API側や将来形式から戻ってきた場合の互換
+  if (raw === "standard") return "medium";
+  if (raw === "verylong") return "long";
+
+  return "medium";
+}
+
+function normalizeOptionalText(raw: unknown): string {
+  return typeof raw === "string" ? raw : "";
+}
+
+/**
+ * V2・V3・不完全な旧データを、
+ * 現行CharacterProfileへ安全に揃える。
+ */
+function normalizeCharacter(
+  raw: unknown,
+  fallbackId?: string,
+): CharacterProfile | null {
+  if (!raw || typeof raw !== "object") return null;
+
+  const source = raw as Record<string, unknown>;
+
+  const rawId =
+    typeof source.id === "string" && source.id.trim()
+      ? source.id.trim()
+      : fallbackId?.trim() || uid();
+
+  const rawName =
+    typeof source.name === "string" && source.name.trim()
+      ? source.name.trim()
+      : typeof source.label === "string" && source.label.trim()
+        ? source.label.trim()
+        : "（無名）";
+
+  const selfName =
+    typeof source.selfName === "string"
+      ? source.selfName
+      : typeof source.self === "string"
+        ? source.self
+        : "わたし";
+
+  const callUser =
+    typeof source.callUser === "string" ? source.callUser : "ひろっち";
+
+  const description =
+    typeof source.description === "string"
+      ? source.description
+      : typeof source.prompt === "string"
+        ? source.prompt
+        : typeof source.systemNote === "string"
+          ? source.systemNote
+          : "";
+
+  return {
+    id: rawId,
+    name: rawName,
+    selfName,
+    callUser,
+    replyLength: normalizeReplyLength(source.replyLength),
+    color: normalizeColor(
+      typeof source.color === "string" ? source.color : "#ff7aa2",
+    ),
+
+    worldview: normalizeOptionalText(source.worldview),
+    personality: normalizeOptionalText(source.personality),
+    speakingStyle: normalizeOptionalText(source.speakingStyle),
+    thinkingStyle: normalizeOptionalText(source.thinkingStyle),
+    fishingRole: normalizeOptionalText(source.fishingRole),
+    relationships: normalizeOptionalText(source.relationships),
+
+    description,
+  };
+}
+
+function normalizeCharacterList(raw: unknown): CharacterProfile[] {
+  if (!Array.isArray(raw)) return [];
+
+  const out: CharacterProfile[] = [];
+
+  for (const item of raw) {
+    const normalized = normalizeCharacter(item);
+    if (!normalized) continue;
+    out.push(normalized);
+  }
+
+  return out;
 }
 
 function defaultCharacter(): CharacterProfile {
@@ -58,17 +175,20 @@ function defaultCharacter(): CharacterProfile {
     selfName: "わたし",
     callUser: "ひろっち",
     replyLength: "medium",
-    description: "性格・口調・距離感などを書いてね。",
     color: "#ff7aa2",
+
+    worldview: "",
+    personality: "",
+    speakingStyle: "",
+    thinkingStyle: "",
+    fishingRole: "",
+    relationships: "",
+
+    description: "性格・口調・距離感などを書いてね。",
   };
 }
 
-function safeLoadCharacters(): CharacterProfile[] {
-  const list = safeJsonParse<CharacterProfile[]>(
-    localStorage.getItem(CHARACTERS_STORAGE_KEY),
-    [],
-  );
-  if (Array.isArray(list) && list.length) return list;
+function fallbackCharacters(): CharacterProfile[] {
   return [
     {
       id: "tsuduri",
@@ -76,19 +196,47 @@ function safeLoadCharacters(): CharacterProfile[] {
       selfName: "つづり",
       callUser: "ひろっち",
       replyLength: "medium",
+      color: "#ff7aa2",
+
+      worldview: "",
+      personality: "",
+      speakingStyle: "",
+      thinkingStyle: "",
+      fishingRole: "",
+      relationships: "",
+
       description:
         "元気で可愛い、少し甘え＆少し世話焼き。釣りは現実的に頼れる相棒。説教しない。危ないことは心配として止める。",
-      color: "#ff7aa2",
     },
   ];
 }
 
+function safeLoadCharacters(): CharacterProfile[] {
+  const parsed = safeJsonParse<unknown>(
+    localStorage.getItem(CHARACTERS_STORAGE_KEY),
+    [],
+  );
+
+  const normalized = normalizeCharacterList(parsed);
+  if (normalized.length > 0) return normalized;
+
+  return fallbackCharacters();
+}
+
 function safeSaveCharacters(list: CharacterProfile[]) {
   try {
-    localStorage.setItem(CHARACTERS_STORAGE_KEY, JSON.stringify(list));
+    const normalized = normalizeCharacterList(list);
+
+    localStorage.setItem(CHARACTERS_STORAGE_KEY, JSON.stringify(normalized));
+
     localStorage.setItem(
       BACKUP_KEY,
-      JSON.stringify({ at: new Date().toISOString(), list }),
+      JSON.stringify({
+        version: 3,
+        schema: "character-profile-v3",
+        at: new Date().toISOString(),
+        list: normalized,
+      }),
     );
   } catch {
     // ignore
@@ -116,18 +264,20 @@ function downloadText(filename: string, text: string) {
   const blob = new Blob([text], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
+
   a.href = url;
   a.download = filename;
+
   document.body.appendChild(a);
   a.click();
   a.remove();
+
   setTimeout(() => URL.revokeObjectURL(url), 500);
 }
 
 export default function CharacterSettings({ back }: { back: () => void }) {
   const { settings } = useAppSettings();
 
-  // ✅ すりガラス設定をこの画面にも流し込む（これが無いと「一部だけ反映」になる）
   const glassVars = {
     "--glass-alpha": String(clamp(settings.glassAlpha ?? 0.22, 0, 0.6)),
     "--glass-blur": `${clamp(settings.glassBlur ?? 10, 0, 40)}px`,
@@ -136,9 +286,11 @@ export default function CharacterSettings({ back }: { back: () => void }) {
   const [list, setList] = useState<CharacterProfile[]>(() =>
     safeLoadCharacters(),
   );
-  const [selectedId, setSelectedId] = useState<string>(() =>
-    safeLoadSelectedId(safeLoadCharacters()[0]?.id ?? "tsuduri"),
-  );
+
+  const [selectedId, setSelectedId] = useState<string>(() => {
+    const loaded = safeLoadCharacters();
+    return safeLoadSelectedId(loaded[0]?.id ?? "tsuduri");
+  });
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -154,10 +306,12 @@ export default function CharacterSettings({ back }: { back: () => void }) {
       setSelectedId(next[0]?.id ?? "tsuduri");
       return;
     }
+
     const exists = list.some((c) => c.id === selectedId);
-    if (!exists) setSelectedId(list[0]?.id ?? "tsuduri");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [list]);
+    if (!exists) {
+      setSelectedId(list[0]?.id ?? "tsuduri");
+    }
+  }, [list, selectedId]);
 
   useEffect(() => {
     safeSaveSelectedId(selectedId);
@@ -175,42 +329,70 @@ export default function CharacterSettings({ back }: { back: () => void }) {
   function createNew() {
     const c = defaultCharacter();
     const next = [c, ...list];
+
     setList(next);
     setSelectedId(c.id);
   }
 
   function duplicate() {
     if (!selected) return;
+
     const copy: CharacterProfile = {
       ...selected,
       id: uid(),
       name: `${selected.name}（複製）`,
     };
+
     const next = [copy, ...list];
+
     setList(next);
     setSelectedId(copy.id);
   }
 
   function removeSelected() {
     if (!selected) return;
+
     const ok = confirm(`「${selected.name}」を削除する？（戻せないよ）`);
     if (!ok) return;
+
     const next = list.filter((c) => c.id !== selected.id);
+
+    if (next.length === 0) {
+      const fallback = defaultCharacter();
+      setList([fallback]);
+      setSelectedId(fallback.id);
+      return;
+    }
+
     setList(next);
     setSelectedId(next[0]?.id ?? "tsuduri");
   }
 
   function normalizeAndSave(showToast: boolean) {
-    const fixed = list.map((c) => ({
-      ...c,
-      name: (c.name ?? "").trim() || "（無名）",
-      selfName: (c.selfName ?? "").trim(),
-      callUser: (c.callUser ?? "").trim(),
-      replyLength: (c.replyLength ?? "medium") as ReplyLength,
-      description: String(c.description ?? ""),
-      color: normalizeColor(String(c.color ?? "#ff7aa2")),
-    }));
+    const fixed = normalizeCharacterList(list);
+
+    if (fixed.length === 0) {
+      const fallback = fallbackCharacters();
+      setList(fallback);
+      setSelectedId(fallback[0]?.id ?? "tsuduri");
+      safeSaveCharacters(fallback);
+
+      if (showToast) {
+        alert("キャラ一覧が空だったので、初期キャラを復元したよ");
+      }
+      return;
+    }
+
+    setList(fixed);
     safeSaveCharacters(fixed);
+
+    const selectedExists = fixed.some((c) => c.id === selectedId);
+    if (!selectedExists) {
+      const nextId = fixed[0]?.id ?? "tsuduri";
+      setSelectedId(nextId);
+      safeSaveSelectedId(nextId);
+    }
+
     if (showToast) alert("保存したよ！");
   }
 
@@ -224,31 +406,49 @@ export default function CharacterSettings({ back }: { back: () => void }) {
   }
 
   function exportJson() {
-    const payload = {
-      version: 2,
+    const normalized = normalizeCharacterList(list);
+
+    const payload: CharacterExportV3 = {
+      version: 3,
+      schema: "character-profile-v3",
       exportedAt: new Date().toISOString(),
-      characters: list,
-      selectedId,
+      characters: normalized,
+      selectedId: normalized.some((c) => c.id === selectedId)
+        ? selectedId
+        : (normalized[0]?.id ?? "tsuduri"),
     };
+
     downloadText(
-      `tsuduri_characters_export_${Date.now()}.json`,
+      `tsuduri_characters_v3_export_${Date.now()}.json`,
       JSON.stringify(payload, null, 2),
     );
   }
 
   async function importJson(file: File) {
-    const text = await file.text();
-    const parsed = safeJsonParse<any>(text, null);
+    let text = "";
 
-    const importedList: CharacterProfile[] =
-      parsed?.characters && Array.isArray(parsed.characters)
-        ? parsed.characters
-        : Array.isArray(parsed)
-          ? parsed
-          : [];
+    try {
+      text = await file.text();
+    } catch {
+      alert("インポート失敗：ファイルを読み取れなかったよ");
+      return;
+    }
 
-    if (!importedList.length) {
-      alert("インポート失敗：形式が違うかも");
+    const parsed = safeJsonParse<unknown>(text, null);
+
+    let rawCharacters: unknown = [];
+
+    if (Array.isArray(parsed)) {
+      rawCharacters = parsed;
+    } else if (parsed && typeof parsed === "object") {
+      const obj = parsed as Record<string, unknown>;
+      rawCharacters = Array.isArray(obj.characters) ? obj.characters : [];
+    }
+
+    const cleaned = normalizeCharacterList(rawCharacters);
+
+    if (!cleaned.length) {
+      alert("インポート失敗：形式が違うか、使えるキャラが無かったよ");
       return;
     }
 
@@ -257,51 +457,60 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     );
     if (!ok) return;
 
-    const cleaned = importedList
-      .filter(
-        (c) => c && typeof c.id === "string" && typeof c.name === "string",
-      )
-      .map((c) => ({
-        id: String(c.id),
-        name: String(c.name),
-        selfName: typeof c.selfName === "string" ? c.selfName : "わたし",
-        callUser: typeof c.callUser === "string" ? c.callUser : "ひろっち",
-        replyLength: (c.replyLength as ReplyLength) ?? "medium",
-        description: typeof c.description === "string" ? c.description : "",
-        color: normalizeColor(
-          typeof c.color === "string" ? c.color : "#ff7aa2",
-        ),
-      }));
+    let importedSelectedId = cleaned[0]?.id ?? "tsuduri";
+
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const obj = parsed as Record<string, unknown>;
+
+      if (
+        typeof obj.selectedId === "string" &&
+        cleaned.some((c) => c.id === obj.selectedId)
+      ) {
+        importedSelectedId = obj.selectedId;
+      }
+    }
 
     setList(cleaned);
-    setSelectedId(
-      parsed?.selectedId && typeof parsed.selectedId === "string"
-        ? parsed.selectedId
-        : (cleaned[0]?.id ?? cleaned[0].id),
-    );
+    setSelectedId(importedSelectedId);
 
     safeSaveCharacters(cleaned);
+    safeSaveSelectedId(importedSelectedId);
+
     alert("インポート完了！");
   }
 
   function restoreFromBackup() {
     const raw = localStorage.getItem(BACKUP_KEY);
-    const parsed = safeJsonParse<any>(raw, null);
-    const backupList = parsed?.list;
-    if (!Array.isArray(backupList) || !backupList.length) {
+    const parsed = safeJsonParse<unknown>(raw, null);
+
+    if (!parsed || typeof parsed !== "object") {
       alert("バックアップが見つからないよ");
       return;
     }
+
+    const obj = parsed as Record<string, unknown>;
+    const cleaned = normalizeCharacterList(obj.list);
+
+    if (!cleaned.length) {
+      alert("バックアップ内に使えるキャラが見つからないよ");
+      return;
+    }
+
     const ok = confirm("直近バックアップから復元する？（現在の内容は上書き）");
     if (!ok) return;
-    setList(backupList as CharacterProfile[]);
-    const firstId = (backupList[0] as any)?.id;
-    setSelectedId(typeof firstId === "string" ? firstId : "tsuduri");
-    safeSaveCharacters(backupList as CharacterProfile[]);
+
+    const firstId = cleaned[0]?.id ?? "tsuduri";
+
+    setList(cleaned);
+    setSelectedId(firstId);
+
+    safeSaveCharacters(cleaned);
+    safeSaveSelectedId(firstId);
+
     alert("復元したよ！");
   }
 
-  // ===== 見た目（重要：CSS変数を使って統一）=====
+  // ===== 見た目 =====
   const cardBg = "rgba(0,0,0,calc(0.10 + var(--glass-alpha,0.22) * 0.70))";
   const fieldBg = "rgba(0,0,0,calc(0.16 + var(--glass-alpha,0.22) * 0.65))";
   const btnBg = "rgba(0,0,0,calc(0.12 + var(--glass-alpha,0.22) * 0.55))";
@@ -404,12 +613,12 @@ export default function CharacterSettings({ back }: { back: () => void }) {
           }
           .cs-actions .full { grid-column: 1 / -1; }
         }
+
         @media (max-width: 380px) {
           .cs-actions { grid-template-columns: 1fr; }
         }
       `}</style>
 
-      {/* ✅ ここで CSS 変数を画面全体に供給 */}
       <div className="cs-wrap" style={{ ...glassVars }}>
         <div className="cs-grid">
           {/* 左：操作＆一覧 */}
@@ -418,9 +627,11 @@ export default function CharacterSettings({ back }: { back: () => void }) {
               <button type="button" onClick={createNew} style={btn}>
                 ➕ 新規
               </button>
+
               <button type="button" onClick={duplicate} style={btn}>
                 🧬 複製
               </button>
+
               <button type="button" onClick={removeSelected} style={btn}>
                 🗑 選択中を削除
               </button>
@@ -470,6 +681,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
               onChange={async (e) => {
                 const f = e.target.files?.[0];
                 e.currentTarget.value = "";
+
                 if (!f) return;
                 await importJson(f);
               }}
@@ -489,6 +701,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
               {list.map((c) => {
                 const isSel = c.id === selectedId;
                 const color = normalizeColor(c.color ?? "#ff7aa2");
+
                 return (
                   <button
                     key={c.id}
@@ -499,7 +712,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                       textAlign: "left",
                       borderRadius: 14,
                       border: isSel
-                        ? `1px solid rgba(255,77,109,0.65)`
+                        ? "1px solid rgba(255,77,109,0.65)"
                         : "1px solid rgba(255,255,255,0.12)",
                       background: isSel
                         ? "rgba(255,77,109,calc(0.06 + var(--glass-alpha,0.22) * 0.20))"
@@ -532,6 +745,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                           flex: "0 0 auto",
                         }}
                       />
+
                       <div
                         style={{
                           fontWeight: 900,
@@ -574,7 +788,12 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                 flexWrap: "wrap",
               }}
             >
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "rgba(255,255,255,0.65)",
+                }}
+              >
                 選択中：{" "}
                 <strong style={{ color: "#fff" }}>
                   {selected?.name ?? "—"}
@@ -593,14 +812,23 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                 <button
                   type="button"
                   onClick={saveOnly}
-                  style={{ ...btn, width: "auto", padding: "10px 14px" }}
+                  style={{
+                    ...btn,
+                    width: "auto",
+                    padding: "10px 14px",
+                  }}
                 >
                   💾 保存
                 </button>
+
                 <button
                   type="button"
                   onClick={saveAndBack}
-                  style={{ ...btn, width: "auto", padding: "10px 14px" }}
+                  style={{
+                    ...btn,
+                    width: "auto",
+                    padding: "10px 14px",
+                  }}
                 >
                   ✅ 保存して戻る
                 </button>
@@ -626,6 +854,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
               >
                 <div style={{ minWidth: 0 }}>
                   <div style={sectionTitle}>名前（表示名）</div>
+
                   <input
                     value={selected?.name ?? ""}
                     onChange={(e) => updateSelected({ name: e.target.value })}
@@ -635,6 +864,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
 
                 <div style={{ minWidth: 0 }}>
                   <div style={sectionTitle}>自称（一人称）</div>
+
                   <input
                     value={selected?.selfName ?? ""}
                     onChange={(e) =>
@@ -655,6 +885,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
               >
                 <div style={{ minWidth: 0 }}>
                   <div style={sectionTitle}>ユーザー呼び</div>
+
                   <input
                     value={selected?.callUser ?? ""}
                     onChange={(e) =>
@@ -666,6 +897,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
 
                 <div style={{ minWidth: 0 }}>
                   <div style={sectionTitle}>返答の長さ</div>
+
                   <div style={{ position: "relative" }}>
                     <select
                       value={(selected?.replyLength ?? "medium") as ReplyLength}
@@ -680,6 +912,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                       <option value="medium">標準</option>
                       <option value="long">長め</option>
                     </select>
+
                     <span
                       style={{
                         position: "absolute",
@@ -694,20 +927,23 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                       ▼
                     </span>
                   </div>
+
                   <div style={{ marginTop: 6, ...smallHint }}>
-                    ※max_output_tokens に直結（体感差が出る）
+                    ※現在はV2互換の short / medium / long
                   </div>
                 </div>
               </div>
 
               <div style={{ minWidth: 0 }}>
                 <div style={sectionTitle}>テーマカラー</div>
+
                 <input
                   value={selected?.color ?? ""}
                   onChange={(e) => updateSelected({ color: e.target.value })}
                   style={inputStyle}
                   placeholder="#ff7aa2"
                 />
+
                 <div
                   style={{
                     marginTop: 6,
@@ -717,6 +953,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                   }}
                 >
                   <span style={{ ...smallHint }}>プレビュー</span>
+
                   <span
                     aria-hidden="true"
                     style={{
@@ -731,11 +968,14 @@ export default function CharacterSettings({ back }: { back: () => void }) {
               </div>
 
               <div style={{ minWidth: 0 }}>
-                <div style={sectionTitle}>キャラクター設定（自由記述）</div>
+                <div style={sectionTitle}>キャラクター設定（旧V2自由記述）</div>
+
                 <textarea
                   value={selected?.description ?? ""}
                   onChange={(e) =>
-                    updateSelected({ description: e.target.value })
+                    updateSelected({
+                      description: e.target.value,
+                    })
                   }
                   rows={10}
                   style={{
@@ -745,9 +985,15 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                     lineHeight: 1.7,
                   }}
                 />
+
                 <div style={{ marginTop: 6, ...smallHint }}>
-                  コツ：自称・ユーザー呼び・返答の長さは上の入力欄が優先。ここには性格・世界観・口調・得意不得意を書くと安定しやすいよ。
+                  Phase1では旧設定を維持。次のPhaseで、世界観・性格・話し方・考え方・釣りでの立ち位置・関係性に分割するよ。
                 </div>
+              </div>
+
+              <div style={{ ...smallHint }}>
+                V3項目は保存・読込・インポート・エクスポートに対応済み。
+                現在の画面ではまだ編集欄を表示していません。
               </div>
 
               <div style={{ ...smallHint }}>
