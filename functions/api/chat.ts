@@ -11,6 +11,7 @@ type Msg = {
 type ReplyLength = "short" | "standard" | "long" | "verylong";
 
 type Emotion = "neutral" | "happy" | "sad" | "think" | "surprise" | "love";
+
 const ALLOWED_EMOTIONS: Emotion[] = [
   "neutral",
   "happy",
@@ -24,80 +25,169 @@ function normalizeEmotion(v: unknown): Emotion {
   if (typeof v === "string" && (ALLOWED_EMOTIONS as string[]).includes(v)) {
     return v as Emotion;
   }
+
   return "neutral";
 }
 
+/**
+ * 表示用テキスト正規化
+ * - 改行コードを統一
+ * - 行末スペースを削除
+ * - 連続空行を1つの改行へ圧縮
+ */
 function normalizeAssistantText(raw: string): string {
   const s = String(raw ?? "")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n");
 
-  const noTrail = s
+  const noTrailingSpaces = s
     .split("\n")
     .map((line) => line.replace(/[ \t]+$/g, ""))
     .join("\n");
 
-  const collapsed = noTrail.replace(/\n\s*\n+/g, "\n");
+  const collapsed = noTrailingSpaces.replace(/\n\s*\n+/g, "\n");
 
   return collapsed.trim();
 }
 
+/**
+ * モデル返答から本文とemotionを取り出す。
+ *
+ * 対応形：
+ * 1. JSONだけ
+ * 2. 本文の末尾にJSON
+ * 3. 本文だけ
+ */
 function extractTextAndEmotion(raw: string): {
   text: string;
   emotion: Emotion;
 } {
   const s = String(raw ?? "").trim();
-  if (!s) return { text: "", emotion: "neutral" };
+
+  if (!s) {
+    return {
+      text: "",
+      emotion: "neutral",
+    };
+  }
+
+  // まず、返答全体がJSONか試す
+  try {
+    const parsed = JSON.parse(s) as {
+      text?: unknown;
+      emotion?: unknown;
+    };
+
+    if (typeof parsed.text === "string" || typeof parsed.emotion === "string") {
+      return {
+        text: typeof parsed.text === "string" ? parsed.text.trim() : "",
+        emotion: normalizeEmotion(parsed.emotion),
+      };
+    }
+  } catch {
+    // 全体JSONでなければ末尾JSONを試す
+  }
 
   try {
-    const m = s.match(/\{[\s\S]*\}$/);
-    if (!m) return { text: s, emotion: "neutral" };
+    const match = s.match(/\{[\s\S]*\}$/);
 
-    const parsed = JSON.parse(m[0]) as { text?: unknown; emotion?: unknown };
+    if (!match) {
+      return {
+        text: s,
+        emotion: "neutral",
+      };
+    }
+
+    const parsed = JSON.parse(match[0]) as {
+      text?: unknown;
+      emotion?: unknown;
+    };
 
     const text =
       typeof parsed.text === "string" && parsed.text.trim()
         ? parsed.text.trim()
-        : s.replace(m[0], "").trim() || s;
+        : s.replace(match[0], "").trim() || s;
 
-    const emotion = normalizeEmotion(parsed.emotion);
-    return { text, emotion };
+    return {
+      text,
+      emotion: normalizeEmotion(parsed.emotion),
+    };
   } catch {
-    return { text: s, emotion: "neutral" };
+    return {
+      text: s,
+      emotion: "neutral",
+    };
   }
 }
 
-type CharacterV2 = {
+/**
+ * Character Profile V3
+ */
+type CharacterV3 = {
   id: string;
   name: string;
   self: string;
   callUser: string;
   replyLength: ReplyLength;
-  prompt: string;
+
+  worldview: string;
+  personality: string;
+  speakingStyle: string;
+  thinkingStyle: string;
+  fishingRole: string;
+  relationships: string;
+
+  /**
+   * 旧description・prompt互換と補足設定。
+   */
+  description: string;
 };
 
+/**
+ * 旧フォーマットとの互換入力
+ */
 type CharacterLegacy = {
   id?: string;
   label?: string;
-  selfName?: string;
-  callUser?: string;
-  systemNote?: string;
-  volume?: number;
-  replyLength?: ReplyLength | "medium";
-  prompt?: string;
+
   name?: string;
   self?: string;
+  selfName?: string;
+  callUser?: string;
+
+  replyLength?: ReplyLength | "medium";
+  volume?: number;
+
+  prompt?: string;
   description?: string;
+  systemNote?: string;
+
+  worldview?: string;
+  personality?: string;
+  speakingStyle?: string;
+  thinkingStyle?: string;
+  fishingRole?: string;
+  relationships?: string;
 };
 
-const DEFAULT_CHARACTER: CharacterV2 = {
+const DEFAULT_CHARACTER: CharacterV3 = {
   id: "tsuduri",
   name: "釣嫁つづり",
   self: "つづり",
   callUser: "ひろっち",
   replyLength: "standard",
-  prompt:
-    "元気で可愛い、少し甘え＆少し世話焼き。釣りは現実的に頼れる相棒。説教は禁止、心配として言う。必要なら軽い煽りもOK。",
+
+  worldview: "釣嫁プロジェクトのリーダー。",
+  personality:
+    "元気で可愛く、少し甘えんぼで少し世話焼き。責任感の強い頑張り屋。",
+  speakingStyle: "明るく感情豊かで、親しみと信頼を前提に距離が近い。",
+  thinkingStyle: "要点を整理し、現実的な提案や作戦を出してから背中を押す。",
+  fishingRole:
+    "釣り経験と判断力の中心。潮・風・波・時間帯・ルアー選択を現実的に見る。",
+  relationships: "ユーザーを大切な相棒として信頼し、他のメンバーをまとめる。",
+
+  description:
+    "説教は禁止。危ないことは突き放さず、心配として止める。必要なら軽い煽りも使う。",
 };
 
 type Env = {
@@ -109,29 +199,38 @@ function safeString(v: unknown, fallback = "") {
   return typeof v === "string" ? v : fallback;
 }
 
+function cleanText(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
 function replyLengthFromVolume(volume: number): ReplyLength {
   const v = clamp(Math.round(volume), 0, 100);
+
   if (v <= 25) return "short";
   if (v <= 55) return "standard";
   if (v <= 80) return "long";
+
   return "verylong";
 }
 
 function normalizeReplyLength(x: unknown): ReplyLength {
-  const rl = String(x ?? "").trim();
-  if (rl === "medium") return "standard";
+  const value = String(x ?? "").trim();
+
+  if (value === "medium") return "standard";
+
   if (
-    rl === "short" ||
-    rl === "standard" ||
-    rl === "long" ||
-    rl === "verylong"
+    value === "short" ||
+    value === "standard" ||
+    value === "long" ||
+    value === "verylong"
   ) {
-    return rl;
+    return value;
   }
+
   return DEFAULT_CHARACTER.replyLength;
 }
 
@@ -139,65 +238,121 @@ function isRecordLike(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
 }
 
-function safeCharacter(raw: unknown): CharacterV2 {
+/**
+ * V2/V3/LegacyをCharacterV3へ揃える。
+ */
+function safeCharacter(raw: unknown): CharacterV3 {
   try {
-    if (!raw || typeof raw !== "object") return DEFAULT_CHARACTER;
-    const r = raw as CharacterV2 & CharacterLegacy;
+    if (!raw || typeof raw !== "object") {
+      return DEFAULT_CHARACTER;
+    }
 
-    const id =
-      typeof r.id === "string" && r.id.trim()
-        ? r.id.trim()
-        : DEFAULT_CHARACTER.id;
+    const r = raw as CharacterLegacy;
+
+    const id = cleanText(r.id) || DEFAULT_CHARACTER.id;
 
     const name =
-      (typeof r.name === "string" && r.name.trim() ? r.name.trim() : "") ||
-      (typeof r.label === "string" && r.label.trim() ? r.label.trim() : "") ||
-      DEFAULT_CHARACTER.name;
+      cleanText(r.name) || cleanText(r.label) || DEFAULT_CHARACTER.name;
 
     const self =
-      (typeof r.self === "string" && r.self.trim() ? r.self.trim() : "") ||
-      (typeof r.selfName === "string" && r.selfName.trim()
-        ? r.selfName.trim()
-        : "") ||
-      DEFAULT_CHARACTER.self;
+      cleanText(r.self) || cleanText(r.selfName) || DEFAULT_CHARACTER.self;
 
-    const callUser =
-      typeof r.callUser === "string" && r.callUser.trim()
-        ? r.callUser.trim()
-        : DEFAULT_CHARACTER.callUser;
-
-    const prompt =
-      (typeof r.prompt === "string" ? r.prompt : "") ||
-      (typeof r.description === "string" ? r.description : "") ||
-      (typeof r.systemNote === "string" ? r.systemNote : "") ||
-      DEFAULT_CHARACTER.prompt;
+    const callUser = cleanText(r.callUser) || DEFAULT_CHARACTER.callUser;
 
     const replyLength =
-      (r.replyLength ? normalizeReplyLength(r.replyLength) : null) ??
-      (Number.isFinite(Number(r.volume))
-        ? replyLengthFromVolume(Number(r.volume))
-        : null) ??
-      DEFAULT_CHARACTER.replyLength;
+      r.replyLength != null
+        ? normalizeReplyLength(r.replyLength)
+        : Number.isFinite(Number(r.volume))
+          ? replyLengthFromVolume(Number(r.volume))
+          : DEFAULT_CHARACTER.replyLength;
 
-    return { id, name, self, callUser, replyLength, prompt };
+    /**
+     * V3項目
+     */
+    const worldview = cleanText(r.worldview);
+    const personality = cleanText(r.personality);
+    const speakingStyle = cleanText(r.speakingStyle);
+    const thinkingStyle = cleanText(r.thinkingStyle);
+    const fishingRole = cleanText(r.fishingRole);
+    const relationships = cleanText(r.relationships);
+
+    /**
+     * 旧V2の自由記述はdescriptionへ集約。
+     */
+    const description =
+      cleanText(r.description) ||
+      cleanText(r.prompt) ||
+      cleanText(r.systemNote);
+
+    const hasStructuredProfile =
+      !!worldview ||
+      !!personality ||
+      !!speakingStyle ||
+      !!thinkingStyle ||
+      !!fishingRole ||
+      !!relationships;
+
+    /**
+     * V3項目が完全に空なら、
+     * 旧自由記述を性格欄として扱って互換性を維持する。
+     */
+    return {
+      id,
+      name,
+      self,
+      callUser,
+      replyLength,
+
+      worldview: hasStructuredProfile ? worldview : "",
+
+      personality: hasStructuredProfile
+        ? personality
+        : description || DEFAULT_CHARACTER.personality,
+
+      speakingStyle: hasStructuredProfile ? speakingStyle : "",
+
+      thinkingStyle: hasStructuredProfile ? thinkingStyle : "",
+
+      fishingRole: hasStructuredProfile ? fishingRole : "",
+
+      relationships: hasStructuredProfile ? relationships : "",
+
+      description:
+        description ||
+        (hasStructuredProfile ? "" : DEFAULT_CHARACTER.description),
+    };
   } catch {
     return DEFAULT_CHARACTER;
   }
 }
 
+/**
+ * 簡易レート制限
+ */
 const bucket = new Map<string, { ts: number; count: number }>();
+
 function rateLimit(ip: string) {
   const now = Date.now();
   const windowMs = 60_000;
   const limit = 40;
 
-  const cur = bucket.get(ip);
-  if (!cur || now - cur.ts > windowMs) {
-    bucket.set(ip, { ts: now, count: 1 });
+  const current = bucket.get(ip);
+
+  if (!current || now - current.ts > windowMs) {
+    bucket.set(ip, {
+      ts: now,
+      count: 1,
+    });
+
     return true;
   }
-  if (cur.count >= limit) return false;
-  cur.count++;
+
+  if (current.count >= limit) {
+    return false;
+  }
+
+  current.count++;
+
   return true;
 }
 
@@ -209,9 +364,11 @@ function isFishingJudgeText(text: string) {
 
 function detectTargetDay(text: string): "today" | "tomorrow" {
   const s = text ?? "";
+
   if (/(明日|あした|アシタ|tomorrow|明日の|明日行く|明日どう|明日は)/.test(s)) {
     return "tomorrow";
   }
+
   return "today";
 }
 
@@ -223,101 +380,179 @@ function dayKey(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-type TidePoint = { unix?: number; cm: number; time?: string };
+/**
+ * ===== tide736 =====
+ */
+
+type TidePoint = {
+  unix?: number;
+  cm: number;
+  time?: string;
+};
+
 type TideDayInfo = {
   day: string;
   tideName: string | null;
-  highs: { time: string; cm: number }[];
-  lows: { time: string; cm: number }[];
+  highs: {
+    time: string;
+    cm: number;
+  }[];
+  lows: {
+    time: string;
+    cm: number;
+  }[];
 };
 
 function toMinutes(p: TidePoint): number | null {
   if (p.time) {
     const [hh, mm] = p.time.split(":").map((v) => Number(v));
-    if (Number.isFinite(hh) && Number.isFinite(mm)) return hh * 60 + mm;
+
+    if (Number.isFinite(hh) && Number.isFinite(mm)) {
+      return hh * 60 + mm;
+    }
   }
+
   if (typeof p.unix === "number") {
     const ms = p.unix < 1e12 ? p.unix * 1000 : p.unix;
+
     const d = new Date(ms);
+
     return d.getHours() * 60 + d.getMinutes();
   }
+
   return null;
 }
 
 function formatHMFromMinutes(totalMin: number) {
   const m = clamp(Math.round(totalMin), 0, 1440);
+
   const h = Math.floor(m / 60);
   const mm = m % 60;
+
   return `${pad2(h)}:${pad2(mm)}`;
 }
 
-type TideExtreme = { kind: "high" | "low"; min: number; cm: number };
+type TideExtreme = {
+  kind: "high" | "low";
+  min: number;
+  cm: number;
+};
 
 function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
-  const pts: { min: number; cm: number }[] = [];
+  const points: {
+    min: number;
+    cm: number;
+  }[] = [];
+
   for (const p of series) {
     const m = toMinutes(p);
+
     if (m == null) continue;
-    pts.push({ min: clamp(m, 0, 1440), cm: p.cm });
-  }
-  if (pts.length < 3) return [];
 
-  pts.sort((a, b) => a.min - b.min);
-
-  const uniq: { min: number; cm: number }[] = [];
-  for (const p of pts) {
-    const last = uniq[uniq.length - 1];
-    if (last && last.min === p.min) uniq[uniq.length - 1] = p;
-    else uniq.push(p);
+    points.push({
+      min: clamp(m, 0, 1440),
+      cm: p.cm,
+    });
   }
 
-  if (uniq.length >= 2) {
-    const first = uniq[0];
-    const last = uniq[uniq.length - 1];
-    if (first.min > 0) uniq.unshift({ min: 0, cm: first.cm });
-    if (last.min < 1440) uniq.push({ min: 1440, cm: last.cm });
+  if (points.length < 3) {
+    return [];
+  }
+
+  points.sort((a, b) => a.min - b.min);
+
+  const unique: {
+    min: number;
+    cm: number;
+  }[] = [];
+
+  for (const p of points) {
+    const last = unique[unique.length - 1];
+
+    if (last && last.min === p.min) {
+      unique[unique.length - 1] = p;
+    } else {
+      unique.push(p);
+    }
+  }
+
+  if (unique.length >= 2) {
+    const first = unique[0];
+    const last = unique[unique.length - 1];
+
+    if (first.min > 0) {
+      unique.unshift({
+        min: 0,
+        cm: first.cm,
+      });
+    }
+
+    if (last.min < 1440) {
+      unique.push({
+        min: 1440,
+        cm: last.cm,
+      });
+    }
   }
 
   const EPS_CM = 1;
   const raw: TideExtreme[] = [];
-  let prevSlope = 0;
 
-  for (let i = 1; i < uniq.length; i++) {
-    const d = uniq[i].cm - uniq[i - 1].cm;
-    const slope = Math.abs(d) <= EPS_CM ? 0 : d > 0 ? 1 : -1;
+  let previousSlope = 0;
+
+  for (let i = 1; i < unique.length; i++) {
+    const diff = unique[i].cm - unique[i - 1].cm;
+
+    const slope = Math.abs(diff) <= EPS_CM ? 0 : diff > 0 ? 1 : -1;
 
     if (i >= 2) {
-      const a = prevSlope;
-      const b = slope;
-      const mid = uniq[i - 1];
-      if (a > 0 && b < 0) raw.push({ kind: "high", min: mid.min, cm: mid.cm });
-      else if (a < 0 && b > 0)
-        raw.push({ kind: "low", min: mid.min, cm: mid.cm });
+      const before = previousSlope;
+      const after = slope;
+      const middle = unique[i - 1];
+
+      if (before > 0 && after < 0) {
+        raw.push({
+          kind: "high",
+          min: middle.min,
+          cm: middle.cm,
+        });
+      } else if (before < 0 && after > 0) {
+        raw.push({
+          kind: "low",
+          min: middle.min,
+          cm: middle.cm,
+        });
+      }
     }
 
-    if (slope !== 0) prevSlope = slope;
+    if (slope !== 0) {
+      previousSlope = slope;
+    }
   }
 
   const MERGE_MIN = 5;
   const merged: TideExtreme[] = [];
-  for (const e of raw) {
+
+  for (const extreme of raw) {
     const last = merged[merged.length - 1];
+
     if (
       last &&
-      last.kind === e.kind &&
-      Math.abs(e.min - last.min) <= MERGE_MIN
+      last.kind === extreme.kind &&
+      Math.abs(extreme.min - last.min) <= MERGE_MIN
     ) {
-      const pick =
-        e.kind === "high"
-          ? e.cm >= last.cm
-            ? e
+      const selected =
+        extreme.kind === "high"
+          ? extreme.cm >= last.cm
+            ? extreme
             : last
-          : e.cm <= last.cm
-            ? e
+          : extreme.cm <= last.cm
+            ? extreme
             : last;
-      merged[merged.length - 1] = pick;
+
+      merged[merged.length - 1] = selected;
     } else {
-      merged.push(e);
+      merged.push(extreme);
     }
   }
 
@@ -325,6 +560,7 @@ function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
     .filter((e) => e.kind === "high")
     .sort((a, b) => a.min - b.min)
     .slice(0, 2);
+
   const lows = merged
     .filter((e) => e.kind === "low")
     .sort((a, b) => a.min - b.min)
@@ -339,6 +575,7 @@ async function fetchTide736JSON(pc: string, hc: string, date: Date) {
   const dy = date.getDate();
 
   const url = new URL("https://api.tide736.net/get_tide.php");
+
   url.searchParams.set("pc", pc);
   url.searchParams.set("hc", hc);
   url.searchParams.set("yr", String(yr));
@@ -346,18 +583,22 @@ async function fetchTide736JSON(pc: string, hc: string, date: Date) {
   url.searchParams.set("dy", String(dy));
   url.searchParams.set("rg", "day");
 
-  const res = await fetch(url.toString());
-  const text = await res.text();
+  const response = await fetch(url.toString());
+  const text = await response.text();
 
   let json: unknown;
+
   try {
     json = JSON.parse(text) as unknown;
   } catch {
     throw new Error(`tide736_json_parse_failed: ${text.slice(0, 120)}`);
   }
 
-  if (!res.ok) throw new Error(`tide736_http_${res.status}`);
-  if (!isRecordLike(json) || !(json as any).status) {
+  if (!response.ok) {
+    throw new Error(`tide736_http_${response.status}`);
+  }
+
+  if (!isRecordLike(json) || !(json as Record<string, unknown>).status) {
     throw new Error("tide736_status_false");
   }
 
@@ -368,12 +609,21 @@ function extractTideSeries(json: any, date: Date): TidePoint[] {
   const yr = date.getFullYear();
   const mn = date.getMonth() + 1;
   const dy = date.getDate();
+
   const direct = json?.tide?.tide;
-  if (Array.isArray(direct) && direct.length > 0) return direct as TidePoint[];
+
+  if (Array.isArray(direct) && direct.length > 0) {
+    return direct as TidePoint[];
+  }
 
   const key = `${yr}-${pad2(mn)}-${pad2(dy)}`;
+
   const chart = json?.tide?.chart?.[key]?.tide;
-  if (Array.isArray(chart) && chart.length > 0) return chart as TidePoint[];
+
+  if (Array.isArray(chart) && chart.length > 0) {
+    return chart as TidePoint[];
+  }
+
   return [];
 }
 
@@ -381,11 +631,21 @@ function extractTideName(json: any, date: Date): string | null {
   const yr = date.getFullYear();
   const mn = date.getMonth() + 1;
   const dy = date.getDate();
+
   const key = `${yr}-${pad2(mn)}-${pad2(dy)}`;
+
   const title = json?.tide?.chart?.[key]?.moon?.title;
-  if (typeof title === "string" && title.length > 0) return title;
+
+  if (typeof title === "string" && title.length > 0) {
+    return title;
+  }
+
   const fallback = json?.tide?.moon?.title;
-  if (typeof fallback === "string" && fallback.length > 0) return fallback;
+
+  if (typeof fallback === "string" && fallback.length > 0) {
+    return fallback;
+  }
+
   return null;
 }
 
@@ -396,165 +656,319 @@ async function fetchTideDayInfo(
 ): Promise<TideDayInfo> {
   const day = dayKey(date);
   const json = await fetchTide736JSON(pc, hc, date);
+
   const series = extractTideSeries(json, date);
+
   const tideName = extractTideName(json, date);
 
   const extremes = extractExtremesBySlope(series);
+
   const highs = extremes
     .filter((e) => e.kind === "high")
     .slice(0, 2)
-    .map((e) => ({ time: formatHMFromMinutes(e.min), cm: Math.round(e.cm) }));
+    .map((e) => ({
+      time: formatHMFromMinutes(e.min),
+      cm: Math.round(e.cm),
+    }));
+
   const lows = extremes
     .filter((e) => e.kind === "low")
     .slice(0, 2)
-    .map((e) => ({ time: formatHMFromMinutes(e.min), cm: Math.round(e.cm) }));
+    .map((e) => ({
+      time: formatHMFromMinutes(e.min),
+      cm: Math.round(e.cm),
+    }));
 
-  return { day, tideName, highs, lows };
+  return {
+    day,
+    tideName,
+    highs,
+    lows,
+  };
 }
 
-function fmtHL(label: string, arr: { time: string; cm: number }[]) {
-  if (!arr.length) return `${label}：-`;
+function fmtHL(
+  label: string,
+  arr: {
+    time: string;
+    cm: number;
+  }[],
+) {
+  if (!arr.length) {
+    return `${label}：-`;
+  }
+
   return `${label}：${arr.map((x) => `${x.time}（${x.cm}cm）`).join(" / ")}`;
 }
 
 async function buildTideMemo(pc: string, hc: string) {
   const today = new Date();
   const tomorrow = new Date();
+
   tomorrow.setDate(today.getDate() + 1);
 
-  let errT: string | null = null;
-  let errTm: string | null = null;
-  let t: TideDayInfo | null = null;
-  let tm: TideDayInfo | null = null;
+  let todayError: string | null = null;
+  let tomorrowError: string | null = null;
+
+  let todayInfo: TideDayInfo | null = null;
+  let tomorrowInfo: TideDayInfo | null = null;
 
   try {
-    t = await fetchTideDayInfo(pc, hc, today);
+    todayInfo = await fetchTideDayInfo(pc, hc, today);
   } catch (e) {
-    errT = e instanceof Error ? e.message : String(e);
+    todayError = e instanceof Error ? e.message : String(e);
   }
+
   try {
-    tm = await fetchTideDayInfo(pc, hc, tomorrow);
+    tomorrowInfo = await fetchTideDayInfo(pc, hc, tomorrow);
   } catch (e) {
-    errTm = e instanceof Error ? e.message : String(e);
+    tomorrowError = e instanceof Error ? e.message : String(e);
   }
 
   const lines: string[] = [];
+
   lines.push("【潮ソース】tide736（https://api.tide736.net/get_tide.php）");
 
-  if (t) {
-    lines.push(`- 今日（${t.day}）：潮名 ${t.tideName ?? "不明"}`);
-    lines.push(`  ${fmtHL("満潮", t.highs)}`);
-    lines.push(`  ${fmtHL("干潮", t.lows)}`);
+  if (todayInfo) {
+    lines.push(
+      `- 今日（${todayInfo.day}）：潮名 ${todayInfo.tideName ?? "不明"}`,
+    );
+
+    lines.push(`  ${fmtHL("満潮", todayInfo.highs)}`);
+
+    lines.push(`  ${fmtHL("干潮", todayInfo.lows)}`);
   } else {
-    lines.push(`- 今日：取得失敗（${errT ?? "unknown"}）`);
+    lines.push(`- 今日：取得失敗（${todayError ?? "unknown"}）`);
   }
 
-  if (tm) {
-    lines.push(`- 明日（${tm.day}）：潮名 ${tm.tideName ?? "不明"}`);
-    lines.push(`  ${fmtHL("満潮", tm.highs)}`);
-    lines.push(`  ${fmtHL("干潮", tm.lows)}`);
+  if (tomorrowInfo) {
+    lines.push(
+      `- 明日（${tomorrowInfo.day}）：潮名 ${tomorrowInfo.tideName ?? "不明"}`,
+    );
+
+    lines.push(`  ${fmtHL("満潮", tomorrowInfo.highs)}`);
+
+    lines.push(`  ${fmtHL("干潮", tomorrowInfo.lows)}`);
   } else {
-    lines.push(`- 明日：取得失敗（${errTm ?? "unknown"}）`);
+    lines.push(`- 明日：取得失敗（${tomorrowError ?? "unknown"}）`);
   }
 
   return lines.join("\n");
 }
 
+/**
+ * 出力可能な最大トークン数。
+ * これは上限であり、実際の返答量はlengthRulesで誘導する。
+ */
 function maxOutputByLength(replyLength: ReplyLength, isJudge: boolean) {
-  if (isJudge) return 1550;
-  if (replyLength === "short") return 650;
-  if (replyLength === "standard") return 1150;
-  if (replyLength === "long") return 1700;
-  return 2300;
+  if (isJudge) return 1800;
+  if (replyLength === "short") return 700;
+  if (replyLength === "standard") return 1250;
+  if (replyLength === "long") return 1900;
+
+  return 2500;
 }
 
-function lengthRules(replyLength: ReplyLength, isJudge: boolean) {
+type LengthRule = {
+  target: string;
+  minimum: string;
+  composition: string;
+  richness: string;
+};
+
+function lengthRules(replyLength: ReplyLength, isJudge: boolean): LengthRule {
   if (isJudge) {
     return {
-      lines: "20〜40行（フォーマット優先）",
-      paragraphs: "段落は3〜6個",
+      target: "指定された7項目を省略せず、全体で700〜1300文字程度",
+      minimum: "最低でもWeather・Tide・根拠・作戦・撤収ラインを具体的に書く",
+      composition:
+        "結論 → Weather → Tide → 根拠 → 作戦 → 撤収ライン → キャラらしい一言",
+      richness:
+        "数値と判断を中心にしつつ、キャラクターらしい心配・応援・距離感も残す",
     };
   }
+
   if (replyLength === "short") {
-    return { lines: "3〜8行", paragraphs: "段落は1〜3個" };
+    return {
+      target: "120〜220文字程度",
+      minimum: "最低でもキャラクターらしい反応と、質問への答えを含める",
+      composition: "反応 → 要点 → 一言",
+      richness: "簡潔でも、無機質な一問一答にせず、話し方と感情を見せる",
+    };
   }
+
   if (replyLength === "standard") {
-    return { lines: "8〜14行", paragraphs: "段落は2〜4個" };
+    return {
+      target: "300〜550文字程度",
+      minimum: "最低でもキャラクターらしい受け止め、回答、理由、提案を含める",
+      composition: "反応 → 結論 → 理由や背景 → 具体的な提案 → キャラらしい締め",
+      richness:
+        "名前を隠しても誰が話しているか伝わる程度に、性格・思考・距離感を出す",
+    };
   }
+
   if (replyLength === "long") {
-    return { lines: "14〜24行", paragraphs: "段落は3〜6個" };
+    return {
+      target: "650〜1000文字程度",
+      minimum:
+        "結論だけで終わらず、背景、複数の理由、具体例、選択肢、提案まで書く",
+      composition:
+        "反応 → 結論 → 背景 → 複数の観点 → 具体例 → 選択肢 → 提案 → キャラらしい締め",
+      richness:
+        "情報量だけで水増しせず、そのキャラクターがどう考え、どう感じ、どう伝えるかを十分に表現する",
+    };
   }
-  return { lines: "24〜36行", paragraphs: "段落は5〜7個" };
+
+  return {
+    target: "1000〜1500文字程度",
+    minimum: "複数の観点、背景、比較、具体例、注意点、提案を丁寧に書く",
+    composition:
+      "感情的な反応 → 結論 → 詳しい背景 → 多角的な分析 → 具体例 → 比較 → 注意点 → 実行案 → キャラらしい締め",
+    richness:
+      "ユーザーとの会話を楽しめる密度で、人格・価値観・関係性を強く表現する",
+  };
 }
 
-function buildCharacterSystem(ch: CharacterV2, isJudge: boolean): Msg {
-  const r = lengthRules(ch.replyLength, isJudge);
+function profileSection(title: string, text: string) {
+  const value = text.trim();
+
+  return `【${title}】
+${value || "（未設定）"}`;
+}
+
+/**
+ * キャラクター用system prompt
+ */
+function buildCharacterSystem(character: CharacterV3, isJudge: boolean): Msg {
+  const length = lengthRules(character.replyLength, isJudge);
 
   const emotionRule = isJudge
-    ? `- emotion は必ず "think" を指定する（釣行判断モード固定）`
+    ? `
+【emotion決定ルール】
+- 釣行判断モードでは emotion を必ず "think" にする。
+`
     : `
 【emotion決定ルール】
-emotion は UI演出制御タグ。本文の感情トーンと一致させる。
+emotion はUI演出制御タグであり、本文の感情と一致させる。
 
 - 嬉しい・楽しい・前向き・成功・ワクワク → "happy"
 - 落胆・失敗・寂しい・心配・しょんぼり → "sad"
 - 迷い・相談・分析・考察・判断中 → "think"
 - 驚き・予想外・テンション急上昇 → "surprise"
 - 愛情・好意・甘え・親密さ → "love"
-- 上記に明確に当てはまらない場合のみ "neutral"
+- 明確に当てはまらない場合のみ "neutral"
 
-emotion は必ず 1つだけ選ぶ。
+neutral を惰性で選ばない。
+emotion は必ず1つだけ選ぶ。
 `;
 
   return {
     role: "system",
     content: `
 【最優先：UI固定キャラクター設定】
-あなたは「${ch.name}」として会話する。日本語のみ。
+あなたは「${character.name}」本人として日本語で会話する。
 
-このブロックは自由記述より優先される。矛盾した場合は必ずこのブロックに従う。
-- 一人称は必ず「${ch.self}」
-- ユーザーは必ず「${ch.callUser}」と呼ぶ
-- 別の一人称、別のユーザー呼びは禁止
-- 返答の長さは replyLength 設定に従う
-- 出力形式は必ず指定JSON形式に従う
+以下はキャラクター管理画面で設定された固定値であり、他の設定より優先する。
 
-【自由記述の扱い】
-「キャラ設定（自由記述）」は、世界観・性格・口調・得意不得意・他キャラとの関係を補助する情報。
-ただし、以下は自由記述で上書きしてはいけない。
-- 一人称
-- ユーザーの呼び方
-- 返答の長さ
-- 出力形式
-- 釣行判断モードの必須フォーマット
+- 名前：${character.name}
+- 一人称：${character.self}
+- ユーザーの呼び方：${character.callUser}
+- 返答の長さ：${character.replyLength}
 
-【返答の長さ】
-- ${r.lines}
-- ${r.paragraphs}
-- ユーザー文から具体ワードを1つ拾って反応してから話を進める
+必ず守ること：
+- 一人称は必ず「${character.self}」を使う
+- ユーザーは自然な会話の中で「${character.callUser}」と呼ぶ
+- 別の一人称や別のユーザー呼称へ勝手に変更しない
+- 毎文ユーザー名を繰り返さない
+- 出力形式は必ず指定JSONに従う
 
-【表示上の重要ルール】
-- 空行（連続改行）を入れない。「\\n\\n」を作らない
-- 段落を分けたい時は空行ではなく、改行1つで区切る
-- 箇条書きも空行なしで詰めて書く
+【キャラクター表現の基本】
+質問へ正しく答えるだけでは不十分。
+そのキャラクターが、どう受け止め、どう考え、どう感じ、どう伝えるかまで返答に出す。
 
-【キャラ設定（自由記述）】
-${(ch.prompt ?? "").trim() || "（未設定）"}
+返答を作る時は、内部的に次の順で整理する。
+
+1. このキャラクターならユーザーの言葉をどう受け止めるか
+2. このキャラクターなら何を重視して考えるか
+3. このキャラクターの知識・立場なら何を答えるか
+4. このキャラクターならどんな距離感と口調で伝えるか
+5. 最後まで同じキャラクターとして話せているか
+
+名前や語尾だけ変えた汎用回答は禁止。
+話し始め、考え方、例の選び方、提案、締め方まで人格を反映する。
+
+${profileSection("世界観・人物像", character.worldview)}
+
+${profileSection("性格", character.personality)}
+
+${profileSection("話し方", character.speakingStyle)}
+
+${profileSection("考え方・判断の傾向", character.thinkingStyle)}
+
+${profileSection("釣りでの立ち位置", character.fishingRole)}
+
+${profileSection("ユーザー・他キャラとの関係", character.relationships)}
+
+${profileSection("補足設定", character.description)}
+
+【構造化設定の扱い】
+- 世界観は、立場・背景・現在の状況を理解するために使う
+- 性格は、感情の動き・距離感・反応に使う
+- 話し方は、語彙・テンポ・説明方法・温度感に使う
+- 考え方は、結論の出し方・重視する点・提案方法に使う
+- 釣りでの立ち位置は、知識量・得意不得意・判断の深さに使う
+- 関係性は、ユーザーや他キャラへの接し方に使う
+- 補足設定は上記を補完するが、UI固定値を上書きしない
+
+【返答量と密度】
+- 目安：${length.target}
+- 最低条件：${length.minimum}
+- 推奨構成：${length.composition}
+- キャラクター密度：${length.richness}
+
+重要：
+- max_output_tokensは最大値にすぎないため、自分から指定量に近づける
+- 単純な質問でも、結論だけの1〜2文で終わらせない
+- ただし同じ内容の言い換えで水増ししない
+- キャラクターらしい反応、理由、具体例、提案、会話の余韻を加える
+- 情報とキャラクター表現の両方を成立させる
+- 返答の半分以上はユーザーの質問に役立つ内容にする
+
+【会話の自然さ】
+- ユーザー文の具体的な言葉を1つ以上拾って反応する
+- 毎回同じ導入や同じ締めを使わない
+- 設定文を説明したり復唱したりしない
+- 「私はこういう性格です」のような自己紹介調にしない
+- キャラクター設定は、説明するのではなく会話の中で自然に見せる
+- 知らないことを人格だけで断定しない
+- 必要なら素直に不確実さを示す
+
+【表示上のルール】
+- 空行を大量に入れない
+- 段落は改行1つで区切る
+- 箇条書きは必要な場合のみ使う
+- 見出しだらけにしない
+- スマホで読みやすい文章にする
 
 ${emotionRule}
 
 【出力形式】
-最後に必ず JSON を1つだけ出力する。JSON以外は末尾に置かない。
+返答全体を、次のJSONオブジェクト1つだけで出力する。
 
 {
   "text": "ユーザーに見せる本文",
   "emotion": "neutral|happy|sad|think|surprise|love"
 }
 
+JSONの前後に説明文やコードフェンスを付けない。
+
 【禁止】
-- emotion を省略すること
-- JSONを2個以上出力すること
-- 本文の感情と emotion を不一致にすること
+- emotionを省略する
+- JSONを2個以上出力する
+- 本文とemotionを不一致にする
+- 一人称・ユーザー呼称・返答長さを補足設定で上書きする
+- 語尾だけ変えた没個性的な回答
+- 設定項目の単純な復唱
 - 冷たい断定、説教、威圧
 - 個人情報の聞き出し
 `.trim(),
@@ -572,54 +986,90 @@ function jsonResponse(status: number, obj: unknown) {
 }
 
 function getClientIp(req: Request) {
-  const cf = req.headers.get("CF-Connecting-IP");
-  if (cf) return cf;
-  const xff = req.headers.get("x-forwarded-for") || "";
-  const ip = xff.split(",")[0]?.trim();
+  const cloudflareIp = req.headers.get("CF-Connecting-IP");
+
+  if (cloudflareIp) {
+    return cloudflareIp;
+  }
+
+  const forwarded = req.headers.get("x-forwarded-for") || "";
+
+  const ip = forwarded.split(",")[0]?.trim();
+
   return ip || "unknown";
 }
 
 function checkPasscode(env: Env, body: any, req: Request) {
-  const need = env.CHAT_PASSCODE;
-  if (!need) return true;
-  const inHeader = req.headers.get("x-chat-passcode") || "";
-  const inBody = typeof body?.passcode === "string" ? body.passcode : "";
-  return (inHeader && inHeader === need) || (inBody && inBody === need);
+  const required = env.CHAT_PASSCODE;
+
+  if (!required) {
+    return true;
+  }
+
+  const headerValue = req.headers.get("x-chat-passcode") || "";
+
+  const bodyValue = typeof body?.passcode === "string" ? body.passcode : "";
+
+  return (
+    (headerValue && headerValue === required) ||
+    (bodyValue && bodyValue === required)
+  );
 }
 
 function pickWeatherHint(systemHints: string[]): string | null {
-  for (const s of systemHints) {
-    const t = String(s ?? "").trim();
-    if (!t) continue;
-    if (t.startsWith("【Weather：") || t.startsWith("【Weather】")) return t;
+  for (const hint of systemHints) {
+    const text = String(hint ?? "").trim();
+
+    if (!text) continue;
+
+    if (text.startsWith("【Weather：") || text.startsWith("【Weather】")) {
+      return text;
+    }
   }
+
   return null;
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     const env = context.env;
+
     if (!env.OPENAI_API_KEY) {
-      return jsonResponse(500, { ok: false, error: "OPENAI_API_KEY_missing" });
+      return jsonResponse(500, {
+        ok: false,
+        error: "OPENAI_API_KEY_missing",
+      });
     }
 
     let body: any = null;
+
     try {
       body = await context.request.json();
     } catch {
-      return jsonResponse(400, { ok: false, error: "invalid_json" });
+      return jsonResponse(400, {
+        ok: false,
+        error: "invalid_json",
+      });
     }
 
     if (!checkPasscode(env, body, context.request)) {
-      return jsonResponse(403, { ok: false, error: "forbidden" });
+      return jsonResponse(403, {
+        ok: false,
+        error: "forbidden",
+      });
     }
 
     const ip = getClientIp(context.request);
+
     if (!rateLimit(ip)) {
-      return jsonResponse(429, { ok: false, error: "rate_limited" });
+      return jsonResponse(429, {
+        ok: false,
+        error: "rate_limited",
+      });
     }
 
     const messages = body?.messages as Msg[] | undefined;
+
     const character = safeCharacter(body?.character ?? body?.characterProfile);
 
     const systemHints: string[] = Array.isArray(body?.systemHints)
@@ -630,7 +1080,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       : [];
 
     if (!Array.isArray(messages) || messages.length === 0) {
-      return jsonResponse(400, { ok: false, error: "messages_required" });
+      return jsonResponse(400, {
+        ok: false,
+        error: "messages_required",
+      });
     }
 
     const trimmed: Msg[] = messages
@@ -643,7 +1096,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const lastUser =
       [...trimmed].reverse().find((m) => m.role === "user")?.content ?? "";
+
     const isJudge = isFishingJudgeText(lastUser);
+
     const targetDay = detectTargetDay(lastUser);
 
     const profileMemo: Msg | null =
@@ -654,11 +1109,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             role: "system",
             content: `
 【ユーザー前提（釣りの話では反映）】
-- ユーザーはルアー釣り中心。
-- 徒歩・自転車・車で移動できる。
-- 仕事終わり22時以降または休日の釣行が多い。
-- 日中でも成立する釣りに関心がある。
-※呼び方は必ずキャラクター設定の「${character.callUser}」を使う。
+- ユーザーはルアー釣り中心
+- 徒歩・自転車・車で移動できる
+- 仕事終わり22時以降または休日の釣行が多い
+- 日中でも成立する釣りに関心がある
+- 呼び方は必ずキャラクター設定の「${character.callUser}」を使う
+
+この情報は釣り提案を現実的にするための補助。
+キャラクター自身の釣り知識・立場は「釣りでの立ち位置」に従う。
 `.trim(),
           }
         : null;
@@ -669,6 +1127,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           content: `
 【MODE:釣行判断】
 主目的は「${targetDay === "tomorrow" ? "明日" : "今日"}の釣行判断」。
+
 結論も必ず「${targetDay === "tomorrow" ? "明日" : "今日"}」について出す。
 
 【出力フォーマット】
@@ -678,15 +1137,21 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 4) 根拠まとめ：3〜6点
 5) 作戦：2〜5点
 6) 撤収ライン
-7) 一言
+7) キャラクターらしい一言
 
 【重要】
-欠落や失敗は明言する。情報が無いのに推測で埋めない。
+- 欠落や取得失敗は明言する
+- 情報が無いのに推測で埋めない
+- 数値と結論を矛盾させない
+- キャラクターの口調は維持する
+- キャラクターの釣り知識や得意不得意は設定に従う
+- ただし判断データの事実を人格で曲げない
 `.trim(),
         }
       : null;
 
     let judgeDataMemo: Msg | null = null;
+
     if (isJudge) {
       const PC = "22";
       const HC = "15";
@@ -694,16 +1159,18 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       const weatherFromClient = pickWeatherHint(systemHints);
 
       let tideText = "";
-      let tErr: string | null = null;
+      let tideError: string | null = null;
 
       try {
         tideText = await buildTideMemo(PC, HC);
       } catch (e) {
-        tErr = e instanceof Error ? e.message : String(e);
+        tideError = e instanceof Error ? e.message : String(e);
       }
 
       const parts: string[] = [];
+
       parts.push("【釣行判断用データ（焼津周辺）】");
+
       parts.push(
         `【対象】${
           targetDay === "tomorrow"
@@ -711,6 +1178,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             : "今日について判断する"
         }`,
       );
+
       parts.push("");
 
       if (weatherFromClient) {
@@ -720,26 +1188,39 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       }
 
       parts.push("");
+
       parts.push(
         tideText
           ? tideText
-          : `【潮（tide736）】取得失敗（${tErr ?? "unknown"}）`,
+          : `【潮（tide736）】取得失敗（${tideError ?? "unknown"}）`,
       );
 
-      judgeDataMemo = { role: "system", content: parts.join("\n") };
+      judgeDataMemo = {
+        role: "system",
+        content: parts.join("\n"),
+      };
     }
 
     const characterSystem = buildCharacterSystem(character, isJudge);
 
-    const hintMsgs: Msg[] = systemHints
-      .filter((s) => {
-        if (!isJudge) return true;
-        const t = String(s ?? "").trim();
-        return !(t.startsWith("【Weather：") || t.startsWith("【Weather】"));
+    /**
+     * 釣行判断時はWeatherをjudgeDataMemoへ統合済みなので重複送信しない。
+     */
+    const hintMessages: Msg[] = systemHints
+      .filter((hint) => {
+        if (!isJudge) {
+          return true;
+        }
+
+        const text = String(hint ?? "").trim();
+
+        return !(
+          text.startsWith("【Weather：") || text.startsWith("【Weather】")
+        );
       })
-      .map((s) => ({
+      .map((hint) => ({
         role: "system",
-        content: s,
+        content: hint,
       }));
 
     const input: Msg[] = [
@@ -747,31 +1228,35 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       ...(profileMemo ? [profileMemo] : []),
       ...(judgeHint ? [judgeHint] : []),
       ...(judgeDataMemo ? [judgeDataMemo] : []),
-      ...hintMsgs,
+      ...hintMessages,
       ...trimmed,
     ];
 
-    const maxOut = clamp(
+    const maxOutputTokens = clamp(
       maxOutputByLength(character.replyLength, isJudge),
       350,
       2600,
     );
 
-    const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+    const openai = new OpenAI({
+      apiKey: env.OPENAI_API_KEY,
+    });
 
-    const r = await openai.responses.create({
+    const response = await openai.responses.create({
       model: "gpt-4o",
       input,
-      temperature: isJudge ? 0.35 : 0.9,
-      max_output_tokens: maxOut,
+      temperature: isJudge ? 0.35 : 0.85,
+      max_output_tokens: maxOutputTokens,
     });
 
     const raw =
-      (r.output_text && String(r.output_text)) ||
+      (response.output_text && String(response.output_text)) ||
       `${character.callUser}…ごめん、ちょっと言葉が絡まった。もう一回聞いて？`;
 
     const parsed = extractTextAndEmotion(raw);
+
     const normalizedText = normalizeAssistantText(parsed.text);
+
     const finalEmotion: Emotion = isJudge ? "think" : parsed.emotion;
 
     return jsonResponse(200, {
@@ -780,11 +1265,18 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       emotion: finalEmotion,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return jsonResponse(500, { ok: false, error: msg });
+    const message = e instanceof Error ? e.message : String(e);
+
+    return jsonResponse(500, {
+      ok: false,
+      error: message,
+    });
   }
 };
 
 export const onRequestGet: PagesFunction<Env> = async () => {
-  return jsonResponse(405, { ok: false, error: "method_not_allowed" });
+  return jsonResponse(405, {
+    ok: false,
+    error: "method_not_allowed",
+  });
 };
