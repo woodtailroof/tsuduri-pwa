@@ -1134,7 +1134,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const response = await openai.responses.create({
       model: "gpt-5.5",
       input,
-      temperature: isJudge ? 0.35 : 0.98,
       max_output_tokens: outputTokenLimit,
     });
 
