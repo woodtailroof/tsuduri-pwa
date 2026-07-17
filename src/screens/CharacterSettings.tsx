@@ -72,14 +72,8 @@ function normalizeColor(s: string) {
   return t || "#ff7aa2";
 }
 
-function normalizeReplyLength(raw: unknown): ReplyLength {
-  if (raw === "short" || raw === "medium" || raw === "long") {
-    return raw;
-  }
-
-  if (raw === "standard") return "medium";
-  if (raw === "verylong") return "long";
-
+function normalizeReplyLength(_raw: unknown): ReplyLength {
+  // 旧JSONとの互換性のため項目は残すが、通常会話の長さはコード側で固定。
   return "medium";
 }
 
@@ -543,14 +537,6 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     boxSizing: "border-box",
   };
 
-  const selectStyle: CSSProperties = {
-    ...inputStyle,
-    appearance: "none",
-    WebkitAppearance: "none",
-    MozAppearance: "none",
-    paddingRight: 34,
-  };
-
   const textareaStyle: CSSProperties = {
     ...inputStyle,
     resize: "vertical",
@@ -607,13 +593,6 @@ export default function CharacterSettings({ back }: { back: () => void }) {
           min-width: 0;
         }
 
-        .cs-meta-grid {
-          display: grid;
-          grid-template-columns: 260px 1fr;
-          gap: 12px;
-          min-width: 0;
-        }
-
         .cs-personality-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -637,7 +616,6 @@ export default function CharacterSettings({ back }: { back: () => void }) {
           }
 
           .cs-basic-grid,
-          .cs-meta-grid,
           .cs-personality-grid {
             grid-template-columns: 1fr;
           }
@@ -803,8 +781,6 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                       }}
                     >
                       一人称: {c.selfName || "—"} / 呼称: {c.callUser || "—"}
-                      <br />
-                      長さ: {c.replyLength || "medium"}
                     </div>
                   </button>
                 );
@@ -908,58 +884,18 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                 </div>
               </div>
 
-              <div className="cs-meta-grid">
-                <div style={{ minWidth: 0 }}>
-                  <div style={sectionTitle}>ユーザー呼び</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={sectionTitle}>ユーザー呼び</div>
 
-                  <input
-                    value={selected?.callUser ?? ""}
-                    onChange={(e) =>
-                      updateSelected({
-                        callUser: e.target.value,
-                      })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div style={{ minWidth: 0 }}>
-                  <div style={sectionTitle}>返答の長さ</div>
-
-                  <div style={{ position: "relative" }}>
-                    <select
-                      value={(selected?.replyLength ?? "medium") as ReplyLength}
-                      onChange={(e) =>
-                        updateSelected({
-                          replyLength: e.target.value as ReplyLength,
-                        })
-                      }
-                      style={selectStyle}
-                    >
-                      <option value="short">短め</option>
-                      <option value="medium">標準</option>
-                      <option value="long">長め</option>
-                    </select>
-
-                    <span
-                      style={{
-                        position: "absolute",
-                        right: 12,
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        pointerEvents: "none",
-                        color: "rgba(255,255,255,0.55)",
-                        fontSize: 12,
-                      }}
-                    >
-                      ▼
-                    </span>
-                  </div>
-
-                  <div style={{ marginTop: 6, ...smallHint }}>
-                    ※現在は short / medium / long
-                  </div>
-                </div>
+                <input
+                  value={selected?.callUser ?? ""}
+                  onChange={(e) =>
+                    updateSelected({
+                      callUser: e.target.value,
+                    })
+                  }
+                  style={inputStyle}
+                />
               </div>
 
               <div style={{ minWidth: 0 }}>
@@ -1018,8 +954,8 @@ export default function CharacterSettings({ back }: { back: () => void }) {
               </div>
 
               <div style={smallHint}>
-                自称・ユーザー呼び・返答の長さは上の専用項目が優先されるよ。
-                ここでは、人格・話し方・考え方を分けて設定する。
+                自称とユーザー呼びは上の専用項目が優先されるよ。
+                返答の長さは、キャラクター性が出やすい量にコード側で固定しているよ。
               </div>
 
               <div className="cs-personality-grid">
@@ -1135,7 +1071,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                     ...textareaStyle,
                     minHeight: 140,
                   }}
-                  placeholder="上の項目に収まりにくい補足だけを書く。自称・呼称・返答長さは書かない。"
+                  placeholder="上の項目に収まりにくい補足だけを書く。自称・呼称は書かない。"
                 />
 
                 <div style={{ marginTop: 6, ...smallHint }}>

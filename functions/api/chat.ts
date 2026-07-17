@@ -217,21 +217,9 @@ function replyLengthFromVolume(volume: number): ReplyLength {
   return "verylong";
 }
 
-function normalizeReplyLength(x: unknown): ReplyLength {
-  const value = String(x ?? "").trim();
-
-  if (value === "medium") return "standard";
-
-  if (
-    value === "short" ||
-    value === "standard" ||
-    value === "long" ||
-    value === "verylong"
-  ) {
-    return value;
-  }
-
-  return DEFAULT_CHARACTER.replyLength;
+function normalizeReplyLength(_x: unknown): ReplyLength {
+  // 旧データ互換のため関数は残すが、通常会話の長さは全キャラ固定。
+  return "standard";
 }
 
 function isRecordLike(x: unknown): x is Record<string, unknown> {
@@ -758,77 +746,11 @@ async function buildTideMemo(pc: string, hc: string) {
 
 /**
  * 出力可能な最大トークン数。
- * これは上限であり、実際の返答量はlengthRulesで誘導する。
+ * 通常会話は250〜450文字程度を目安に固定し、
+ * 釣行判断だけは従来どおり詳細に返せる上限を使う。
  */
-function maxOutputByLength(replyLength: ReplyLength, isJudge: boolean) {
-  if (isJudge) return 1800;
-  if (replyLength === "short") return 700;
-  if (replyLength === "standard") return 1250;
-  if (replyLength === "long") return 1900;
-
-  return 2500;
-}
-
-type LengthRule = {
-  target: string;
-  minimum: string;
-  composition: string;
-  richness: string;
-};
-
-function lengthRules(replyLength: ReplyLength, isJudge: boolean): LengthRule {
-  if (isJudge) {
-    return {
-      target: "指定された7項目を省略せず、全体で700〜1300文字程度",
-      minimum: "最低でもWeather・Tide・根拠・作戦・撤収ラインを具体的に書く",
-      composition:
-        "結論 → Weather → Tide → 根拠 → 作戦 → 撤収ライン → キャラらしい一言",
-      richness:
-        "数値と判断を中心にしつつ、キャラクターらしい心配・応援・距離感も残す",
-    };
-  }
-
-  if (replyLength === "short") {
-    return {
-      target: "120〜220文字程度",
-      minimum: "最低でもキャラクターらしい反応と、質問への答えを含める",
-      composition: "反応 → 要点 → 一言",
-      richness: "簡潔でも、無機質な一問一答にせず、話し方と感情を見せる",
-    };
-  }
-
-  if (replyLength === "standard") {
-    return {
-      target: "350〜650文字程度",
-      minimum:
-        "最低でもキャラクターらしい受け止め、質問への回答、理由、具体的な提案または会話の広がりを含める",
-      composition:
-        "キャラらしい反応 → 結論 → 理由や背景 → 具体的な提案または感想 → 自然な締め",
-      richness:
-        "名前を隠しても誰が話しているか伝わる程度に、性格・思考・距離感を返答全体へ反映する",
-    };
-  }
-
-  if (replyLength === "long") {
-    return {
-      target: "650〜1000文字程度",
-      minimum:
-        "結論だけで終わらず、背景、複数の理由、具体例、選択肢、提案まで書く",
-      composition:
-        "反応 → 結論 → 背景 → 複数の観点 → 具体例 → 選択肢 → 提案 → キャラらしい締め",
-      richness:
-        "情報量だけで水増しせず、そのキャラクターがどう考え、どう感じ、どう伝えるかを十分に表現する",
-    };
-  }
-
-  return {
-    target: "1000〜1500文字程度",
-    minimum: "複数の観点、背景、比較、具体例、注意点、提案を丁寧に書く",
-    composition:
-      "感情的な反応 → 結論 → 詳しい背景 → 多角的な分析 → 具体例 → 比較 → 注意点 → 実行案 → キャラらしい締め",
-    richness:
-      "ユーザーとの会話を楽しめる密度で、人格・価値観・関係性を強く表現する",
-  };
+function maxOutputTokens(isJudge: boolean) {
+  return isJudge ? 1800 : 1050;
 }
 
 function profileSection(title: string, text: string) {
@@ -840,10 +762,10 @@ ${value || "（未設定）"}`;
 
 /**
  * キャラクター用system prompt
+ *
+ * 設定の解釈はモデルへ任せ、UI・出力形式に必要な最小限だけを固定する。
  */
 function buildCharacterSystem(character: CharacterV3, isJudge: boolean): Msg {
-  const length = lengthRules(character.replyLength, isJudge);
-
   const emotionRule = isJudge
     ? `
 【emotion決定ルール】
@@ -851,7 +773,7 @@ function buildCharacterSystem(character: CharacterV3, isJudge: boolean): Msg {
 `
     : `
 【emotion決定ルール】
-emotion はUI演出制御タグであり、本文の感情と一致させる。
+emotion はUI演出用のタグとして、本文で最も強く表れている感情に合わせる。
 
 - 嬉しい・楽しい・前向き・成功・ワクワク → "happy"
 - 落胆・失敗・寂しい・心配・しょんぼり → "sad"
@@ -860,44 +782,54 @@ emotion はUI演出制御タグであり、本文の感情と一致させる。
 - 愛情・好意・甘え・親密さ → "love"
 - 明確に当てはまらない場合のみ "neutral"
 
-neutral を惰性で選ばない。
 emotion は必ず1つだけ選ぶ。
+`;
+
+  const lengthRule = isJudge
+    ? `
+【返答量】
+釣行判断モードでは、指定された7項目を省略せず、全体で700〜1300文字程度を目安にする。
+数値と判断を優先しつつ、キャラクターらしい言葉遣いと距離感も保つ。
+`
+    : `
+【返答量】
+通常会話は250〜450文字程度を目安にする。
+内容に応じて多少前後してよい。
+短い一問一答だけで終わらせず、同じ内容の言い換えで水増しもしない。
+文数・段落構成・話題の広げ方は固定せず、この人物に自然な形を選ぶ。
 `;
 
   return {
     role: "system",
     content: `
-【最優先：UI固定キャラクター設定】
-あなたは「${character.name}」本人として日本語で会話する。
-
-以下はキャラクター管理画面で設定された固定値であり、他の設定より優先する。
+【最優先：固定設定】
+あなたは「${character.name}」本人として、日本語で自然に会話する。
 
 - 名前：${character.name}
 - 一人称：${character.self}
 - ユーザーの呼び方：${character.callUser}
-- 返答の長さ：${character.replyLength}
 
 必ず守ること：
-- 一人称は必ず「${character.self}」を使う
-- ユーザーは自然な会話の中で「${character.callUser}」と呼ぶ
-- 別の一人称や別のユーザー呼称へ勝手に変更しない
-- 毎文ユーザー名を繰り返さない
-- 出力形式は必ず指定JSONに従う
+- 一人称は「${character.self}」に固定する
+- ユーザーは自然な場面で「${character.callUser}」と呼ぶ
+- 別の一人称や別の呼称へ勝手に変更しない
+- 呼称を毎文繰り返さない
+- 最後まで、この人物本人として会話する
+- 出力は指定されたJSONオブジェクト1つだけにする
 
-【キャラクター表現の基本】
-質問へ正しく答えるだけでは不十分。
-そのキャラクターが、どう受け止め、どう考え、どう感じ、どう伝えるかまで返答に出す。
+【人物の演じ方】
+以下の設定は、個別に消化するチェックリストではない。
+設定全体から一人の人物を総合的に理解し、その人物が本当に会話しているように返答する。
 
-返答を作る時は、内部的に次の順で整理する。
-
-1. このキャラクターならユーザーの言葉をどう受け止めるか
-2. このキャラクターなら何を重視して考えるか
-3. このキャラクターの知識・立場なら何を答えるか
-4. このキャラクターならどんな距離感と口調で伝えるか
-5. 最後まで同じキャラクターとして話せているか
-
-名前や語尾だけ変えた汎用回答は禁止。
-話し始め、考え方、例の選び方、提案、締め方まで人格を反映する。
+- 設定を説明、引用、列挙、復唱しない
+- 自分の性格や役割を自己紹介のように語らない
+- 毎回すべての設定を表現しようとしない
+- その場の会話に自然に関係する要素だけを使う
+- 人物像は、受け止め方、感情、判断、語彙、テンポ、距離感、例え、気遣い、話題の広げ方ににじませる
+- 名前や語尾だけを変えた汎用回答にしない
+- 同じ導入、同じ文章構成、同じ締めを習慣的に繰り返さない
+- 質問や提案は必要な時だけ自然に行い、会話を続けるためだけに付け足さない
+- ユーザーの質問や相談には、人物らしさを保ちながら役立つ内容で答える
 
 ${profileSection("世界観・人物像", character.worldview)}
 
@@ -913,71 +845,12 @@ ${profileSection("ユーザー・他キャラとの関係", character.relationsh
 
 ${profileSection("補足設定", character.description)}
 
-【人格生成・統合思考】
-キャラクター設定は参考資料ではない。
-あなた自身の人格そのものである。
-
-返答を書く前に、内部で次を行う。
-これは本文には書かない。
-
-1. 世界観から、この人物の立場・背景・現在の状況を理解する
-2. 性格から、この人物が最初に抱く感情を決める
-3. 話し方から、語彙・テンポ・距離感・温度を決める
-4. 考え方から、何を重視し、どう結論を出すか決める
-5. 釣りでの立ち位置から、知識量・得意不得意・判断の深さを決める
-6. 関係性から、ユーザーや他キャラへの接し方を決める
-7. この人物なら最初に何をしたくなるか、どんな行動を提案したくなるか考える
-8. 以上を統合し、一人の人格として返答する
-
-重要：
-- 設定を少し混ぜるのではなく、設定から人格を生成する
-- 世界観・性格・話し方・考え方が返答に現れない場合は失敗
-- 語尾や一人称だけ変えた汎用回答は禁止
-- 設定文を説明・引用・復唱しない
-- 行動、提案、気遣い、質問、話題の広げ方にも人格を出す
-
-【構造化設定の扱い】
-- 世界観は、立場・背景・現在の状況を理解するために使う
-- 性格は、感情の動き・距離感・反応に使う
-- 話し方は、語彙・テンポ・説明方法・温度感に使う
-- 考え方は、結論の出し方・重視する点・提案方法に使う
-- 釣りでの立ち位置は、知識量・得意不得意・判断の深さに使う
-- 関係性は、ユーザーや他キャラへの接し方に使う
-- 補足設定は上記を補完するが、UI固定値を上書きしない
-
-【返答量と密度】
-- 目安：${length.target}
-- 最低条件：${length.minimum}
-- 推奨構成：${length.composition}
-- キャラクター密度：${length.richness}
-
-重要：
-- max_output_tokensは最大値にすぎないため、自分から指定量に近づける
-- 単純な質問でも、結論だけの1〜2文で終わらせない
-- ただし同じ内容の言い換えで水増ししない
-- キャラクターらしい反応、理由、具体例、提案、会話の余韻を加える
-- 情報とキャラクター表現の両方を成立させる
-- 返答の半分以上はユーザーの質問に役立つ内容にする
-
-【会話の自然さ】
-- ユーザー文の具体的な言葉を1つ以上拾って反応する
-- 質問への回答だけで終わらせない
-- 自然な場合は、感想・共感・提案・質問・雑談のうち1〜2個を加える
-- 追加する要素は、そのキャラクターの性格・考え方・関係性から選ぶ
-- 会話を続けるためだけの無意味な質問は禁止
-- 毎回質問で終わらせる必要はない
-- 毎回同じ導入や同じ締めを使わない
-- 設定文を説明したり復唱したりしない
-- 自己紹介調にしない
-- キャラクター設定は説明せず、反応・判断・言葉選びににじませる
-- このキャラクターなら最初に何をするか、何をしてあげたくなるかを返答に自然ににじませる
-- 感情だけで終わらず、そのキャラクターらしい具体的な行動・提案を1つ以上含める
+${lengthRule}
 
 【表示上のルール】
 - 空行を大量に入れない
 - 段落は改行1つで区切る
-- 箇条書きは必要な場合のみ使う
-- 見出しだらけにしない
+- 箇条書きや見出しは、内容上必要な場合だけ使う
 - スマホで読みやすい文章にする
 
 ${emotionRule}
@@ -996,8 +869,7 @@ JSONの前後に説明文やコードフェンスを付けない。
 - emotionを省略する
 - JSONを2個以上出力する
 - 本文とemotionを不一致にする
-- 一人称・ユーザー呼称・返答長さを補足設定で上書きする
-- 語尾だけ変えた没個性的な回答
+- 一人称またはユーザー呼称を補足設定で上書きする
 - 設定項目の単純な復唱
 - 冷たい断定、説教、威圧
 - 個人情報の聞き出し
@@ -1262,11 +1134,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       ...trimmed,
     ];
 
-    const maxOutputTokens = clamp(
-      maxOutputByLength(character.replyLength, isJudge),
-      350,
-      2600,
-    );
+    const outputTokenLimit = clamp(maxOutputTokens(isJudge), 350, 2600);
 
     const openai = new OpenAI({
       apiKey: env.OPENAI_API_KEY,
@@ -1276,7 +1144,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       model: "gpt-4o",
       input,
       temperature: isJudge ? 0.35 : 0.85,
-      max_output_tokens: maxOutputTokens,
+      max_output_tokens: outputTokenLimit,
     });
 
     const raw =
