@@ -1137,6 +1137,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       max_output_tokens: outputTokenLimit,
     });
 
+    console.log("========== OpenAI Usage ==========");
+    console.log(JSON.stringify(response.usage, null, 2));
+    console.log("==================================");
+
     const raw =
       (response.output_text && String(response.output_text)) ||
       `${character.callUser}…ごめん、ちょっと言葉が絡まった。もう一回聞いて？`;
