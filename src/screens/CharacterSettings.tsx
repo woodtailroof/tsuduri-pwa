@@ -20,10 +20,15 @@ export type CharacterProfile = {
   color?: string;
 
   /**
-   * Character Profile V3
+   * Character Profile V4
    */
   worldview?: string;
   personality?: string;
+  values?: string;
+  emotionalTriggers?: string;
+  reflexes?: string;
+  attachments?: string;
+  dislikes?: string;
   speakingStyle?: string;
   thinkingStyle?: string;
   fishingRole?: string;
@@ -35,9 +40,9 @@ export type CharacterProfile = {
   description?: string;
 };
 
-type CharacterExportV3 = {
-  version: 3;
-  schema: "character-profile-v3";
+type CharacterExportV4 = {
+  version: 4;
+  schema: "character-profile-v4";
   exportedAt: string;
   characters: CharacterProfile[];
   selectedId: string;
@@ -132,6 +137,11 @@ function normalizeCharacter(
 
     worldview: normalizeOptionalText(source.worldview),
     personality: normalizeOptionalText(source.personality),
+    values: normalizeOptionalText(source.values),
+    emotionalTriggers: normalizeOptionalText(source.emotionalTriggers),
+    reflexes: normalizeOptionalText(source.reflexes),
+    attachments: normalizeOptionalText(source.attachments),
+    dislikes: normalizeOptionalText(source.dislikes),
     speakingStyle: normalizeOptionalText(source.speakingStyle),
     thinkingStyle: normalizeOptionalText(source.thinkingStyle),
     fishingRole: normalizeOptionalText(source.fishingRole),
@@ -165,6 +175,11 @@ function defaultCharacter(): CharacterProfile {
 
     worldview: "",
     personality: "",
+    values: "",
+    emotionalTriggers: "",
+    reflexes: "",
+    attachments: "",
+    dislikes: "",
     speakingStyle: "",
     thinkingStyle: "",
     fishingRole: "",
@@ -186,6 +201,11 @@ function fallbackCharacters(): CharacterProfile[] {
       worldview: "釣嫁プロジェクトのリーダー。",
       personality:
         "元気で可愛く、少し甘えんぼで少し世話焼き。責任感の強い頑張り屋。",
+      values: "ひろっちとの時間、仲間の安全、釣りを一緒に楽しむこと。",
+      emotionalTriggers: "頼られると嬉しい。無茶や危険には心配が先に立つ。",
+      reflexes: "困っている人を見ると先に手を差し出す。",
+      attachments: "ひろっち、釣嫁の仲間、朝マズメの海。",
+      dislikes: "仲間を置いていくこと、危険を軽く見ること。",
       speakingStyle: "明るく感情豊かで、親しみと信頼を前提に距離が近い。",
       thinkingStyle: "要点を整理し、現実的な提案や作戦を出してから背中を押す。",
       fishingRole:
@@ -216,8 +236,8 @@ function safeSaveCharacters(list: CharacterProfile[]) {
     localStorage.setItem(
       BACKUP_KEY,
       JSON.stringify({
-        version: 3,
-        schema: "character-profile-v3",
+        version: 4,
+        schema: "character-profile-v4",
         at: new Date().toISOString(),
         list: normalized,
       }),
@@ -384,9 +404,9 @@ export default function CharacterSettings({ back }: { back: () => void }) {
   function exportJson() {
     const normalized = normalizeCharacterList(list);
 
-    const payload: CharacterExportV3 = {
-      version: 3,
-      schema: "character-profile-v3",
+    const payload: CharacterExportV4 = {
+      version: 4,
+      schema: "character-profile-v4",
       exportedAt: new Date().toISOString(),
       characters: normalized,
       selectedId: normalized.some((c) => c.id === selectedId)
@@ -395,7 +415,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     };
 
     downloadText(
-      `tsuduri_characters_v3_export_${Date.now()}.json`,
+      `tsuduri_characters_v4_export_${Date.now()}.json`,
       JSON.stringify(payload, null, 2),
     );
   }
@@ -950,12 +970,12 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                   color: "rgba(255,255,255,0.92)",
                 }}
               >
-                🧠 Character Profile V3
+                🫀 Character Profile V4
               </div>
 
               <div style={smallHint}>
                 自称とユーザー呼びは上の専用項目が優先されるよ。
-                返答の長さは、キャラクター性が出やすい量にコード側で固定しているよ。
+                V4では性格のラベルより、価値観・感情の動き・反射を書くほど声が立ちやすくなるよ。
               </div>
 
               <div className="cs-personality-grid">
@@ -976,7 +996,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                 </div>
 
                 <div style={{ minWidth: 0 }}>
-                  <div style={sectionTitle}>性格</div>
+                  <div style={sectionTitle}>人格の芯</div>
 
                   <textarea
                     value={selected?.personality ?? ""}
@@ -987,12 +1007,92 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                     }
                     rows={6}
                     style={textareaStyle}
-                    placeholder="明るい、慎重、甘えんぼ、天然、負けず嫌いなど"
+                    placeholder="この子をこの子にしている中心。長所と弱さ、矛盾、人との向き合い方"
                   />
                 </div>
 
                 <div style={{ minWidth: 0 }}>
-                  <div style={sectionTitle}>話し方</div>
+                  <div style={sectionTitle}>大切にしていること・価値観</div>
+
+                  <textarea
+                    value={selected?.values ?? ""}
+                    onChange={(e) =>
+                      updateSelected({
+                        values: e.target.value,
+                      })
+                    }
+                    rows={6}
+                    style={textareaStyle}
+                    placeholder="何を守りたいか、何があれば幸せか、何を優先して選ぶか"
+                  />
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <div style={sectionTitle}>感情が動く瞬間</div>
+
+                  <textarea
+                    value={selected?.emotionalTriggers ?? ""}
+                    onChange={(e) =>
+                      updateSelected({
+                        emotionalTriggers: e.target.value,
+                      })
+                    }
+                    rows={6}
+                    style={textareaStyle}
+                    placeholder="何を見ると嬉しい、寂しい、怒る、照れる、熱くなるか"
+                  />
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <div style={sectionTitle}>無意識の反応・行動</div>
+
+                  <textarea
+                    value={selected?.reflexes ?? ""}
+                    onChange={(e) =>
+                      updateSelected({
+                        reflexes: e.target.value,
+                      })
+                    }
+                    rows={6}
+                    style={textareaStyle}
+                    placeholder="考えるより先にしてしまうこと、口から出る反応、行動の癖"
+                  />
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <div style={sectionTitle}>愛着・失いたくないもの</div>
+
+                  <textarea
+                    value={selected?.attachments ?? ""}
+                    onChange={(e) =>
+                      updateSelected({
+                        attachments: e.target.value,
+                      })
+                    }
+                    rows={6}
+                    style={textareaStyle}
+                    placeholder="人、場所、時間、思い出、習慣など、心の拠り所"
+                  />
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <div style={sectionTitle}>苦手・嫌い・怖いもの</div>
+
+                  <textarea
+                    value={selected?.dislikes ?? ""}
+                    onChange={(e) =>
+                      updateSelected({
+                        dislikes: e.target.value,
+                      })
+                    }
+                    rows={6}
+                    style={textareaStyle}
+                    placeholder="避けたいこと、傷つくこと、許せないこと、不安になること"
+                  />
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <div style={sectionTitle}>声・言葉・会話の癖</div>
 
                   <textarea
                     value={selected?.speakingStyle ?? ""}
@@ -1003,12 +1103,12 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                     }
                     rows={6}
                     style={textareaStyle}
-                    placeholder="口調、テンポ、距離感、説明の仕方、感情表現など"
+                    placeholder="語彙、テンポ、間、叫び方、照れ方、話が飛ぶ癖。例文の羅列より傾向を書く"
                   />
                 </div>
 
                 <div style={{ minWidth: 0 }}>
-                  <div style={sectionTitle}>考え方・判断の傾向</div>
+                  <div style={sectionTitle}>考え方と選び方</div>
 
                   <textarea
                     value={selected?.thinkingStyle ?? ""}
@@ -1057,7 +1157,9 @@ export default function CharacterSettings({ back }: { back: () => void }) {
               </div>
 
               <div style={{ minWidth: 0 }}>
-                <div style={sectionTitle}>補足設定（旧description互換）</div>
+                <div style={sectionTitle}>
+                  その他の記憶・補足（旧description互換）
+                </div>
 
                 <textarea
                   value={selected?.description ?? ""}
