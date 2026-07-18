@@ -1155,6 +1155,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       ok: true,
       text: normalizedText,
       emotion: finalEmotion,
+      usage: response.usage,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
