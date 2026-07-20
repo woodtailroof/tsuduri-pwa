@@ -23,7 +23,18 @@ type Props = {
 type Msg = {
   role: "user" | "assistant";
   content: string;
+  characterId?: string;
+  characterName?: string;
+  characterColor?: string;
 };
+
+type ApiMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+const GROUP_ROOM_ID = "group";
+const CHAT_SELECTED_ROOM_KEY = "tsuduri_chat_selected_room_v1";
 
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
   try {
@@ -37,14 +48,19 @@ function safeJsonParse<T>(raw: string | null, fallback: T): T {
 /**
  * CharacterProfile は今までの型に加えて color を持つ想定（後方互換）
  */
-type CharacterProfileWithColor = CharacterProfile & { color?: string };
+type CharacterProfileWithColor = CharacterProfile & {
+  color?: string;
+};
 
 function safeLoadCharacters(): CharacterProfileWithColor[] {
   const list = safeJsonParse<CharacterProfileWithColor[]>(
     localStorage.getItem(CHARACTERS_STORAGE_KEY),
     [],
   );
-  if (Array.isArray(list) && list.length) return list;
+
+  if (Array.isArray(list) && list.length) {
+    return list;
+  }
 
   return [
     {
@@ -73,6 +89,39 @@ function safeSaveSelectedCharacterId(id: string) {
   }
 }
 
+function safeLoadSelectedRoomId(
+  characters: CharacterProfileWithColor[],
+  fallback: string,
+) {
+  try {
+    const raw = localStorage.getItem(CHAT_SELECTED_ROOM_KEY);
+
+    if (!raw || !raw.trim()) {
+      return fallback;
+    }
+
+    if (raw === GROUP_ROOM_ID) {
+      return GROUP_ROOM_ID;
+    }
+
+    if (characters.some((c) => c.id === raw)) {
+      return raw;
+    }
+
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function safeSaveSelectedRoomId(id: string) {
+  try {
+    localStorage.setItem(CHAT_SELECTED_ROOM_KEY, id);
+  } catch {
+    // ignore
+  }
+}
+
 function historyKey(roomId: string) {
   return `tsuduri_chat_history_v2:${roomId}`;
 }
@@ -94,20 +143,42 @@ function getBoolProp(o: Record<string, unknown>, key: string): boolean | null {
 function safeLoadHistory(roomId: string): Msg[] {
   const raw = localStorage.getItem(historyKey(roomId));
   const parsed = safeJsonParse<unknown>(raw, []);
-  if (!Array.isArray(parsed)) return [];
+
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
 
   const out: Msg[] = [];
+
   for (const item of parsed) {
-    if (!isRecordLike(item)) continue;
+    if (!isRecordLike(item)) {
+      continue;
+    }
 
     const role = getStringProp(item, "role");
     const content = getStringProp(item, "content");
 
-    if (role !== "user" && role !== "assistant") continue;
-    if (typeof content !== "string") continue;
+    if (role !== "user" && role !== "assistant") {
+      continue;
+    }
 
-    out.push({ role, content });
+    if (typeof content !== "string") {
+      continue;
+    }
+
+    const characterId = getStringProp(item, "characterId") ?? undefined;
+    const characterName = getStringProp(item, "characterName") ?? undefined;
+    const characterColor = getStringProp(item, "characterColor") ?? undefined;
+
+    out.push({
+      role,
+      content,
+      characterId,
+      characterName,
+      characterColor,
+    });
   }
+
   return out;
 }
 
@@ -127,18 +198,52 @@ function readCharacterProfile(
   return list.find((c) => c.id === id) ?? fallback;
 }
 
+function normalizeCharacterColor(color?: string) {
+  const value = String(color ?? "").trim();
+  return value || "#ff7aa2";
+}
+
+function hexToRgba(hex: string, alpha: number) {
+  const cleaned = hex.trim().replace(/^#/, "");
+
+  const normalized =
+    cleaned.length === 3
+      ? cleaned
+          .split("")
+          .map((c) => `${c}${c}`)
+          .join("")
+      : cleaned;
+
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
+    return `rgba(255,122,162,${alpha})`;
+  }
+
+  const r = parseInt(normalized.slice(0, 2), 16);
+  const g = parseInt(normalized.slice(2, 4), 16);
+  const b = parseInt(normalized.slice(4, 6), 16);
+
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 async function readErrorBody(res: Response): Promise<string | null> {
   try {
     const ct = res.headers.get("content-type") || "";
+
     if (ct.includes("application/json")) {
       const j: unknown = await res.json().catch(() => null);
 
       if (isRecordLike(j)) {
         const err = getStringProp(j, "error");
-        if (err) return err;
+
+        if (err) {
+          return err;
+        }
 
         const msg = getStringProp(j, "message");
-        if (msg) return msg;
+
+        if (msg) {
+          return msg;
+        }
       }
 
       return JSON.stringify(j);
@@ -146,7 +251,11 @@ async function readErrorBody(res: Response): Promise<string | null> {
 
     const t = await res.text().catch(() => "");
     const s = (t || "").trim();
-    if (!s) return null;
+
+    if (!s) {
+      return null;
+    }
+
     return s.slice(0, 400);
   } catch {
     return null;
@@ -164,8 +273,11 @@ function isFishingJudgeText(text: string) {
 
 function detectTargetDay(text: string): "today" | "tomorrow" {
   const s = text ?? "";
-  if (/(明日|あした|アシタ|tomorrow|明日の|明日行く|明日どう|明日は)/.test(s))
+
+  if (/(明日|あした|アシタ|tomorrow|明日の|明日行く|明日どう|明日は)/.test(s)) {
     return "tomorrow";
+  }
+
   return "today";
 }
 
@@ -209,39 +321,62 @@ function weatherCodeToJp(code: number): string {
   if (code === 1) return "晴れ時々くもり";
   if (code === 2) return "くもり";
   if (code === 3) return "くもり";
+
   return "不明";
 }
 
 function pickDayIndexes(times: string[], day: string) {
   const idxs: number[] = [];
+
   for (let i = 0; i < times.length; i++) {
     const t = times[i];
-    if (typeof t === "string" && t.startsWith(day)) idxs.push(i);
+
+    if (typeof t === "string" && t.startsWith(day)) {
+      idxs.push(i);
+    }
   }
+
   return idxs;
 }
 
 function pickDaytimeIndexes(times: string[], idxs: number[]) {
   const out: number[] = [];
+
   for (const i of idxs) {
     const t = times[i];
     const hh = Number((t ?? "").slice(11, 13));
-    if (Number.isFinite(hh) && hh >= 6 && hh <= 18) out.push(i);
+
+    if (Number.isFinite(hh) && hh >= 6 && hh <= 18) {
+      out.push(i);
+    }
   }
+
   return out.length ? out : idxs;
 }
 
 function modeNumber(xs: number[]): number | null {
-  if (!xs.length) return null;
+  if (!xs.length) {
+    return null;
+  }
+
   const m = new Map<number, number>();
+
   for (const x of xs) {
-    if (!Number.isFinite(x)) continue;
+    if (!Number.isFinite(x)) {
+      continue;
+    }
+
     m.set(x, (m.get(x) ?? 0) + 1);
   }
+
   let best: { k: number; v: number } | null = null;
+
   for (const [k, v] of m.entries()) {
-    if (!best || v > best.v) best = { k, v };
+    if (!best || v > best.v) {
+      best = { k, v };
+    }
   }
+
   return best ? best.k : null;
 }
 
@@ -274,18 +409,24 @@ function summarizeOneDay(json: unknown, day: string): WeatherSummary {
     conditionText: "不明",
   };
 
-  if (!isRecordLike(json)) return safe;
+  if (!isRecordLike(json)) {
+    return safe;
+  }
 
   const hourly = (json as OpenMeteoResponse).hourly;
-  const times = Array.isArray(hourly?.time) ? hourly?.time : [];
+  const times = Array.isArray(hourly?.time) ? hourly.time : [];
   const idxsAll = pickDayIndexes(times, day);
-  if (!idxsAll.length) return safe;
+
+  if (!idxsAll.length) {
+    return safe;
+  }
 
   const idxs = pickDaytimeIndexes(times, idxsAll);
 
   const pickNums = (arr: unknown, use: number[]) => {
     const a = Array.isArray(arr) ? arr : [];
-    return use.map((i) => Number(a[i])).filter(Number.isFinite);
+
+    return use.map((i) => Number(a[i])).filter((n) => Number.isFinite(n));
   };
 
   const tempAll = pickNums(hourly?.temperature_2m, idxsAll);
@@ -301,8 +442,10 @@ function summarizeOneDay(json: unknown, day: string): WeatherSummary {
 
   const avg = (xs: number[]) =>
     xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0;
+
   const max = (xs: number[]) =>
     xs.length ? xs.reduce((m, x) => (x > m ? x : m), xs[0]) : 0;
+
   const round1 = (n: number) => Math.round(n * 10) / 10;
 
   const codeMode = modeNumber(codeDay);
@@ -310,16 +453,26 @@ function summarizeOneDay(json: unknown, day: string): WeatherSummary {
 
   const cloudAvg = avg(cloudDay);
   let condition = codeText;
-  if (condition === "晴れ" && cloudAvg >= 55) condition = "晴れ時々くもり";
+
+  if (condition === "晴れ" && cloudAvg >= 55) {
+    condition = "晴れ時々くもり";
+  }
+
   if (
     (condition === "くもり" || condition === "晴れ時々くもり") &&
     cloudAvg < 25
-  )
+  ) {
     condition = "晴れ";
+  }
+
   if (condition === "不明") {
-    if (max(popAll) >= 60 || max(prcpAll) >= 1) condition = "雨";
-    else if (cloudAvg >= 60) condition = "くもり";
-    else condition = "晴れ";
+    if (max(popAll) >= 60 || max(prcpAll) >= 1) {
+      condition = "雨";
+    } else if (cloudAvg >= 60) {
+      condition = "くもり";
+    } else {
+      condition = "晴れ";
+    }
   }
 
   return {
@@ -341,22 +494,26 @@ async function fetchOpenMeteoHourly(
   lon: number,
 ): Promise<unknown> {
   const tz = "Asia/Tokyo";
+
   const url =
-    `https://api.open-meteo.com/v1/forecast` +
+    "https://api.open-meteo.com/v1/forecast" +
     `?latitude=${encodeURIComponent(String(lat))}` +
     `&longitude=${encodeURIComponent(String(lon))}` +
-    `&hourly=temperature_2m,precipitation,precipitation_probability,wind_speed_10m,wind_gusts_10m,weather_code,cloud_cover` +
-    `&forecast_days=2` +
+    "&hourly=temperature_2m,precipitation,precipitation_probability,wind_speed_10m,wind_gusts_10m,weather_code,cloud_cover" +
+    "&forecast_days=2" +
     `&timezone=${encodeURIComponent(tz)}` +
-    `&wind_speed_unit=ms`;
+    "&wind_speed_unit=ms";
 
   const res = await fetch(url, { method: "GET" });
   const text = await res.text().catch(() => "");
 
   if (!res.ok) {
     const head = (text || "").replace(/\s+/g, " ").trim().slice(0, 160);
-    if (res.status === 429)
+
+    if (res.status === 429) {
       throw new Error(`openmeteo_rate_limited_429${head ? `:${head}` : ""}`);
+    }
+
     throw new Error(`openmeteo_http_${res.status}${head ? `:${head}` : ""}`);
   }
 
@@ -372,14 +529,23 @@ function loadWeatherCache(
 ): { ts: number; text: string } | null {
   try {
     const raw = localStorage.getItem(cacheKey);
-    if (!raw) return null;
+
+    if (!raw) {
+      return null;
+    }
 
     const j: unknown = JSON.parse(raw);
-    if (!isRecordLike(j)) return null;
+
+    if (!isRecordLike(j)) {
+      return null;
+    }
 
     const ts = Number(j.ts);
     const text = typeof j.text === "string" ? j.text : String(j.text ?? "");
-    if (!Number.isFinite(ts) || !text) return null;
+
+    if (!Number.isFinite(ts) || !text) {
+      return null;
+    }
 
     return { ts, text };
   } catch {
@@ -405,12 +571,15 @@ async function buildWeatherHint(
 ): Promise<string> {
   const now = new Date();
   const tmr = new Date(now);
+
   tmr.setDate(now.getDate() + 1);
 
   const day = targetDay === "tomorrow" ? dayKey(tmr) : dayKey(now);
+
   const cacheKey = `${OPENMETEO_CACHE_KEY_PREFIX}${lat},${lon}:${day}`;
 
   const cached = loadWeatherCache(cacheKey);
+
   if (cached && Date.now() - cached.ts <= OPENMETEO_TTL_MS) {
     return cached.text;
   }
@@ -419,6 +588,7 @@ async function buildWeatherHint(
   const s = summarizeOneDay(json, day);
 
   const label = targetDay === "tomorrow" ? "明日" : "今日";
+
   const memo = `
 【Weather：${label}（焼津周辺の目安 / 単位：風m/s・雨mm/h）】
 - 概況：${s.conditionText}（雲量平均${s.cloudAvg}% / code:${s.weatherCodeMode ?? "?"}）
@@ -427,15 +597,20 @@ async function buildWeatherHint(
 - 雨 最大${clampNum(s.rainMaxProb, 0, 100)}%（${Math.max(0, s.rainMaxMm)}mm/h）
 `.trim();
 
-  saveWeatherCache(cacheKey, { ts: Date.now(), text: memo });
+  saveWeatherCache(cacheKey, {
+    ts: Date.now(),
+    text: memo,
+  });
+
   return memo;
 }
 
 /**
- * ✅ 受け取ったemotionをStage互換のEmotionに寄せる
+ * 受け取ったemotionをStage互換のEmotionに寄せる
  */
 function normalizeEmotion(raw: string | null): Emotion | undefined {
   const v = (raw ?? "").trim();
+
   if (
     v === "neutral" ||
     v === "happy" ||
@@ -446,64 +621,122 @@ function normalizeEmotion(raw: string | null): Emotion | undefined {
   ) {
     return v;
   }
+
   return undefined;
 }
 
 /**
- * ✅ サーバが neutral 寄りでも “返答本文” から軽く推定して彩りを戻す
- * ※雑談の表情を出しやすくするための救済ルール
+ * サーバが neutral 寄りでも返答本文から軽く推定して彩りを戻す
  */
 function inferEmotionFromAssistantText(text: string): Emotion | undefined {
   const s = (text ?? "").trim();
-  if (!s) return undefined;
 
-  if (/(結論|根拠|作戦|判断|様子見|検討|プラン|整理|要点)/.test(s))
+  if (!s) {
+    return undefined;
+  }
+
+  if (/(結論|根拠|作戦|判断|様子見|検討|プラン|整理|要点)/.test(s)) {
     return "think";
-  if (/(好き|大好き|愛|惚|きゅん|尊い|付き合|結婚|抱きしめ|ぎゅ|ちゅ)/.test(s))
+  }
+
+  if (
+    /(好き|大好き|愛|惚|きゅん|尊い|付き合|結婚|抱きしめ|ぎゅ|ちゅ)/.test(s)
+  ) {
     return "love";
-  if (/(えっ|まじ|マジ|！？|びっくり|驚|すご|ヤバ|なんで)/.test(s))
+  }
+
+  if (/(えっ|まじ|マジ|！？|びっくり|驚|すご|ヤバ|なんで)/.test(s)) {
     return "surprise";
-  if (/(ごめん|すま|残念|つら|悲|しんど|無理|だめ|失敗)/.test(s)) return "sad";
-  if (/(やった|いいね|最高|うれし|嬉|ナイス|完璧|勝ち)/.test(s)) return "happy";
+  }
+
+  if (/(ごめん|すま|残念|つら|悲|しんど|無理|だめ|失敗)/.test(s)) {
+    return "sad";
+  }
+
+  if (/(やった|いいね|最高|うれし|嬉|ナイス|完璧|勝ち)/.test(s)) {
+    return "happy";
+  }
 
   return undefined;
 }
 
 /**
- * ✅ APIレスポンス（emotionを追加で受ける）
+ * APIレスポンス
  */
-function readApiTextResponse(
-  json: unknown,
-): { ok: true; text: string; emotion?: Emotion } | null {
-  if (!isRecordLike(json)) return null;
+function readApiTextResponse(json: unknown): {
+  ok: true;
+  text: string;
+  emotion?: Emotion;
+} | null {
+  if (!isRecordLike(json)) {
+    return null;
+  }
+
   const ok = getBoolProp(json, "ok");
-  if (ok !== true) return null;
+
+  if (ok !== true) {
+    return null;
+  }
 
   const text = getStringProp(json, "text") ?? "";
-
   const rawEmotion = getStringProp(json, "emotion");
   const emotion = normalizeEmotion(rawEmotion);
 
-  return { ok: true, text, emotion };
+  return {
+    ok: true,
+    text,
+    emotion,
+  };
 }
 
 function readApiErrorResponse(json: unknown): string | null {
-  if (!isRecordLike(json)) return null;
+  if (!isRecordLike(json)) {
+    return null;
+  }
+
   const err = getStringProp(json, "error");
   return err ?? null;
 }
 
+function buildSingleThread(messages: Msg[]): ApiMessage[] {
+  return messages.map((message) => ({
+    role: message.role,
+    content: message.content,
+  }));
+}
+
+/**
+ * 全員集合では、各キャラへ
+ * - ユーザー発言
+ * - そのキャラ自身の過去の返答
+ * だけを渡す。
+ *
+ * Phase1では他キャラの発言を見せないため、
+ * まだ掛け合いは発生しない。
+ */
+function buildGroupThread(messages: Msg[], characterId: string): ApiMessage[] {
+  return messages
+    .filter((message) => {
+      if (message.role === "user") {
+        return true;
+      }
+
+      return message.characterId === characterId;
+    })
+    .map((message) => ({
+      role: message.role,
+      content: message.content,
+    }));
+}
+
 export default function Chat({ back, goCharacterSettings }: Props) {
-  // ✅ chat由来の感情は「chatソース」として扱い、画面離脱で消す
   const { emitEmotion, clearEmotion } = useEmotion();
 
-  // ✅ 「戻る」を押した瞬間に先に消す（HOMEに一瞬だけ残るのを防ぐ）
   const onBack = useCallback(() => {
     clearEmotion("chat");
     back();
   }, [clearEmotion, back]);
 
-  // 念のため：Chat画面を出たら “chat” を消す（保険）
   useEffect(() => {
     return () => {
       clearEmotion("chat");
@@ -519,33 +752,63 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     [characters],
   );
 
-  const [selectedId, setSelectedId] = useState<string>(() =>
-    safeLoadSelectedCharacterId(safeLoadCharacters()[0]?.id ?? "tsuduri"),
-  );
+  const [selectedId, setSelectedId] = useState<string>(() => {
+    const loaded = safeLoadCharacters();
 
-  const selectedCharacter = useMemo(
-    () => readCharacterProfile(selectedId, fallback),
-    [selectedId, fallback],
-  );
+    const selectedCharacterId = safeLoadSelectedCharacterId(
+      loaded[0]?.id ?? "tsuduri",
+    );
+
+    const validCharacterId = loaded.some((c) => c.id === selectedCharacterId)
+      ? selectedCharacterId
+      : (loaded[0]?.id ?? "tsuduri");
+
+    return safeLoadSelectedRoomId(loaded, validCharacterId);
+  });
+
+  const isGroupMode = selectedId === GROUP_ROOM_ID;
+
+  const selectedCharacter = useMemo(() => {
+    if (isGroupMode) {
+      return fallback;
+    }
+
+    return readCharacterProfile(selectedId, fallback);
+  }, [isGroupMode, selectedId, fallback]);
 
   const roomId = selectedId;
 
   const [messages, setMessages] = useState<Msg[]>(() =>
     safeLoadHistory(roomId),
   );
+
   const [input, setInput] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
+  const [loadingCharacterName, setLoadingCharacterName] = useState<string>("");
 
   const scrollBoxRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const selectRef = useRef<HTMLSelectElement | null>(null);
 
+  const titleText = isGroupMode
+    ? "💬 全員集合チャット"
+    : `💬 ${selectedCharacter.name}と話す`;
+
+  const placeholderText = isGroupMode
+    ? "みんなに話しかける…"
+    : `${selectedCharacter.name}に話しかける…`;
+
   function focusInput() {
     const el = inputRef.current;
-    if (!el) return;
+
+    if (!el) {
+      return;
+    }
+
     requestAnimationFrame(() => {
       try {
         el.focus();
+
         const len = el.value.length;
         el.setSelectionRange(len, len);
       } catch {
@@ -556,17 +819,25 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
   function scrollToBottom(mode: "auto" | "smooth" = "auto") {
     const box = scrollBoxRef.current;
-    if (!box) return;
+
+    if (!box) {
+      return;
+    }
 
     const run = () => {
       box.scrollTop = box.scrollHeight;
     };
 
     if (mode === "smooth") {
-      box.scrollTo({ top: box.scrollHeight, behavior: "smooth" });
+      box.scrollTo({
+        top: box.scrollHeight,
+        behavior: "smooth",
+      });
+
       requestAnimationFrame(run);
       setTimeout(run, 0);
       setTimeout(run, 80);
+
       return;
     }
 
@@ -575,22 +846,36 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     setTimeout(run, 80);
   }
 
-  // 他画面でキャラ編集したあと戻ってきたとき反映
   useEffect(() => {
     const onFocus = () => {
       const list = safeLoadCharacters();
       setCharacters(list);
 
-      const newSelected = safeLoadSelectedCharacterId(list[0]?.id ?? "tsuduri");
-      setSelectedId(newSelected);
+      setSelectedId((current) => {
+        if (current === GROUP_ROOM_ID) {
+          return GROUP_ROOM_ID;
+        }
+
+        const storedId = safeLoadSelectedCharacterId(list[0]?.id ?? "tsuduri");
+
+        if (list.some((c) => c.id === storedId)) {
+          return storedId;
+        }
+
+        return list[0]?.id ?? "tsuduri";
+      });
     };
+
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
-  // キャラ切替で履歴切替
   useEffect(() => {
     setMessages(safeLoadHistory(roomId));
+    setLoadingCharacterName("");
     scrollToBottom("auto");
     focusInput();
   }, [roomId]);
@@ -601,31 +886,50 @@ export default function Chat({ back, goCharacterSettings }: Props) {
   }, [messages, roomId]);
 
   useEffect(() => {
-    safeSaveSelectedCharacterId(selectedId);
+    safeSaveSelectedRoomId(selectedId);
+
+    if (selectedId !== GROUP_ROOM_ID) {
+      safeSaveSelectedCharacterId(selectedId);
+    }
   }, [selectedId]);
 
   const canSend = useMemo(() => !!input.trim() && !loading, [input, loading]);
 
   function clearHistory() {
-    const ok = confirm("会話履歴を消す？（戻せないよ）");
-    if (!ok) return;
+    const ok = confirm(
+      isGroupMode
+        ? "全員集合チャットの履歴を消す？（戻せないよ）"
+        : "会話履歴を消す？（戻せないよ）",
+    );
+
+    if (!ok) {
+      return;
+    }
+
     setMessages([]);
+
     try {
       localStorage.removeItem(historyKey(roomId));
     } catch {
       // ignore
     }
+
     focusInput();
   }
 
   async function callApiChat(
-    payloadMessages: { role: "user" | "assistant"; content: string }[],
+    payloadMessages: ApiMessage[],
     character: CharacterProfileWithColor,
     systemHints: string[],
-  ): Promise<{ text: string; emotion?: Emotion }> {
+  ): Promise<{
+    text: string;
+    emotion?: Emotion;
+  }> {
     const res = await fetch("/api/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         messages: payloadMessages,
         characterProfile: character,
@@ -635,15 +939,23 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
     if (!res.ok) {
       const bodyErr = await readErrorBody(res);
+
       throw new Error(`HTTP ${res.status}${bodyErr ? ` / ${bodyErr}` : ""}`);
     }
 
     const json: unknown = await res.json().catch(() => null);
 
     const okText = readApiTextResponse(json);
-    if (okText) return { text: okText.text, emotion: okText.emotion };
+
+    if (okText) {
+      return {
+        text: okText.text,
+        emotion: okText.emotion,
+      };
+    }
 
     const err = readApiErrorResponse(json);
+
     throw new Error(err ?? "unknown_error");
   }
 
@@ -652,69 +964,214 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       source: "chat",
       emotion: nextEmotion,
       priority: 30,
-      ttlMs: null, // chat画面に居る間は保持、離脱で消す
+      ttlMs: null,
     });
   }
 
-  async function send() {
-    const text = input.trim();
-    if (!text || loading) return;
+  function applyReplyEmotion(
+    replyText: string,
+    replyEmotion: Emotion | undefined,
+    isJudge: boolean,
+  ) {
+    if (isJudge) {
+      applyChatEmotion("think");
+      return;
+    }
 
-    const next: Msg[] = [...messages, { role: "user", content: text }];
-    setMessages(next);
+    if (replyEmotion && replyEmotion !== "neutral") {
+      applyChatEmotion(replyEmotion);
+      return;
+    }
 
-    setInput("");
-    focusInput();
-    setLoading(true);
+    const inferred = inferEmotionFromAssistantText(replyText);
+
+    if (inferred) {
+      applyChatEmotion(inferred);
+      return;
+    }
+
+    applyChatEmotion("neutral");
+  }
+
+  async function buildHintsForText(text: string): Promise<{
+    hints: string[];
+    isJudge: boolean;
+  }> {
+    const hints: string[] = [];
+    const isJudge = isFishingJudgeText(text);
+
+    if (!isJudge) {
+      return {
+        hints,
+        isJudge,
+      };
+    }
+
+    const targetDay = detectTargetDay(text);
+
+    const YAIZU = {
+      lat: 34.868,
+      lon: 138.3236,
+    };
 
     try {
-      const thread = next.map((m) => ({ role: m.role, content: m.content }));
+      const weatherHint = await buildWeatherHint(
+        targetDay,
+        YAIZU.lat,
+        YAIZU.lon,
+      );
+
+      hints.push(weatherHint);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+
+      hints.push(`【Weather】取得失敗（${msg}）`);
+    }
+
+    return {
+      hints,
+      isJudge,
+    };
+  }
+
+  async function sendSingle(text: string, next: Msg[]) {
+    try {
       const currentCharacter = readCharacterProfile(
         selectedId,
         selectedCharacter,
       );
 
-      const hints: string[] = [];
-      const isJudge = isFishingJudgeText(text);
+      const { hints, isJudge } = await buildHintsForText(text);
 
-      if (isJudge) {
-        const targetDay = detectTargetDay(text);
-        const YAIZU = { lat: 34.868, lon: 138.3236 };
+      const thread = buildSingleThread(next);
 
-        try {
-          const weatherHint = await buildWeatherHint(
-            targetDay,
-            YAIZU.lat,
-            YAIZU.lon,
-          );
-          hints.push(weatherHint);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          hints.push(`【Weather】取得失敗（${msg}）`);
-        }
-      }
+      setLoadingCharacterName(currentCharacter.name);
 
       const reply = await callApiChat(thread, currentCharacter, hints);
-      setMessages([...next, { role: "assistant", content: reply.text }]);
 
-      if (isJudge) {
-        applyChatEmotion("think");
-      } else if (reply.emotion && reply.emotion !== "neutral") {
-        applyChatEmotion(reply.emotion);
-      } else {
-        const inferred = inferEmotionFromAssistantText(reply.text);
-        if (inferred) applyChatEmotion(inferred);
-        else applyChatEmotion("neutral");
-      }
+      const replyMessage: Msg = {
+        role: "assistant",
+        content: reply.text,
+        characterId: currentCharacter.id,
+        characterName: currentCharacter.name,
+        characterColor: normalizeCharacterColor(currentCharacter.color),
+      };
+
+      setMessages([...next, replyMessage]);
+
+      applyReplyEmotion(reply.text, reply.emotion, isJudge);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+
       setMessages([
         ...next,
-        { role: "assistant", content: `ごめん…🥺\n理由：${msg}` },
+        {
+          role: "assistant",
+          content: `ごめん…🥺\n理由：${msg}`,
+          characterId: selectedCharacter.id,
+          characterName: selectedCharacter.name,
+          characterColor: normalizeCharacterColor(selectedCharacter.color),
+        },
       ]);
+
       applyChatEmotion("sad");
+    }
+  }
+
+  async function sendGroup(text: string, next: Msg[]) {
+    const { hints, isJudge } = await buildHintsForText(text);
+
+    let workingMessages = [...next];
+    let lastSuccessfulReply: {
+      text: string;
+      emotion?: Emotion;
+    } | null = null;
+
+    for (const character of characters) {
+      setLoadingCharacterName(character.name);
+
+      const thread = buildGroupThread(workingMessages, character.id);
+
+      try {
+        const reply = await callApiChat(thread, character, hints);
+
+        const replyMessage: Msg = {
+          role: "assistant",
+          content: reply.text,
+          characterId: character.id,
+          characterName: character.name,
+          characterColor: normalizeCharacterColor(character.color),
+        };
+
+        workingMessages = [...workingMessages, replyMessage];
+
+        setMessages(workingMessages);
+
+        lastSuccessfulReply = reply;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+
+        const errorMessage: Msg = {
+          role: "assistant",
+          content: `ごめん…🥺\n理由：${msg}`,
+          characterId: character.id,
+          characterName: character.name,
+          characterColor: normalizeCharacterColor(character.color),
+        };
+
+        workingMessages = [...workingMessages, errorMessage];
+
+        setMessages(workingMessages);
+      }
+    }
+
+    if (isJudge) {
+      applyChatEmotion("think");
+      return;
+    }
+
+    if (lastSuccessfulReply) {
+      applyReplyEmotion(
+        lastSuccessfulReply.text,
+        lastSuccessfulReply.emotion,
+        false,
+      );
+      return;
+    }
+
+    applyChatEmotion("sad");
+  }
+
+  async function send() {
+    const text = input.trim();
+
+    if (!text || loading) {
+      return;
+    }
+
+    const next: Msg[] = [
+      ...messages,
+      {
+        role: "user",
+        content: text,
+      },
+    ];
+
+    setMessages(next);
+    setInput("");
+    focusInput();
+    setLoading(true);
+    setLoadingCharacterName("");
+
+    try {
+      if (isGroupMode) {
+        await sendGroup(text, next);
+      } else {
+        await sendSingle(text, next);
+      }
     } finally {
       setLoading(false);
+      setLoadingCharacterName("");
       focusInput();
     }
   }
@@ -741,20 +1198,28 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
   return (
     <PageShell
-      title={<h1 style={{ margin: 0 }}>💬 {selectedCharacter.name}と話す</h1>}
+      title={<h1 style={{ margin: 0 }}>{titleText}</h1>}
       maxWidth={1100}
       showBack
       onBack={onBack}
       titleLayout="left"
       scrollY="hidden"
-      contentPadding={"clamp(10px, 2vw, 18px)"}
+      contentPadding="clamp(10px, 2vw, 18px)"
       displayCharacterId={selectedId}
     >
       <style>{`
         @keyframes tsuduri-dot-bounce {
-          0%, 80%, 100% { transform: translateY(0); opacity: 0.55; }
-          40% { transform: translateY(-4px); opacity: 1; }
+          0%, 80%, 100% {
+            transform: translateY(0);
+            opacity: 0.55;
+          }
+
+          40% {
+            transform: translateY(-4px);
+            opacity: 1;
+          }
         }
+
         .tsuduri-typing {
           display: inline-flex;
           align-items: center;
@@ -763,12 +1228,14 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           border-radius: 14px;
           max-width: 80%;
         }
+
         .tsuduri-typing .label {
           font-size: 12px;
           color: rgba(255,255,255,0.70);
           margin-right: 6px;
           user-select: none;
         }
+
         .tsuduri-typing .dot {
           width: 6px;
           height: 6px;
@@ -776,27 +1243,51 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           background: #fff;
           animation: tsuduri-dot-bounce 1.05s infinite;
         }
-        .tsuduri-typing .dot:nth-child(2) { animation-delay: 0.12s; }
-        .tsuduri-typing .dot:nth-child(3) { animation-delay: 0.24s; }
 
-        .chat-btn.glass{
-          display:inline-flex;
-          align-items:center;
-          justify-content:center;
-          height:34px;
+        .tsuduri-typing .dot:nth-child(2) {
+          animation-delay: 0.12s;
+        }
+
+        .tsuduri-typing .dot:nth-child(3) {
+          animation-delay: 0.24s;
+        }
+
+        .chat-btn.glass {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          height: 34px;
           padding: 6px 10px;
-          border-radius:12px;
-          cursor:pointer;
-          user-select:none;
+          border-radius: 12px;
+          cursor: pointer;
+          user-select: none;
           color: rgba(255,255,255,0.90);
           background: rgba(17,17,17,var(--glass-alpha,0.22));
           border: 1px solid rgba(255,255,255,0.18);
         }
-        .chat-quick{
-          display:flex;
-          flex-wrap:wrap;
-          gap:8px;
-          min-width:0;
+
+        .chat-quick {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          min-width: 0;
+        }
+
+        .chat-speaker-label {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          margin: 0 0 5px 3px;
+          font-size: 12px;
+          font-weight: 800;
+          line-height: 1.3;
+        }
+
+        .chat-speaker-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 999px;
+          flex: 0 0 auto;
         }
       `}</style>
 
@@ -839,6 +1330,8 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                   {c.name}
                 </option>
               ))}
+
+              <option value={GROUP_ROOM_ID}>👭 全員集合</option>
             </select>
 
             <span
@@ -856,6 +1349,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           </div>
 
           <button
+            type="button"
             onClick={goCharacterSettings}
             title="キャラ管理"
             className="chat-btn glass"
@@ -865,6 +1359,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           </button>
 
           <button
+            type="button"
             onClick={clearHistory}
             title="履歴を全消し"
             className="chat-btn glass"
@@ -890,28 +1385,78 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           }}
         >
           {messages.length === 0 ? (
-            <div style={{ color: "rgba(255,255,255,0.60)", fontSize: 13 }}>
-              {selectedCharacter.name}「{selectedCharacter.callUser}
-              、今日はどうする？🎣」
+            <div
+              style={{
+                color: "rgba(255,255,255,0.60)",
+                fontSize: 13,
+              }}
+            >
+              {isGroupMode
+                ? "みんなが集まってるよ。何を話す？🎣"
+                : `${selectedCharacter.name}「${selectedCharacter.callUser}、今日はどうする？🎣」`}
             </div>
           ) : (
             messages.map((m, index) => {
               const isUser = m.role === "user";
+
+              const messageCharacter =
+                !isUser && m.characterId
+                  ? characters.find((c) => c.id === m.characterId)
+                  : undefined;
+
+              const speakerName =
+                m.characterName ??
+                messageCharacter?.name ??
+                (!isGroupMode ? selectedCharacter.name : "キャラクター");
+
+              const speakerColor = normalizeCharacterColor(
+                m.characterColor ??
+                  messageCharacter?.color ??
+                  selectedCharacter.color,
+              );
+
               return (
                 <div
-                  key={index}
+                  key={`${index}-${m.characterId ?? m.role}`}
                   style={{
                     marginBottom: 10,
                     textAlign: isUser ? "right" : "left",
                   }}
                 >
+                  {!isUser && isGroupMode && (
+                    <div
+                      className="chat-speaker-label"
+                      style={{
+                        color: speakerColor,
+                      }}
+                    >
+                      <span
+                        className="chat-speaker-dot"
+                        aria-hidden="true"
+                        style={{
+                          background: speakerColor,
+                          boxShadow: `0 0 0 3px ${hexToRgba(
+                            speakerColor,
+                            0.18,
+                          )}`,
+                        }}
+                      />
+
+                      <span>{speakerName}</span>
+                    </div>
+                  )}
+
                   <span
                     className={!isUser ? "glass" : undefined}
                     style={{
                       display: "inline-block",
                       padding: "10px 12px",
                       borderRadius: 14,
-                      background: isUser ? "rgba(255,77,109,0.92)" : undefined,
+                      background: isUser
+                        ? "rgba(255,77,109,0.92)"
+                        : isGroupMode
+                          ? hexToRgba(speakerColor, 0.13)
+                          : undefined,
                       color: "#fff",
                       maxWidth: "80%",
                       whiteSpace: "pre-wrap",
@@ -919,7 +1464,11 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                       overflowWrap: "anywhere",
                       wordBreak: "break-word",
                       border: !isUser
-                        ? "1px solid rgba(255,255,255,0.16)"
+                        ? `1px solid ${
+                            isGroupMode
+                              ? hexToRgba(speakerColor, 0.42)
+                              : "rgba(255,255,255,0.16)"
+                          }`
                         : "1px solid transparent",
                     }}
                   >
@@ -931,9 +1480,19 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           )}
 
           {loading && (
-            <div style={{ marginTop: 6, textAlign: "left" }}>
+            <div
+              style={{
+                marginTop: 6,
+                textAlign: "left",
+              }}
+            >
               <div className="tsuduri-typing glass">
-                <span className="label">入力中</span>
+                <span className="label">
+                  {loadingCharacterName
+                    ? `${loadingCharacterName}が入力中`
+                    : "入力中"}
+                </span>
+
                 <span className="dot" />
                 <span className="dot" />
                 <span className="dot" />
@@ -950,10 +1509,14 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               focusInput();
             }}
             className="chat-btn glass"
-            style={{ opacity: 0.92, ...uiButtonStyle }}
+            style={{
+              opacity: 0.92,
+              ...uiButtonStyle,
+            }}
           >
             😌 元気にしてる？
           </button>
+
           <button
             type="button"
             onClick={() => {
@@ -961,10 +1524,14 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               focusInput();
             }}
             className="chat-btn glass"
-            style={{ opacity: 0.92, ...uiButtonStyle }}
+            style={{
+              opacity: 0.92,
+              ...uiButtonStyle,
+            }}
           >
             🎣 今日の釣行判断
           </button>
+
           <button
             type="button"
             onClick={() => {
@@ -972,7 +1539,10 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               focusInput();
             }}
             className="chat-btn glass"
-            style={{ opacity: 0.92, ...uiButtonStyle }}
+            style={{
+              opacity: 0.92,
+              ...uiButtonStyle,
+            }}
           >
             🌙 明日の釣行判断
           </button>
@@ -980,7 +1550,10 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
         <div
           className="glass glass-strong"
-          style={{ borderRadius: 14, padding: 10 }}
+          style={{
+            borderRadius: 14,
+            padding: 10,
+          }}
         >
           <div
             style={{
@@ -1000,7 +1573,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                   send();
                 }
               }}
-              placeholder={`${selectedCharacter.name}に話しかける…`}
+              placeholder={placeholderText}
               className="glass"
               style={{
                 flex: 1,
@@ -1015,6 +1588,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
             />
 
             <button
+              type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={send}
               disabled={!canSend}
