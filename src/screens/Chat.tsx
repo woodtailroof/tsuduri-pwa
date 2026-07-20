@@ -1551,7 +1551,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           display: flex;
           align-items: center;
           gap: 7px;
-          margin: 0 0 5px 3px;
+          margin: 0 0 5px 2px;
           font-size: 12px;
           font-weight: 800;
           line-height: 1.3;
@@ -1709,7 +1709,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                         aria-hidden="true"
                         style={{
                           background: speakerColor,
-                          boxShadow: `0 0 0 3px ${hexToRgba(
+                          boxShadow: `0 0 0 2px ${hexToRgba(
                             speakerColor,
                             0.18,
                           )}`,
