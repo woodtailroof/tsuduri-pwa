@@ -1614,7 +1614,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                 right: 10,
                 pointerEvents: "none",
                 color: "rgba(255,255,255,0.55)",
-                fontSize: 12,
+                fontSize: "clamp(11px, 1.8vw, 12px)",
                 transform: "translateY(-1px)",
               }}
             >
@@ -1662,7 +1662,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
             <div
               style={{
                 color: "rgba(255,255,255,0.60)",
-                fontSize: 13,
+                fontSize: "clamp(12px, 2vw, 13px)",
               }}
             >
               {isGroupMode
@@ -1724,7 +1724,8 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                     className={!isUser ? "glass" : undefined}
                     style={{
                       display: "inline-block",
-                      padding: "10px 12px",
+                      padding:
+                        "clamp(8px, 1.2vw, 10px) clamp(10px, 1.6vw, 12px)",
                       borderRadius: 14,
                       background: isUser
                         ? "rgba(255,77,109,0.92)"
@@ -1734,7 +1735,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                       color: "#fff",
                       maxWidth: "80%",
                       whiteSpace: "pre-wrap",
-                      lineHeight: 1.65,
+                      lineHeight: "clamp(1.45, 1.5, 1.65)",
                       overflowWrap: "anywhere",
                       wordBreak: "break-word",
                       border: !isUser
