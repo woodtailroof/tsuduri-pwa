@@ -238,6 +238,141 @@ function shuffleCharacters<T>(source: readonly T[]): T[] {
   return shuffled;
 }
 
+type GroupReplyLength = "long" | "medium" | "short";
+
+function detectMentionedCharacter(
+  text: string,
+  characters: CharacterProfileWithColor[],
+): CharacterProfileWithColor | null {
+  const normalizedText = String(text ?? "")
+    .normalize("NFKC")
+    .toLowerCase();
+
+  if (!normalizedText.trim()) {
+    return null;
+  }
+
+  if (/(みんな|全員|みなさん|皆さん|みんなは|全員は)/.test(normalizedText)) {
+    return null;
+  }
+
+  const candidates = characters
+    .flatMap((character) => {
+      const aliases = [character.name, character.selfName, character.id]
+        .map((value) =>
+          String(value ?? "")
+            .normalize("NFKC")
+            .toLowerCase()
+            .trim(),
+        )
+        .filter((value) => value.length >= 2);
+
+      return aliases.map((alias) => ({
+        character,
+        alias,
+      }));
+    })
+    .sort((a, b) => b.alias.length - a.alias.length);
+
+  for (const candidate of candidates) {
+    if (normalizedText.includes(candidate.alias)) {
+      return candidate.character;
+    }
+  }
+
+  return null;
+}
+
+function assignGroupReplyLengths(
+  characters: CharacterProfileWithColor[],
+  spotlightCharacterId: string | null,
+): Map<string, GroupReplyLength> {
+  const assignments = new Map<string, GroupReplyLength>();
+
+  if (!characters.length) {
+    return assignments;
+  }
+
+  const slots: GroupReplyLength[] = characters.map((_, index) => {
+    if (index === 0) return "long";
+    if (index === 1) return "medium";
+    return "short";
+  });
+
+  const shuffledSlots = shuffleCharacters(slots);
+
+  characters.forEach((character, index) => {
+    assignments.set(character.id, shuffledSlots[index] ?? "short");
+  });
+
+  if (!spotlightCharacterId) {
+    return assignments;
+  }
+
+  const spotlightLength = assignments.get(spotlightCharacterId);
+
+  if (!spotlightLength || spotlightLength !== "short") {
+    return assignments;
+  }
+
+  const swapCandidates = characters.filter((character) => {
+    if (character.id === spotlightCharacterId) {
+      return false;
+    }
+
+    const length = assignments.get(character.id);
+    return length === "long" || length === "medium";
+  });
+
+  if (!swapCandidates.length) {
+    assignments.set(spotlightCharacterId, "medium");
+    return assignments;
+  }
+
+  const swapCharacter =
+    swapCandidates[Math.floor(Math.random() * swapCandidates.length)];
+  const swapLength = assignments.get(swapCharacter.id) ?? "medium";
+
+  assignments.set(spotlightCharacterId, swapLength);
+  assignments.set(swapCharacter.id, "short");
+
+  return assignments;
+}
+
+function buildReplyLengthHint(length: GroupReplyLength) {
+  if (length === "long") {
+    return `
+【今回の返答量】
+長め
+
+- キャラクター設定と現在の会話の流れに従って、自然にやや長めに返答してください。
+- 内容を無理に水増しせず、必要な説明や感情を十分に含めてください。
+- 文数は厳密固定ではありませんが、目安は4〜8文程度です。
+`.trim();
+  }
+
+  if (length === "medium") {
+    return `
+【今回の返答量】
+普通
+
+- キャラクター設定と現在の会話の流れに従って、自然な長さで返答してください。
+- 要点と感情をほどよく含めてください。
+- 文数は厳密固定ではありませんが、目安は2〜4文程度です。
+`.trim();
+  }
+
+  return `
+【今回の返答量】
+短め
+
+- キャラクター設定と現在の会話の流れに従って、短く自然に返答してください。
+- 一言だけでも構いません。無理に説明を増やさないでください。
+- 他キャラクター全員の発言を拾う必要はありません。
+- 文数は厳密固定ではありませんが、目安は1〜2文程度です。
+`.trim();
+}
+
 async function readErrorBody(res: Response): Promise<string | null> {
   try {
     const ct = res.headers.get("content-type") || "";
@@ -1202,6 +1337,13 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
     const speakingOrder = shuffleCharacters(characters);
 
+    const spotlightCharacter = detectMentionedCharacter(text, characters);
+
+    const replyLengths = assignGroupReplyLengths(
+      characters,
+      spotlightCharacter?.id ?? null,
+    );
+
     for (const character of speakingOrder) {
       setLoadingCharacterName(character.name);
 
@@ -1215,7 +1357,13 @@ export default function Chat({ back, goCharacterSettings }: Props) {
        */
       const thread = buildGroupThread(workingMessages, character.id);
 
-      const groupHints = [...hints, buildGroupRelayHint(character)];
+      const replyLength = replyLengths.get(character.id) ?? "short";
+
+      const groupHints = [
+        ...hints,
+        buildGroupRelayHint(character),
+        buildReplyLengthHint(replyLength),
+      ];
 
       try {
         const reply = await callApiChat(thread, character, groupHints);
