@@ -45,9 +45,6 @@ function safeJsonParse<T>(raw: string | null, fallback: T): T {
   }
 }
 
-/**
- * CharacterProfile は今までの型に加えて color を持つ想定（後方互換）
- */
 type CharacterProfileWithColor = CharacterProfile & {
   color?: string;
 };
@@ -167,7 +164,9 @@ function safeLoadHistory(roomId: string): Msg[] {
     }
 
     const characterId = getStringProp(item, "characterId") ?? undefined;
+
     const characterName = getStringProp(item, "characterName") ?? undefined;
+
     const characterColor = getStringProp(item, "characterColor") ?? undefined;
 
     out.push({
@@ -225,12 +224,6 @@ function hexToRgba(hex: string, alpha: number) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-/**
- * Fisher-Yates方式で配列を完全シャッフルする。
- *
- * 元配列は変更せず、複製した配列を返す。
- * 前回順や先頭キャラの偏り補正は行わない。
- */
 function shuffleCharacters<T>(source: readonly T[]): T[] {
   const shuffled = [...source];
 
@@ -282,9 +275,6 @@ async function readErrorBody(res: Response): Promise<string | null> {
   }
 }
 
-/**
- * ===== 釣行判断判定（Chat側）=====
- */
 function isFishingJudgeText(text: string) {
   return /(釣り行く|釣りいく|迷って|釣行判断|今日どう|明日どう|風|雨|波|潮|満潮|干潮|水温|ポイント)/.test(
     text ?? "",
@@ -333,9 +323,15 @@ function weatherCodeToJp(code: number): string {
   if (!Number.isFinite(code)) return "不明";
   if ([95, 96, 99].includes(code)) return "雷";
   if ([51, 53, 55, 56, 57].includes(code)) return "霧雨";
-  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "雨";
+  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) {
+    return "雨";
+  }
+
   if ([66, 67].includes(code)) return "凍雨";
-  if ([71, 73, 75, 77, 85, 86].includes(code)) return "雪";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) {
+    return "雪";
+  }
+
   if ([45, 48].includes(code)) return "霧";
   if (code === 0) return "晴れ";
   if (code === 1) return "晴れ時々くもり";
@@ -389,7 +385,10 @@ function modeNumber(xs: number[]): number | null {
     m.set(x, (m.get(x) ?? 0) + 1);
   }
 
-  let best: { k: number; v: number } | null = null;
+  let best: {
+    k: number;
+    v: number;
+  } | null = null;
 
   for (const [k, v] of m.entries()) {
     if (!best || v > best.v) {
@@ -434,7 +433,9 @@ function summarizeOneDay(json: unknown, day: string): WeatherSummary {
   }
 
   const hourly = (json as OpenMeteoResponse).hourly;
+
   const times = Array.isArray(hourly?.time) ? hourly.time : [];
+
   const idxsAll = pickDayIndexes(times, day);
 
   if (!idxsAll.length) {
@@ -450,12 +451,17 @@ function summarizeOneDay(json: unknown, day: string): WeatherSummary {
   };
 
   const tempAll = pickNums(hourly?.temperature_2m, idxsAll);
+
   const prcpAll = pickNums(hourly?.precipitation, idxsAll);
+
   const popAll = pickNums(hourly?.precipitation_probability, idxsAll);
+
   const windAll = pickNums(hourly?.wind_speed_10m, idxsAll);
+
   const gustAll = pickNums(hourly?.wind_gusts_10m, idxsAll);
 
   const cloudDay = pickNums(hourly?.cloud_cover, idxs);
+
   const codeDay = pickNums(hourly?.weather_code, idxs).map((x) =>
     Math.round(x),
   );
@@ -469,6 +475,7 @@ function summarizeOneDay(json: unknown, day: string): WeatherSummary {
   const round1 = (n: number) => Math.round(n * 10) / 10;
 
   const codeMode = modeNumber(codeDay);
+
   const codeText = codeMode == null ? "不明" : weatherCodeToJp(codeMode);
 
   const cloudAvg = avg(cloudDay);
@@ -497,7 +504,9 @@ function summarizeOneDay(json: unknown, day: string): WeatherSummary {
 
   return {
     tempMin: tempAll.length ? round1(Math.min(...tempAll)) : 0,
+
     tempMax: tempAll.length ? round1(Math.max(...tempAll)) : 0,
+
     windAvg: round1(avg(windAll)),
     windMax: round1(max(windAll)),
     gustMax: round1(max(gustAll)),
@@ -524,7 +533,10 @@ async function fetchOpenMeteoHourly(
     `&timezone=${encodeURIComponent(tz)}` +
     "&wind_speed_unit=ms";
 
-  const res = await fetch(url, { method: "GET" });
+  const res = await fetch(url, {
+    method: "GET",
+  });
+
   const text = await res.text().catch(() => "");
 
   if (!res.ok) {
@@ -544,9 +556,10 @@ async function fetchOpenMeteoHourly(
   }
 }
 
-function loadWeatherCache(
-  cacheKey: string,
-): { ts: number; text: string } | null {
+function loadWeatherCache(cacheKey: string): {
+  ts: number;
+  text: string;
+} | null {
   try {
     const raw = localStorage.getItem(cacheKey);
 
@@ -561,13 +574,17 @@ function loadWeatherCache(
     }
 
     const ts = Number(j.ts);
+
     const text = typeof j.text === "string" ? j.text : String(j.text ?? "");
 
     if (!Number.isFinite(ts) || !text) {
       return null;
     }
 
-    return { ts, text };
+    return {
+      ts,
+      text,
+    };
   } catch {
     return null;
   }
@@ -575,7 +592,10 @@ function loadWeatherCache(
 
 function saveWeatherCache(
   cacheKey: string,
-  data: { ts: number; text: string },
+  data: {
+    ts: number;
+    text: string;
+  },
 ) {
   try {
     localStorage.setItem(cacheKey, JSON.stringify(data));
@@ -596,7 +616,7 @@ async function buildWeatherHint(
 
   const day = targetDay === "tomorrow" ? dayKey(tmr) : dayKey(now);
 
-  const cacheKey = `${OPENMETEO_CACHE_KEY_PREFIX}${lat},${lon}:${day}`;
+  const cacheKey = `${OPENMETEO_CACHE_KEY_PREFIX}` + `${lat},${lon}:${day}`;
 
   const cached = loadWeatherCache(cacheKey);
 
@@ -605,6 +625,7 @@ async function buildWeatherHint(
   }
 
   const json = await fetchOpenMeteoHourly(lat, lon);
+
   const s = summarizeOneDay(json, day);
 
   const label = targetDay === "tomorrow" ? "明日" : "今日";
@@ -625,9 +646,6 @@ async function buildWeatherHint(
   return memo;
 }
 
-/**
- * 受け取ったemotionをStage互換のEmotionに寄せる
- */
 function normalizeEmotion(raw: string | null): Emotion | undefined {
   const v = (raw ?? "").trim();
 
@@ -645,9 +663,6 @@ function normalizeEmotion(raw: string | null): Emotion | undefined {
   return undefined;
 }
 
-/**
- * サーバが neutral 寄りでも返答本文から軽く推定して彩りを戻す
- */
 function inferEmotionFromAssistantText(text: string): Emotion | undefined {
   const s = (text ?? "").trim();
 
@@ -680,9 +695,6 @@ function inferEmotionFromAssistantText(text: string): Emotion | undefined {
   return undefined;
 }
 
-/**
- * APIレスポンス
- */
 function readApiTextResponse(json: unknown): {
   ok: true;
   text: string;
@@ -699,7 +711,9 @@ function readApiTextResponse(json: unknown): {
   }
 
   const text = getStringProp(json, "text") ?? "";
+
   const rawEmotion = getStringProp(json, "emotion");
+
   const emotion = normalizeEmotion(rawEmotion);
 
   return {
@@ -715,6 +729,7 @@ function readApiErrorResponse(json: unknown): string | null {
   }
 
   const err = getStringProp(json, "error");
+
   return err ?? null;
 }
 
@@ -726,27 +741,94 @@ function buildSingleThread(messages: Msg[]): ApiMessage[] {
 }
 
 /**
- * 全員集合では、各キャラへ
- * - ユーザー発言
- * - そのキャラ自身の過去の返答
- * だけを渡す。
+ * 配列内の最後のユーザー発言位置を取得する。
+ */
+function findLastUserMessageIndex(messages: Msg[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user") {
+      return i;
+    }
+  }
+
+  return -1;
+}
+
+/**
+ * 全員集合チャット用の会話履歴を構築する。
  *
- * 現段階では他キャラの発言を見せないため、
- * まだ掛け合いは発生しない。
+ * 対象キャラへ渡す内容：
+ *
+ * 1. すべてのユーザー発言
+ * 2. 対象キャラ自身の過去の返答
+ * 3. 今回のユーザー発言より後に投稿された、
+ *    他キャラの先行返答
+ *
+ * 過去ターンにおける他キャラの返答は渡さない。
+ * これにより履歴肥大化を抑えながら、
+ * 今回のターン内だけ自然な掛け合いを可能にする。
  */
 function buildGroupThread(messages: Msg[], characterId: string): ApiMessage[] {
-  return messages
-    .filter((message) => {
-      if (message.role === "user") {
-        return true;
-      }
+  const lastUserIndex = findLastUserMessageIndex(messages);
 
-      return message.characterId === characterId;
-    })
-    .map((message) => ({
-      role: message.role,
-      content: message.content,
-    }));
+  const out: ApiMessage[] = [];
+
+  for (let index = 0; index < messages.length; index++) {
+    const message = messages[index];
+
+    if (message.role === "user") {
+      out.push({
+        role: "user",
+        content: message.content,
+      });
+
+      continue;
+    }
+
+    const isOwnReply = message.characterId === characterId;
+
+    if (isOwnReply) {
+      out.push({
+        role: "assistant",
+        content: message.content,
+      });
+
+      continue;
+    }
+
+    const isCurrentTurnReply = lastUserIndex >= 0 && index > lastUserIndex;
+
+    if (!isCurrentTurnReply) {
+      continue;
+    }
+
+    const speakerName = message.characterName?.trim() || "ほかのキャラクター";
+
+    out.push({
+      role: "assistant",
+      content: `【${speakerName}の発言】\n` + message.content,
+    });
+  }
+
+  return out;
+}
+
+/**
+ * 全員集合チャットで後続キャラへ渡す補助指示。
+ *
+ * 先行キャラの発言へ毎回必ず反応させるのではなく、
+ * 会話として自然な場合だけ触れさせる。
+ */
+function buildGroupRelayHint(character: CharacterProfileWithColor) {
+  return `
+【全員集合チャットでの会話ルール】
+- あなたは「${character.name}」として返答してください。
+- 会話履歴内に「【〇〇の発言】」という文章がある場合、それは今回あなたより先に話した別キャラクターの発言です。
+- 先行キャラクターの発言へ、必要に応じて共感、補足、ツッコミ、質問、反論などを自然に入れてください。
+- 毎回必ず他キャラクターへ反応する必要はありません。
+- ユーザーへの返答を忘れず、他キャラクター同士だけで会話を完結させないでください。
+- 別キャラクターの口調を真似せず、あなた自身の性格と口調を維持してください。
+- 他キャラクターの発言内容をそのまま長く繰り返さないでください。
+`.trim();
 }
 
 export default function Chat({ back, goCharacterSettings }: Props) {
@@ -803,11 +885,15 @@ export default function Chat({ back, goCharacterSettings }: Props) {
   );
 
   const [input, setInput] = useState<string>("");
+
   const [loading, setLoading] = useState<boolean>(false);
+
   const [loadingCharacterName, setLoadingCharacterName] = useState<string>("");
 
   const scrollBoxRef = useRef<HTMLDivElement | null>(null);
+
   const inputRef = useRef<HTMLInputElement | null>(null);
+
   const selectRef = useRef<HTMLSelectElement | null>(null);
 
   const titleText = isGroupMode
@@ -830,6 +916,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         el.focus();
 
         const len = el.value.length;
+
         el.setSelectionRange(len, len);
       } catch {
         // ignore
@@ -869,6 +956,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
   useEffect(() => {
     const onFocus = () => {
       const list = safeLoadCharacters();
+
       setCharacters(list);
 
       setSelectedId((current) => {
@@ -895,6 +983,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
   useEffect(() => {
     setMessages(safeLoadHistory(roomId));
+
     setLoadingCharacterName("");
     scrollToBottom("auto");
     focusInput();
@@ -902,6 +991,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
   useEffect(() => {
     safeSaveHistory(roomId, messages);
+
     scrollToBottom("smooth");
   }, [messages, roomId]);
 
@@ -1000,6 +1090,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
     if (replyEmotion && replyEmotion !== "neutral") {
       applyChatEmotion(replyEmotion);
+
       return;
     }
 
@@ -1018,6 +1109,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     isJudge: boolean;
   }> {
     const hints: string[] = [];
+
     const isJudge = isFishingJudgeText(text);
 
     if (!isJudge) {
@@ -1087,7 +1179,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         ...next,
         {
           role: "assistant",
-          content: `ごめん…🥺\n理由：${msg}`,
+          content: `ごめん…🥺\n` + `理由：${msg}`,
           characterId: selectedCharacter.id,
           characterName: selectedCharacter.name,
           characterColor: normalizeCharacterColor(selectedCharacter.color),
@@ -1108,21 +1200,25 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       emotion?: Emotion;
     } | null = null;
 
-    /**
-     * ユーザーが送信するたびに、全キャラの発言順を完全シャッフルする。
-     *
-     * 前回順との比較や、先頭者の偏り補正は行わない。
-     * 同じ順番が連続する場合も、純粋な乱数結果として許容する。
-     */
     const speakingOrder = shuffleCharacters(characters);
 
     for (const character of speakingOrder) {
       setLoadingCharacterName(character.name);
 
+      /**
+       * workingMessagesには、
+       * このターンですでに返答済みの
+       * キャラクター発言も含まれている。
+       *
+       * buildGroupThread側で
+       * 今回分だけ抽出して後続キャラへ渡す。
+       */
       const thread = buildGroupThread(workingMessages, character.id);
 
+      const groupHints = [...hints, buildGroupRelayHint(character)];
+
       try {
-        const reply = await callApiChat(thread, character, hints);
+        const reply = await callApiChat(thread, character, groupHints);
 
         const replyMessage: Msg = {
           role: "assistant",
@@ -1142,7 +1238,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
         const errorMessage: Msg = {
           role: "assistant",
-          content: `ごめん…🥺\n理由：${msg}`,
+          content: `ごめん…🥺\n` + `理由：${msg}`,
           characterId: character.id,
           characterName: character.name,
           characterColor: normalizeCharacterColor(character.color),
@@ -1165,6 +1261,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         lastSuccessfulReply.emotion,
         false,
       );
+
       return;
     }
 
@@ -1535,6 +1632,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
             type="button"
             onClick={() => {
               setInput("元気にしてる？");
+
               focusInput();
             }}
             className="chat-btn glass"
@@ -1550,6 +1648,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
             type="button"
             onClick={() => {
               setInput("今日の釣行判断よろしく！");
+
               focusInput();
             }}
             className="chat-btn glass"
@@ -1565,6 +1664,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
             type="button"
             onClick={() => {
               setInput("明日の釣行判断よろしく！");
+
               focusInput();
             }}
             className="chat-btn glass"
