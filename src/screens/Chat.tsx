@@ -225,6 +225,26 @@ function hexToRgba(hex: string, alpha: number) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+/**
+ * Fisher-Yates方式で配列を完全シャッフルする。
+ *
+ * 元配列は変更せず、複製した配列を返す。
+ * 前回順や先頭キャラの偏り補正は行わない。
+ */
+function shuffleCharacters<T>(source: readonly T[]): T[] {
+  const shuffled = [...source];
+
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+
+    const temp = shuffled[i];
+    shuffled[i] = shuffled[j];
+    shuffled[j] = temp;
+  }
+
+  return shuffled;
+}
+
 async function readErrorBody(res: Response): Promise<string | null> {
   try {
     const ct = res.headers.get("content-type") || "";
@@ -711,7 +731,7 @@ function buildSingleThread(messages: Msg[]): ApiMessage[] {
  * - そのキャラ自身の過去の返答
  * だけを渡す。
  *
- * Phase1では他キャラの発言を見せないため、
+ * 現段階では他キャラの発言を見せないため、
  * まだ掛け合いは発生しない。
  */
 function buildGroupThread(messages: Msg[], characterId: string): ApiMessage[] {
@@ -1082,12 +1102,21 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     const { hints, isJudge } = await buildHintsForText(text);
 
     let workingMessages = [...next];
+
     let lastSuccessfulReply: {
       text: string;
       emotion?: Emotion;
     } | null = null;
 
-    for (const character of characters) {
+    /**
+     * ユーザーが送信するたびに、全キャラの発言順を完全シャッフルする。
+     *
+     * 前回順との比較や、先頭者の偏り補正は行わない。
+     * 同じ順番が連続する場合も、純粋な乱数結果として許容する。
+     */
+    const speakingOrder = shuffleCharacters(characters);
+
+    for (const character of speakingOrder) {
       setLoadingCharacterName(character.name);
 
       const thread = buildGroupThread(workingMessages, character.id);
