@@ -1551,7 +1551,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           display: flex;
           align-items: center;
           gap: 7px;
-          margin: 0 0 5px 2px;
+          margin: 0 0 5px 3px;
           font-size: 12px;
           font-weight: 800;
           line-height: 1.3;
@@ -1563,9 +1563,46 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           border-radius: 999px;
           flex: 0 0 auto;
         }
+
+        @media (max-width: 768px) {
+          .chat-layout {
+            gap: 6px !important;
+          }
+
+          .chat-scroll {
+            padding: 10px !important;
+          }
+
+          .chat-message-row {
+            margin-bottom: 7px !important;
+          }
+
+          .chat-message-bubble {
+            max-width: 88% !important;
+            padding: 7px 10px !important;
+            font-size: 13px !important;
+            line-height: 1.4 !important;
+          }
+
+          .chat-speaker-label {
+            margin-bottom: 3px;
+            font-size: 11px;
+          }
+
+          .chat-quick {
+            gap: 3px;
+          }
+
+          .chat-quick .chat-btn {
+            height: 30px !important;
+            padding-top: 3px !important;
+            padding-bottom: 3px !important;
+          }
+        }
       `}</style>
 
       <div
+        className="chat-layout"
         style={{
           height: "100%",
           minHeight: 0,
@@ -1645,7 +1682,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
         <div
           ref={scrollBoxRef}
-          className="glass glass-strong"
+          className="chat-scroll glass glass-strong"
           style={{
             flex: "1 1 auto",
             minHeight: 0,
@@ -1692,6 +1729,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               return (
                 <div
                   key={`${index}-${m.characterId ?? m.role}`}
+                  className="chat-message-row"
                   style={{
                     marginBottom: 10,
                     textAlign: isUser ? "right" : "left",
@@ -1709,7 +1747,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                         aria-hidden="true"
                         style={{
                           background: speakerColor,
-                          boxShadow: `0 0 0 2px ${hexToRgba(
+                          boxShadow: `0 0 0 3px ${hexToRgba(
                             speakerColor,
                             0.18,
                           )}`,
@@ -1721,7 +1759,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                   )}
 
                   <span
-                    className={!isUser ? "glass" : undefined}
+                    className={`chat-message-bubble${!isUser ? " glass" : ""}`}
                     style={{
                       display: "inline-block",
                       padding: "10px 12px",
