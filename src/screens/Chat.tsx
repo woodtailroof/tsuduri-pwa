@@ -902,7 +902,11 @@ function findLastUserMessageIndex(messages: Msg[]): number {
  * これにより履歴肥大化を抑えながら、
  * 今回のターン内だけ自然な掛け合いを可能にする。
  */
-function buildGroupThread(messages: Msg[], characterId: string): ApiMessage[] {
+function buildGroupThread(
+  messages: Msg[],
+  characterId: string,
+  allCharacters: CharacterProfileWithColor[],
+): ApiMessage[] {
   const lastUserIndex = findLastUserMessageIndex(messages);
 
   const out: ApiMessage[] = [];
@@ -939,9 +943,15 @@ function buildGroupThread(messages: Msg[], characterId: string): ApiMessage[] {
     const speakerName = message.characterName?.trim() || "ほかのキャラクター";
     const speakerId = message.characterId?.trim() || "unknown";
 
+    const speakerProfile = allCharacters.find((item) => item.id === speakerId);
+    const conversationName =
+      speakerProfile?.selfName?.trim() ||
+      speakerName.replace(/^釣嫁/, "").trim();
+
     const speakerMeta = JSON.stringify({
       characterId: speakerId,
       formalName: speakerName,
+      conversationName,
     });
 
     out.push({
@@ -964,7 +974,16 @@ function buildGroupRelayHint(
   allCharacters: CharacterProfileWithColor[],
 ) {
   const roster = allCharacters
-    .map((item) => `- characterId=${item.id} / 正式名=${item.name}`)
+    .map((item) => {
+      const conversationName =
+        item.selfName?.trim() || item.name.replace(/^釣嫁/, "").trim();
+
+      return (
+        `- characterId=${item.id}` +
+        ` / 正式名=${item.name}` +
+        ` / 会話での呼び名=${conversationName}`
+      );
+    })
     .join("\n");
 
   return `
@@ -972,7 +991,9 @@ function buildGroupRelayHint(
 - あなたは「${character.name}」として返答してください。
 - 会話履歴内の「<<GROUP_SPEAKER ...>>」は、今回あなたより先に話した別キャラクターを識別するための内部ラベルです。
 - 内部ラベルは絶対に返答本文へ書かず、引用・復唱・言い換えもしないでください。
-- キャラクターの名前を出す場合は、下記の正式名を一字も変えずに使用してください。苗字や名前を推測、補完、改名しないでください。
+- 仲間を呼ぶときは、下記の「会話での呼び名」または人物設定の関係性に沿った愛称を使用してください。
+- 正式名は内部識別専用です。会話本文ではフルネームを使わないでください。
+- 苗字や名前を推測、補完、改名しないでください。
 ${roster}
 - 先行キャラクターの発言へ、必要に応じて共感、補足、ツッコミ、質問、反論などを自然に入れてください。
 - 毎回必ず他キャラクターへ反応する必要はありません。
@@ -1381,7 +1402,11 @@ export default function Chat({ back, goCharacterSettings }: Props) {
        * buildGroupThread側で
        * 今回分だけ抽出して後続キャラへ渡す。
        */
-      const thread = buildGroupThread(workingMessages, character.id);
+      const thread = buildGroupThread(
+        workingMessages,
+        character.id,
+        characters,
+      );
 
       const replyLength = replyLengths.get(character.id) ?? "short";
 

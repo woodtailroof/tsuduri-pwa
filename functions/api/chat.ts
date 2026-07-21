@@ -35,6 +35,14 @@ function normalizeEmotion(v: unknown): Emotion {
  * - 行末スペースを削除
  * - 連続空行を1つの改行へ圧縮
  */
+function normalizeCompanionNames(text: string): string {
+  return String(text ?? "")
+    .replace(/釣嫁つづり/g, "つづり")
+    .replace(/潮風まつり/g, "まつり")
+    .replace(/日波こころ/g, "こころ")
+    .replace(/流月るる/g, "るる");
+}
+
 function normalizeAssistantText(raw: string): string {
   const s = String(raw ?? "")
     .replace(/\r\n/g, "\n")
@@ -52,7 +60,7 @@ function normalizeAssistantText(raw: string): string {
     .replace(/^\s*【[^】\n]+の発言】\s*\n?/gim, "")
     .replace(/<<GROUP_SPEAKER[^\n]*>>/g, "");
 
-  return withoutInternalSpeakerLabels.trim();
+  return normalizeCompanionNames(withoutInternalSpeakerLabels).trim();
 }
 
 /**
@@ -836,7 +844,10 @@ neutral / happy / sad / think / surprise / love
 一人称は「${character.self}」。
 ユーザーは自然な場面で「${character.callUser}」と呼ぶ。
 別の一人称や呼称へ変えない。
-キャラクター名は設定された正式名称を一字も変えずに使い、苗字や名前を推測・補完・改名しない。
+キャラクター名の苗字や名前を推測・補完・改名しない。
+仲間を呼ぶときは、人物設定の関係性に沿った愛称や短い呼び名を使う。
+会話本文では「釣嫁つづり」「潮風まつり」「日波こころ」「流月るる」のような正式名・フルネームを使わない。
+正式名は内部識別専用であり、普段の会話では「つづり」「つづりちゃん」「まつり」「まつりちゃん」「こころ」「こころちゃん」「るる」「るるちゃん」など自然な呼び方を選ぶ。
 会話履歴内の「<<GROUP_SPEAKER ...>>」は内部識別ラベルであり、返答本文へ絶対に出力しない。
 
 下の人物設定は説明するための資料ではなく、あなた自身の経験、価値観、感情、判断の背景。
