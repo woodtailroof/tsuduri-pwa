@@ -240,6 +240,43 @@ function shuffleCharacters<T>(source: readonly T[]): T[] {
 
 type GroupReplyLength = "long" | "medium" | "short";
 
+type GroupConversationFunction =
+  | "direct"
+  | "reaction"
+  | "add_one"
+  | "question"
+  | "personal"
+  | "counter";
+
+function assignGroupConversationFunctions(
+  speakingOrder: CharacterProfileWithColor[],
+): Map<string, GroupConversationFunction> {
+  const assignments = new Map<string, GroupConversationFunction>();
+
+  if (!speakingOrder.length) {
+    return assignments;
+  }
+
+  assignments.set(speakingOrder[0].id, "direct");
+
+  const followerFunctions = shuffleCharacters<GroupConversationFunction>([
+    "reaction",
+    "add_one",
+    "question",
+    "personal",
+    "counter",
+  ]);
+
+  for (let index = 1; index < speakingOrder.length; index++) {
+    assignments.set(
+      speakingOrder[index].id,
+      followerFunctions[index - 1] ?? "reaction",
+    );
+  }
+
+  return assignments;
+}
+
 function detectMentionedCharacter(
   text: string,
   characters: CharacterProfileWithColor[],
@@ -972,6 +1009,7 @@ function buildGroupThread(
 function buildGroupRelayHint(
   character: CharacterProfileWithColor,
   allCharacters: CharacterProfileWithColor[],
+  conversationFunction: GroupConversationFunction,
 ) {
   const roster = allCharacters
     .map((item) => {
@@ -986,6 +1024,59 @@ function buildGroupRelayHint(
     })
     .join("\n");
 
+  const functionRule = (() => {
+    if (conversationFunction === "direct") {
+      return `
+【今回の会話機能：中心回答】
+- このターンで最初に話すメンバーとして、ユーザーの話題へ正面から答えてください。
+- 後続メンバーが会話へ参加できる余地を残し、考えられる情報を全部先回りして列挙しないでください。
+`;
+    }
+
+    if (conversationFunction === "reaction") {
+      return `
+【今回の会話機能：リアクション】
+- 先行発言の中から気になった一点へ、共感、驚き、ツッコミなどで反応してください。
+- ユーザーの問いへ最初から回答し直さず、既出の場所、仕掛け、結論を並べ直さないでください。
+- 新しい情報を無理に足さず、一言や短い感想だけでも構いません。
+`;
+    }
+
+    if (conversationFunction === "add_one") {
+      return `
+【今回の会話機能：一点だけ補足】
+- 先行発言にまだ出ていない実用的な情報を、一点だけ補足してください。
+- すでに出た場所、仕掛け、理由、結論は繰り返さないでください。
+- 補足する新情報が思いつかなければ、短い反応だけで終えて構いません。
+`;
+    }
+
+    if (conversationFunction === "question") {
+      return `
+【今回の会話機能：質問でつなぐ】
+- ユーザーまたは先行キャラクターへ、会話が自然に続く質問を一つ投げてください。
+- 自分でも同じ議題への完全な回答を作り直さないでください。
+- 質問の前に短い反応を添える程度で十分です。
+`;
+    }
+
+    if (conversationFunction === "personal") {
+      return `
+【今回の会話機能：自分らしいひとこと】
+- 一般論を繰り返さず、自分ならどう感じるか、何をしたいか、何が気になるかを話してください。
+- 先行発言の要約や、ユーザーへの完全回答は不要です。
+- 人物設定と関係性が自然ににじむ返答を優先してください。
+`;
+    }
+
+    return `
+【今回の会話機能：別角度を一つ】
+- 先行発言に対し、別の見方、軽い反対、注意点のどれかを一つだけ示してください。
+- 全体を否定したり、議題への完全回答を作り直したりしないでください。
+- 同意できる部分は残しつつ、会話に小さな揺れを作ってください。
+`;
+  })();
+
   return `
 【全員集合チャットでの会話ルール】
 - あなたは「${character.name}」として返答してください。
@@ -995,11 +1086,11 @@ function buildGroupRelayHint(
 - 正式名は内部識別専用です。会話本文ではフルネームを使わないでください。
 - 苗字や名前を推測、補完、改名しないでください。
 ${roster}
-- 先行キャラクターの発言へ、必要に応じて共感、補足、ツッコミ、質問、反論などを自然に入れてください。
-- 毎回必ず他キャラクターへ反応する必要はありません。
-- ユーザーへの返答を忘れず、他キャラクター同士だけで会話を完結させないでください。
+- 全員が同じ議題へ順番に完全回答する必要はありません。
+- 先行キャラクターがすでに述べた結論、候補地、仕掛け、理由を、表現だけ変えて繰り返さないでください。
+- 後続メンバーは、ユーザーへ直接答えるほか、先行キャラクターへ話しかけたり、短く反応したりして構いません。
 - 別キャラクターの口調を真似せず、あなた自身の性格と口調を維持してください。
-- 他キャラクターの発言内容をそのまま長く繰り返さないでください。
+${functionRule}
 `.trim();
 }
 
@@ -1376,6 +1467,9 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
     const speakingOrder = shuffleCharacters(characters);
 
+    const conversationFunctions =
+      assignGroupConversationFunctions(speakingOrder);
+
     const spotlightCharacter = detectMentionedCharacter(text, characters);
 
     const replyLengths = assignGroupReplyLengths(
@@ -1410,9 +1504,16 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
       const replyLength = replyLengths.get(character.id) ?? "short";
 
+      const conversationFunction =
+        conversationFunctions.get(character.id) ?? "reaction";
+
       const groupHints = [
         ...(isJudgeLeader ? hints : []),
-        buildGroupRelayHint(character, characters),
+        buildGroupRelayHint(
+          character,
+          characters,
+          isJudge ? "direct" : conversationFunction,
+        ),
         buildReplyLengthHint(replyLength),
       ];
 
