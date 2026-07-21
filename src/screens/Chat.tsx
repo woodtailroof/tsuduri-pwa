@@ -937,10 +937,16 @@ function buildGroupThread(messages: Msg[], characterId: string): ApiMessage[] {
     }
 
     const speakerName = message.characterName?.trim() || "ほかのキャラクター";
+    const speakerId = message.characterId?.trim() || "unknown";
+
+    const speakerMeta = JSON.stringify({
+      characterId: speakerId,
+      formalName: speakerName,
+    });
 
     out.push({
       role: "assistant",
-      content: `【${speakerName}の発言】\n` + message.content,
+      content: `<<GROUP_SPEAKER ${speakerMeta}>>\n${message.content}`,
     });
   }
 
@@ -953,11 +959,21 @@ function buildGroupThread(messages: Msg[], characterId: string): ApiMessage[] {
  * 先行キャラの発言へ毎回必ず反応させるのではなく、
  * 会話として自然な場合だけ触れさせる。
  */
-function buildGroupRelayHint(character: CharacterProfileWithColor) {
+function buildGroupRelayHint(
+  character: CharacterProfileWithColor,
+  allCharacters: CharacterProfileWithColor[],
+) {
+  const roster = allCharacters
+    .map((item) => `- characterId=${item.id} / 正式名=${item.name}`)
+    .join("\n");
+
   return `
 【全員集合チャットでの会話ルール】
 - あなたは「${character.name}」として返答してください。
-- 会話履歴内に「【〇〇の発言】」という文章がある場合、それは今回あなたより先に話した別キャラクターの発言です。
+- 会話履歴内の「<<GROUP_SPEAKER ...>>」は、今回あなたより先に話した別キャラクターを識別するための内部ラベルです。
+- 内部ラベルは絶対に返答本文へ書かず、引用・復唱・言い換えもしないでください。
+- キャラクターの名前を出す場合は、下記の正式名を一字も変えずに使用してください。苗字や名前を推測、補完、改名しないでください。
+${roster}
 - 先行キャラクターの発言へ、必要に応じて共感、補足、ツッコミ、質問、反論などを自然に入れてください。
 - 毎回必ず他キャラクターへ反応する必要はありません。
 - ユーザーへの返答を忘れず、他キャラクター同士だけで会話を完結させないでください。
@@ -1166,6 +1182,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     payloadMessages: ApiMessage[],
     character: CharacterProfileWithColor,
     systemHints: string[],
+    judgeMode: "auto" | "judge_leader" | "judge_follower" = "auto",
   ): Promise<{
     text: string;
     emotion?: Emotion;
@@ -1179,6 +1196,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         messages: payloadMessages,
         characterProfile: character,
         systemHints,
+        judgeMode,
       }),
     });
 
@@ -1344,7 +1362,15 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       spotlightCharacter?.id ?? null,
     );
 
-    for (const character of speakingOrder) {
+    for (
+      let speakerIndex = 0;
+      speakerIndex < speakingOrder.length;
+      speakerIndex++
+    ) {
+      const character = speakingOrder[speakerIndex];
+      const isJudgeLeader = isJudge && speakerIndex === 0;
+      const isJudgeFollower = isJudge && speakerIndex > 0;
+
       setLoadingCharacterName(character.name);
 
       /**
@@ -1360,13 +1386,22 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       const replyLength = replyLengths.get(character.id) ?? "short";
 
       const groupHints = [
-        ...hints,
-        buildGroupRelayHint(character),
+        ...(isJudgeLeader ? hints : []),
+        buildGroupRelayHint(character, characters),
         buildReplyLengthHint(replyLength),
       ];
 
       try {
-        const reply = await callApiChat(thread, character, groupHints);
+        const reply = await callApiChat(
+          thread,
+          character,
+          groupHints,
+          isJudgeLeader
+            ? "judge_leader"
+            : isJudgeFollower
+              ? "judge_follower"
+              : "auto",
+        );
 
         const replyMessage: Msg = {
           role: "assistant",

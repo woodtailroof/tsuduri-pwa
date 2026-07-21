@@ -47,7 +47,12 @@ function normalizeAssistantText(raw: string): string {
 
   const collapsed = noTrailingSpaces.replace(/\n\s*\n+/g, "\n");
 
-  return collapsed.trim();
+  const withoutInternalSpeakerLabels = collapsed
+    .replace(/^\s*<<GROUP_SPEAKER[^\n]*>>\s*\n?/gim, "")
+    .replace(/^\s*【[^】\n]+の発言】\s*\n?/gim, "")
+    .replace(/<<GROUP_SPEAKER[^\n]*>>/g, "");
+
+  return withoutInternalSpeakerLabels.trim();
 }
 
 /**
@@ -831,6 +836,8 @@ neutral / happy / sad / think / surprise / love
 一人称は「${character.self}」。
 ユーザーは自然な場面で「${character.callUser}」と呼ぶ。
 別の一人称や呼称へ変えない。
+キャラクター名は設定された正式名称を一字も変えずに使い、苗字や名前を推測・補完・改名しない。
+会話履歴内の「<<GROUP_SPEAKER ...>>」は内部識別ラベルであり、返答本文へ絶対に出力しない。
 
 下の人物設定は説明するための資料ではなく、あなた自身の経験、価値観、感情、判断の背景。
 設定文をそのまま引用したり、項目を順番に消化したりせず、その人物として自然に反応する。
@@ -995,7 +1002,21 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const lastUser =
       [...trimmed].reverse().find((m) => m.role === "user")?.content ?? "";
 
-    const isJudge = isFishingJudgeText(lastUser);
+    const detectedJudge = isFishingJudgeText(lastUser);
+
+    const requestedJudgeMode =
+      body?.judgeMode === "judge_leader" ||
+      body?.judgeMode === "judge_follower" ||
+      body?.judgeMode === "auto"
+        ? body.judgeMode
+        : "auto";
+
+    const isJudgeFollower =
+      detectedJudge && requestedJudgeMode === "judge_follower";
+
+    const isJudge =
+      detectedJudge &&
+      (requestedJudgeMode === "auto" || requestedJudgeMode === "judge_leader");
 
     const targetDay = detectTargetDay(lastUser);
 
@@ -1044,6 +1065,31 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 - 文章は会話として自然につなげる。
 - 情報を並べるためだけに「まず」「1つ目」「2つ目」のような構成にはしない
 - 必要な項目は自然な文章の流れで伝える
+`.trim(),
+        }
+      : null;
+
+    const judgeFollowerHint: Msg | null = isJudgeFollower
+      ? {
+          role: "system",
+          content: `
+【MODE: 釣行判断の後続メンバー】
+今回はあなたが釣行判断をやり直す番ではありません。
+今回の会話履歴にある先行メンバーの判断を読んだうえで、あなた自身の性格と口調で自然に反応してください。
+
+【許可される内容】
+- 判断への短い感想、賛成、慎重意見
+- 先行判断を邪魔しない実用的な補足
+- 安全面のひとこと
+- ユーザーへの応援、軽いツッコミ、同行する気持ち
+
+【禁止】
+- 「結論」「Weather」「Tide」などの見出しを使って判断を再構成する
+- 天気、風、雨、潮名、満潮、干潮の数値をもう一度一覧化する
+- 先行メンバーと別の独立した釣行判断を最初から作る
+- 取得していない数値や情報を追加する
+
+会話として自然に返し、先行メンバーの判断の要約だけで終わらせない。
 `.trim(),
         }
       : null;
@@ -1106,7 +1152,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
      */
     const hintMessages: Msg[] = systemHints
       .filter((hint) => {
-        if (!isJudge) {
+        if (!isJudge && !isJudgeFollower) {
           return true;
         }
 
@@ -1125,6 +1171,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       characterSystem,
       ...(profileMemo ? [profileMemo] : []),
       ...(judgeHint ? [judgeHint] : []),
+      ...(judgeFollowerHint ? [judgeFollowerHint] : []),
       ...(judgeDataMemo ? [judgeDataMemo] : []),
       ...hintMessages,
       ...trimmed,
