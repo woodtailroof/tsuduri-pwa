@@ -391,9 +391,7 @@ function rateLimit(ip: string) {
 }
 
 function isFishingJudgeText(text: string) {
-  return /(釣り行く|釣りいく|迷って|釣行判断|今日どう|明日どう|風|雨|波|潮|満潮|干潮|水温|ポイント)/.test(
-    text ?? "",
-  );
+  return /釣行判断/.test(text ?? "");
 }
 
 function detectTargetDay(text: string): "today" | "tomorrow" {

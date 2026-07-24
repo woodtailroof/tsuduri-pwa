@@ -448,9 +448,7 @@ async function readErrorBody(res: Response): Promise<string | null> {
 }
 
 function isFishingJudgeText(text: string) {
-  return /(釣り行く|釣りいく|迷って|釣行判断|今日どう|明日どう|風|雨|波|潮|満潮|干潮|水温|ポイント)/.test(
-    text ?? "",
-  );
+  return /釣行判断/.test(text ?? "");
 }
 
 function detectTargetDay(text: string): "today" | "tomorrow" {
@@ -1925,6 +1923,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                       display: "inline-block",
                       padding: "10px 12px",
                       borderRadius: 14,
+                      textAlign: "left",
                       background: isUser
                         ? "rgba(255,77,109,0.92)"
                         : isGroupMode
