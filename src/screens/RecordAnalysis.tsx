@@ -1251,7 +1251,7 @@ export default function RecordAnalysis({ back }: Props) {
       })),
       species: speciesInsights.slice(0, 8).map((row) => ({
         species: row.species,
-        fishCount: row.total,
+        fishCount: row.totalCount,
         averageSizeCm:
           row.avgSizeCm == null ? null : Math.round(row.avgSizeCm * 10) / 10,
         maxSizeCm: row.maxSizeCm,
