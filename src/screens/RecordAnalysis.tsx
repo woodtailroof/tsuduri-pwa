@@ -84,6 +84,15 @@ type TackleInsight = {
   bestSpecies: string;
 };
 
+type CharacterComment = {
+  id: "tsuduri" | "matsuri" | "kokoro" | "lulu";
+  name: string;
+  role: string;
+  mark: string;
+  accent: string;
+  text: string;
+};
+
 const TIMEBANDS: Array<TripRecord["timeBand"]> = [
   "morning",
   "day",
@@ -1034,6 +1043,124 @@ export default function RecordAnalysis({ back }: Props) {
     };
   }, [patterns]);
 
+  const characterComments = useMemo<CharacterComment[]>(() => {
+    const bestTime = timeStats[0];
+    const bestTackle = [...tackleInsights.rods, ...tackleInsights.reels].sort(
+      (a, b) =>
+        wilsonLower(b.caughtTrips, b.useCount) -
+          wilsonLower(a.caughtTrips, a.useCount) || b.useCount - a.useCount,
+    )[0];
+
+    if (totalTrips === 0) {
+      return [
+        {
+          id: "tsuduri",
+          name: "つづり",
+          role: "総合成績",
+          mark: "綴",
+          accent: "#ff87b6",
+          text: "最初の一投は、まだ真っ白な海の向こう。記録が入ったら一緒に勝ち筋を見つけようね、ひろっち。",
+        },
+        {
+          id: "matsuri",
+          name: "まつり",
+          role: "勝ちパターン",
+          mark: "祭",
+          accent: "#a995ff",
+          text: "時間帯と潮の動きまで残してくれたら、アタシが好機をズバッと暴いてあげる！",
+        },
+        {
+          id: "kokoro",
+          name: "こころ",
+          role: "魚種・サイズ",
+          mark: "心",
+          accent: "#ffb57a",
+          text: "魚種やサイズは分かる範囲だけで大丈夫。少しずつ積み重ねれば、ちゃんと大切な記録になるよ。",
+        },
+        {
+          id: "lulu",
+          name: "るる",
+          role: "タックル・検証",
+          mark: "る",
+          accent: "#72d7ff",
+          text: "使ったロッドとリールも選んでおくと、ひろっち様の頼れる相棒が見えてまいりますよ♪",
+        },
+      ];
+    }
+
+    const tsuduriText =
+      totalTrips < 3
+        ? `いまは${totalTrips}釣行分。まだランクよりも、ひろっちの釣りを知るための大事な助走期間だよ。`
+        : catchRate >= 0.6
+          ? `${totalTrips}釣行でキャッチ率${fmtPct(catchRate)}！ 勝ち筋がちゃんと形になってきたね。さすが、つづりの相棒♡`
+          : catchRate >= 0.3
+            ? `キャッチ率は${fmtPct(catchRate)}。釣れた${caughtTrips}回の共通点を拾えば、ここからまだ強くなれるよ。`
+            : `${totalTrips}回ぶん挑んだ記録そのものが武器だよ。釣れなかった日まで、次の一匹へちゃんと繋がってる。`;
+
+    const matsuriText = strongestPattern
+      ? `${strongestPattern.key}が現在の有力候補！ ${strongestPattern.bestLure}を軸に、あと数回ぶつけて本物の必勝パターンか試そっ！`
+      : bestTime
+        ? `${bestTime.key}は${bestTime.caught}/${bestTime.total}釣行でキャッチ。次は潮の動きも揃えて、勝負どころを絞り込もう！`
+        : "条件データはまだ眠ってるね。次の釣行から時間帯と潮を揃えて、好機を炙り出そっ！";
+
+    const kokoroText =
+      totalFish === 0
+        ? "釣果が無い日も立派な比較材料だよ。条件を残しておけば、避けたい状況や変えるべき一手が見えてくるからね。"
+        : maxSize != null
+          ? `${uniqueSpecies}魚種・${totalFish}匹、最大は${fmtSize(maxSize)}。サイズだけじゃなく、出会えた魚の幅もひろっちらしい素敵な記録だね。`
+          : `${uniqueSpecies}魚種・${totalFish}匹まで育ったね。次からサイズも少し残せると、成長の輪郭がもっときれいに見えるよ。`;
+
+    const luluText = bestTackle
+      ? `${bestTackle.label}は使用${bestTackle.useCount}回、キャッチ率${fmtPct(bestTackle.rate)}。まだ暫定でも、頼れる武器候補として注目です♪`
+      : `${mission.title}が次の検証候補です。タックルも一緒に記録すれば、るるが“勝てる組み合わせ”までお仕立てしますね♪`;
+
+    return [
+      {
+        id: "tsuduri",
+        name: "つづり",
+        role: "総合成績",
+        mark: "綴",
+        accent: "#ff87b6",
+        text: tsuduriText,
+      },
+      {
+        id: "matsuri",
+        name: "まつり",
+        role: "勝ちパターン",
+        mark: "祭",
+        accent: "#a995ff",
+        text: matsuriText,
+      },
+      {
+        id: "kokoro",
+        name: "こころ",
+        role: "魚種・サイズ",
+        mark: "心",
+        accent: "#ffb57a",
+        text: kokoroText,
+      },
+      {
+        id: "lulu",
+        name: "るる",
+        role: "タックル・検証",
+        mark: "る",
+        accent: "#72d7ff",
+        text: luluText,
+      },
+    ];
+  }, [
+    totalTrips,
+    caughtTrips,
+    catchRate,
+    totalFish,
+    uniqueSpecies,
+    maxSize,
+    strongestPattern,
+    timeStats,
+    tackleInsights,
+    mission,
+  ]);
+
   return (
     <PageShell
       title={
@@ -1123,6 +1250,33 @@ export default function RecordAnalysis({ back }: Props) {
         .analysis-tackle strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
         .analysis-tackle small { display:block; margin-top:4px; color:rgba(255,255,255,.55); font-size:9px; }
         .analysis-tackle-rate { text-align:right; color:#79f2c0; font-weight:900; }
+        .analysis-voices { position:relative; background:linear-gradient(135deg,rgba(255,114,172,.16),rgba(108,201,255,.12)); }
+        .analysis-voice-list { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+        .analysis-voice {
+          --voice-accent:#fff;
+          position:relative; display:grid; grid-template-columns:42px minmax(0,1fr); gap:10px;
+          align-items:start; min-width:0; padding:12px; border-radius:16px;
+          border:1px solid color-mix(in srgb,var(--voice-accent) 34%,transparent);
+          background:linear-gradient(145deg,color-mix(in srgb,var(--voice-accent) 12%,rgba(7,15,28,.64)),rgba(9,14,27,.48));
+        }
+        .analysis-voice::after {
+          content:""; position:absolute; left:47px; top:20px; width:8px; height:8px;
+          background:color-mix(in srgb,var(--voice-accent) 16%,rgba(7,15,28,.72));
+          border-left:1px solid color-mix(in srgb,var(--voice-accent) 34%,transparent);
+          border-bottom:1px solid color-mix(in srgb,var(--voice-accent) 34%,transparent);
+          transform:rotate(45deg);
+        }
+        .analysis-voice-mark {
+          position:relative; z-index:1; display:grid; place-items:center; width:42px; height:42px;
+          border-radius:50%; color:#fff; font-size:16px; font-weight:900;
+          border:2px solid color-mix(in srgb,var(--voice-accent) 72%,white);
+          background:linear-gradient(145deg,color-mix(in srgb,var(--voice-accent) 78%,white 4%),rgba(18,25,43,.94));
+          box-shadow:0 6px 18px color-mix(in srgb,var(--voice-accent) 22%,transparent);
+        }
+        .analysis-voice-head { display:flex; align-items:baseline; gap:6px; min-width:0; margin-bottom:5px; }
+        .analysis-voice-name { color:var(--voice-accent); font-size:12px; font-weight:900; white-space:nowrap; }
+        .analysis-voice-role { color:rgba(255,255,255,.44); font-size:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .analysis-voice p { margin:0; color:rgba(255,255,255,.78); font-size:10px; line-height:1.68; }
         .analysis-mission { position:relative; overflow:hidden; background:linear-gradient(135deg,rgba(255,81,142,.28),rgba(83,177,255,.20)); }
         .analysis-mission::after { content:"🎯"; position:absolute; right:12px; bottom:-20px; font-size:88px; opacity:.10; transform:rotate(-8deg); }
         .analysis-mission h3 { margin:0 0 7px; color:#ffd2e3; font-size:19px; }
@@ -1133,6 +1287,7 @@ export default function RecordAnalysis({ back }: Props) {
         @media (max-width:900px) {
           .analysis-dashboard,.analysis-grid-2 { grid-template-columns:1fr; }
           .analysis-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+          .analysis-voice-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
         }
         @media (max-width:620px) {
           .analysis-hero { grid-template-columns:1fr; text-align:center; }
@@ -1143,6 +1298,8 @@ export default function RecordAnalysis({ back }: Props) {
           .analysis-bar-value { grid-column:2; margin-top:-5px; }
           .analysis-heatmap { grid-template-columns:40px repeat(3,minmax(58px,1fr)); gap:4px; }
           .analysis-heat-cell { min-height:52px; padding:3px; }
+          .analysis-voice-list { grid-template-columns:1fr; }
+          .analysis-voice p { font-size:11px; }
         }
       `}</style>
 
@@ -1245,6 +1402,38 @@ export default function RecordAnalysis({ back }: Props) {
             <RadarChart axes={styleAxes} />
           </Panel>
         </div>
+
+        <Panel
+          title="みんなから、ひとこと"
+          icon="💬"
+          note="同じ分析結果を、それぞれの視点で見ています"
+          className="analysis-voices"
+        >
+          <div className="analysis-voice-list">
+            {characterComments.map((comment) => (
+              <article
+                className="analysis-voice"
+                key={comment.id}
+                style={
+                  {
+                    "--voice-accent": comment.accent,
+                  } as CSSProperties
+                }
+              >
+                <div className="analysis-voice-mark" aria-hidden="true">
+                  {comment.mark}
+                </div>
+                <div>
+                  <div className="analysis-voice-head">
+                    <span className="analysis-voice-name">{comment.name}</span>
+                    <span className="analysis-voice-role">{comment.role}</span>
+                  </div>
+                  <p>{comment.text}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </Panel>
 
         <div className="analysis-grid-2">
           <Panel
