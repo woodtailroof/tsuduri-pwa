@@ -9,6 +9,10 @@ import {
 import PageShell from "../components/PageShell";
 import { db, type TripFish, type TripRecord, type TackleItem } from "../db";
 import { getTimeBand } from "../lib/timeband";
+import {
+  CHARACTERS_STORAGE_KEY,
+  type CharacterProfile,
+} from "./CharacterSettings";
 
 type Props = {
   back: () => void;
@@ -92,6 +96,50 @@ type CharacterComment = {
   accent: string;
   text: string;
 };
+
+type AiCharacterComment = {
+  characterId: string;
+  characterName: string;
+  color: string;
+  text: string;
+};
+
+type AiCommentCache = {
+  version: 1;
+  fingerprint: string;
+  generatedAt: string;
+  comments: AiCharacterComment[];
+};
+
+const ANALYSIS_COMMENT_CACHE_KEY = "tsuduri_analysis_ai_comments_v1";
+
+function safeJsonParse<T>(raw: string | null, fallback: T): T {
+  try {
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function loadCharacters(): CharacterProfile[] {
+  const value = safeJsonParse<unknown>(
+    localStorage.getItem(CHARACTERS_STORAGE_KEY),
+    [],
+  );
+  return Array.isArray(value)
+    ? value.filter(
+        (item): item is CharacterProfile =>
+          !!item &&
+          typeof item === "object" &&
+          typeof (item as CharacterProfile).id === "string" &&
+          typeof (item as CharacterProfile).name === "string",
+      )
+    : [];
+}
+
+function iconPath(characterId: string): string {
+  return `/assets/character-icons/${encodeURIComponent(characterId)}.png`;
+}
 
 const TIMEBANDS: Array<TripRecord["timeBand"]> = [
   "morning",
@@ -587,6 +635,11 @@ export default function RecordAnalysis({ back }: Props) {
   );
   const [error, setError] = useState("");
   const [limitTop, setLimitTop] = useState(5);
+  const [aiComments, setAiComments] = useState<AiCharacterComment[]>([]);
+  const [aiGeneratedAt, setAiGeneratedAt] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [selectedAiCharacterId, setSelectedAiCharacterId] = useState("");
 
   async function reload() {
     setLoading(true);
@@ -1161,6 +1214,192 @@ export default function RecordAnalysis({ back }: Props) {
     mission,
   ]);
 
+  const analysisSummary = useMemo(
+    () => ({
+      totalTrips,
+      caughtTrips,
+      catchRatePercent: Math.round(catchRate * 1000) / 10,
+      totalFish,
+      uniqueSpecies,
+      averageSizeCm: avgSize == null ? null : Math.round(avgSize * 10) / 10,
+      maxSizeCm: maxSize == null ? null : Math.round(maxSize * 10) / 10,
+      grade,
+      overallScore,
+      styleAxes: styleAxes.map((axis) => ({
+        label: axis.label,
+        value: Math.round(axis.value),
+      })),
+      bestTimes: timeStats.slice(0, 3).map((row) => ({
+        label: row.key,
+        trips: row.total,
+        caughtTrips: row.caught,
+        catchRatePercent: Math.round(row.rate * 1000) / 10,
+      })),
+      bestTides: tideStats.slice(0, 3).map((row) => ({
+        label: row.key,
+        trips: row.total,
+        caughtTrips: row.caught,
+        catchRatePercent: Math.round(row.rate * 1000) / 10,
+      })),
+      bestPatterns: patterns.slice(0, 5).map((row) => ({
+        condition: row.key,
+        lure: row.bestLure,
+        trips: row.total,
+        caughtTrips: row.caught,
+        catchRatePercent: Math.round(row.rate * 1000) / 10,
+        confidence: confidence(row.total).label,
+      })),
+      species: speciesCards.slice(0, 8).map((row) => ({
+        species: row.species,
+        fishCount: row.total,
+        averageSizeCm:
+          row.avgSizeCm == null ? null : Math.round(row.avgSizeCm * 10) / 10,
+        maxSizeCm: row.maxSizeCm,
+        bestTime: row.bestTime,
+        bestTrend: row.bestTrend,
+      })),
+      tackle: [...tackleInsights.rods, ...tackleInsights.reels]
+        .sort((a, b) => b.useCount - a.useCount)
+        .slice(0, 8)
+        .map((row) => ({
+          label: row.label,
+          uses: row.useCount,
+          caughtTrips: row.caughtTrips,
+          fishCount: row.totalFish,
+          catchRatePercent: Math.round(row.rate * 1000) / 10,
+          bestSpecies: row.bestSpecies,
+        })),
+      environment: {
+        wind: envStats.wind.filter((row) => row.total > 0),
+        wave: envStats.wave.filter((row) => row.total > 0),
+      },
+      nextMission: mission,
+    }),
+    [
+      totalTrips,
+      caughtTrips,
+      catchRate,
+      totalFish,
+      uniqueSpecies,
+      avgSize,
+      maxSize,
+      grade,
+      overallScore,
+      styleAxes,
+      timeStats,
+      tideStats,
+      patterns,
+      speciesCards,
+      tackleInsights,
+      envStats,
+      mission,
+    ],
+  );
+
+  const analysisFingerprint = useMemo(
+    () => JSON.stringify(analysisSummary),
+    [analysisSummary],
+  );
+
+  useEffect(() => {
+    const cached = safeJsonParse<AiCommentCache | null>(
+      localStorage.getItem(ANALYSIS_COMMENT_CACHE_KEY),
+      null,
+    );
+    if (
+      cached?.version === 1 &&
+      cached.fingerprint === analysisFingerprint &&
+      Array.isArray(cached.comments)
+    ) {
+      setAiComments(cached.comments);
+      setAiGeneratedAt(cached.generatedAt);
+      setSelectedAiCharacterId(cached.comments[0]?.characterId ?? "");
+    } else {
+      setAiComments([]);
+      setAiGeneratedAt("");
+      setSelectedAiCharacterId("");
+    }
+  }, [analysisFingerprint]);
+
+  async function requestAiComments() {
+    const characters = loadCharacters();
+    if (characters.length === 0) {
+      setAiError("キャラクター設定が見つからないよ。先にキャラを登録してね。");
+      return;
+    }
+
+    setAiLoading(true);
+    setAiError("");
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "analysis_comments",
+          analysisSummary,
+          characters,
+        }),
+      });
+      const json = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        comments?: Array<{ characterId?: string; text?: string }>;
+        error?: string;
+      } | null;
+      if (!response.ok || !json?.ok || !Array.isArray(json.comments)) {
+        throw new Error(json?.error || `HTTP ${response.status}`);
+      }
+
+      const byId = new Map(
+        characters.map((character) => [character.id, character]),
+      );
+      const comments = json.comments.flatMap((item) => {
+        const character =
+          typeof item.characterId === "string"
+            ? byId.get(item.characterId)
+            : undefined;
+        const text = typeof item.text === "string" ? item.text.trim() : "";
+        if (!character || !text) return [];
+        return [
+          {
+            characterId: character.id,
+            characterName: character.name,
+            color: character.color || "#ff7aa2",
+            text,
+          },
+        ];
+      });
+      if (comments.length === 0) {
+        throw new Error("コメントを受け取れませんでした");
+      }
+
+      const generatedAt = new Date().toISOString();
+      setAiComments(comments);
+      setAiGeneratedAt(generatedAt);
+      setSelectedAiCharacterId(comments[0].characterId);
+      localStorage.setItem(
+        ANALYSIS_COMMENT_CACHE_KEY,
+        JSON.stringify({
+          version: 1,
+          fingerprint: analysisFingerprint,
+          generatedAt,
+          comments,
+        } satisfies AiCommentCache),
+      );
+    } catch (cause) {
+      console.error(cause);
+      setAiError(
+        cause instanceof Error ? cause.message : "コメントの生成に失敗しました",
+      );
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  const selectedAiComment =
+    aiComments.find(
+      (comment) => comment.characterId === selectedAiCharacterId,
+    ) ?? aiComments[0];
+
   return (
     <PageShell
       title={
@@ -1184,6 +1423,38 @@ export default function RecordAnalysis({ back }: Props) {
         }
         .analysis-toolbar button { cursor:pointer; }
         .analysis-toolbar button:disabled { opacity:.5; cursor:not-allowed; }
+        .analysis-stage { display:grid; grid-template-columns:260px minmax(0,1fr); gap:14px; align-items:start; }
+        .analysis-main { display:grid; gap:14px; min-width:0; }
+        .analysis-ai-sidebar {
+          position:sticky; top:12px; display:grid; gap:12px; padding:14px; border-radius:22px;
+          border:1px solid rgba(255,153,195,.28);
+          background:linear-gradient(165deg,rgba(31,21,43,.94),rgba(8,19,34,.90));
+          box-shadow:0 18px 48px rgba(0,0,0,.22);
+        }
+        .analysis-ai-sidebar h2 { margin:0; font-size:15px; }
+        .analysis-ai-sidebar-note { margin:-6px 0 0; color:rgba(255,255,255,.52); font-size:9px; line-height:1.5; }
+        .analysis-ai-tabs { display:flex; gap:8px; flex-wrap:wrap; }
+        .analysis-ai-tab {
+          width:48px; height:48px; padding:0; overflow:hidden; border-radius:50%; cursor:pointer;
+          border:2px solid color-mix(in srgb,var(--ai-accent) 55%,transparent);
+          background:color-mix(in srgb,var(--ai-accent) 18%,rgba(12,20,34,.9));
+          color:#fff; font-weight:900;
+        }
+        .analysis-ai-tab[data-active="true"] {
+          border-color:color-mix(in srgb,var(--ai-accent) 80%,white);
+          box-shadow:0 0 0 3px color-mix(in srgb,var(--ai-accent) 20%,transparent);
+          transform:translateY(-2px);
+        }
+        .analysis-ai-tab img { width:100%; height:100%; object-fit:cover; display:block; }
+        .analysis-ai-bubble {
+          position:relative; min-height:118px; padding:12px; border-radius:16px;
+          border:1px solid color-mix(in srgb,var(--ai-accent) 32%,transparent);
+          background:color-mix(in srgb,var(--ai-accent) 9%,rgba(255,255,255,.035));
+        }
+        .analysis-ai-bubble strong { display:block; margin-bottom:7px; color:var(--ai-accent); font-size:12px; }
+        .analysis-ai-bubble p { margin:0; color:rgba(255,255,255,.84); font-size:11px; line-height:1.78; white-space:pre-wrap; }
+        .analysis-ai-time { color:rgba(255,255,255,.38); font-size:8px; }
+        .analysis-ai-error { color:#ff9dad; font-size:10px; line-height:1.5; }
         .analysis-dashboard { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr); gap:14px; }
         .analysis-grid-2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
         .analysis-grid-3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
@@ -1285,11 +1556,16 @@ export default function RecordAnalysis({ back }: Props) {
         .analysis-error { padding:12px 14px; color:#ff9aab; border:1px solid #ff6b8155; border-radius:14px; background:#5c172544; }
         .analysis-footnote { margin-top:10px; color:rgba(255,255,255,.42); font-size:9px; line-height:1.5; }
         @media (max-width:900px) {
+          .analysis-stage { grid-template-columns:1fr; }
+          .analysis-ai-sidebar { position:relative; top:auto; }
           .analysis-dashboard,.analysis-grid-2 { grid-template-columns:1fr; }
           .analysis-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
           .analysis-voice-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
         }
         @media (max-width:620px) {
+          .analysis-ai-tabs { flex-wrap:nowrap; overflow-x:auto; padding:3px; scrollbar-width:none; }
+          .analysis-ai-tabs::-webkit-scrollbar { display:none; }
+          .analysis-ai-tab { flex:0 0 52px; width:52px; height:52px; }
           .analysis-hero { grid-template-columns:1fr; text-align:center; }
           .analysis-grade { width:132px; margin:auto; }
           .analysis-score-copy p { text-align:left; }
@@ -1325,429 +1601,527 @@ export default function RecordAnalysis({ back }: Props) {
               ))}
             </select>
           </label>
+          <button
+            type="button"
+            onClick={() => void requestAiComments()}
+            disabled={aiLoading || loading}
+          >
+            {aiLoading
+              ? "✨ みんなが通信簿を読んでる…"
+              : aiComments.length > 0
+                ? "✨ みんなにもう一度聞く"
+                : "✨ みんなにコメントをもらう"}
+          </button>
         </div>
 
         {error && <div className="analysis-error">読み込みエラー：{error}</div>}
+        {aiError && (
+          <div className="analysis-error">コメント生成エラー：{aiError}</div>
+        )}
 
-        <div className="analysis-dashboard">
-          <Panel
-            title="ひろっちの釣行通信簿"
-            icon="🏆"
-            note="自分の記録量と実績から算出。他の釣り人との比較ではありません"
-          >
-            <div className="analysis-hero">
-              <div className="analysis-grade">
-                <div>
-                  <small>総合ランク</small>
-                  <strong>{grade}</strong>
-                  <small>
-                    {totalTrips < 3
-                      ? "あと少しで解析開始"
-                      : `${overallScore} / 100`}
-                  </small>
-                </div>
-              </div>
-              <div className="analysis-score-copy">
-                <h3>
-                  {totalTrips < 3
-                    ? "冒険の記録は、ここから始まる"
-                    : catchRate >= 0.5
-                      ? "勝ち筋が輪郭を見せてきた"
-                      : "いまは攻略データを鍛える時期"}
-                </h3>
-                <p>
-                  成功率だけでなく、釣果の安定度・数・サイズ記録・魚種幅・
-                  再現できそうな条件を合わせて評価。記録が増えるほど、
-                  ひろっち専用の通信簿へ育っていくよ。
-                </p>
-              </div>
-            </div>
-            <div className="analysis-metrics">
-              <Metric
-                icon="🧾"
-                label="釣行"
-                value={`${totalTrips}回`}
-                sub={`${caughtTrips}回キャッチ`}
-                color="#a8b8ff"
-              />
-              <Metric
-                icon="🎯"
-                label="キャッチ率"
-                value={fmtPct(catchRate)}
-                sub={`Wilson下限 ${fmtPct(wilsonLower(caughtTrips, totalTrips))}`}
-                color="#ff91b9"
-              />
-              <Metric
-                icon="🐟"
-                label="総釣果"
-                value={`${totalFish}匹`}
-                sub={`${uniqueSpecies}魚種`}
-                color="#72d7ff"
-              />
-              <Metric
-                icon="📏"
-                label="最大サイズ"
-                value={fmtSize(maxSize)}
-                sub={`平均 ${fmtSize(avgSize)}`}
-                color="#ffd166"
-              />
-            </div>
-          </Panel>
-
-          <Panel
-            title="釣りスタイル"
-            icon="🧭"
-            note="100点満点ではなく、現在の記録の形を可視化"
-          >
-            <RadarChart axes={styleAxes} />
-          </Panel>
-        </div>
-
-        <Panel
-          title="みんなから、ひとこと"
-          icon="💬"
-          note="同じ分析結果を、それぞれの視点で見ています"
-          className="analysis-voices"
+        <div
+          className="analysis-stage"
+          style={
+            aiComments.length === 0
+              ? { gridTemplateColumns: "minmax(0,1fr)" }
+              : undefined
+          }
         >
-          <div className="analysis-voice-list">
-            {characterComments.map((comment) => (
-              <article
-                className="analysis-voice"
-                key={comment.id}
+          {aiComments.length > 0 && selectedAiComment && (
+            <aside
+              className="analysis-ai-sidebar"
+              aria-label="みんなのGPTコメント"
+            >
+              <h2>✨ 釣嫁評議会</h2>
+              <p className="analysis-ai-sidebar-note">
+                アイコンを選ぶと、それぞれのコメントを読めるよ
+              </p>
+              <div className="analysis-ai-tabs">
+                {aiComments.map((comment) => (
+                  <button
+                    type="button"
+                    className="analysis-ai-tab"
+                    key={comment.characterId}
+                    data-active={
+                      comment.characterId === selectedAiComment.characterId
+                    }
+                    aria-label={`${comment.characterName}のコメント`}
+                    onClick={() =>
+                      setSelectedAiCharacterId(comment.characterId)
+                    }
+                    style={{ "--ai-accent": comment.color } as CSSProperties}
+                  >
+                    <img
+                      src={iconPath(comment.characterId)}
+                      alt=""
+                      onError={(event) => {
+                        event.currentTarget.style.display = "none";
+                      }}
+                    />
+                    <span>{comment.characterName.slice(0, 1)}</span>
+                  </button>
+                ))}
+              </div>
+              <div
+                className="analysis-ai-bubble"
                 style={
-                  {
-                    "--voice-accent": comment.accent,
-                  } as CSSProperties
+                  { "--ai-accent": selectedAiComment.color } as CSSProperties
                 }
               >
-                <div className="analysis-voice-mark" aria-hidden="true">
-                  {comment.mark}
-                </div>
-                <div>
-                  <div className="analysis-voice-head">
-                    <span className="analysis-voice-name">{comment.name}</span>
-                    <span className="analysis-voice-role">{comment.role}</span>
-                  </div>
-                  <p>{comment.text}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-        </Panel>
-
-        <div className="analysis-grid-2">
-          <Panel
-            title="成長グラフ"
-            icon="📈"
-            note="直近12か月・棒は匹数、線はキャッチ率"
-          >
-            <TrendChart rows={monthly} />
-          </Panel>
-
-          <Panel
-            title="ベストパターン"
-            icon="⚡"
-            note="少数データを過大評価しない信頼度補正つき"
-          >
-            {patterns.length === 0 ? (
-              <div className="analysis-empty">
-                条件を比較できる記録がまだ無いよ
+                <strong>{selectedAiComment.characterName}</strong>
+                <p>{selectedAiComment.text}</p>
               </div>
-            ) : (
-              <div className="analysis-pattern-list">
-                {patterns.map((pattern, index) => {
-                  const level = confidence(pattern.total);
-                  return (
-                    <div className="analysis-pattern" key={pattern.key}>
-                      <div className="analysis-rank">{index + 1}</div>
-                      <div>
-                        <strong>{pattern.key}</strong>
-                        <small>
-                          相性候補：{pattern.bestLure} ・ {pattern.caught}/
-                          {pattern.total}釣行
-                        </small>
-                      </div>
-                      <div className="analysis-pattern-rate">
-                        <strong>{fmtPct(pattern.rate)}</strong>
-                        <div
-                          className="analysis-confidence"
-                          style={{ color: level.tone }}
-                        >
-                          {level.label}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </Panel>
-        </div>
-
-        <div className="analysis-grid-2">
-          <Panel
-            title="条件ヒートマップ"
-            icon="🌊"
-            note="時間帯 × 潮の動き／色が明るいほど好成績"
-          >
-            <div className="analysis-heatmap">
-              <div />
-              {TREND_ORDER.map((trend) => (
-                <div className="analysis-heat-label" key={trend}>
-                  {trend}
+              {aiGeneratedAt && (
+                <div className="analysis-ai-time">
+                  {new Date(aiGeneratedAt).toLocaleString("ja-JP")} に生成
                 </div>
-              ))}
-              {TIMEBANDS.map((band) => {
-                const time = TIMEBAND_LABEL[band];
-                return [
-                  <div className="analysis-heat-label" key={`label:${time}`}>
-                    {time}
-                  </div>,
-                  ...TREND_ORDER.map((trend) => {
-                    const row = heatmap.get(`${time}|${trend}`);
-                    const rate = row ? safeRate(row.caught, row.total) : 0;
-                    const alpha = row ? 0.12 + rate * 0.52 : 0.035;
-                    return (
-                      <div
-                        className="analysis-heat-cell"
-                        key={`${time}:${trend}`}
-                        style={{
-                          background: row
-                            ? `linear-gradient(145deg, rgba(255,95,155,${alpha}), rgba(255,205,102,${alpha * 0.65}))`
-                            : "rgba(255,255,255,.025)",
-                        }}
-                      >
-                        <div>
-                          <strong>{row ? fmtPct(rate) : "—"}</strong>
-                          <small>
-                            {row ? `${row.caught}/${row.total}釣行` : "未解析"}
-                          </small>
-                        </div>
-                      </div>
-                    );
-                  }),
-                ];
-              })}
-            </div>
-          </Panel>
-
-          <Panel
-            title="条件別キャッチ率"
-            icon="🕒"
-            note="回数も見ながら、得意な時間と潮を確認"
-          >
-            <div className="analysis-grid-2">
-              <div>
-                <div className="analysis-bar-list">
-                  {timeStats.map((row) => (
-                    <BarRow
-                      key={row.key}
-                      label={row.key}
-                      value={row.rate}
-                      max={1}
-                      text={`${fmtPct(row.rate)} (${row.caught}/${row.total})`}
-                      color="#ff70aa"
-                    />
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="analysis-bar-list">
-                  {tideStats.map((row) => (
-                    <BarRow
-                      key={row.key}
-                      label={row.key}
-                      value={row.rate}
-                      max={1}
-                      text={`${fmtPct(row.rate)} (${row.caught}/${row.total})`}
-                      color="#72d7ff"
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-          </Panel>
-        </div>
-
-        <Panel
-          title="魚種別 攻略カルテ"
-          icon="🐟"
-          note="カードを押すと内訳を展開"
-        >
-          {speciesInsights.length === 0 ? (
-            <div className="analysis-empty">
-              魚データが入ると魚種別カルテが育つよ
-            </div>
-          ) : (
-            <div className="analysis-species-list">
-              {speciesInsights.map((row) => (
-                <details className="analysis-species" key={row.species}>
-                  <summary>
-                    <div className="analysis-species-top">
-                      <span className="analysis-species-name">
-                        {row.species}
-                      </span>
-                      <span className="analysis-species-total">
-                        {row.totalCount}匹
-                      </span>
-                    </div>
-                    <div className="analysis-species-stats">
-                      <div className="analysis-species-stat">
-                        <small>ベスト時間</small>
-                        <strong>{row.bestTime}</strong>
-                      </div>
-                      <div className="analysis-species-stat">
-                        <small>相性ルアー</small>
-                        <strong>{row.bestLure}</strong>
-                      </div>
-                      <div className="analysis-species-stat">
-                        <small>潮の動き</small>
-                        <strong>{row.bestTrend}</strong>
-                      </div>
-                    </div>
-                    <div className="analysis-species-stats">
-                      <div className="analysis-species-stat">
-                        <small>平均</small>
-                        <strong>{fmtSize(row.avgSizeCm)}</strong>
-                      </div>
-                      <div className="analysis-species-stat">
-                        <small>最大</small>
-                        <strong>{fmtSize(row.maxSizeCm)}</strong>
-                      </div>
-                      <div className="analysis-species-stat">
-                        <small>詳細</small>
-                        <strong>タップで展開</strong>
-                      </div>
-                    </div>
-                  </summary>
-                  <div className="analysis-species-detail">
-                    <h4>時間帯</h4>
-                    <div className="analysis-chips">
-                      {row.timeRows.map((item) => (
-                        <span className="analysis-chip" key={item.key}>
-                          {item.key} {item.value}匹
-                        </span>
-                      ))}
-                    </div>
-                    <h4>ルアー</h4>
-                    <div className="analysis-chips">
-                      {row.lureRows.map((item) => (
-                        <span className="analysis-chip" key={item.key}>
-                          {item.key} {item.value}匹
-                        </span>
-                      ))}
-                    </div>
-                    <h4>潮の動き</h4>
-                    <div className="analysis-chips">
-                      {row.trendRows.map((item) => (
-                        <span className="analysis-chip" key={item.key}>
-                          {item.key} {item.value}匹
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </details>
-              ))}
-            </div>
+              )}
+            </aside>
           )}
-        </Panel>
+          <div className="analysis-main">
+            <div className="analysis-dashboard">
+              <Panel
+                title="ひろっちの釣行通信簿"
+                icon="🏆"
+                note="自分の記録量と実績から算出。他の釣り人との比較ではありません"
+              >
+                <div className="analysis-hero">
+                  <div className="analysis-grade">
+                    <div>
+                      <small>総合ランク</small>
+                      <strong>{grade}</strong>
+                      <small>
+                        {totalTrips < 3
+                          ? "あと少しで解析開始"
+                          : `${overallScore} / 100`}
+                      </small>
+                    </div>
+                  </div>
+                  <div className="analysis-score-copy">
+                    <h3>
+                      {totalTrips < 3
+                        ? "冒険の記録は、ここから始まる"
+                        : catchRate >= 0.5
+                          ? "勝ち筋が輪郭を見せてきた"
+                          : "いまは攻略データを鍛える時期"}
+                    </h3>
+                    <p>
+                      成功率だけでなく、釣果の安定度・数・サイズ記録・魚種幅・
+                      再現できそうな条件を合わせて評価。記録が増えるほど、
+                      ひろっち専用の通信簿へ育っていくよ。
+                    </p>
+                  </div>
+                </div>
+                <div className="analysis-metrics">
+                  <Metric
+                    icon="🧾"
+                    label="釣行"
+                    value={`${totalTrips}回`}
+                    sub={`${caughtTrips}回キャッチ`}
+                    color="#a8b8ff"
+                  />
+                  <Metric
+                    icon="🎯"
+                    label="キャッチ率"
+                    value={fmtPct(catchRate)}
+                    sub={`Wilson下限 ${fmtPct(wilsonLower(caughtTrips, totalTrips))}`}
+                    color="#ff91b9"
+                  />
+                  <Metric
+                    icon="🐟"
+                    label="総釣果"
+                    value={`${totalFish}匹`}
+                    sub={`${uniqueSpecies}魚種`}
+                    color="#72d7ff"
+                  />
+                  <Metric
+                    icon="📏"
+                    label="最大サイズ"
+                    value={fmtSize(maxSize)}
+                    sub={`平均 ${fmtSize(avgSize)}`}
+                    color="#ffd166"
+                  />
+                </div>
+              </Panel>
 
-        <div className="analysis-grid-2">
-          {(
-            [
-              { title: "ロッド戦績", icon: "🛠", rows: tackleInsights.rods },
-              { title: "リール戦績", icon: "⚙️", rows: tackleInsights.reels },
-            ] as const
-          ).map((group) => (
+              <Panel
+                title="釣りスタイル"
+                icon="🧭"
+                note="100点満点ではなく、現在の記録の形を可視化"
+              >
+                <RadarChart axes={styleAxes} />
+              </Panel>
+            </div>
+
             <Panel
-              key={group.title}
-              title={group.title}
-              icon={group.icon}
-              note="使用回数にはボウズも含みます"
+              title="みんなから、ひとこと"
+              icon="💬"
+              note="同じ分析結果を、それぞれの視点で見ています"
+              className="analysis-voices"
             >
-              {group.rows.length === 0 ? (
+              <div className="analysis-voice-list">
+                {characterComments.map((comment) => (
+                  <article
+                    className="analysis-voice"
+                    key={comment.id}
+                    style={
+                      {
+                        "--voice-accent": comment.accent,
+                      } as CSSProperties
+                    }
+                  >
+                    <div className="analysis-voice-mark" aria-hidden="true">
+                      {comment.mark}
+                    </div>
+                    <div>
+                      <div className="analysis-voice-head">
+                        <span className="analysis-voice-name">
+                          {comment.name}
+                        </span>
+                        <span className="analysis-voice-role">
+                          {comment.role}
+                        </span>
+                      </div>
+                      <p>{comment.text}</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </Panel>
+
+            <div className="analysis-grid-2">
+              <Panel
+                title="成長グラフ"
+                icon="📈"
+                note="直近12か月・棒は匹数、線はキャッチ率"
+              >
+                <TrendChart rows={monthly} />
+              </Panel>
+
+              <Panel
+                title="ベストパターン"
+                icon="⚡"
+                note="少数データを過大評価しない信頼度補正つき"
+              >
+                {patterns.length === 0 ? (
+                  <div className="analysis-empty">
+                    条件を比較できる記録がまだ無いよ
+                  </div>
+                ) : (
+                  <div className="analysis-pattern-list">
+                    {patterns.map((pattern, index) => {
+                      const level = confidence(pattern.total);
+                      return (
+                        <div className="analysis-pattern" key={pattern.key}>
+                          <div className="analysis-rank">{index + 1}</div>
+                          <div>
+                            <strong>{pattern.key}</strong>
+                            <small>
+                              相性候補：{pattern.bestLure} ・ {pattern.caught}/
+                              {pattern.total}釣行
+                            </small>
+                          </div>
+                          <div className="analysis-pattern-rate">
+                            <strong>{fmtPct(pattern.rate)}</strong>
+                            <div
+                              className="analysis-confidence"
+                              style={{ color: level.tone }}
+                            >
+                              {level.label}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </Panel>
+            </div>
+
+            <div className="analysis-grid-2">
+              <Panel
+                title="条件ヒートマップ"
+                icon="🌊"
+                note="時間帯 × 潮の動き／色が明るいほど好成績"
+              >
+                <div className="analysis-heatmap">
+                  <div />
+                  {TREND_ORDER.map((trend) => (
+                    <div className="analysis-heat-label" key={trend}>
+                      {trend}
+                    </div>
+                  ))}
+                  {TIMEBANDS.map((band) => {
+                    const time = TIMEBAND_LABEL[band];
+                    return [
+                      <div
+                        className="analysis-heat-label"
+                        key={`label:${time}`}
+                      >
+                        {time}
+                      </div>,
+                      ...TREND_ORDER.map((trend) => {
+                        const row = heatmap.get(`${time}|${trend}`);
+                        const rate = row ? safeRate(row.caught, row.total) : 0;
+                        const alpha = row ? 0.12 + rate * 0.52 : 0.035;
+                        return (
+                          <div
+                            className="analysis-heat-cell"
+                            key={`${time}:${trend}`}
+                            style={{
+                              background: row
+                                ? `linear-gradient(145deg, rgba(255,95,155,${alpha}), rgba(255,205,102,${alpha * 0.65}))`
+                                : "rgba(255,255,255,.025)",
+                            }}
+                          >
+                            <div>
+                              <strong>{row ? fmtPct(rate) : "—"}</strong>
+                              <small>
+                                {row
+                                  ? `${row.caught}/${row.total}釣行`
+                                  : "未解析"}
+                              </small>
+                            </div>
+                          </div>
+                        );
+                      }),
+                    ];
+                  })}
+                </div>
+              </Panel>
+
+              <Panel
+                title="条件別キャッチ率"
+                icon="🕒"
+                note="回数も見ながら、得意な時間と潮を確認"
+              >
+                <div className="analysis-grid-2">
+                  <div>
+                    <div className="analysis-bar-list">
+                      {timeStats.map((row) => (
+                        <BarRow
+                          key={row.key}
+                          label={row.key}
+                          value={row.rate}
+                          max={1}
+                          text={`${fmtPct(row.rate)} (${row.caught}/${row.total})`}
+                          color="#ff70aa"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="analysis-bar-list">
+                      {tideStats.map((row) => (
+                        <BarRow
+                          key={row.key}
+                          label={row.key}
+                          value={row.rate}
+                          max={1}
+                          text={`${fmtPct(row.rate)} (${row.caught}/${row.total})`}
+                          color="#72d7ff"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </Panel>
+            </div>
+
+            <Panel
+              title="魚種別 攻略カルテ"
+              icon="🐟"
+              note="カードを押すと内訳を展開"
+            >
+              {speciesInsights.length === 0 ? (
                 <div className="analysis-empty">
-                  使用タックルの記録がまだ無いよ
+                  魚データが入ると魚種別カルテが育つよ
                 </div>
               ) : (
-                <div className="analysis-tackle-list">
-                  {group.rows.map((row) => (
-                    <div className="analysis-tackle" key={row.id}>
-                      <div>
-                        <strong title={row.label}>{row.label}</strong>
-                        <small>
-                          使用 {row.useCount}回 ・ {row.totalFish}匹 ・ 相性魚種{" "}
-                          {row.bestSpecies}
-                        </small>
+                <div className="analysis-species-list">
+                  {speciesInsights.map((row) => (
+                    <details className="analysis-species" key={row.species}>
+                      <summary>
+                        <div className="analysis-species-top">
+                          <span className="analysis-species-name">
+                            {row.species}
+                          </span>
+                          <span className="analysis-species-total">
+                            {row.totalCount}匹
+                          </span>
+                        </div>
+                        <div className="analysis-species-stats">
+                          <div className="analysis-species-stat">
+                            <small>ベスト時間</small>
+                            <strong>{row.bestTime}</strong>
+                          </div>
+                          <div className="analysis-species-stat">
+                            <small>相性ルアー</small>
+                            <strong>{row.bestLure}</strong>
+                          </div>
+                          <div className="analysis-species-stat">
+                            <small>潮の動き</small>
+                            <strong>{row.bestTrend}</strong>
+                          </div>
+                        </div>
+                        <div className="analysis-species-stats">
+                          <div className="analysis-species-stat">
+                            <small>平均</small>
+                            <strong>{fmtSize(row.avgSizeCm)}</strong>
+                          </div>
+                          <div className="analysis-species-stat">
+                            <small>最大</small>
+                            <strong>{fmtSize(row.maxSizeCm)}</strong>
+                          </div>
+                          <div className="analysis-species-stat">
+                            <small>詳細</small>
+                            <strong>タップで展開</strong>
+                          </div>
+                        </div>
+                      </summary>
+                      <div className="analysis-species-detail">
+                        <h4>時間帯</h4>
+                        <div className="analysis-chips">
+                          {row.timeRows.map((item) => (
+                            <span className="analysis-chip" key={item.key}>
+                              {item.key} {item.value}匹
+                            </span>
+                          ))}
+                        </div>
+                        <h4>ルアー</h4>
+                        <div className="analysis-chips">
+                          {row.lureRows.map((item) => (
+                            <span className="analysis-chip" key={item.key}>
+                              {item.key} {item.value}匹
+                            </span>
+                          ))}
+                        </div>
+                        <h4>潮の動き</h4>
+                        <div className="analysis-chips">
+                          {row.trendRows.map((item) => (
+                            <span className="analysis-chip" key={item.key}>
+                              {item.key} {item.value}匹
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                      <div className="analysis-tackle-rate">
-                        {fmtPct(row.rate)}
-                        <small>{confidence(row.useCount).label}</small>
-                      </div>
-                    </div>
+                    </details>
                   ))}
                 </div>
               )}
             </Panel>
-          ))}
-        </div>
 
-        {(envStats.wind.some((row) => row.total > 0) ||
-          envStats.wave.some((row) => row.total > 0)) && (
-          <Panel
-            title="風・波との相性"
-            icon="🌦"
-            note="保存済みの環境値がある釣行だけで集計"
-          >
             <div className="analysis-grid-2">
-              <div className="analysis-bar-list">
-                {envStats.wind
-                  .filter((row) => row.total > 0)
-                  .map((row) => (
-                    <BarRow
-                      key={row.label}
-                      label={`風 ${row.label}`}
-                      value={row.rate}
-                      max={1}
-                      text={`${fmtPct(row.rate)} (${row.caught}/${row.total})`}
-                      color="#8ea8ff"
-                    />
-                  ))}
-              </div>
-              <div className="analysis-bar-list">
-                {envStats.wave
-                  .filter((row) => row.total > 0)
-                  .map((row) => (
-                    <BarRow
-                      key={row.label}
-                      label={`波 ${row.label}`}
-                      value={row.rate}
-                      max={1}
-                      text={`${fmtPct(row.rate)} (${row.caught}/${row.total})`}
-                      color="#58d8dc"
-                    />
-                  ))}
-              </div>
+              {(
+                [
+                  {
+                    title: "ロッド戦績",
+                    icon: "🛠",
+                    rows: tackleInsights.rods,
+                  },
+                  {
+                    title: "リール戦績",
+                    icon: "⚙️",
+                    rows: tackleInsights.reels,
+                  },
+                ] as const
+              ).map((group) => (
+                <Panel
+                  key={group.title}
+                  title={group.title}
+                  icon={group.icon}
+                  note="使用回数にはボウズも含みます"
+                >
+                  {group.rows.length === 0 ? (
+                    <div className="analysis-empty">
+                      使用タックルの記録がまだ無いよ
+                    </div>
+                  ) : (
+                    <div className="analysis-tackle-list">
+                      {group.rows.map((row) => (
+                        <div className="analysis-tackle" key={row.id}>
+                          <div>
+                            <strong title={row.label}>{row.label}</strong>
+                            <small>
+                              使用 {row.useCount}回 ・ {row.totalFish}匹 ・
+                              相性魚種 {row.bestSpecies}
+                            </small>
+                          </div>
+                          <div className="analysis-tackle-rate">
+                            {fmtPct(row.rate)}
+                            <small>{confidence(row.useCount).label}</small>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Panel>
+              ))}
             </div>
-          </Panel>
-        )}
 
-        <section className="analysis-panel analysis-mission" style={panelStyle}>
-          <div className="analysis-heading">
-            <span className="analysis-heading-icon">🎯</span>
-            <div>
-              <h2>次の攻略ミッション</h2>
-              <p>保存済みデータから、次に検証すると面白い条件をひとつ選出</p>
+            {(envStats.wind.some((row) => row.total > 0) ||
+              envStats.wave.some((row) => row.total > 0)) && (
+              <Panel
+                title="風・波との相性"
+                icon="🌦"
+                note="保存済みの環境値がある釣行だけで集計"
+              >
+                <div className="analysis-grid-2">
+                  <div className="analysis-bar-list">
+                    {envStats.wind
+                      .filter((row) => row.total > 0)
+                      .map((row) => (
+                        <BarRow
+                          key={row.label}
+                          label={`風 ${row.label}`}
+                          value={row.rate}
+                          max={1}
+                          text={`${fmtPct(row.rate)} (${row.caught}/${row.total})`}
+                          color="#8ea8ff"
+                        />
+                      ))}
+                  </div>
+                  <div className="analysis-bar-list">
+                    {envStats.wave
+                      .filter((row) => row.total > 0)
+                      .map((row) => (
+                        <BarRow
+                          key={row.label}
+                          label={`波 ${row.label}`}
+                          value={row.rate}
+                          max={1}
+                          text={`${fmtPct(row.rate)} (${row.caught}/${row.total})`}
+                          color="#58d8dc"
+                        />
+                      ))}
+                  </div>
+                </div>
+              </Panel>
+            )}
+
+            <section
+              className="analysis-panel analysis-mission"
+              style={panelStyle}
+            >
+              <div className="analysis-heading">
+                <span className="analysis-heading-icon">🎯</span>
+                <div>
+                  <h2>次の攻略ミッション</h2>
+                  <p>
+                    保存済みデータから、次に検証すると面白い条件をひとつ選出
+                  </p>
+                </div>
+              </div>
+              <h3>{mission.title}</h3>
+              <p>{mission.text}</p>
+            </section>
+
+            <div className="analysis-footnote">
+              ※
+              ランクとレーダーは、釣果の良し悪しだけでなく記録の充実度も含む「自分用の成長指標」です。
+              サンプルが少ない条件はWilson下限で補正し、「未解析」や「暫定」として扱います。
             </div>
           </div>
-          <h3>{mission.title}</h3>
-          <p>{mission.text}</p>
-        </section>
-
-        <div className="analysis-footnote">
-          ※
-          ランクとレーダーは、釣果の良し悪しだけでなく記録の充実度も含む「自分用の成長指標」です。
-          サンプルが少ない条件はWilson下限で補正し、「未解析」や「暫定」として扱います。
         </div>
       </div>
     </PageShell>

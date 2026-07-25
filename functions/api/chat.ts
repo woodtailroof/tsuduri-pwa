@@ -982,6 +982,132 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       });
     }
 
+    if (body?.mode === "analysis_comments") {
+      const rawCharacters = Array.isArray(body?.characters)
+        ? body.characters.slice(0, 12)
+        : [];
+      const characters = rawCharacters.map((item: unknown) =>
+        safeCharacter(item),
+      );
+      const summary =
+        body?.analysisSummary &&
+        typeof body.analysisSummary === "object" &&
+        !Array.isArray(body.analysisSummary)
+          ? body.analysisSummary
+          : null;
+
+      if (characters.length === 0 || !summary) {
+        return jsonResponse(400, {
+          ok: false,
+          error: "analysis_summary_and_characters_required",
+        });
+      }
+
+      const compactCharacters = characters.map((item) => ({
+        id: item.id,
+        name: item.name,
+        selfName: item.self,
+        callUser: item.callUser,
+        worldview: item.worldview,
+        personality: item.personality,
+        values: item.values,
+        emotionalTriggers: item.emotionalTriggers,
+        reflexes: item.reflexes,
+        attachments: item.attachments,
+        dislikes: item.dislikes,
+        speakingStyle: item.speakingStyle,
+        thinkingStyle: item.thinkingStyle,
+        fishingRole: item.fishingRole,
+        relationships: item.relationships,
+        description: item.description,
+      }));
+
+      const prompt: Msg[] = [
+        {
+          role: "system",
+          content: `
+あなたは釣行分析画面の「キャラクターコメント生成器」です。
+渡された分析結果だけを根拠に、登録キャラクター全員の短いコメントを作成してください。
+
+【絶対ルール】
+- 各キャラクターの一人称、ユーザーの呼び方、性格、口調、価値観、釣りでの立ち位置を忠実に反映する
+- 全員が同じ数字を言い換えない。各自が性格に従って別の点へ自然に注目する
+- キャラクターへ担当分野を機械的に固定しない
+- 事実にない釣果、場所、ルアー、天候、感情を捏造しない
+- サンプル数が少ない項目は断定せず、暫定・今後の検証として扱う
+- ユーザーを採点して傷つける言い方、説教、過度な箇条書きを避ける
+- 1人あたり日本語で70〜180文字程度。自然な一続きの会話文にする
+- 必ず次のJSONだけを返す。Markdownや説明文は付けない
+
+{"comments":[{"characterId":"設定のidを完全一致で使用","text":"コメント"}]}
+`.trim(),
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            analysisSummary: summary,
+            characters: compactCharacters,
+          }).slice(0, 28000),
+        },
+      ];
+
+      const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+      const response = await openai.responses.create({
+        model: "gpt-5.5",
+        input: prompt,
+        max_output_tokens: clamp(350 + characters.length * 180, 700, 2600),
+      });
+      const raw = String(response.output_text ?? "").trim();
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (!match) {
+        return jsonResponse(502, {
+          ok: false,
+          error: "analysis_comments_invalid_response",
+        });
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(match[0]);
+      } catch {
+        return jsonResponse(502, {
+          ok: false,
+          error: "analysis_comments_invalid_json",
+        });
+      }
+
+      const parsedComments =
+        parsed &&
+        typeof parsed === "object" &&
+        Array.isArray((parsed as { comments?: unknown }).comments)
+          ? (parsed as { comments: unknown[] }).comments
+          : [];
+      const allowedIds = new Set(characters.map((item) => item.id));
+      const comments = parsedComments.flatMap((item) => {
+        if (!item || typeof item !== "object") return [];
+        const characterId = cleanText(
+          (item as { characterId?: unknown }).characterId,
+        );
+        const text = cleanText((item as { text?: unknown }).text).slice(0, 700);
+        return allowedIds.has(characterId) && text
+          ? [{ characterId, text: normalizeAssistantText(text) }]
+          : [];
+      });
+
+      if (comments.length === 0) {
+        return jsonResponse(502, {
+          ok: false,
+          error: "analysis_comments_empty",
+        });
+      }
+
+      return jsonResponse(200, {
+        ok: true,
+        comments,
+        usage: response.usage,
+      });
+    }
+
     const messages = body?.messages as Msg[] | undefined;
 
     const character = safeCharacter(body?.character ?? body?.characterProfile);
