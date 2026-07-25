@@ -8,12 +8,6 @@ import {
   type ReelType,
   type TackleKind,
 } from "../db";
-import {
-  sortRods,
-  sortReels,
-  formatRodLabel,
-  formatReelLabel,
-} from "../lib/tackle";
 import { syncTrips } from "../lib/tripSync";
 
 type Props = {
@@ -123,6 +117,87 @@ function fmtReelType(t: ReelType): string {
   return t === "spinning" ? "スピニング" : "ベイト";
 }
 
+function compareText(
+  a: string | null | undefined,
+  b: string | null | undefined,
+) {
+  return (a ?? "").localeCompare(b ?? "", "ja", {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function compareActive(a: TackleItem, b: TackleItem): number {
+  return Number(b.active) - Number(a.active);
+}
+
+function compareType(
+  a: RodType | ReelType | null | undefined,
+  b: RodType | ReelType | null | undefined,
+): number {
+  const rank = (type: RodType | ReelType | null | undefined) =>
+    type === "spinning" ? 0 : type === "bait" ? 1 : 2;
+  return rank(a) - rank(b);
+}
+
+function compareOptionalNumber(
+  a: number | null | undefined,
+  b: number | null | undefined,
+): number {
+  const aValid = typeof a === "number" && Number.isFinite(a);
+  const bValid = typeof b === "number" && Number.isFinite(b);
+
+  if (aValid && bValid) return a - b;
+  if (aValid) return -1;
+  if (bValid) return 1;
+  return 0;
+}
+
+function rodLengthInches(item: TackleItem): number | null {
+  const feet = item.rod?.lengthFeet;
+  const inches = item.rod?.lengthInches;
+
+  if (typeof feet !== "number" || !Number.isFinite(feet) || feet < 0) {
+    return null;
+  }
+
+  const validInches =
+    typeof inches === "number" && Number.isFinite(inches) ? inches : 0;
+  return feet * 12 + validInches;
+}
+
+function sortRodItems(items: TackleItem[]): TackleItem[] {
+  return items
+    .filter((item) => item.kind === "rod" && item.rod)
+    .slice()
+    .sort((a, b) => {
+      return (
+        compareActive(a, b) ||
+        compareType(a.rod?.rodType, b.rod?.rodType) ||
+        compareOptionalNumber(rodLengthInches(a), rodLengthInches(b)) ||
+        compareText(a.rod?.sizeLabel, b.rod?.sizeLabel) ||
+        compareText(a.maker, b.maker) ||
+        compareText(a.model, b.model)
+      );
+    });
+}
+
+function sortReelItems(items: TackleItem[]): TackleItem[] {
+  return items
+    .filter((item) => item.kind === "reel" && item.reel)
+    .slice()
+    .sort((a, b) => {
+      return (
+        compareActive(a, b) ||
+        compareType(a.reel?.reelType, b.reel?.reelType) ||
+        compareOptionalNumber(a.reel?.weightG, b.reel?.weightG) ||
+        compareText(a.reel?.sizeLabel, b.reel?.sizeLabel) ||
+        compareText(a.maker, b.maker) ||
+        compareText(a.model, b.model)
+      );
+    });
+}
+
 function buildRodCardSub(item: TackleItem): string {
   const rod = item.rod;
   if (!rod) return "";
@@ -138,7 +213,7 @@ function buildRodCardSub(item: TackleItem): string {
         : rod.castWeightMaxG != null
           ? `〜${rod.castWeightMaxG}g`
           : "—";
-  return `${fmtRodType(rod.rodType)} / ${len} / ${cast}`;
+  return `${fmtRodType(rod.rodType)} / ${len} / ${cast} / 先径 ${fmtMaybeNumber(rod.tipMm, "mm")} / 元径 ${fmtMaybeNumber(rod.buttMm, "mm")}`;
 }
 
 function buildReelCardSub(item: TackleItem): string {
@@ -149,6 +224,15 @@ function buildReelCardSub(item: TackleItem): string {
       ? ` / スプール ${fmtMaybeNumber(reel.spoolDiameterMm, "mm")} × ${fmtMaybeNumber(reel.spoolWidthMm, "mm")}`
       : "";
   return `${fmtReelType(reel.reelType)} / ${fmtMaybeNumber(reel.weightG, "g")} / ${fmtMaybeNumber(reel.retrieveCm, "cm")}${spool}`;
+}
+
+function buildCardTitle(item: TackleItem): string {
+  const sizeLabel =
+    item.kind === "rod" ? item.rod?.sizeLabel : item.reel?.sizeLabel;
+  return [item.maker, item.model, sizeLabel]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value))
+    .join(" / ");
 }
 
 function useIsMobileLayout(): boolean {
@@ -244,8 +328,8 @@ export default function TackleManager({ back }: Props) {
     };
   }, []);
 
-  const rodList = useMemo(() => sortRods(items), [items]);
-  const reelList = useMemo(() => sortReels(items), [items]);
+  const rodList = useMemo(() => sortRodItems(items), [items]);
+  const reelList = useMemo(() => sortReelItems(items), [items]);
 
   const currentList = tab === "rod" ? rodList : reelList;
 
@@ -519,7 +603,7 @@ export default function TackleManager({ back }: Props) {
     border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(0,0,0,0.22)",
     color: "#fff",
-    padding: "10px 12px",
+    padding: isMobileLayout ? "10px 12px" : "8px 10px",
     outline: "none",
     boxSizing: "border-box",
   };
@@ -549,6 +633,17 @@ export default function TackleManager({ back }: Props) {
     color: on ? "#fff" : "rgba(255,255,255,0.86)",
   });
 
+  const formGridStyle: CSSProperties = {
+    display: "grid",
+    gap: isMobileLayout ? 12 : 8,
+    gridTemplateColumns: isMobileLayout ? "1fr" : "1fr 1fr",
+    minHeight: 0,
+  };
+
+  const fullFormRowStyle: CSSProperties = {
+    gridColumn: "1 / -1",
+  };
+
   return (
     <PageShell
       title={
@@ -566,9 +661,22 @@ export default function TackleManager({ back }: Props) {
       maxWidth={1320}
       showBack
       onBack={back}
-      scrollY="auto"
+      scrollY={isMobileLayout ? "auto" : "hidden"}
     >
-      <div style={{ display: "grid", gap: 12 }}>
+      <div
+        style={{
+          display: "grid",
+          gap: 12,
+          gridTemplateRows: isMobileLayout
+            ? undefined
+            : error
+              ? "auto auto minmax(0, 1fr)"
+              : "auto minmax(0, 1fr)",
+          height: isMobileLayout ? undefined : "calc(100dvh - 112px)",
+          minHeight: isMobileLayout ? undefined : 0,
+          overflow: isMobileLayout ? undefined : "hidden",
+        }}
+      >
         <div
           className="glass glass-strong"
           style={{
@@ -639,6 +747,8 @@ export default function TackleManager({ back }: Props) {
             gap: 12,
             gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
             alignItems: "start",
+            minHeight: 0,
+            overflow: isMobileLayout ? undefined : "hidden",
           }}
         >
           <div
@@ -646,7 +756,9 @@ export default function TackleManager({ back }: Props) {
             style={{
               ...sectionCard,
               position: isMobileLayout ? "static" : "sticky",
-              top: isMobileLayout ? undefined : 12,
+              top: isMobileLayout ? undefined : 0,
+              maxHeight: isMobileLayout ? undefined : "100%",
+              overflow: "hidden",
             }}
           >
             <div
@@ -665,7 +777,7 @@ export default function TackleManager({ back }: Props) {
             </div>
 
             {tab === "rod" ? (
-              <>
+              <div style={formGridStyle}>
                 <div style={fieldWrap}>
                   メーカー
                   <input
@@ -727,6 +839,7 @@ export default function TackleManager({ back }: Props) {
                     display: "grid",
                     gap: 10,
                     gridTemplateColumns: "1fr 1fr",
+                    ...fullFormRowStyle,
                   }}
                 >
                   <div style={fieldWrap}>
@@ -767,6 +880,7 @@ export default function TackleManager({ back }: Props) {
                     display: "grid",
                     gap: 10,
                     gridTemplateColumns: "1fr 1fr",
+                    ...fullFormRowStyle,
                   }}
                 >
                   <div style={fieldWrap}>
@@ -820,6 +934,7 @@ export default function TackleManager({ back }: Props) {
                     display: "grid",
                     gap: 10,
                     gridTemplateColumns: "1fr 1fr",
+                    ...fullFormRowStyle,
                   }}
                 >
                   <div style={fieldWrap}>
@@ -853,7 +968,7 @@ export default function TackleManager({ back }: Props) {
                   </div>
                 </div>
 
-                <div style={fieldWrap}>
+                <div style={{ ...fieldWrap, ...fullFormRowStyle }}>
                   メモ
                   <textarea
                     value={rodForm.memo}
@@ -863,13 +978,14 @@ export default function TackleManager({ back }: Props) {
                     style={{
                       ...fieldStyle,
                       resize: "vertical",
-                      minHeight: 88,
+                      minHeight: isMobileLayout ? 88 : 54,
                     }}
                   />
                 </div>
 
                 <label
                   style={{
+                    ...fullFormRowStyle,
                     display: "flex",
                     gap: 8,
                     alignItems: "center",
@@ -890,7 +1006,14 @@ export default function TackleManager({ back }: Props) {
                   現役タックル
                 </label>
 
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    ...fullFormRowStyle,
+                    display: "flex",
+                    gap: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
                   <button
                     type="button"
                     onClick={() => void saveRod()}
@@ -916,9 +1039,9 @@ export default function TackleManager({ back }: Props) {
                     クリア
                   </button>
                 </div>
-              </>
+              </div>
             ) : (
-              <>
+              <div style={formGridStyle}>
                 <div style={fieldWrap}>
                   メーカー
                   <input
@@ -1002,6 +1125,7 @@ export default function TackleManager({ back }: Props) {
                       display: "grid",
                       gap: 10,
                       gridTemplateColumns: "1fr 1fr",
+                      ...fullFormRowStyle,
                     }}
                   >
                     <div style={fieldWrap}>
@@ -1051,7 +1175,7 @@ export default function TackleManager({ back }: Props) {
                   />
                 </div>
 
-                <div style={fieldWrap}>
+                <div style={{ ...fieldWrap, ...fullFormRowStyle }}>
                   メモ
                   <textarea
                     value={reelForm.memo}
@@ -1061,13 +1185,14 @@ export default function TackleManager({ back }: Props) {
                     style={{
                       ...fieldStyle,
                       resize: "vertical",
-                      minHeight: 88,
+                      minHeight: isMobileLayout ? 88 : 54,
                     }}
                   />
                 </div>
 
                 <label
                   style={{
+                    ...fullFormRowStyle,
                     display: "flex",
                     gap: 8,
                     alignItems: "center",
@@ -1088,7 +1213,14 @@ export default function TackleManager({ back }: Props) {
                   現役タックル
                 </label>
 
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    ...fullFormRowStyle,
+                    display: "flex",
+                    gap: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
                   <button
                     type="button"
                     onClick={() => void saveReel()}
@@ -1114,7 +1246,7 @@ export default function TackleManager({ back }: Props) {
                     クリア
                   </button>
                 </div>
-              </>
+              </div>
             )}
           </div>
 
@@ -1123,6 +1255,12 @@ export default function TackleManager({ back }: Props) {
             style={{
               ...sectionCard,
               minHeight: 420,
+              height: isMobileLayout ? undefined : "100%",
+              minWidth: 0,
+              overflow: isMobileLayout ? undefined : "hidden",
+              gridTemplateRows: isMobileLayout
+                ? undefined
+                : "auto minmax(0, 1fr)",
             }}
           >
             <div
@@ -1138,133 +1276,144 @@ export default function TackleManager({ back }: Props) {
                 {tab === "rod" ? "ロッド一覧" : "リール一覧"}
               </div>
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-                {syncing ? "同期中…" : "現役が先、過去所持は後ろに並ぶよ"}
+                {syncing
+                  ? "同期中…"
+                  : tab === "rod"
+                    ? "現役順・種別順・短い順"
+                    : "現役順・種別順・軽い順"}
               </div>
             </div>
 
-            {loading ? (
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-                読み込み中…
-              </div>
-            ) : currentList.length === 0 ? (
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-                まだ登録がないよ
-              </div>
-            ) : (
-              <div style={{ display: "grid", gap: 10 }}>
-                {currentList.map((item) => {
-                  const selected = editingId === item.id;
-                  const title =
-                    item.kind === "rod"
-                      ? formatRodLabel(item)
-                      : formatReelLabel(item);
-                  const sub =
-                    item.kind === "rod"
-                      ? buildRodCardSub(item)
-                      : buildReelCardSub(item);
+            <div
+              style={{
+                minHeight: 0,
+                overflowY: isMobileLayout ? "visible" : "auto",
+                overflowX: "hidden",
+                paddingRight: isMobileLayout ? 0 : 4,
+                overscrollBehavior: "contain",
+              }}
+            >
+              {loading ? (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                  読み込み中…
+                </div>
+              ) : currentList.length === 0 ? (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                  まだ登録がないよ
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {currentList.map((item) => {
+                    const selected = editingId === item.id;
+                    const title = buildCardTitle(item);
+                    const sub =
+                      item.kind === "rod"
+                        ? buildRodCardSub(item)
+                        : buildReelCardSub(item);
 
-                  return (
-                    <div
-                      key={item.id ?? item.uid}
-                      className="glass"
-                      style={{
-                        borderRadius: 14,
-                        padding: 12,
-                        display: "grid",
-                        gap: 10,
-                        border: selected
-                          ? "2px solid rgba(255,77,109,0.88)"
-                          : "1px solid rgba(255,255,255,0.10)",
-                        background: selected
-                          ? "rgba(255,77,109,0.10)"
-                          : "rgba(255,255,255,0.04)",
-                      }}
-                    >
+                    return (
                       <div
+                        key={item.id ?? item.uid}
+                        className="glass"
                         style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 12,
-                          flexWrap: "wrap",
-                          alignItems: "baseline",
+                          borderRadius: 14,
+                          padding: 12,
+                          display: "grid",
+                          gap: 10,
+                          border: selected
+                            ? "2px solid rgba(255,77,109,0.88)"
+                            : "1px solid rgba(255,255,255,0.10)",
+                          background: selected
+                            ? "rgba(255,77,109,0.10)"
+                            : "rgba(255,255,255,0.04)",
                         }}
                       >
                         <div
                           style={{
-                            fontWeight: 900,
-                            overflowWrap: "anywhere",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 12,
+                            flexWrap: "wrap",
+                            alignItems: "baseline",
                           }}
                         >
-                          {title}
+                          <div
+                            style={{
+                              fontWeight: 900,
+                              overflowWrap: "anywhere",
+                            }}
+                          >
+                            {title}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: item.active ? "#b8ffd0" : "#ffd3b8",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {item.active ? "現役" : "過去所持"}
+                          </div>
                         </div>
+
                         <div
                           style={{
                             fontSize: 12,
-                            color: item.active ? "#b8ffd0" : "#ffd3b8",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {item.active ? "現役" : "過去所持"}
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "rgba(255,255,255,0.72)",
-                          overflowWrap: "anywhere",
-                        }}
-                      >
-                        {sub}
-                      </div>
-
-                      {item.memo ? (
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: "rgba(255,255,255,0.82)",
+                            color: "rgba(255,255,255,0.72)",
                             overflowWrap: "anywhere",
                           }}
                         >
-                          📝 {item.memo}
+                          {sub}
                         </div>
-                      ) : null}
 
-                      <div
-                        style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => loadIntoForm(item)}
-                          style={btnStyle}
-                          disabled={saving || syncing}
-                        >
-                          編集
-                        </button>
+                        {item.memo ? (
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: "rgba(255,255,255,0.82)",
+                              overflowWrap: "anywhere",
+                            }}
+                          >
+                            📝 {item.memo}
+                          </div>
+                        ) : null}
 
-                        <button
-                          type="button"
-                          onClick={() => void toggleActive(item)}
-                          style={btnStyle}
-                          disabled={saving || syncing}
+                        <div
+                          style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
                         >
-                          {item.active ? "過去所持にする" : "現役に戻す"}
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => loadIntoForm(item)}
+                            style={btnStyle}
+                            disabled={saving || syncing}
+                          >
+                            編集
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => void deleteItem(item)}
-                          style={dangerBtnStyle}
-                          disabled={saving || syncing}
-                        >
-                          削除
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => void toggleActive(item)}
+                            style={btnStyle}
+                            disabled={saving || syncing}
+                          >
+                            {item.active ? "過去所持にする" : "現役に戻す"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => void deleteItem(item)}
+                            style={dangerBtnStyle}
+                            disabled={saving || syncing}
+                          >
+                            削除
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
