@@ -986,7 +986,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       const rawCharacters = Array.isArray(body?.characters)
         ? body.characters.slice(0, 12)
         : [];
-      const characters = rawCharacters.map((item: unknown) =>
+      const characters: CharacterV3[] = rawCharacters.map((item: unknown) =>
         safeCharacter(item),
       );
       const summary =
@@ -1003,7 +1003,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         });
       }
 
-      const compactCharacters = characters.map((item) => ({
+      const compactCharacters = characters.map((item: CharacterV3) => ({
         id: item.id,
         name: item.name,
         selfName: item.self,
@@ -1082,7 +1082,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         Array.isArray((parsed as { comments?: unknown }).comments)
           ? (parsed as { comments: unknown[] }).comments
           : [];
-      const allowedIds = new Set(characters.map((item) => item.id));
+      const allowedIds = new Set(
+        characters.map((item: CharacterV3) => item.id),
+      );
       const comments = parsedComments.flatMap((item) => {
         if (!item || typeof item !== "object") return [];
         const characterId = cleanText(

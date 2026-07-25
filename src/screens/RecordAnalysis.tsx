@@ -1249,7 +1249,7 @@ export default function RecordAnalysis({ back }: Props) {
         catchRatePercent: Math.round(row.rate * 1000) / 10,
         confidence: confidence(row.total).label,
       })),
-      species: speciesCards.slice(0, 8).map((row) => ({
+      species: speciesInsights.slice(0, 8).map((row) => ({
         species: row.species,
         fishCount: row.total,
         averageSizeCm:
@@ -1289,7 +1289,7 @@ export default function RecordAnalysis({ back }: Props) {
       timeStats,
       tideStats,
       patterns,
-      speciesCards,
+      speciesInsights,
       tackleInsights,
       envStats,
       mission,
