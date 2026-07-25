@@ -1682,7 +1682,6 @@ export default function RecordHistory({ back }: Props) {
                       onClick={() => {
                         if (!p.id) return;
                         setSelectedPhotoId(p.id);
-                        setLightboxPhotoId(p.id);
                       }}
                       className="glass"
                       style={{
@@ -1694,7 +1693,7 @@ export default function RecordHistory({ back }: Props) {
                         background: "rgba(0,0,0,0.18)",
                         aspectRatio: "1 / 1",
                         padding: 0,
-                        cursor: "zoom-in",
+                        cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
