@@ -163,14 +163,14 @@ export default function Record({ back, onSaved }: Props) {
 
   const glassBoxStyle: CSSProperties = {
     borderRadius: 16,
-    padding: 12,
+    padding: 10,
     display: "grid",
-    gap: 10,
+    gap: 8,
   };
 
   const segWrapStyle: CSSProperties = {
     display: "flex",
-    gap: 12,
+    gap: 8,
     flexWrap: "wrap",
     alignItems: "center",
     minWidth: 0,
@@ -196,8 +196,8 @@ export default function Record({ back, onSaved }: Props) {
   const segPillBase: CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
-    gap: 10,
-    padding: "10px 14px",
+    gap: 8,
+    padding: "8px 12px",
     borderRadius: 16,
     lineHeight: 1.2,
     whiteSpace: "nowrap",
@@ -245,7 +245,7 @@ export default function Record({ back, onSaved }: Props) {
     border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(0,0,0,calc(0.16 + var(--glass-alpha,0.22) * 0.65))",
     color: "#fff",
-    padding: "10px 12px",
+    padding: "8px 10px",
     outline: "none",
     backdropFilter: "blur(var(--glass-blur,10px))",
     WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
@@ -253,7 +253,7 @@ export default function Record({ back, onSaved }: Props) {
   };
 
   const primaryBtn: CSSProperties = {
-    padding: "10px 14px",
+    padding: "8px 12px",
     borderRadius: 14,
     border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(0,0,0,calc(0.12 + var(--glass-alpha,0.22) * 0.55))",
@@ -270,7 +270,7 @@ export default function Record({ back, onSaved }: Props) {
 
   const pillBtnStyle: CSSProperties = {
     borderRadius: 999,
-    padding: "8px 12px",
+    padding: "7px 10px",
     border: "1px solid rgba(255,255,255,0.18)",
     background: "rgba(0,0,0,0.24)",
     color: "rgba(255,255,255,0.78)",
@@ -287,7 +287,7 @@ export default function Record({ back, onSaved }: Props) {
 
   const selectStyle: CSSProperties = {
     ...fieldStyle,
-    padding: "10px 12px",
+    padding: "8px 10px",
     minWidth: 0,
   };
 
@@ -860,16 +860,117 @@ export default function Record({ back, onSaved }: Props) {
         </h1>
       }
       titleLayout="left"
-      maxWidth={1100}
+      maxWidth={1360}
       showBack
       onBack={back}
       scrollY="auto"
     >
       <style>{`
-        .record-layout{ display:grid; gap:14px; min-width:0; }
-        @media (min-width: 980px){
-          .record-layout{ grid-template-columns: 420px minmax(0, 1fr); align-items:start; }
-          .record-left{ position: sticky; top: 12px; align-self:start; }
+        .record-layout,
+        .record-details,
+        .record-middle,
+        .record-right {
+          min-width: 0;
+        }
+
+        .record-layout {
+          display: grid;
+          gap: 12px;
+        }
+
+        .record-details,
+        .record-middle,
+        .record-right {
+          display: grid;
+          gap: 10px;
+          align-content: start;
+        }
+
+        .record-photo-panel {
+          min-height: 0;
+        }
+
+        .record-fish-grid {
+          display: grid;
+          gap: 8px;
+          grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        }
+
+        @media (min-width: 760px) and (max-width: 1179px) {
+          .record-layout {
+            grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.15fr);
+            align-items: start;
+          }
+
+          .record-left {
+            position: sticky;
+            top: 8px;
+            align-self: start;
+          }
+        }
+
+        @media (min-width: 1180px) {
+          .record-layout {
+            grid-template-columns:
+              minmax(280px, 0.82fr)
+              minmax(330px, 1fr)
+              minmax(360px, 1.08fr);
+            align-items: start;
+            gap: 10px;
+          }
+
+          .record-details {
+            display: contents;
+          }
+
+          .record-left,
+          .record-middle,
+          .record-right {
+            min-height: 0;
+          }
+
+          .record-left {
+            position: sticky;
+            top: 8px;
+            align-self: start;
+          }
+
+          .record-photo-panel {
+            max-height: calc(100dvh - 235px);
+            overflow-y: auto;
+            scrollbar-width: thin;
+          }
+
+          .record-middle,
+          .record-right {
+            gap: 8px;
+          }
+
+          .record-right {
+            max-height: calc(100dvh - 235px);
+          }
+
+          .record-fish-list {
+            max-height: 245px;
+            overflow-y: auto;
+            padding-right: 3px;
+            scrollbar-width: thin;
+          }
+
+          .record-memo textarea {
+            min-height: 54px;
+            max-height: 78px;
+            resize: none !important;
+          }
+        }
+
+        @media (max-width: 759px) {
+          .record-layout,
+          .record-details,
+          .record-middle,
+          .record-right {
+            grid-template-columns: minmax(0, 1fr);
+          }
         }
       `}</style>
 
@@ -894,8 +995,8 @@ export default function Record({ back, onSaved }: Props) {
           {/* 左：写真 */}
           <div className="record-left" style={{ minWidth: 0 }}>
             <div
-              className="glass glass-strong"
-              style={{ borderRadius: 16, padding: 12 }}
+              className="glass glass-strong record-photo-panel"
+              style={{ borderRadius: 16, padding: 10 }}
             >
               <div style={{ fontWeight: 800, marginBottom: 8 }}>
                 🖼 写真（複数OK）
@@ -1007,691 +1108,693 @@ export default function Record({ back, onSaved }: Props) {
           </div>
 
           {/* 右：入力 */}
-          <div
-            style={{
-              minWidth: 0,
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-            }}
-          >
-            {/* 手動日時入力 */}
-            <div className="glass glass-strong" style={glassBoxStyle}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  flexWrap: "wrap",
-                }}
-              >
-                <label
+          <div className="record-details">
+            <div className="record-middle">
+              {/* 手動日時入力 */}
+              <div className="glass glass-strong" style={glassBoxStyle}>
+                <div
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 8,
-                    cursor: "pointer",
+                    gap: 10,
+                    flexWrap: "wrap",
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={manualMode}
-                    onChange={(e) => {
-                      const on = e.target.checked;
-                      setManualMode(on);
-                      if (on) {
-                        const d = baseCapturedAt ?? autoBaseCapturedAt;
-                        if (d) setManualValue(toDateTimeLocalValue(d));
-                      } else {
-                        setAllowUnknown(false);
-                      }
-                    }}
-                  />
-                  <span
-                    style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
-                  >
-                    基準時刻を手動で補正する（帰宅投稿向け）
-                  </span>
-                </label>
-
-                {!manualMode && !autoBaseCapturedAt && (
-                  <div style={{ fontSize: 12, color: "#f6c" }}>
-                    ※EXIFが無いので、ONにして入力すると潮/天気に紐づくよ
-                  </div>
-                )}
-              </div>
-
-              {manualMode && (
-                <>
-                  <div
+                  <label
                     style={{
                       display: "flex",
-                      gap: 10,
                       alignItems: "center",
-                      flexWrap: "wrap",
+                      gap: 8,
+                      cursor: "pointer",
                     }}
                   >
-                    <label
+                    <input
+                      type="checkbox"
+                      checked={manualMode}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setManualMode(on);
+                        if (on) {
+                          const d = baseCapturedAt ?? autoBaseCapturedAt;
+                          if (d) setManualValue(toDateTimeLocalValue(d));
+                        } else {
+                          setAllowUnknown(false);
+                        }
+                      }}
+                    />
+                    <span
                       style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
                     >
-                      基準時刻（ローカル）：
-                      <input
-                        type="datetime-local"
-                        value={manualValue}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setManualValue(v);
-                          const d = parseDateTimeLocalValue(v);
-                          setBaseCapturedAt(d);
-                          if (d) setAllowUnknown(false);
-                        }}
-                        style={{ marginLeft: 8 }}
-                      />
-                    </label>
+                      基準時刻を手動で補正する（帰宅投稿向け）
+                    </span>
+                  </label>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const now = new Date();
-                        const v = toDateTimeLocalValue(now);
-                        setManualValue(v);
-                        setBaseCapturedAt(now);
-                        setAllowUnknown(false);
-                      }}
-                      className="glass"
-                      style={primaryBtn}
-                    >
-                      今にする
-                    </button>
-                  </div>
+                  {!manualMode && !autoBaseCapturedAt && (
+                    <div style={{ fontSize: 12, color: "#f6c" }}>
+                      ※EXIFが無いので、ONにして入力すると潮/天気に紐づくよ
+                    </div>
+                  )}
+                </div>
 
-                  {!manualValue && (
-                    <label
+                {manualMode && (
+                  <>
+                    <div
                       style={{
                         display: "flex",
+                        gap: 10,
                         alignItems: "center",
-                        gap: 8,
-                        cursor: "pointer",
+                        flexWrap: "wrap",
                       }}
                     >
-                      <input
-                        type="checkbox"
-                        checked={allowUnknown}
-                        onChange={(e) => setAllowUnknown(e.target.checked)}
-                      />
-                      <span
+                      <label
                         style={{
                           fontSize: 12,
                           color: "rgba(255,255,255,0.72)",
                         }}
                       >
-                        不明のまま保存する（潮/天気の保存なし）
-                      </span>
-                    </label>
-                  )}
+                        基準時刻（ローカル）：
+                        <input
+                          type="datetime-local"
+                          value={manualValue}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setManualValue(v);
+                            const d = parseDateTimeLocalValue(v);
+                            setBaseCapturedAt(d);
+                            if (d) setAllowUnknown(false);
+                          }}
+                          style={{ marginLeft: 8 }}
+                        />
+                      </label>
 
-                  {!manualValue && !allowUnknown && (
-                    <div style={{ fontSize: 12, color: "#f6c" }}>
-                      ※時刻を入れるか、「不明のまま保存」をONにしてね
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const now = new Date();
+                          const v = toDateTimeLocalValue(now);
+                          setManualValue(v);
+                          setBaseCapturedAt(now);
+                          setAllowUnknown(false);
+                        }}
+                        className="glass"
+                        style={primaryBtn}
+                      >
+                        今にする
+                      </button>
                     </div>
-                  )}
-                </>
-              )}
 
-              {!manualMode && (
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.70)" }}>
-                  基準時刻：{" "}
-                  {baseCapturedAt
-                    ? baseCapturedAt.toLocaleString()
-                    : "（未確定）"}
-                </div>
-              )}
-            </div>
+                    {!manualValue && (
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={allowUnknown}
+                          onChange={(e) => setAllowUnknown(e.target.checked)}
+                        />
+                        <span
+                          style={{
+                            fontSize: 12,
+                            color: "rgba(255,255,255,0.72)",
+                          }}
+                        >
+                          不明のまま保存する（潮/天気の保存なし）
+                        </span>
+                      </label>
+                    )}
 
-            {/* タイド */}
-            <div
-              className="glass glass-strong"
-              style={{ borderRadius: 16, padding: 12 }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                }}
-              >
-                <div style={{ fontWeight: 800 }}>🌙 タイド（プレビュー）</div>
-                {!online && (
-                  <div style={{ fontSize: 12, color: "#f6c" }}>
-                    📴 オフライン
+                    {!manualValue && !allowUnknown && (
+                      <div style={{ fontSize: 12, color: "#f6c" }}>
+                        ※時刻を入れるか、「不明のまま保存」をONにしてね
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {!manualMode && (
+                  <div
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.70)" }}
+                  >
+                    基準時刻：{" "}
+                    {baseCapturedAt
+                      ? baseCapturedAt.toLocaleString()
+                      : "（未確定）"}
                   </div>
                 )}
-                {tideSource &&
-                  (() => {
-                    const lab = sourceLabel(tideSource, tideIsStale);
-                    if (!lab) return null;
-                    return (
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: lab.color,
-                          whiteSpace: "nowrap",
-                        }}
-                        title="tide736取得元"
-                      >
-                        🌊 {lab.text}
-                      </div>
-                    );
-                  })()}
               </div>
 
-              {!baseCapturedAt ? (
+              {/* タイド */}
+              <div
+                className="glass glass-strong"
+                style={{ borderRadius: 16, padding: 10 }}
+              >
                 <div
                   style={{
-                    marginTop: 8,
-                    fontSize: 12,
-                    color: "rgba(255,255,255,0.68)",
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "center",
+                    flexWrap: "wrap",
                   }}
                 >
-                  基準時刻が無いので、タイドに紐づけできないよ
+                  <div style={{ fontWeight: 800 }}>🌙 タイド（プレビュー）</div>
+                  {!online && (
+                    <div style={{ fontSize: 12, color: "#f6c" }}>
+                      📴 オフライン
+                    </div>
+                  )}
+                  {tideSource &&
+                    (() => {
+                      const lab = sourceLabel(tideSource, tideIsStale);
+                      if (!lab) return null;
+                      return (
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: lab.color,
+                            whiteSpace: "nowrap",
+                          }}
+                          title="tide736取得元"
+                        >
+                          🌊 {lab.text}
+                        </div>
+                      );
+                    })()}
                 </div>
-              ) : tideLoading ? (
-                <div style={{ marginTop: 8, fontSize: 12, color: "#0a6" }}>
-                  取得中…
-                </div>
-              ) : tideError ? (
-                <div style={{ marginTop: 8, fontSize: 12, color: "#ff7a7a" }}>
-                  取得失敗 → {tideError}
-                </div>
-              ) : (
-                <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+
+                {!baseCapturedAt ? (
                   <div
-                    style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}
+                    style={{
+                      marginTop: 8,
+                      fontSize: 12,
+                      color: "rgba(255,255,255,0.68)",
+                    }}
                   >
-                    🕒 {getTimeBand(baseCapturedAt)}
+                    基準時刻が無いので、タイドに紐づけできないよ
                   </div>
-                  <div style={{ fontSize: 12, color: "#6cf" }}>
-                    {tideName ? `🌙 ${tideName}` : "🌙 潮名：—"}
-                    {phase ? ` / 🌊 ${phase}` : ""}
+                ) : tideLoading ? (
+                  <div style={{ marginTop: 8, fontSize: 12, color: "#0a6" }}>
+                    取得中…
                   </div>
-                  <div style={{ fontSize: 12, color: "#7ef" }}>
-                    🌊 焼津潮位：
-                    {tideAtShot
-                      ? `${tideAtShot.cm}cm / ${tideAtShot.trend}`
-                      : "—"}
+                ) : tideError ? (
+                  <div style={{ marginTop: 8, fontSize: 12, color: "#ff7a7a" }}>
+                    取得失敗 → {tideError}
                   </div>
-                </div>
-              )}
-            </div>
+                ) : (
+                  <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+                    <div
+                      style={{ fontSize: 12, color: "rgba(255,255,255,0.75)" }}
+                    >
+                      🕒 {getTimeBand(baseCapturedAt)}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#6cf" }}>
+                      {tideName ? `🌙 ${tideName}` : "🌙 潮名：—"}
+                      {phase ? ` / 🌊 ${phase}` : ""}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#7ef" }}>
+                      🌊 焼津潮位：
+                      {tideAtShot
+                        ? `${tideAtShot.cm}cm / ${tideAtShot.trend}`
+                        : "—"}
+                    </div>
+                  </div>
+                )}
+              </div>
 
-            {/* 使用タックル */}
-            <div className="glass glass-strong" style={glassBoxStyle}>
-              <div style={{ fontWeight: 700 }}>🛠 使用タックル</div>
-
-              <label
-                style={{
-                  fontSize: 12,
-                  color: "rgba(255,255,255,0.72)",
-                  display: "grid",
-                  gap: 6,
-                }}
-              >
-                ロッド
-                <select
-                  value={rodId ?? ""}
-                  onChange={(e) =>
-                    setRodId(e.target.value ? Number(e.target.value) : null)
-                  }
-                  style={selectStyle}
-                >
-                  <option value="">未選択</option>
-                  {rodOptions.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {formatRodLabel(t)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label
-                style={{
-                  fontSize: 12,
-                  color: "rgba(255,255,255,0.72)",
-                  display: "grid",
-                  gap: 6,
-                }}
-              >
-                リール
-                <select
-                  value={reelId ?? ""}
-                  onChange={(e) =>
-                    setReelId(e.target.value ? Number(e.target.value) : null)
-                  }
-                  style={selectStyle}
-                >
-                  <option value="">未選択</option>
-                  {reelOptions.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {formatReelLabel(t)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            {/* 分析用条件 */}
-            <div className="glass glass-strong" style={glassBoxStyle}>
-              <div style={{ fontWeight: 700 }}>🧭 分析用の条件</div>
-
-              <div style={{ display: "grid", gap: 10 }}>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
-                  釣り場タイプ
-                </div>
-                <div style={segWrapStyle}>
-                  <label style={segLabelStyle}>
-                    <input
-                      type="radio"
-                      name="spotType"
-                      checked={spotType === "port"}
-                      onChange={() => setSpotType("port")}
-                      style={segInputHidden}
-                    />
-                    <span style={segPill(spotType === "port")}>
-                      <span
-                        style={segDot(spotType === "port")}
-                        aria-hidden="true"
-                      />
-                      漁港
-                    </span>
-                  </label>
-
-                  <label style={segLabelStyle}>
-                    <input
-                      type="radio"
-                      name="spotType"
-                      checked={spotType === "surf"}
-                      onChange={() => setSpotType("surf")}
-                      style={segInputHidden}
-                    />
-                    <span style={segPill(spotType === "surf")}>
-                      <span
-                        style={segDot(spotType === "surf")}
-                        aria-hidden="true"
-                      />
-                      サーフ
-                    </span>
-                  </label>
-                </div>
-
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
-                  濁り
-                </div>
-                <div style={segWrapStyle}>
-                  <label style={segLabelStyle}>
-                    <input
-                      type="radio"
-                      name="waterClarity"
-                      checked={waterClarity === "clear"}
-                      onChange={() => setWaterClarity("clear")}
-                      style={segInputHidden}
-                    />
-                    <span style={segPill(waterClarity === "clear")}>
-                      <span
-                        style={segDot(waterClarity === "clear")}
-                        aria-hidden="true"
-                      />
-                      澄み
-                    </span>
-                  </label>
-
-                  <label style={segLabelStyle}>
-                    <input
-                      type="radio"
-                      name="waterClarity"
-                      checked={waterClarity === "normal"}
-                      onChange={() => setWaterClarity("normal")}
-                      style={segInputHidden}
-                    />
-                    <span style={segPill(waterClarity === "normal")}>
-                      <span
-                        style={segDot(waterClarity === "normal")}
-                        aria-hidden="true"
-                      />
-                      普通
-                    </span>
-                  </label>
-
-                  <label style={segLabelStyle}>
-                    <input
-                      type="radio"
-                      name="waterClarity"
-                      checked={waterClarity === "muddy"}
-                      onChange={() => setWaterClarity("muddy")}
-                      style={segInputHidden}
-                    />
-                    <span style={segPill(waterClarity === "muddy")}>
-                      <span
-                        style={segDot(waterClarity === "muddy")}
-                        aria-hidden="true"
-                      />
-                      濁り
-                    </span>
-                  </label>
-                </div>
+              {/* 使用タックル */}
+              <div className="glass glass-strong" style={glassBoxStyle}>
+                <div style={{ fontWeight: 700 }}>🛠 使用タックル</div>
 
                 <label
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    cursor: "pointer",
                     fontSize: 12,
-                    color: "rgba(255,255,255,0.78)",
+                    color: "rgba(255,255,255,0.72)",
+                    display: "grid",
+                    gap: 6,
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={baitPresent}
-                    onChange={(e) => setBaitPresent(e.target.checked)}
-                  />
-                  見えベイトあり
+                  ロッド
+                  <select
+                    value={rodId ?? ""}
+                    onChange={(e) =>
+                      setRodId(e.target.value ? Number(e.target.value) : null)
+                    }
+                    style={selectStyle}
+                  >
+                    <option value="">未選択</option>
+                    {rodOptions.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {formatRodLabel(t)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label
+                  style={{
+                    fontSize: 12,
+                    color: "rgba(255,255,255,0.72)",
+                    display: "grid",
+                    gap: 6,
+                  }}
+                >
+                  リール
+                  <select
+                    value={reelId ?? ""}
+                    onChange={(e) =>
+                      setReelId(e.target.value ? Number(e.target.value) : null)
+                    }
+                    style={selectStyle}
+                  >
+                    <option value="">未選択</option>
+                    {reelOptions.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {formatReelLabel(t)}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
             </div>
 
-            {/* 釣果 */}
-            <div>
-              <div style={{ fontWeight: 700, marginBottom: 8 }}>🎣 釣果</div>
-
+            <div className="record-right">
+              {/* 分析用条件 */}
               <div className="glass glass-strong" style={glassBoxStyle}>
-                <div style={segWrapStyle} aria-label="釣果の結果">
-                  <label style={segLabelStyle}>
-                    <input
-                      type="radio"
-                      name="outcome"
-                      checked={outcome === "caught"}
-                      onChange={() => setOutcome("caught")}
-                      style={segInputHidden}
-                    />
-                    <span style={segPill(outcome === "caught")}>
-                      <span
-                        style={segDot(outcome === "caught")}
-                        aria-hidden="true"
-                      />
-                      釣れた
-                    </span>
-                  </label>
+                <div style={{ fontWeight: 700 }}>🧭 分析用の条件</div>
 
-                  <label style={segLabelStyle}>
-                    <input
-                      type="radio"
-                      name="outcome"
-                      checked={outcome === "skunk"}
-                      onChange={() => setOutcome("skunk")}
-                      style={segInputHidden}
-                    />
-                    <span style={segPill(outcome === "skunk")}>
-                      <span
-                        style={segDot(outcome === "skunk")}
-                        aria-hidden="true"
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
+                  >
+                    釣り場タイプ
+                  </div>
+                  <div style={segWrapStyle}>
+                    <label style={segLabelStyle}>
+                      <input
+                        type="radio"
+                        name="spotType"
+                        checked={spotType === "port"}
+                        onChange={() => setSpotType("port")}
+                        style={segInputHidden}
                       />
-                      釣れなかった（ボウズ）
-                    </span>
+                      <span style={segPill(spotType === "port")}>
+                        <span
+                          style={segDot(spotType === "port")}
+                          aria-hidden="true"
+                        />
+                        漁港
+                      </span>
+                    </label>
+
+                    <label style={segLabelStyle}>
+                      <input
+                        type="radio"
+                        name="spotType"
+                        checked={spotType === "surf"}
+                        onChange={() => setSpotType("surf")}
+                        style={segInputHidden}
+                      />
+                      <span style={segPill(spotType === "surf")}>
+                        <span
+                          style={segDot(spotType === "surf")}
+                          aria-hidden="true"
+                        />
+                        サーフ
+                      </span>
+                    </label>
+                  </div>
+
+                  <div
+                    style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
+                  >
+                    濁り
+                  </div>
+                  <div style={segWrapStyle}>
+                    <label style={segLabelStyle}>
+                      <input
+                        type="radio"
+                        name="waterClarity"
+                        checked={waterClarity === "clear"}
+                        onChange={() => setWaterClarity("clear")}
+                        style={segInputHidden}
+                      />
+                      <span style={segPill(waterClarity === "clear")}>
+                        <span
+                          style={segDot(waterClarity === "clear")}
+                          aria-hidden="true"
+                        />
+                        澄み
+                      </span>
+                    </label>
+
+                    <label style={segLabelStyle}>
+                      <input
+                        type="radio"
+                        name="waterClarity"
+                        checked={waterClarity === "normal"}
+                        onChange={() => setWaterClarity("normal")}
+                        style={segInputHidden}
+                      />
+                      <span style={segPill(waterClarity === "normal")}>
+                        <span
+                          style={segDot(waterClarity === "normal")}
+                          aria-hidden="true"
+                        />
+                        普通
+                      </span>
+                    </label>
+
+                    <label style={segLabelStyle}>
+                      <input
+                        type="radio"
+                        name="waterClarity"
+                        checked={waterClarity === "muddy"}
+                        onChange={() => setWaterClarity("muddy")}
+                        style={segInputHidden}
+                      />
+                      <span style={segPill(waterClarity === "muddy")}>
+                        <span
+                          style={segDot(waterClarity === "muddy")}
+                          aria-hidden="true"
+                        />
+                        濁り
+                      </span>
+                    </label>
+                  </div>
+
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      cursor: "pointer",
+                      fontSize: 12,
+                      color: "rgba(255,255,255,0.78)",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={baitPresent}
+                      onChange={(e) => setBaitPresent(e.target.checked)}
+                    />
+                    見えベイトあり
                   </label>
                 </div>
+              </div>
 
-                {outcome === "caught" && (
-                  <div style={{ display: "grid", gap: 12 }}>
-                    {fishDrafts.map((f, index) => {
-                      const validation = fishDraftValidation.find(
-                        (v) => v.id === f.id,
-                      );
-                      return (
-                        <div
-                          key={f.id}
-                          style={{
-                            borderRadius: 14,
-                            padding: 10,
-                            border: "1px solid rgba(255,255,255,0.10)",
-                            background: "rgba(0,0,0,0.10)",
-                            display: "grid",
-                            gap: 10,
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              gap: 10,
-                              flexWrap: "wrap",
-                            }}
-                          >
-                            <div style={{ fontWeight: 700 }}>
-                              🐟 魚 {index + 1}
-                            </div>
-                            {fishDrafts.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => removeFishDraft(f.id)}
-                                style={pillBtnStyle}
-                                title="この魚を削除"
-                              >
-                                🗑 この魚を削除
-                              </button>
-                            )}
-                          </div>
+              {/* 釣果 */}
+              <div>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>🎣 釣果</div>
 
+                <div className="glass glass-strong" style={glassBoxStyle}>
+                  <div style={segWrapStyle} aria-label="釣果の結果">
+                    <label style={segLabelStyle}>
+                      <input
+                        type="radio"
+                        name="outcome"
+                        checked={outcome === "caught"}
+                        onChange={() => setOutcome("caught")}
+                        style={segInputHidden}
+                      />
+                      <span style={segPill(outcome === "caught")}>
+                        <span
+                          style={segDot(outcome === "caught")}
+                          aria-hidden="true"
+                        />
+                        釣れた
+                      </span>
+                    </label>
+
+                    <label style={segLabelStyle}>
+                      <input
+                        type="radio"
+                        name="outcome"
+                        checked={outcome === "skunk"}
+                        onChange={() => setOutcome("skunk")}
+                        style={segInputHidden}
+                      />
+                      <span style={segPill(outcome === "skunk")}>
+                        <span
+                          style={segDot(outcome === "skunk")}
+                          aria-hidden="true"
+                        />
+                        釣れなかった（ボウズ）
+                      </span>
+                    </label>
+                  </div>
+
+                  {outcome === "caught" && (
+                    <div
+                      className="record-fish-list"
+                      style={{ display: "grid", gap: 10 }}
+                    >
+                      {fishDrafts.map((f, index) => {
+                        const validation = fishDraftValidation.find(
+                          (v) => v.id === f.id,
+                        );
+                        return (
                           <div
+                            key={f.id}
                             style={{
+                              borderRadius: 14,
+                              padding: 10,
+                              border: "1px solid rgba(255,255,255,0.10)",
+                              background: "rgba(0,0,0,0.10)",
                               display: "grid",
                               gap: 10,
-                              gridTemplateColumns:
-                                "repeat(auto-fit, minmax(220px, 1fr))",
                             }}
                           >
-                            <label
+                            <div
                               style={{
-                                fontSize: 12,
-                                color: "rgba(255,255,255,0.72)",
-                                display: "grid",
-                                gap: 6,
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                gap: 10,
+                                flexWrap: "wrap",
                               }}
                             >
-                              魚種
-                              <select
-                                value={f.species}
-                                onChange={(e) =>
-                                  updateFishDraft(f.id, {
-                                    species: e.target.value,
-                                  })
-                                }
-                                style={selectStyle}
+                              <div style={{ fontWeight: 700 }}>
+                                🐟 魚 {index + 1}
+                              </div>
+                              {fishDrafts.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeFishDraft(f.id)}
+                                  style={pillBtnStyle}
+                                  title="この魚を削除"
+                                >
+                                  🗑 この魚を削除
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="record-fish-grid">
+                              <label
+                                style={{
+                                  fontSize: 12,
+                                  color: "rgba(255,255,255,0.72)",
+                                  display: "grid",
+                                  gap: 6,
+                                }}
                               >
-                                <option value="">選択してね</option>
-                                {SPECIES_OPTIONS.map((opt) => (
-                                  <option key={opt.value} value={opt.value}>
-                                    {opt.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
+                                魚種
+                                <select
+                                  value={f.species}
+                                  onChange={(e) =>
+                                    updateFishDraft(f.id, {
+                                      species: e.target.value,
+                                    })
+                                  }
+                                  style={selectStyle}
+                                >
+                                  <option value="">選択してね</option>
+                                  {SPECIES_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
 
-                            <label
-                              style={{
-                                fontSize: 12,
-                                color: "rgba(255,255,255,0.72)",
-                                display: "grid",
-                                gap: 6,
-                              }}
-                            >
-                              ルアー
-                              <select
-                                value={f.lureType}
-                                onChange={(e) =>
-                                  updateFishDraft(f.id, {
-                                    lureType: e.target.value as LureType | "",
-                                  })
-                                }
-                                style={selectStyle}
+                              <label
+                                style={{
+                                  fontSize: 12,
+                                  color: "rgba(255,255,255,0.72)",
+                                  display: "grid",
+                                  gap: 6,
+                                }}
                               >
-                                <option value="">選択してね</option>
-                                {LURE_OPTIONS.map((opt) => (
-                                  <option key={opt.value} value={opt.value}>
-                                    {opt.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
+                                ルアー
+                                <select
+                                  value={f.lureType}
+                                  onChange={(e) =>
+                                    updateFishDraft(f.id, {
+                                      lureType: e.target.value as LureType | "",
+                                    })
+                                  }
+                                  style={selectStyle}
+                                >
+                                  <option value="">選択してね</option>
+                                  {LURE_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
 
-                            <label
-                              style={{
-                                fontSize: 12,
-                                color: "rgba(255,255,255,0.72)",
-                                display: "grid",
-                                gap: 6,
-                              }}
-                            >
-                              大きさ（cm）
-                              <input
-                                value={f.sizeCm}
-                                onChange={(e) =>
-                                  updateFishDraft(f.id, {
-                                    sizeCm: e.target.value,
-                                  })
-                                }
-                                placeholder="例：52"
-                                inputMode="decimal"
-                                style={fieldStyle}
-                              />
-                            </label>
+                              <label
+                                style={{
+                                  fontSize: 12,
+                                  color: "rgba(255,255,255,0.72)",
+                                  display: "grid",
+                                  gap: 6,
+                                }}
+                              >
+                                大きさ（cm）
+                                <input
+                                  value={f.sizeCm}
+                                  onChange={(e) =>
+                                    updateFishDraft(f.id, {
+                                      sizeCm: e.target.value,
+                                    })
+                                  }
+                                  placeholder="例：52"
+                                  inputMode="decimal"
+                                  style={fieldStyle}
+                                />
+                              </label>
 
-                            <label
-                              style={{
-                                fontSize: 12,
-                                color: "rgba(255,255,255,0.72)",
-                                display: "grid",
-                                gap: 6,
-                              }}
-                            >
-                              数
-                              <input
-                                value={f.count}
-                                onChange={(e) =>
-                                  updateFishDraft(f.id, {
-                                    count: e.target.value,
-                                  })
-                                }
-                                placeholder="例：1"
-                                inputMode="numeric"
-                                style={fieldStyle}
-                              />
-                            </label>
+                              <label
+                                style={{
+                                  fontSize: 12,
+                                  color: "rgba(255,255,255,0.72)",
+                                  display: "grid",
+                                  gap: 6,
+                                }}
+                              >
+                                数
+                                <input
+                                  value={f.count}
+                                  onChange={(e) =>
+                                    updateFishDraft(f.id, {
+                                      count: e.target.value,
+                                    })
+                                  }
+                                  placeholder="例：1"
+                                  inputMode="numeric"
+                                  style={fieldStyle}
+                                />
+                              </label>
+                            </div>
+
+                            {validation && !validation.sizeOk && (
+                              <div style={{ fontSize: 12, color: "#f6c" }}>
+                                ※サイズは数字で入れてね（例：52 / 12.5）
+                              </div>
+                            )}
+
+                            {validation && !validation.countOk && (
+                              <div style={{ fontSize: 12, color: "#f6c" }}>
+                                ※数は1以上の整数で入れてね
+                              </div>
+                            )}
+
+                            {validation && !validation.speciesOk && (
+                              <div style={{ fontSize: 12, color: "#f6c" }}>
+                                ※魚種を選んでね
+                              </div>
+                            )}
+
+                            {validation && !validation.lureOk && (
+                              <div style={{ fontSize: 12, color: "#f6c" }}>
+                                ※ルアーを選んでね
+                              </div>
+                            )}
                           </div>
+                        );
+                      })}
 
-                          {validation && !validation.sizeOk && (
-                            <div style={{ fontSize: 12, color: "#f6c" }}>
-                              ※サイズは数字で入れてね（例：52 / 12.5）
-                            </div>
-                          )}
-
-                          {validation && !validation.countOk && (
-                            <div style={{ fontSize: 12, color: "#f6c" }}>
-                              ※数は1以上の整数で入れてね
-                            </div>
-                          )}
-
-                          {validation && !validation.speciesOk && (
-                            <div style={{ fontSize: 12, color: "#f6c" }}>
-                              ※魚種を選んでね
-                            </div>
-                          )}
-
-                          {validation && !validation.lureOk && (
-                            <div style={{ fontSize: 12, color: "#f6c" }}>
-                              ※ルアーを選んでね
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-
-                    <div>
-                      <button
-                        type="button"
-                        onClick={addFishDraft}
-                        className="glass"
-                        style={primaryBtn}
-                      >
-                        ＋ 魚を追加
-                      </button>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={addFishDraft}
+                          className="glass"
+                          style={primaryBtn}
+                        >
+                          ＋ 魚を追加
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* メモ */}
-            <div
-              className="glass glass-strong"
-              style={{ borderRadius: 16, padding: 12 }}
-            >
-              <label style={{ display: "block" }}>
-                <div style={{ fontWeight: 700, marginBottom: 8 }}>
-                  📝 ひとことメモ
+                  )}
                 </div>
-                <textarea
-                  value={memo}
-                  onChange={(e) => setMemo(e.target.value)}
-                  rows={3}
-                  style={{
-                    ...fieldStyle,
-                    resize: "vertical",
-                    overflowWrap: "anywhere",
-                    lineHeight: 1.7,
-                  }}
-                  placeholder="渋かった…でも一匹！とか"
-                />
-              </label>
-            </div>
-
-            {/* 保存 */}
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <button
-                onClick={onSave}
-                disabled={!canSave}
-                className="glass"
-                style={{
-                  ...primaryBtn,
-                  opacity: canSave ? 1 : 0.55,
-                  cursor: canSave ? "pointer" : "not-allowed",
-                }}
-              >
-                {saving ? "保存中..." : "💾 記録する"}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  const ok = confirm(
-                    "入力内容をリセットして、最初からやり直す？",
-                  );
-                  if (!ok) return;
-                  resetAll();
-                }}
-                className="glass"
-                style={dangerBtn}
-              >
-                ↺ リセット
-              </button>
-            </div>
-
-            {!fishRowsOk && outcome === "caught" && (
-              <div style={{ fontSize: 12, color: "#f6c" }}>
-                ※釣れた場合は、魚種・ルアー・数の入力を確認してね
               </div>
-            )}
+
+              {/* メモ */}
+              <div
+                className="glass glass-strong record-memo"
+                style={{ borderRadius: 16, padding: 10 }}
+              >
+                <label style={{ display: "block" }}>
+                  <div style={{ fontWeight: 700, marginBottom: 8 }}>
+                    📝 ひとことメモ
+                  </div>
+                  <textarea
+                    value={memo}
+                    onChange={(e) => setMemo(e.target.value)}
+                    rows={2}
+                    style={{
+                      ...fieldStyle,
+                      resize: "vertical",
+                      overflowWrap: "anywhere",
+                      lineHeight: 1.7,
+                    }}
+                    placeholder="渋かった…でも一匹！とか"
+                  />
+                </label>
+              </div>
+
+              {/* 保存 */}
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <button
+                  onClick={onSave}
+                  disabled={!canSave}
+                  className="glass"
+                  style={{
+                    ...primaryBtn,
+                    opacity: canSave ? 1 : 0.55,
+                    cursor: canSave ? "pointer" : "not-allowed",
+                  }}
+                >
+                  {saving ? "保存中..." : "💾 記録する"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ok = confirm(
+                      "入力内容をリセットして、最初からやり直す？",
+                    );
+                    if (!ok) return;
+                    resetAll();
+                  }}
+                  className="glass"
+                  style={dangerBtn}
+                >
+                  ↺ リセット
+                </button>
+              </div>
+
+              {!fishRowsOk && outcome === "caught" && (
+                <div style={{ fontSize: 12, color: "#f6c" }}>
+                  ※釣れた場合は、魚種・ルアー・数の入力を確認してね
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
