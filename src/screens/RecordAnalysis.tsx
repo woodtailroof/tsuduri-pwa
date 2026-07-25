@@ -1423,7 +1423,7 @@ export default function RecordAnalysis({ back }: Props) {
         </h1>
       }
       titleLayout="left"
-      maxWidth={1280}
+      maxWidth={1320}
       showBack
       onBack={back}
       scrollY="auto"
@@ -1438,20 +1438,20 @@ export default function RecordAnalysis({ back }: Props) {
         }
         .analysis-toolbar button { cursor:pointer; }
         .analysis-toolbar button:disabled { opacity:.5; cursor:not-allowed; }
-        .analysis-stage { display:grid; grid-template-columns:260px minmax(0,1fr); gap:14px; align-items:start; }
+        .analysis-stage { display:grid; grid-template-columns:320px minmax(0,1fr); gap:16px; align-items:start; }
         .analysis-main { display:grid; gap:14px; min-width:0; }
         .analysis-ai-sidebar {
           position:relative; top:auto; align-self:start; display:grid; gap:12px;
-          min-width:0; max-width:100%; padding:14px; border-radius:22px;
+          min-width:0; max-width:100%; padding:18px; border-radius:22px;
           border:1px solid rgba(255,153,195,.28);
           background:linear-gradient(165deg,rgba(31,21,43,.94),rgba(8,19,34,.90));
           box-shadow:0 18px 48px rgba(0,0,0,.22);
         }
-        .analysis-ai-sidebar h2 { margin:0; font-size:15px; }
-        .analysis-ai-sidebar-note { margin:-6px 0 0; color:rgba(255,255,255,.52); font-size:9px; line-height:1.5; }
-        .analysis-ai-tabs { display:flex; gap:8px; flex-wrap:wrap; }
+        .analysis-ai-sidebar h2 { margin:0; font-size:19px; }
+        .analysis-ai-sidebar-note { margin:-6px 0 0; color:rgba(255,255,255,.58); font-size:11px; line-height:1.6; }
+        .analysis-ai-tabs { display:flex; gap:10px; flex-wrap:wrap; }
         .analysis-ai-tab {
-          width:48px; height:48px; padding:0; overflow:hidden; border-radius:50%; cursor:pointer;
+          position:relative; width:64px; height:64px; padding:0; overflow:hidden; border-radius:50%; cursor:pointer;
           border:2px solid color-mix(in srgb,var(--ai-accent) 55%,transparent);
           background:color-mix(in srgb,var(--ai-accent) 18%,rgba(12,20,34,.9));
           color:#fff; font-weight:900;
@@ -1461,15 +1461,16 @@ export default function RecordAnalysis({ back }: Props) {
           box-shadow:0 0 0 3px color-mix(in srgb,var(--ai-accent) 20%,transparent);
           transform:translateY(-2px);
         }
-        .analysis-ai-tab img { width:100%; height:100%; object-fit:cover; display:block; }
+        .analysis-ai-tab img { position:absolute; inset:0; z-index:2; width:100%; height:100%; object-fit:cover; display:block; }
+        .analysis-ai-tab span { position:relative; z-index:1; font-size:20px; }
         .analysis-ai-bubble {
-          position:relative; min-height:118px; padding:12px; border-radius:16px;
+          position:relative; min-height:150px; padding:16px; border-radius:18px;
           border:1px solid color-mix(in srgb,var(--ai-accent) 32%,transparent);
           background:color-mix(in srgb,var(--ai-accent) 9%,rgba(255,255,255,.035));
         }
-        .analysis-ai-bubble strong { display:block; margin-bottom:7px; color:var(--ai-accent); font-size:12px; }
-        .analysis-ai-bubble p { margin:0; color:rgba(255,255,255,.84); font-size:11px; line-height:1.78; white-space:pre-wrap; }
-        .analysis-ai-time { color:rgba(255,255,255,.38); font-size:8px; }
+        .analysis-ai-bubble strong { display:block; margin-bottom:9px; color:var(--ai-accent); font-size:15px; }
+        .analysis-ai-bubble p { margin:0; color:rgba(255,255,255,.88); font-size:14px; line-height:1.8; white-space:pre-wrap; }
+        .analysis-ai-time { color:rgba(255,255,255,.42); font-size:10px; }
         .analysis-ai-error { color:#ff9dad; font-size:10px; line-height:1.5; }
         .analysis-dashboard { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr); gap:14px; }
         .analysis-grid-2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
@@ -1581,7 +1582,9 @@ export default function RecordAnalysis({ back }: Props) {
         @media (max-width:620px) {
           .analysis-ai-tabs { flex-wrap:nowrap; overflow-x:auto; padding:3px; scrollbar-width:none; }
           .analysis-ai-tabs::-webkit-scrollbar { display:none; }
-          .analysis-ai-tab { flex:0 0 52px; width:52px; height:52px; }
+          .analysis-ai-tab { flex:0 0 58px; width:58px; height:58px; }
+          .analysis-ai-bubble { min-height:132px; padding:14px; }
+          .analysis-ai-bubble p { font-size:13px; }
           .analysis-hero { grid-template-columns:1fr; text-align:center; }
           .analysis-grade { width:132px; margin:auto; }
           .analysis-score-copy p { text-align:left; }

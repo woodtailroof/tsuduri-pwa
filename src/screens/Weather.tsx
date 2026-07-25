@@ -689,7 +689,7 @@ export default function Weather({ back, isActive = true }: Props) {
       title={titleNode}
       subtitle={subNode}
       titleLayout="left"
-      maxWidth={1100}
+      maxWidth={1320}
       showBack
       onBack={onBack}
       scrollY="auto"

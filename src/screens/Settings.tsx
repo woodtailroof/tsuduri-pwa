@@ -476,7 +476,7 @@ export default function Settings({ back }: Props) {
           ここで「キャラ」「背景」「見た目」「キャッシュ」をまとめて調整できるよ。
         </div>
       }
-      maxWidth={1100}
+      maxWidth={1320}
       showBack
       onBack={back}
       scrollY="auto"

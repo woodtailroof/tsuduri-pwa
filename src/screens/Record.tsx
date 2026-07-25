@@ -860,7 +860,7 @@ export default function Record({ back, onSaved }: Props) {
         </h1>
       }
       titleLayout="left"
-      maxWidth={1360}
+      maxWidth={1320}
       showBack
       onBack={back}
       scrollY="auto"
@@ -903,8 +903,6 @@ export default function Record({ back, onSaved }: Props) {
           }
 
           .record-left {
-            position: sticky;
-            top: 8px;
             align-self: start;
           }
         }
@@ -930,15 +928,7 @@ export default function Record({ back, onSaved }: Props) {
           }
 
           .record-left {
-            position: sticky;
-            top: 8px;
             align-self: start;
-          }
-
-          .record-photo-panel {
-            max-height: calc(100dvh - 235px);
-            overflow-y: auto;
-            scrollbar-width: thin;
           }
 
           .record-middle,
@@ -946,15 +936,8 @@ export default function Record({ back, onSaved }: Props) {
             gap: 8px;
           }
 
-          .record-right {
-            max-height: calc(100dvh - 235px);
-          }
-
           .record-fish-list {
-            max-height: 245px;
-            overflow-y: auto;
             padding-right: 3px;
-            scrollbar-width: thin;
           }
 
           .record-memo textarea {

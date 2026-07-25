@@ -661,20 +661,14 @@ export default function TackleManager({ back }: Props) {
       maxWidth={1320}
       showBack
       onBack={back}
-      scrollY={isMobileLayout ? "auto" : "hidden"}
+      scrollY="auto"
     >
       <div
         style={{
           display: "grid",
           gap: 12,
-          gridTemplateRows: isMobileLayout
-            ? undefined
-            : error
-              ? "auto auto minmax(0, 1fr)"
-              : "auto minmax(0, 1fr)",
-          height: isMobileLayout ? undefined : "calc(100dvh - 112px)",
-          minHeight: isMobileLayout ? undefined : 0,
-          overflow: isMobileLayout ? undefined : "hidden",
+          gridTemplateRows: "auto",
+          minHeight: 0,
         }}
       >
         <div
@@ -748,17 +742,14 @@ export default function TackleManager({ back }: Props) {
             gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
             alignItems: "start",
             minHeight: 0,
-            overflow: isMobileLayout ? undefined : "hidden",
           }}
         >
           <div
             className="glass glass-strong"
             style={{
               ...sectionCard,
-              position: isMobileLayout ? "static" : "sticky",
-              top: isMobileLayout ? undefined : 0,
-              maxHeight: isMobileLayout ? undefined : "100%",
-              overflow: "hidden",
+              position: "static",
+              overflow: "visible",
             }}
           >
             <div
@@ -1257,7 +1248,7 @@ export default function TackleManager({ back }: Props) {
               minHeight: 420,
               height: isMobileLayout ? undefined : "100%",
               minWidth: 0,
-              overflow: isMobileLayout ? undefined : "hidden",
+              overflow: "visible",
               gridTemplateRows: isMobileLayout
                 ? undefined
                 : "auto minmax(0, 1fr)",
@@ -1287,7 +1278,7 @@ export default function TackleManager({ back }: Props) {
             <div
               style={{
                 minHeight: 0,
-                overflowY: isMobileLayout ? "visible" : "auto",
+                overflowY: "visible",
                 overflowX: "hidden",
                 paddingRight: isMobileLayout ? 0 : 4,
                 overscrollBehavior: "contain",

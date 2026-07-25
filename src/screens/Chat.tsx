@@ -1632,7 +1632,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
   return (
     <PageShell
       title={<h1 style={{ margin: 0 }}>{titleText}</h1>}
-      maxWidth={1100}
+      maxWidth={1320}
       showBack
       onBack={onBack}
       titleLayout="left"

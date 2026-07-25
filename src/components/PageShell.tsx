@@ -148,15 +148,14 @@ export default function PageShell(props: Props) {
     zIndex: 20,
   };
 
-  const frameStyle: CSSProperties = {
+  const frameStyle: CSSProperties & CSSVars = {
     width: "100%",
-    height: "100%",
-    minHeight: 0,
-    maxWidth,
+    minHeight: "100%",
     margin: "0 auto",
     padding: resolvedFramePadding,
     position: "relative",
     boxSizing: "border-box",
+    "--page-content-max": `${maxWidth}px`,
   };
 
   const headerOuterStyle: CSSProperties = {
@@ -170,7 +169,7 @@ export default function PageShell(props: Props) {
     borderRadius: 0,
   };
 
-  const headerInnerStyle: CSSProperties = {
+  const headerInnerStyle: CSSProperties & CSSVars = {
     height: "100%",
     width: "100%",
     paddingTop: "max(10px, env(safe-area-inset-top))",
@@ -184,6 +183,7 @@ export default function PageShell(props: Props) {
     minWidth: 0,
     boxSizing: "border-box",
     position: "relative",
+    "--page-content-max": `${maxWidth}px`,
   };
 
   const titleWrapStyle: CSSProperties = {
@@ -224,10 +224,47 @@ export default function PageShell(props: Props) {
 
   return (
     <div className="page-shell" style={shellStyle}>
+      <style>{`
+        .page-shell {
+          --page-character-reserve: 560px;
+          --page-desktop-gutter: clamp(18px, 3vw, 56px);
+        }
+
+        .page-shell-header-inner,
+        .page-shell-frame {
+          max-width: var(--page-content-max);
+          margin-left: auto;
+          margin-right: auto;
+        }
+
+        .page-shell-title h1 {
+          font-size: clamp(22px, 2vw, 32px) !important;
+          line-height: 1.15 !important;
+        }
+
+        @media (min-width: 1500px) {
+          .page-shell-header-inner,
+          .page-shell-frame {
+            width: min(
+              var(--page-content-max),
+              calc(100vw - var(--page-character-reserve))
+            ) !important;
+            max-width: none;
+            margin-left: var(--page-desktop-gutter);
+            margin-right: auto;
+          }
+        }
+
+        @media (max-width: 820px) {
+          .page-shell-title h1 {
+            font-size: clamp(20px, 6vw, 28px) !important;
+          }
+        }
+      `}</style>
       {headerVisible ? (
         <div className="glass-header" style={headerOuterStyle}>
-          <div style={headerInnerStyle}>
-            <div style={titleWrapStyle}>
+          <div className="page-shell-header-inner" style={headerInnerStyle}>
+            <div className="page-shell-title" style={titleWrapStyle}>
               {title}
               {subtitle ? <div style={subtitleStyle}>{subtitle}</div> : null}
             </div>
@@ -244,7 +281,9 @@ export default function PageShell(props: Props) {
       ) : null}
 
       <div style={contentOuterStyle}>
-        <div style={frameStyle}>{children}</div>
+        <div className="page-shell-frame" style={frameStyle}>
+          {children}
+        </div>
       </div>
     </div>
   );

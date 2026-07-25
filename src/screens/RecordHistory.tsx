@@ -2159,10 +2159,10 @@ export default function RecordHistory({ back }: Props) {
       title={titleNode}
       subtitle={headerSubNode}
       titleLayout="left"
-      maxWidth={1500}
+      maxWidth={1320}
       showBack
       onBack={back}
-      scrollY={isDesktop ? "hidden" : "auto"}
+      scrollY="auto"
     >
       <div
         style={{
@@ -2170,10 +2170,8 @@ export default function RecordHistory({ back }: Props) {
           overflowX: "clip",
           maxWidth: "100vw",
           minHeight: 0,
-          height: isDesktop
-            ? "calc(100dvh - var(--shell-header-h) - 20px)"
-            : "auto",
-          paddingBottom: isDesktop ? 8 : 0,
+          height: "auto",
+          paddingBottom: 8,
         }}
       >
         {isMobile ? (
@@ -2219,10 +2217,10 @@ export default function RecordHistory({ back }: Props) {
               gridTemplateColumns:
                 "minmax(300px, 430px) minmax(380px, 0.95fr) minmax(420px, 1.05fr)",
               gap: 14,
-              alignItems: "stretch",
+              alignItems: "start",
               minWidth: 0,
               minHeight: 0,
-              height: "100%",
+              height: "auto",
             }}
           >
             <div
@@ -2248,8 +2246,8 @@ export default function RecordHistory({ back }: Props) {
               <div
                 style={{
                   minHeight: 0,
-                  height: "100%",
-                  overflowY: "auto",
+                  height: "auto",
+                  overflowY: "visible",
                   paddingRight: 4,
                   overscrollBehavior: "contain",
                   WebkitOverflowScrolling: "touch",
@@ -2266,8 +2264,8 @@ export default function RecordHistory({ back }: Props) {
                 padding: 12,
                 minWidth: 0,
                 minHeight: 0,
-                height: "100%",
-                overflow: "hidden",
+                height: "auto",
+                overflow: "visible",
               }}
             >
               <div
@@ -2275,8 +2273,8 @@ export default function RecordHistory({ back }: Props) {
                 style={{
                   minWidth: 0,
                   minHeight: 0,
-                  height: "100%",
-                  overflowY: "auto",
+                  height: "auto",
+                  overflowY: "visible",
                   paddingRight: 4,
                   overscrollBehavior: "contain",
                   WebkitOverflowScrolling: "touch",
@@ -2301,7 +2299,7 @@ export default function RecordHistory({ back }: Props) {
                     className="glass"
                     style={{
                       width: "100%",
-                      height: "100%",
+                      minHeight: 240,
                       borderRadius: 14,
                       overflow: "hidden",
                       background: "rgba(0,0,0,0.14)",
@@ -2327,8 +2325,8 @@ export default function RecordHistory({ back }: Props) {
                 borderRadius: 16,
                 padding: 12,
                 minHeight: 0,
-                height: "100%",
-                overflow: "hidden",
+                height: "auto",
+                overflow: "visible",
               }}
             >
               <div
@@ -2336,8 +2334,8 @@ export default function RecordHistory({ back }: Props) {
                 style={{
                   minWidth: 0,
                   minHeight: 0,
-                  height: "100%",
-                  overflowY: "auto",
+                  height: "auto",
+                  overflowY: "visible",
                   paddingRight: 4,
                   overscrollBehavior: "contain",
                   WebkitOverflowScrolling: "touch",
@@ -2362,7 +2360,7 @@ export default function RecordHistory({ back }: Props) {
                     className="glass"
                     style={{
                       width: "100%",
-                      height: "100%",
+                      minHeight: 240,
                       borderRadius: 14,
                       overflow: "hidden",
                       background: "rgba(0,0,0,0.14)",
