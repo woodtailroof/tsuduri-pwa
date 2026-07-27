@@ -105,7 +105,7 @@ export default function FadeSwitch(props: Props) {
 
         return (
           <div
-            key={`${item.key}:${i}`}
+            key={item.key}
             style={{
               position: "absolute",
               inset: 0,
