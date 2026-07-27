@@ -141,6 +141,7 @@ export default function PageShell(props: Props) {
     minHeight: 0,
     overflowX: "clip",
     overflowY: scrollY,
+    boxSizing: "border-box",
     WebkitOverflowScrolling: "touch",
     overscrollBehavior: "contain",
     paddingTop: `${effectiveHeaderH}px`,
@@ -150,7 +151,8 @@ export default function PageShell(props: Props) {
 
   const frameStyle: CSSProperties & CSSVars = {
     width: "100%",
-    minHeight: "100%",
+    height: scrollY === "hidden" ? "100%" : undefined,
+    minHeight: scrollY === "hidden" ? 0 : "100%",
     margin: "0 auto",
     padding: resolvedFramePadding,
     position: "relative",
@@ -226,7 +228,7 @@ export default function PageShell(props: Props) {
     <div className="page-shell" style={shellStyle}>
       <style>{`
         .page-shell {
-          --page-character-reserve: 560px;
+          --page-character-reserve: clamp(420px, 29vw, 560px);
           --page-desktop-gutter: clamp(18px, 3vw, 56px);
         }
 
@@ -242,7 +244,7 @@ export default function PageShell(props: Props) {
           line-height: 1.15 !important;
         }
 
-        @media (min-width: 1500px) {
+        @media (min-width: 1180px) {
           .page-shell-header-inner,
           .page-shell-frame {
             width: min(
@@ -252,6 +254,12 @@ export default function PageShell(props: Props) {
             max-width: none;
             margin-left: var(--page-desktop-gutter);
             margin-right: auto;
+          }
+        }
+
+        @media (min-width: 1180px) and (max-width: 1499px) {
+          .page-shell {
+            --page-character-reserve: clamp(360px, 27vw, 430px);
           }
         }
 

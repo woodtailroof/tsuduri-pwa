@@ -2162,7 +2162,7 @@ export default function RecordHistory({ back }: Props) {
       maxWidth={1320}
       showBack
       onBack={back}
-      scrollY="auto"
+      scrollY={isMobile ? "auto" : "hidden"}
     >
       <div
         style={{
@@ -2170,7 +2170,7 @@ export default function RecordHistory({ back }: Props) {
           overflowX: "clip",
           maxWidth: "100vw",
           minHeight: 0,
-          height: "auto",
+          height: isMobile ? "auto" : "100%",
           paddingBottom: 8,
         }}
       >
@@ -2215,12 +2215,13 @@ export default function RecordHistory({ back }: Props) {
             style={{
               display: "grid",
               gridTemplateColumns:
-                "minmax(300px, 430px) minmax(380px, 0.95fr) minmax(420px, 1.05fr)",
+                "minmax(240px, 0.82fr) minmax(0, 0.94fr) minmax(0, 1.06fr)",
               gap: 14,
-              alignItems: "start",
+              alignItems: "stretch",
               minWidth: 0,
               minHeight: 0,
-              height: "auto",
+              height: "100%",
+              maxHeight: "100%",
             }}
           >
             <div
@@ -2246,8 +2247,8 @@ export default function RecordHistory({ back }: Props) {
               <div
                 style={{
                   minHeight: 0,
-                  height: "auto",
-                  overflowY: "visible",
+                  height: "100%",
+                  overflowY: "auto",
                   paddingRight: 4,
                   overscrollBehavior: "contain",
                   WebkitOverflowScrolling: "touch",
@@ -2264,8 +2265,8 @@ export default function RecordHistory({ back }: Props) {
                 padding: 12,
                 minWidth: 0,
                 minHeight: 0,
-                height: "auto",
-                overflow: "visible",
+                height: "100%",
+                overflow: "hidden",
               }}
             >
               <div
@@ -2273,8 +2274,8 @@ export default function RecordHistory({ back }: Props) {
                 style={{
                   minWidth: 0,
                   minHeight: 0,
-                  height: "auto",
-                  overflowY: "visible",
+                  height: "100%",
+                  overflowY: "hidden",
                   paddingRight: 4,
                   overscrollBehavior: "contain",
                   WebkitOverflowScrolling: "touch",
@@ -2325,8 +2326,8 @@ export default function RecordHistory({ back }: Props) {
                 borderRadius: 16,
                 padding: 12,
                 minHeight: 0,
-                height: "auto",
-                overflow: "visible",
+                height: "100%",
+                overflow: "hidden",
               }}
             >
               <div
@@ -2334,8 +2335,8 @@ export default function RecordHistory({ back }: Props) {
                 style={{
                   minWidth: 0,
                   minHeight: 0,
-                  height: "auto",
-                  overflowY: "visible",
+                  height: "100%",
+                  overflowY: "hidden",
                   paddingRight: 4,
                   overscrollBehavior: "contain",
                   WebkitOverflowScrolling: "touch",

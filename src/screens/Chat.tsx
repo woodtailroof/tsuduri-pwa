@@ -1627,6 +1627,9 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     WebkitAppearance: "none",
     MozAppearance: "none",
     paddingRight: 30,
+    colorScheme: "dark",
+    color: "#fff",
+    backgroundColor: "rgba(17,17,17,0.78)",
   };
 
   return (
@@ -1697,6 +1700,17 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           color: rgba(255,255,255,0.90);
           background: rgba(17,17,17,var(--glass-alpha,0.22));
           border: 1px solid rgba(255,255,255,0.18);
+        }
+
+        .chat-room-select {
+          color: #fff !important;
+          background-color: rgba(17, 17, 17, 0.84) !important;
+          color-scheme: dark;
+        }
+
+        .chat-room-select option {
+          color: #fff;
+          background: #17213c;
         }
 
         .chat-quick {
@@ -1793,7 +1807,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
               onChange={(e) => setSelectedId(e.target.value)}
               title="キャラ切替（履歴も切り替わる）"
               style={selectStyle}
-              className="glass"
+              className="glass chat-room-select"
             >
               {characters.map((c) => (
                 <option key={c.id} value={c.id}>
