@@ -36,6 +36,14 @@ function serverError(message: string) {
   return json({ ok: false, error: message }, { status: 500 });
 }
 
+function sanitizeKeySegment(value: string): string {
+  return value
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, "_")
+    .replace(/_+/g, "_")
+    .slice(0, 120);
+}
+
 function sanitizeFileName(name: string): string {
   const trimmed = name.trim();
   if (!trimmed) return "image";
@@ -79,11 +87,13 @@ function buildRemoteKey(params: {
   fileName: string;
   contentType: string;
 }) {
+  const safeTripUid = sanitizeKeySegment(params.tripUid);
+  const safePhotoUid = sanitizeKeySegment(params.photoUid);
   const safeName = sanitizeFileName(params.fileName || "image");
   const ext = detectExtension(params.contentType, safeName);
   const baseName = safeName.replace(/\.[^.]+$/, "") || "image";
 
-  return `trip-photos/${params.tripUid}/${params.photoUid}/${baseName}.${ext}`;
+  return `trip-photos/${safeTripUid}/${safePhotoUid}/${baseName}.${ext}`;
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
@@ -104,6 +114,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     }
     if (!tripUid) {
       return badRequest("tripUid が必要だよ");
+    }
+    if (!sanitizeKeySegment(photoUid) || !sanitizeKeySegment(tripUid)) {
+      return badRequest("photoUid または tripUid の形式が不正だよ");
     }
     if (!(fileValue instanceof File)) {
       return badRequest("file が必要だよ");
@@ -150,8 +163,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     });
   } catch (error) {
     console.error(error);
-    return serverError(
-      error instanceof Error ? error.message : "upload failed",
-    );
+    return serverError("画像の保存に失敗したよ");
   }
 };

@@ -93,6 +93,45 @@ export type TripSyncPhoto = {
   isCover: 0 | 1;
 };
 
+export type TackleSyncRod = {
+  rodType: "spinning" | "bait";
+  sizeLabel: string;
+  lengthFeet?: number | null;
+  lengthInches?: number | null;
+  tipMm?: number | null;
+  buttMm?: number | null;
+  weightG?: number | null;
+  castWeightMinG?: number | null;
+  castWeightMaxG?: number | null;
+};
+
+export type TackleSyncReel = {
+  reelType: "spinning" | "bait";
+  sizeLabel: string;
+  weightG?: number | null;
+  spoolDiameterMm?: number | null;
+  spoolWidthMm?: number | null;
+  retrieveCm?: number | null;
+};
+
+export type TripSyncTackle = {
+  uid: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  syncStatus: SyncStatus;
+
+  kind: "rod" | "reel";
+  maker: string;
+  model: string;
+  memo?: string | null;
+  active: boolean;
+  retiredAt?: string | null;
+
+  rod?: TackleSyncRod | null;
+  reel?: TackleSyncReel | null;
+};
+
 export type TripPushPayload = {
   deviceId: string;
   pushedAt: string;
@@ -100,6 +139,7 @@ export type TripPushPayload = {
   trips: TripSyncRecord[];
   fish: TripSyncFish[];
   photos: TripSyncPhoto[];
+  tackles: TripSyncTackle[];
 };
 
 export type TripPullResponse = {
@@ -110,6 +150,7 @@ export type TripPullResponse = {
   trips: TripSyncRecord[];
   fish: TripSyncFish[];
   photos: TripSyncPhoto[];
+  tackles: TripSyncTackle[];
 };
 
 export type SyncApiResponse = {
@@ -123,10 +164,12 @@ export type SyncResult = {
   pushedTrips: number;
   pushedFish: number;
   pushedPhotos: number;
+  pushedTackles: number;
 
   pulledTrips: number;
   pulledFish: number;
   pulledPhotos: number;
+  pulledTackles: number;
 
   errors: string[];
 };

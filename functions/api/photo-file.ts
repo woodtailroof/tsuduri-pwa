@@ -20,6 +20,14 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     if (!key) {
       return badRequest("key が必要だよ");
     }
+    if (
+      !key.startsWith("trip-photos/") ||
+      key.includes("..") ||
+      key.includes("\\") ||
+      key.length > 500
+    ) {
+      return badRequest("key の形式が不正だよ");
+    }
 
     const object = await env.PHOTOS.get(key);
     if (!object) {
@@ -30,15 +38,13 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     object.writeHttpMetadata(headers);
     headers.set("etag", object.httpEtag);
     headers.set("cache-control", "public, max-age=3600");
+    headers.set("x-content-type-options", "nosniff");
 
     return new Response(object.body, {
       headers,
     });
   } catch (error) {
     console.error(error);
-    return new Response(
-      error instanceof Error ? error.message : "photo fetch failed",
-      { status: 500 },
-    );
+    return new Response("画像の取得に失敗したよ", { status: 500 });
   }
 };

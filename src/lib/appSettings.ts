@@ -368,10 +368,26 @@ function writeStorage(next: AppSettings) {
 
 let cache: AppSettings = readStorage();
 const listeners = new Set<() => void>();
+let storageListenerInstalled = false;
 
 function emit() {
   for (const l of listeners) l();
 }
+
+function installStorageListener() {
+  if (storageListenerInstalled || typeof window === "undefined") return;
+
+  window.addEventListener("storage", (event) => {
+    if (event.key !== STORAGE_KEY) return;
+    cache = readStorage();
+    emit();
+    window.dispatchEvent(new Event("tsuduri-settings"));
+  });
+
+  storageListenerInstalled = true;
+}
+
+installStorageListener();
 
 export const appSettingsStore = {
   get(): AppSettings {

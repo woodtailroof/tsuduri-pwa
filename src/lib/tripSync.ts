@@ -16,43 +16,18 @@ import type {
   TripSyncFish,
   TripSyncPhoto,
   TripSyncRecord,
+  TripSyncTackle,
 } from "./tripSyncTypes";
 
 const DEVICE_ID_STORAGE_KEY = "tsuduri_sync_device_id_v1";
 const LAST_SYNC_AT_STORAGE_KEY = "tsuduri_last_sync_at_v1";
 const DEFAULT_SYNC_ENDPOINT = "/api/trip-sync";
 
-type TripSyncTackle = {
-  uid: string;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt?: string | null;
-  syncStatus: "pending" | "synced" | "error";
-
-  kind: "rod" | "reel";
-  maker: string;
-  model: string;
-  memo?: string | null;
-  active: boolean;
-  retiredAt?: string | null;
-
-  rod?: TackleItem["rod"] | null;
-  reel?: TackleItem["reel"] | null;
-};
-
 type PendingSyncBundle = {
   trips: TripRecord[];
   fish: TripFish[];
   photos: TripPhoto[];
   tackles: TackleItem[];
-};
-
-type ExtendedTripPushPayload = TripPushPayload & {
-  tackles: TripSyncTackle[];
-};
-
-type ExtendedTripPullResponse = TripPullResponse & {
-  tackles?: TripSyncTackle[];
 };
 
 function makeUid() {
@@ -227,7 +202,7 @@ function serializeTackle(row: TackleItem): TripSyncTackle {
   };
 }
 
-export async function buildTripPushPayload(): Promise<ExtendedTripPushPayload> {
+export async function buildTripPushPayload(): Promise<TripPushPayload> {
   const bundle = await collectPendingTripBundle();
 
   return {
@@ -572,18 +547,22 @@ async function upsertPulledTackles(rows: TripSyncTackle[]): Promise<number> {
 
 export async function applyPullResponse(
   response: TripPullResponse,
-): Promise<Pick<SyncResult, "pulledTrips" | "pulledFish" | "pulledPhotos">> {
-  const extended = response as ExtendedTripPullResponse;
-
-  const pulledTrips = await upsertPulledTrips(extended.trips ?? []);
-  const pulledFish = await upsertPulledFish(extended.fish ?? []);
-  const pulledPhotos = await upsertPulledPhotos(extended.photos ?? []);
-  await upsertPulledTackles(extended.tackles ?? []);
+): Promise<
+  Pick<
+    SyncResult,
+    "pulledTrips" | "pulledFish" | "pulledPhotos" | "pulledTackles"
+  >
+> {
+  const pulledTrips = await upsertPulledTrips(response.trips ?? []);
+  const pulledFish = await upsertPulledFish(response.fish ?? []);
+  const pulledPhotos = await upsertPulledPhotos(response.photos ?? []);
+  const pulledTackles = await upsertPulledTackles(response.tackles ?? []);
 
   return {
     pulledTrips,
     pulledFish,
     pulledPhotos,
+    pulledTackles,
   };
 }
 
@@ -603,9 +582,11 @@ export async function pushTripSync(
       pushedTrips: 0,
       pushedFish: 0,
       pushedPhotos: 0,
+      pushedTackles: 0,
       pulledTrips: 0,
       pulledFish: 0,
       pulledPhotos: 0,
+      pulledTackles: 0,
       errors: [],
     };
   }
@@ -628,9 +609,11 @@ export async function pushTripSync(
         pushedTrips: 0,
         pushedFish: 0,
         pushedPhotos: 0,
+        pushedTackles: 0,
         pulledTrips: 0,
         pulledFish: 0,
         pulledPhotos: 0,
+        pulledTackles: 0,
         errors: [`push failed: ${res.status} ${res.statusText}`],
       };
     }
@@ -643,9 +626,11 @@ export async function pushTripSync(
         pushedTrips: 0,
         pushedFish: 0,
         pushedPhotos: 0,
+        pushedTackles: 0,
         pulledTrips: 0,
         pulledFish: 0,
         pulledPhotos: 0,
+        pulledTackles: 0,
         errors: [data.error || "push failed"],
       };
     }
@@ -655,9 +640,11 @@ export async function pushTripSync(
       pushedTrips: payload.trips.length,
       pushedFish: payload.fish.length,
       pushedPhotos: payload.photos.length,
+      pushedTackles: payload.tackles.length,
       pulledTrips: 0,
       pulledFish: 0,
       pulledPhotos: 0,
+      pulledTackles: 0,
       errors: [],
     };
   } catch (error) {
@@ -667,9 +654,11 @@ export async function pushTripSync(
       pushedTrips: 0,
       pushedFish: 0,
       pushedPhotos: 0,
+      pushedTackles: 0,
       pulledTrips: 0,
       pulledFish: 0,
       pulledPhotos: 0,
+      pulledTackles: 0,
       errors: [error instanceof Error ? error.message : String(error)],
     };
   }
@@ -686,9 +675,11 @@ export async function pullTripSync(
         pushedTrips: 0,
         pushedFish: 0,
         pushedPhotos: 0,
+        pushedTackles: 0,
         pulledTrips: 0,
         pulledFish: 0,
         pulledPhotos: 0,
+        pulledTackles: 0,
         errors: ["window is not available"],
       };
     }
@@ -714,14 +705,16 @@ export async function pullTripSync(
         pushedTrips: 0,
         pushedFish: 0,
         pushedPhotos: 0,
+        pushedTackles: 0,
         pulledTrips: 0,
         pulledFish: 0,
         pulledPhotos: 0,
+        pulledTackles: 0,
         errors: [`pull failed: ${res.status} ${res.statusText}`],
       };
     }
 
-    const data = (await res.json()) as ExtendedTripPullResponse;
+    const data = (await res.json()) as TripPullResponse;
     const applied = await applyPullResponse(data);
 
     setLastSyncAt(data.serverTime || nowIso());
@@ -731,9 +724,11 @@ export async function pullTripSync(
       pushedTrips: 0,
       pushedFish: 0,
       pushedPhotos: 0,
+      pushedTackles: 0,
       pulledTrips: applied.pulledTrips,
       pulledFish: applied.pulledFish,
       pulledPhotos: applied.pulledPhotos,
+      pulledTackles: applied.pulledTackles,
       errors: [],
     };
   } catch (error) {
@@ -742,9 +737,11 @@ export async function pullTripSync(
       pushedTrips: 0,
       pushedFish: 0,
       pushedPhotos: 0,
+      pushedTackles: 0,
       pulledTrips: 0,
       pulledFish: 0,
       pulledPhotos: 0,
+      pulledTackles: 0,
       errors: [error instanceof Error ? error.message : String(error)],
     };
   }
@@ -777,9 +774,11 @@ export async function syncTrips(
     pushedTrips: pushResult.pushedTrips,
     pushedFish: pushResult.pushedFish,
     pushedPhotos: pushResult.pushedPhotos,
+    pushedTackles: pushResult.pushedTackles,
     pulledTrips: pullResult.pulledTrips,
     pulledFish: pullResult.pulledFish,
     pulledPhotos: pullResult.pulledPhotos,
+    pulledTackles: pullResult.pulledTackles,
     errors: [...(pushResult.errors ?? []), ...(pullResult.errors ?? [])],
   };
 }

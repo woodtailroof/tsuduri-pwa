@@ -48,6 +48,13 @@ export async function uploadPhoto(params: {
   fileName?: string;
 }): Promise<UploadResult> {
   try {
+    if (!params.photoUid.trim() || !params.tripUid.trim()) {
+      return {
+        ok: false,
+        error: "写真IDまたは釣行IDが空です",
+      };
+    }
+
     const form = new FormData();
 
     form.append("photoUid", params.photoUid);
@@ -64,12 +71,14 @@ export async function uploadPhoto(params: {
       body: form,
     });
 
-    const raw: unknown = await res.json();
+    const raw: unknown = await res.json().catch(() => null);
 
     if (!isPhotoUploadResponse(raw)) {
       return {
         ok: false,
-        error: "upload response invalid",
+        error: res.ok
+          ? "画像送信の応答を読み取れませんでした"
+          : `画像送信に失敗しました（HTTP ${res.status}）`,
       };
     }
 

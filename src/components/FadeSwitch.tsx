@@ -33,37 +33,18 @@ export default function FadeSwitch(props: Props) {
   ]);
 
   const latestChildrenRef = useRef<ReactNode>(props.children);
-  useEffect(() => {
-    latestChildrenRef.current = props.children;
-  }, [props.children]);
+  latestChildrenRef.current = props.children;
 
   const prevKeyRef = useRef(props.activeKey);
   const timerRef = useRef<number | null>(null);
-  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (props.activeKey === prevKeyRef.current) {
-      setItems((cur) => {
-        if (cur.length !== 1) return cur;
-        if (cur[0]?.key !== props.activeKey) return cur;
-        return [{ key: props.activeKey, node: props.children }];
-      });
-      return;
-    }
+    if (props.activeKey === prevKeyRef.current) return;
 
     if (timerRef.current != null) {
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    if (rafRef.current != null) {
-      window.cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-
-    const prev = items[items.length - 1] ?? {
-      key: prevKeyRef.current,
-      node: latestChildrenRef.current,
-    };
 
     const next: Item = {
       key: props.activeKey,
@@ -77,7 +58,13 @@ export default function FadeSwitch(props: Props) {
     }
 
     // いったん旧画面+新画面を重ねる
-    setItems([prev, next]);
+    setItems((current) => {
+      const prev = current[current.length - 1] ?? {
+        key: prevKeyRef.current,
+        node: latestChildrenRef.current,
+      };
+      return [prev, next];
+    });
     prevKeyRef.current = props.activeKey;
 
     // duration後に旧画面を外して新画面だけ残す
@@ -91,12 +78,18 @@ export default function FadeSwitch(props: Props) {
         window.clearTimeout(timerRef.current);
         timerRef.current = null;
       }
-      if (rafRef.current != null) {
-        window.cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
     };
-  }, [props.activeKey, props.children, durationMs, items]);
+  }, [props.activeKey, durationMs]);
+
+  useEffect(() => {
+    if (props.activeKey !== prevKeyRef.current) return;
+    setItems((current) => {
+      if (current.length !== 1 || current[0]?.key !== props.activeKey) {
+        return current;
+      }
+      return [{ key: props.activeKey, node: props.children }];
+    });
+  }, [props.activeKey, props.children]);
 
   return (
     <div

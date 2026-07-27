@@ -177,8 +177,8 @@ function badRequest(message: string) {
   return json({ ok: false, error: message }, { status: 400 });
 }
 
-function serverError(message: string) {
-  return json({ ok: false, error: message }, { status: 500 });
+function serverError(_message: string) {
+  return json({ ok: false, error: "sync_internal_error" }, { status: 500 });
 }
 
 function asIsoOrNull(value: unknown): string | null {
@@ -691,8 +691,19 @@ async function fetchTripsSince(db: D1Database, since: string | null) {
         `,
       );
 
-  const result = await stmt.all<TripSyncRecord>();
-  return result.results ?? [];
+  const result = await stmt.all<
+    Omit<TripSyncRecord, "baitPresent"> & {
+      baitPresent?: number | boolean | null;
+    }
+  >();
+
+  return (result.results ?? []).map((row) => ({
+    ...row,
+    baitPresent:
+      row.baitPresent == null
+        ? null
+        : row.baitPresent === true || row.baitPresent === 1,
+  }));
 }
 
 async function fetchFishSince(db: D1Database, since: string | null) {
@@ -891,6 +902,13 @@ async function handleGet(request: Request, env: Env) {
     const since = url.searchParams.get("since");
     const deviceId = url.searchParams.get("deviceId");
     const serverTime = new Date().toISOString();
+
+    if (since && !Number.isFinite(Date.parse(since))) {
+      return badRequest("invalid since");
+    }
+    if (deviceId && deviceId.length > 200) {
+      return badRequest("invalid deviceId");
+    }
 
     if (deviceId) {
       await env.DB.prepare(

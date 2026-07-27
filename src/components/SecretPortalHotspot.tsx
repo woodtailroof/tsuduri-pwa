@@ -88,6 +88,7 @@ export default function SecretPortalHotspot(props: Props) {
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onPointerLeave={onPointerUp}
       onClick={onClick}
     />
   );

@@ -41,9 +41,9 @@ function isFullscreenNow(): boolean {
 
   return Boolean(
     document.fullscreenElement ||
-    d.webkitFullscreenElement ||
-    d.mozFullScreenElement ||
-    d.msFullscreenElement,
+      d.webkitFullscreenElement ||
+      d.mozFullScreenElement ||
+      d.msFullscreenElement,
   );
 }
 
@@ -56,9 +56,9 @@ function canUseFullscreenApi(): boolean {
 
   return Boolean(
     el.requestFullscreen ||
-    el.webkitRequestFullscreen ||
-    el.mozRequestFullScreen ||
-    el.msRequestFullscreen,
+      el.webkitRequestFullscreen ||
+      el.mozRequestFullScreen ||
+      el.msRequestFullscreen,
   );
 }
 
@@ -218,8 +218,17 @@ export default function AlbumViewer(props: Props) {
       const nextSrc = buildSlideSrc(nextFile);
       if (shownSrc === nextSrc) return;
 
-      await preloadImage(nextSrc);
-      if (!cancelled) setShownSrc(nextSrc);
+      try {
+        await preloadImage(nextSrc);
+        if (!cancelled) {
+          setShownSrc(nextSrc);
+          setErr(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setErr("画像を読み込めなかったよ");
+        }
+      }
     }
 
     void run();
