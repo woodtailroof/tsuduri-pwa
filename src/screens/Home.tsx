@@ -181,9 +181,9 @@ function SmartButton({
 
   const fallbackStyle: CSSProperties = {
     width: "100%",
-    minHeight: 82,
-    borderRadius: 20,
-    padding: "14px 16px",
+    minHeight: 74,
+    borderRadius: 18,
+    padding: "11px 14px",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
@@ -276,8 +276,8 @@ function SmartButton({
   };
 
   const iconWrapStyle: CSSProperties = {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     borderRadius: 999,
     position: "relative",
     flex: "0 0 auto",
@@ -335,7 +335,7 @@ function SmartButton({
   const iconGlyphStyle: CSSProperties = {
     position: "relative",
     zIndex: 1,
-    fontSize: 18,
+    fontSize: 17,
     lineHeight: 1,
     filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.16))",
   };
@@ -349,7 +349,7 @@ function SmartButton({
   const labelStyle: CSSProperties = {
     fontWeight: 900,
     letterSpacing: "0.02em",
-    fontSize: 16,
+    fontSize: 15,
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -665,7 +665,7 @@ export default function Home({ go, goSecret }: Props) {
           padding:clamp(10px, 1.8vw, 16px);
           display:grid;
           grid-template-rows:auto minmax(0,1fr);
-          gap:clamp(2px, 0.8vh, 8px);
+          gap:clamp(14px, 2vh, 24px);
           box-sizing:border-box;
         }
 
@@ -716,11 +716,18 @@ export default function Home({ go, goSecret }: Props) {
           height:100%;
           object-fit:contain;
           display:block;
+          transform:scale(1.5);
+          transform-origin:center;
           filter:
             saturate(1.12)
             contrast(1.06)
             drop-shadow(0 2px 1px rgba(255,255,255,.42))
             drop-shadow(0 7px 14px rgba(28,95,145,.22));
+        }
+        @media (max-width:720px){
+          .home-logo{
+            transform:scale(1.28);
+          }
         }
 
         .home-actions{
@@ -744,7 +751,7 @@ export default function Home({ go, goSecret }: Props) {
         }
 
         .home-actions-scale{
-          --btnw:clamp(210px, 22vw, 320px);
+          --btnw:clamp(200px, 20vw, 290px);
           --gapy:clamp(8px, 1.2vh, 14px);
           display:grid;
           gap:var(--gapy);
@@ -767,7 +774,7 @@ export default function Home({ go, goSecret }: Props) {
 
         @media (max-width:720px){
           .home-actions-scale{
-            width:min(48vw, 320px);
+            width:min(46vw, 290px);
             justify-content:center;
             padding-left:max(8px, env(safe-area-inset-left));
             padding-right:8px;
