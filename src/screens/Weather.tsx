@@ -742,7 +742,7 @@ export default function Weather({ back, isActive = true }: Props) {
       maxWidth={1320}
       showBack
       onBack={onBack}
-      scrollY={isDesktop ? "hidden" : "auto"}
+      scrollY="auto"
       displayExpression={weatherEmotion}
     >
       <div

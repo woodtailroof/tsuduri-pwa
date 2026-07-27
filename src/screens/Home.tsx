@@ -181,9 +181,9 @@ function SmartButton({
 
   const fallbackStyle: CSSProperties = {
     width: "100%",
-    minHeight: 74,
-    borderRadius: 18,
-    padding: "11px 14px",
+    minHeight: 82,
+    borderRadius: 20,
+    padding: "14px 16px",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
@@ -276,8 +276,8 @@ function SmartButton({
   };
 
   const iconWrapStyle: CSSProperties = {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 999,
     position: "relative",
     flex: "0 0 auto",
@@ -335,7 +335,7 @@ function SmartButton({
   const iconGlyphStyle: CSSProperties = {
     position: "relative",
     zIndex: 1,
-    fontSize: 17,
+    fontSize: 18,
     lineHeight: 1,
     filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.16))",
   };
@@ -349,7 +349,7 @@ function SmartButton({
   const labelStyle: CSSProperties = {
     fontWeight: 900,
     letterSpacing: "0.02em",
-    fontSize: 15,
+    fontSize: 16,
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -665,7 +665,7 @@ export default function Home({ go, goSecret }: Props) {
           padding:clamp(10px, 1.8vw, 16px);
           display:grid;
           grid-template-rows:auto minmax(0,1fr);
-          gap:clamp(22px, 3vh, 36px);
+          gap:clamp(18px, 2.5vh, 30px);
           box-sizing:border-box;
         }
 
@@ -679,11 +679,12 @@ export default function Home({ go, goSecret }: Props) {
         }
 
         .home-logo-box{
-          width:min(96vw, 1380px);
-          height:clamp(160px, 30dvh, 320px);
-          min-height:0;
+          width:min(100%, 790px);
+          aspect-ratio:1650 / 547;
           position:relative;
           isolation:isolate;
+          overflow:hidden;
+          margin-inline:auto;
         }
 
         .home-logo-box::before{
@@ -705,41 +706,34 @@ export default function Home({ go, goSecret }: Props) {
         }
         @media (max-width:720px){
           .home-logo-box{
-            width:min(96vw, 820px);
-            height:clamp(170px, 30dvh, 340px);
+            width:min(96vw, 620px);
             margin:0 auto;
           }
         }
 
         .home-logo{
-          width:100%;
-          height:100%;
-          object-fit:contain;
+          position:absolute;
+          width:107.52%;
+          height:auto;
+          max-width:none;
+          left:-3.82%;
+          top:-24.86%;
           display:block;
-          transform:scale(1.9);
-          transform-origin:center;
           filter:
             saturate(1.12)
             contrast(1.06)
             drop-shadow(0 2px 1px rgba(255,255,255,.42))
             drop-shadow(0 7px 14px rgba(28,95,145,.22));
         }
-        @media (max-width:720px){
-          .home-logo{
-            transform:scale(1.42);
-          }
-        }
 
         .home-actions{
           display:grid;
           align-items:center;
           min-height:0;
-          transform:translateY(clamp(6px, 1.5vh, 18px));
         }
         @media (max-width:720px){
           .home-actions{
             align-items:start;
-            transform:none;
           }
         }
 
@@ -753,8 +747,8 @@ export default function Home({ go, goSecret }: Props) {
         }
 
         .home-actions-scale{
-          --btnw:clamp(200px, 20vw, 290px);
-          --gapy:clamp(10px, 1.4vh, 16px);
+          --btnw:clamp(210px, 22vw, 320px);
+          --gapy:clamp(8px, 1.2vh, 14px);
           display:grid;
           gap:var(--gapy);
           justify-content:center;
@@ -776,7 +770,7 @@ export default function Home({ go, goSecret }: Props) {
 
         @media (max-width:720px){
           .home-actions-scale{
-            width:min(46vw, 290px);
+            width:min(48vw, 320px);
             justify-content:center;
             padding-left:max(8px, env(safe-area-inset-left));
             padding-right:8px;
