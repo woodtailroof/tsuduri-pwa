@@ -214,14 +214,11 @@ export default function PageShell(props: Props) {
     flex: "0 0 auto",
     display: "flex",
     alignItems: "center",
-    ...(titleLayout === "center"
-      ? {
-          position: "absolute",
-          right: "max(14px, env(safe-area-inset-right))",
-          top: "50%",
-          transform: "translateY(-50%)",
-        }
-      : {}),
+    position: "fixed",
+    right: "max(14px, env(safe-area-inset-right))",
+    top: `${effectiveHeaderH / 2}px`,
+    transform: "translateY(-50%)",
+    zIndex: 1,
   };
 
   return (

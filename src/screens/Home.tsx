@@ -683,6 +683,25 @@ export default function Home({ go, goSecret }: Props) {
           height:clamp(140px, 28dvh, 300px);
           min-height:0;
           position:relative;
+          isolation:isolate;
+        }
+
+        .home-logo-box::before{
+          content:"";
+          position:absolute;
+          z-index:-1;
+          inset:12% 10%;
+          border-radius:50%;
+          background:
+            radial-gradient(
+              ellipse at center,
+              rgba(235,252,255,.30) 0%,
+              rgba(177,232,255,.16) 38%,
+              rgba(147,210,255,.07) 58%,
+              rgba(147,210,255,0) 76%
+            );
+          filter:blur(18px);
+          pointer-events:none;
         }
         @media (max-width:720px){
           .home-logo-box{
@@ -697,6 +716,11 @@ export default function Home({ go, goSecret }: Props) {
           height:100%;
           object-fit:contain;
           display:block;
+          filter:
+            saturate(1.12)
+            contrast(1.06)
+            drop-shadow(0 2px 1px rgba(255,255,255,.42))
+            drop-shadow(0 7px 14px rgba(28,95,145,.22));
         }
 
         .home-actions{
