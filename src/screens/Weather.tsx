@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
 } from "react";
@@ -188,6 +187,15 @@ type WeatherSummary = {
   rainSum: number;
 };
 
+type WeatherHour = {
+  hour: number;
+  weatherCode: number;
+  temp: number;
+  rainProb: number;
+  windSpeed: number;
+  windDirection: number;
+};
+
 type LoadState =
   | { status: "idle" }
   | { status: "loading" }
@@ -208,6 +216,7 @@ type WeatherLoadState =
       status: "ok";
       dayKey: string;
       summary: WeatherSummary;
+      hours: WeatherHour[];
       source: "fetch" | "cache";
     }
   | { status: "error"; message: string };
@@ -262,6 +271,26 @@ function wmoToJa(code: number): string {
   return "天気";
 }
 
+function wmoToIcon(code: number): string {
+  if (!Number.isFinite(code)) return "❔";
+  if (code === 0) return "☀️";
+  if (code === 1 || code === 2) return "🌤️";
+  if (code === 3) return "☁️";
+  if (code === 45 || code === 48) return "🌫️";
+  if (code >= 51 && code <= 57) return "🌦️";
+  if (code >= 61 && code <= 67) return "🌧️";
+  if (code >= 71 && code <= 77) return "🌨️";
+  if (code >= 80 && code <= 82) return "🌦️";
+  if (code >= 95 && code <= 99) return "⛈️";
+  return "🌤️";
+}
+
+function windDirectionLabel(deg: number): string {
+  if (!Number.isFinite(deg)) return "-";
+  const labels = ["北", "北東", "東", "南東", "南", "南西", "西", "北西"];
+  return labels[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+}
+
 function safeNumber(v: unknown, fallback = 0) {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -274,6 +303,7 @@ async function fetchOpenMeteoDaily(lat: number, lon: number) {
     `?latitude=${encodeURIComponent(String(lat))}` +
     `&longitude=${encodeURIComponent(String(lon))}` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max` +
+    `&hourly=weather_code,temperature_2m,precipitation_probability,wind_speed_10m,wind_direction_10m` +
     `&forecast_days=16` +
     `&timezone=${encodeURIComponent(tz)}` +
     `&wind_speed_unit=ms`;
@@ -323,13 +353,34 @@ function pickDailySummary(json: any, day: string): WeatherSummary | null {
   };
 }
 
+function pickHourlyWeather(json: any, day: string): WeatherHour[] {
+  const h = json?.hourly;
+  const times: string[] = Array.isArray(h?.time) ? h.time : [];
+  const result: WeatherHour[] = [];
+
+  for (let hour = 0; hour < 24; hour += 3) {
+    const idx = times.findIndex((t) => t === `${day}T${pad2(hour)}:00`);
+    if (idx < 0) continue;
+    result.push({
+      hour,
+      weatherCode: safeNumber(h?.weather_code?.[idx], NaN),
+      temp: Math.round(safeNumber(h?.temperature_2m?.[idx], 0) * 10) / 10,
+      rainProb: Math.round(safeNumber(h?.precipitation_probability?.[idx], 0)),
+      windSpeed: Math.round(safeNumber(h?.wind_speed_10m?.[idx], 0) * 10) / 10,
+      windDirection: Math.round(safeNumber(h?.wind_direction_10m?.[idx], 0)),
+    });
+  }
+
+  return result;
+}
+
 function dayKeyLocal(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
 function loadWeatherCache(
   day: string,
-): { ts: number; summary: WeatherSummary } | null {
+): { ts: number; summary: WeatherSummary; hours: WeatherHour[] } | null {
   try {
     const raw = localStorage.getItem(`${WEATHER_CACHE_PREFIX}${day}`);
     if (!raw) return null;
@@ -349,17 +400,33 @@ function loadWeatherCache(
       rainProbMax: safeNumber(s.rainProbMax, 0),
       rainSum: safeNumber(s.rainSum, 0),
     };
-    return { ts, summary };
+    const hours: WeatherHour[] = Array.isArray(obj.hours)
+      ? obj.hours
+          .map((item: any) => ({
+            hour: safeNumber(item?.hour, -1),
+            weatherCode: safeNumber(item?.weatherCode, NaN),
+            temp: safeNumber(item?.temp, 0),
+            rainProb: safeNumber(item?.rainProb, 0),
+            windSpeed: safeNumber(item?.windSpeed, 0),
+            windDirection: safeNumber(item?.windDirection, 0),
+          }))
+          .filter((item: WeatherHour) => item.hour >= 0 && item.hour < 24)
+      : [];
+    return { ts, summary, hours };
   } catch {
     return null;
   }
 }
 
-function saveWeatherCache(day: string, summary: WeatherSummary) {
+function saveWeatherCache(
+  day: string,
+  summary: WeatherSummary,
+  hours: WeatherHour[],
+) {
   try {
     localStorage.setItem(
       `${WEATHER_CACHE_PREFIX}${day}`,
-      JSON.stringify({ ts: Date.now(), summary }),
+      JSON.stringify({ ts: Date.now(), summary, hours }),
     );
   } catch {
     // ignore
@@ -397,9 +464,6 @@ export default function Weather({ back, isActive = true }: Props) {
   const [state, setState] = useState<LoadState>({ status: "idle" });
   const [wState, setWState] = useState<WeatherLoadState>({ status: "idle" });
 
-  const graphWrapRef = useRef<HTMLDivElement | null>(null);
-  const [graphHeight, setGraphHeight] = useState<number>(380);
-
   useEffect(() => {
     const onUp = () => setOnline(true);
     const onDown = () => setOnline(false);
@@ -430,26 +494,6 @@ export default function Weather({ back, isActive = true }: Props) {
   }, [tab]);
 
   useEffect(() => {
-    const el = graphWrapRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-
-    const compute = (w: number) => {
-      const h = Math.round(w * (9 / 16));
-      return clamp(h, 300, 560);
-    };
-
-    setGraphHeight(compute(el.getBoundingClientRect().width));
-
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect?.width ?? 0;
-      if (w > 0) setGraphHeight(compute(w));
-    });
-    ro.observe(el);
-
-    return () => ro.disconnect();
-  }, [isDesktop]);
-
-  useEffect(() => {
     let cancelled = false;
 
     async function run() {
@@ -461,6 +505,7 @@ export default function Weather({ back, isActive = true }: Props) {
             status: "ok",
             dayKey: day,
             summary: cached.summary,
+            hours: cached.hours,
             source: "cache",
           });
         } else {
@@ -477,6 +522,7 @@ export default function Weather({ back, isActive = true }: Props) {
           status: "ok",
           dayKey: day,
           summary: cached.summary,
+          hours: cached.hours,
           source: "cache",
         });
         return;
@@ -486,6 +532,7 @@ export default function Weather({ back, isActive = true }: Props) {
         const json = await fetchOpenMeteoDaily(YAIZU.lat, YAIZU.lon);
         const summary = pickDailySummary(json, day);
         if (!summary) throw new Error("openmeteo_day_not_in_range");
+        const hours = pickHourlyWeather(json, day);
 
         const now = new Date();
         const today = startOfDay(now);
@@ -500,10 +547,16 @@ export default function Weather({ back, isActive = true }: Props) {
 
         const s: WeatherSummary = { ...summary, label };
 
-        saveWeatherCache(day, s);
+        saveWeatherCache(day, s, hours);
 
         if (!cancelled) {
-          setWState({ status: "ok", dayKey: day, summary: s, source: "fetch" });
+          setWState({
+            status: "ok",
+            dayKey: day,
+            summary: s,
+            hours,
+            source: "fetch",
+          });
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -600,9 +653,6 @@ export default function Weather({ back, isActive = true }: Props) {
     return extractExtremesBySlope(state.series ?? []);
   }, [state]);
 
-  const highs = extremes.filter((e) => e.kind === "high");
-  const lows = extremes.filter((e) => e.kind === "low");
-
   const titleNode = (
     <h1
       style={{
@@ -692,7 +742,7 @@ export default function Weather({ back, isActive = true }: Props) {
       maxWidth={1320}
       showBack
       onBack={onBack}
-      scrollY="auto"
+      scrollY={isDesktop ? "hidden" : "auto"}
       displayExpression={weatherEmotion}
     >
       <div
@@ -781,7 +831,10 @@ export default function Weather({ back, isActive = true }: Props) {
           </div>
         )}
 
-        <div className="glass glass-strong" style={tileStyle}>
+        <div
+          className="glass glass-strong"
+          style={{ ...tileStyle, padding: isDesktop ? "10px 16px" : 12 }}
+        >
           <div
             style={{
               display: "flex",
@@ -842,106 +895,13 @@ export default function Weather({ back, isActive = true }: Props) {
             </div>
           </div>
 
-          <div style={{ marginTop: 16 }}>
-            <div
-              style={{
-                fontWeight: 900,
-                marginBottom: 14,
-                fontSize: isDesktop ? 21 : 17,
-                textAlign: isDesktop ? "center" : "left",
-              }}
-            >
-              🌤️ 天気（焼津）
-            </div>
-            {wState.status !== "ok" ? (
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
-                {wState.status === "loading"
-                  ? "データ取得中…"
-                  : !online
-                    ? "📴 オフラインで天気キャッシュが無いよ（オンライン復帰後に取得できる）"
-                    : "天気データが取れなかったよ"}
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isDesktop
-                    ? "repeat(4, minmax(0, 1fr))"
-                    : "1fr",
-                  gap: isDesktop ? 12 : 8,
-                  fontSize: isDesktop ? 17 : 14,
-                  lineHeight: 1.55,
-                }}
-              >
-                <div
-                  style={{
-                    color: "rgba(255,255,255,0.9)",
-                    fontWeight: 800,
-                    padding: isDesktop ? "13px 10px" : "8px 10px",
-                    borderRadius: 12,
-                    background: "rgba(17,17,17,0.18)",
-                    textAlign: isDesktop ? "center" : "left",
-                  }}
-                >
-                  🧾 概況：
-                  <span style={{ color: "#fff", marginLeft: 4 }}>
-                    {wState.summary.overview}
-                  </span>
-                  <span
-                    style={{ marginLeft: 8, color: "rgba(255,255,255,0.55)" }}
-                  >
-                    （{wState.summary.label}）
-                  </span>
-                </div>
-                <div
-                  style={{
-                    color: "rgba(255,255,255,0.9)",
-                    fontWeight: 700,
-                    padding: isDesktop ? "13px 10px" : "8px 10px",
-                    borderRadius: 12,
-                    background: "rgba(17,17,17,0.18)",
-                    textAlign: isDesktop ? "center" : "left",
-                  }}
-                >
-                  🌡️ 気温：{wState.summary.tempMin}〜{wState.summary.tempMax}℃
-                </div>
-                <div
-                  style={{
-                    color: "rgba(255,255,255,0.9)",
-                    fontWeight: 700,
-                    padding: isDesktop ? "13px 10px" : "8px 10px",
-                    borderRadius: 12,
-                    background: "rgba(17,17,17,0.18)",
-                    textAlign: isDesktop ? "center" : "left",
-                  }}
-                >
-                  🌬️ 風：最大{wState.summary.windMax}（突風
-                  {wState.summary.gustMax}）m/s
-                </div>
-                <div
-                  style={{
-                    color: "rgba(255,255,255,0.9)",
-                    fontWeight: 700,
-                    padding: isDesktop ? "13px 10px" : "8px 10px",
-                    borderRadius: 12,
-                    background: "rgba(17,17,17,0.18)",
-                    textAlign: isDesktop ? "center" : "left",
-                  }}
-                >
-                  ☔ 雨：最大{wState.summary.rainProbMax}% / 合計
-                  {wState.summary.rainSum}mm
-                </div>
-              </div>
-            )}
-          </div>
-
           <div
             style={{
-              marginTop: 12,
-              padding: isDesktop ? "11px 14px" : "8px 10px",
+              marginTop: 8,
+              padding: isDesktop ? "7px 14px" : "8px 10px",
               borderRadius: 12,
               background: "rgba(17,17,17,0.18)",
-              fontSize: isDesktop ? 18 : 14,
+              fontSize: isDesktop ? 16 : 14,
               fontWeight: 900,
               color: "#6cf",
               textAlign: isDesktop ? "center" : "left",
@@ -971,7 +931,9 @@ export default function Weather({ back, isActive = true }: Props) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: isDesktop ? "minmax(390px, 0.9fr) 1.65fr" : "1fr",
+            gridTemplateColumns: isDesktop
+              ? "minmax(280px, 0.55fr) minmax(0, 1.75fr)"
+              : "1fr",
             gap: 12,
             minWidth: 0,
           }}
@@ -980,8 +942,8 @@ export default function Weather({ back, isActive = true }: Props) {
             <div
               style={{
                 fontWeight: 900,
-                marginBottom: 16,
-                fontSize: isDesktop ? 21 : 16,
+                marginBottom: 10,
+                fontSize: isDesktop ? 18 : 16,
                 textAlign: isDesktop ? "center" : "left",
               }}
             >
@@ -1003,78 +965,56 @@ export default function Weather({ back, isActive = true }: Props) {
                 極値がうまく取れなかったよ（データ不足かも）
               </div>
             ) : (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr",
-                  gap: 12,
-                  fontSize: isDesktop ? 18 : 14,
-                  lineHeight: 1.5,
-                }}
-              >
-                <div
-                  style={{
-                    color: "rgba(255,255,255,0.92)",
-                    fontWeight: 800,
-                    padding: isDesktop ? "16px 12px" : "9px 10px",
-                    borderRadius: 12,
-                    background: "rgba(255,196,64,0.10)",
-                    textAlign: isDesktop ? "center" : "left",
-                  }}
-                >
-                  🟡 満潮：
-                  {highs.length ? (
-                    highs.map((e, i) => (
-                      <span key={`h-${e.min}-${e.cm}`}>
-                        {i > 0 ? " / " : " "}
-                        {formatHMFromMinutes(e.min)}（{Math.round(e.cm)}cm）
+              <div style={{ display: "grid", gap: 8 }}>
+                {extremes.map((e) => {
+                  const high = e.kind === "high";
+                  return (
+                    <div
+                      key={`${e.kind}-${e.min}-${e.cm}`}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "72px 1fr auto",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: isDesktop ? "10px 12px" : "9px 10px",
+                        borderRadius: 12,
+                        color: "rgba(255,255,255,0.94)",
+                        fontWeight: 800,
+                        background: high
+                          ? "linear-gradient(90deg, rgba(255,193,111,0.18), rgba(255,126,182,0.08))"
+                          : "linear-gradient(90deg, rgba(91,209,255,0.18), rgba(151,121,255,0.08))",
+                        border: `1px solid ${
+                          high
+                            ? "rgba(255,207,132,0.22)"
+                            : "rgba(106,218,255,0.22)"
+                        }`,
+                        fontSize: isDesktop ? 15 : 14,
+                      }}
+                    >
+                      <span>{high ? "🟡 満潮" : "🔵 干潮"}</span>
+                      <span style={{ fontSize: isDesktop ? 19 : 17 }}>
+                        {formatHMFromMinutes(e.min)}
                       </span>
-                    ))
-                  ) : (
-                    <span> -</span>
-                  )}
-                </div>
-                <div
-                  style={{
-                    color: "rgba(255,255,255,0.92)",
-                    fontWeight: 800,
-                    padding: isDesktop ? "16px 12px" : "9px 10px",
-                    borderRadius: 12,
-                    background: "rgba(82,190,255,0.10)",
-                    textAlign: isDesktop ? "center" : "left",
-                  }}
-                >
-                  🔵 干潮：
-                  {lows.length ? (
-                    lows.map((e, i) => (
-                      <span key={`l-${e.min}-${e.cm}`}>
-                        {i > 0 ? " / " : " "}
-                        {formatHMFromMinutes(e.min)}（{Math.round(e.cm)}cm）
+                      <span style={{ color: "rgba(255,255,255,0.66)" }}>
+                        {Math.round(e.cm)}cm
                       </span>
-                    ))
-                  ) : (
-                    <span> -</span>
-                  )}
-                </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
 
           <div
-            ref={graphWrapRef}
             className="glass glass-strong"
             style={{
               ...tileStyle,
               padding: 10,
               minHeight: 0,
-              height: graphHeight,
-              display: "grid",
-              alignItems: "center",
             }}
           >
             <div
               style={{
-                height: "100%",
                 opacity: state.status === "loading" ? 0.65 : 1,
                 transform:
                   state.status === "loading"
@@ -1088,35 +1028,120 @@ export default function Weather({ back, isActive = true }: Props) {
                 series={state.status === "ok" ? state.series : []}
                 baseDate={targetDate}
                 highlightAt={highlightAt}
+                height={isDesktop ? 188 : 170}
                 yDomain={{ min: -50, max: 200 }}
               />
             </div>
+            <div
+              style={{
+                marginTop: 8,
+                padding: isDesktop ? "9px 10px" : 10,
+                borderRadius: 14,
+                background:
+                  "linear-gradient(135deg, rgba(255,105,174,0.12), rgba(127,116,255,0.10) 48%, rgba(83,211,255,0.10))",
+                border: "1px solid rgba(255,255,255,0.12)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 10,
+                  marginBottom: 7,
+                }}
+              >
+                <div style={{ fontWeight: 900, fontSize: 14 }}>
+                  🌤️ 3時間ごとの概況
+                </div>
+                {wState.status === "ok" && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "rgba(255,255,255,0.58)",
+                    }}
+                  >
+                    {wState.summary.overview} / {wState.summary.tempMin}〜
+                    {wState.summary.tempMax}℃
+                  </div>
+                )}
+              </div>
+              {wState.status !== "ok" ? (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                  {wState.status === "loading"
+                    ? "時間別の天気を取得中…"
+                    : "時間別の天気データを取得できなかったよ"}
+                </div>
+              ) : wState.hours.length === 0 ? (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                  以前のキャッシュには時間別情報がないため、次回オンライン取得時に表示されます
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isDesktop
+                      ? "repeat(8, minmax(68px, 1fr))"
+                      : "repeat(8, minmax(78px, 1fr))",
+                    gap: 6,
+                    overflowX: "auto",
+                    paddingBottom: 2,
+                  }}
+                >
+                  {wState.hours.map((hour) => (
+                    <div
+                      key={hour.hour}
+                      title={`${wmoToJa(hour.weatherCode)} / 風向 ${windDirectionLabel(hour.windDirection)}`}
+                      style={{
+                        minWidth: 0,
+                        padding: "6px 4px",
+                        borderRadius: 11,
+                        textAlign: "center",
+                        background: "rgba(12,18,38,0.28)",
+                        border: "1px solid rgba(255,255,255,0.09)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 900,
+                          color: "#ffd4ed",
+                        }}
+                      >
+                        {pad2(hour.hour)}時
+                      </div>
+                      <div style={{ fontSize: 19, lineHeight: 1.25 }}>
+                        {wmoToIcon(hour.weatherCode)}
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 800 }}>
+                        {hour.temp}℃
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color: "#82ddff",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        ☔ {hour.rainProb}%
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color: "rgba(255,255,255,0.68)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {windDirectionLabel(hour.windDirection)}{" "}
+                        {hour.windSpeed}m
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-
-        {state.status === "ok" && (
-          <div
-            style={{
-              fontSize: 12,
-              color: "rgba(255,255,255,0.50)",
-              overflowWrap: "anywhere",
-            }}
-          >
-            tide key: {FIXED_PORT.pc}:{FIXED_PORT.hc}:{state.dayKey}
-          </div>
-        )}
-
-        {wState.status === "ok" && (
-          <div
-            style={{
-              fontSize: 12,
-              color: "rgba(255,255,255,0.50)",
-              overflowWrap: "anywhere",
-            }}
-          >
-            weather key: {YAIZU.lat},{YAIZU.lon}:{wState.dayKey}
-          </div>
-        )}
       </div>
     </PageShell>
   );

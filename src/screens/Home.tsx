@@ -665,7 +665,7 @@ export default function Home({ go, goSecret }: Props) {
           padding:clamp(10px, 1.8vw, 16px);
           display:grid;
           grid-template-rows:auto minmax(0,1fr);
-          gap:clamp(14px, 2vh, 24px);
+          gap:clamp(22px, 3vh, 36px);
           box-sizing:border-box;
         }
 
@@ -679,8 +679,8 @@ export default function Home({ go, goSecret }: Props) {
         }
 
         .home-logo-box{
-          width:min(96vw, 1320px);
-          height:clamp(140px, 28dvh, 300px);
+          width:min(96vw, 1380px);
+          height:clamp(160px, 30dvh, 320px);
           min-height:0;
           position:relative;
           isolation:isolate;
@@ -716,7 +716,7 @@ export default function Home({ go, goSecret }: Props) {
           height:100%;
           object-fit:contain;
           display:block;
-          transform:scale(1.5);
+          transform:scale(1.9);
           transform-origin:center;
           filter:
             saturate(1.12)
@@ -726,7 +726,7 @@ export default function Home({ go, goSecret }: Props) {
         }
         @media (max-width:720px){
           .home-logo{
-            transform:scale(1.28);
+            transform:scale(1.42);
           }
         }
 
@@ -734,10 +734,12 @@ export default function Home({ go, goSecret }: Props) {
           display:grid;
           align-items:center;
           min-height:0;
+          transform:translateY(clamp(6px, 1.5vh, 18px));
         }
         @media (max-width:720px){
           .home-actions{
             align-items:start;
+            transform:none;
           }
         }
 
@@ -752,7 +754,7 @@ export default function Home({ go, goSecret }: Props) {
 
         .home-actions-scale{
           --btnw:clamp(200px, 20vw, 290px);
-          --gapy:clamp(8px, 1.2vh, 14px);
+          --gapy:clamp(10px, 1.4vh, 16px);
           display:grid;
           gap:var(--gapy);
           justify-content:center;

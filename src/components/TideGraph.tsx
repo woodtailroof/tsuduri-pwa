@@ -265,8 +265,8 @@ export default function TideGraph({
   const hiX = hi ? xToPx(hi.min) : null;
   const hiY = hi ? yToPx(hi.cm) : null;
 
-  // X軸目盛り（0/6/12/18/24）
-  const ticksX = [0, 6, 12, 18, 24].map((h) => ({
+  // X軸目盛り（概況と揃えて3時間刻み）
+  const ticksX = [0, 3, 6, 9, 12, 15, 18, 21, 24].map((h) => ({
     label: `${h}`,
     x: xToPx(
       useIndex
@@ -286,10 +286,13 @@ export default function TideGraph({
   return (
     <div
       style={{
-        border: "1px solid rgba(255,255,255,0.10)",
-        borderRadius: 12,
+        border: "1px solid rgba(255,174,221,0.18)",
+        borderRadius: 16,
         padding: 12,
-        background: "rgba(17,17,17,0.35)", // ✅ 透過
+        background:
+          "linear-gradient(145deg, rgba(42,25,59,0.34), rgba(20,31,66,0.30) 55%, rgba(16,54,72,0.26))",
+        boxShadow:
+          "inset 0 1px 0 rgba(255,255,255,0.07), 0 10px 28px rgba(8,8,28,0.16)",
         backdropFilter: "blur(10px)",
         WebkitBackdropFilter: "blur(10px)",
       }}
@@ -317,6 +320,37 @@ export default function TideGraph({
           aspectRatio: `${vbW} / ${vbH}`,
         }}
       >
+        <defs>
+          <linearGradient
+            id="tideLineGradient"
+            x1="0%"
+            y1="0%"
+            x2="100%"
+            y2="0%"
+          >
+            <stop offset="0%" stopColor="#ff78b7" />
+            <stop offset="48%" stopColor="#b58cff" />
+            <stop offset="100%" stopColor="#61d8ff" />
+          </linearGradient>
+          <linearGradient
+            id="tideAreaGradient"
+            x1="0%"
+            y1="0%"
+            x2="0%"
+            y2="100%"
+          >
+            <stop offset="0%" stopColor="#ff83c4" stopOpacity="0.30" />
+            <stop offset="55%" stopColor="#a987ff" stopOpacity="0.14" />
+            <stop offset="100%" stopColor="#63dfff" stopOpacity="0.02" />
+          </linearGradient>
+          <filter id="tideGlow" x="-20%" y="-30%" width="140%" height="160%">
+            <feGaussianBlur stdDeviation="2.2" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
         <rect x="0" y="0" width={vbW} height={vbH} fill="transparent" />
 
         {/* Y軸：水平グリッド + 目盛り */}
@@ -329,7 +363,7 @@ export default function TideGraph({
                 y1={y}
                 x2={vbW - padRight}
                 y2={y}
-                stroke="rgba(255,255,255,0.10)"
+                stroke="rgba(224,216,255,0.10)"
               />
               <text
                 x={padLeft - 6}
@@ -352,7 +386,7 @@ export default function TideGraph({
               y1={padTop}
               x2={t.x}
               y2={vbH - padBottom}
-              stroke="rgba(255,255,255,0.10)"
+              stroke="rgba(216,226,255,0.08)"
             />
             <text
               x={t.x}
@@ -378,14 +412,23 @@ export default function TideGraph({
           />
         )}
 
-        {/* 波（折れ線） */}
+        {/* 潮位を淡く塗って、分析画面に近い柔らかな面を作る */}
+        <polygon
+          points={`${xToPx(ptsUniq[0].min)},${vbH - padBottom} ${polyPoints} ${xToPx(
+            ptsUniq[ptsUniq.length - 1].min,
+          )},${vbH - padBottom}`}
+          fill="url(#tideAreaGradient)"
+        />
+
+        {/* 波（ピンク → 紫 → 水色） */}
         <polyline
           points={polyPoints}
           fill="none"
-          stroke="#00e0a8"
-          strokeWidth="2.5"
+          stroke="url(#tideLineGradient)"
+          strokeWidth="3"
           strokeLinejoin="round"
           strokeLinecap="round"
+          filter="url(#tideGlow)"
         />
 
         {/* 満潮/干潮マーカー + ラベル */}
@@ -413,7 +456,7 @@ export default function TideGraph({
                 : clamp(x0, padLeft + 2, vbW - padRight - 2);
 
           const label = `${formatHMFromMinutes(e.min)} (${Math.round(e.cm)}cm)`;
-          const c = e.kind === "high" ? "#ffd166" : "#4cc9f0";
+          const c = e.kind === "high" ? "#ffc46f" : "#65dcff";
 
           const dotR = 5;
           const triSize = 2.6;
