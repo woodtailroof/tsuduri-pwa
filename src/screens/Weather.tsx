@@ -677,7 +677,7 @@ export default function Weather({ back, isActive = true }: Props) {
 
   const tileStyle: CSSProperties = {
     borderRadius: 16,
-    padding: isDesktop ? 16 : 12,
+    padding: isDesktop ? 14 : 12,
     minWidth: 0,
     overflow: "hidden",
     border: "1px solid rgba(255,255,255,0.12)",
@@ -751,7 +751,7 @@ export default function Weather({ back, isActive = true }: Props) {
           maxWidth: "100%",
           minWidth: 0,
           display: "grid",
-          gap: 12,
+          gap: isDesktop ? 10 : 12,
         }}
       >
         <div
@@ -833,7 +833,7 @@ export default function Weather({ back, isActive = true }: Props) {
 
         <div
           className="glass glass-strong"
-          style={{ ...tileStyle, padding: isDesktop ? "10px 16px" : 12 }}
+          style={{ ...tileStyle, padding: isDesktop ? "8px 16px" : 12 }}
         >
           <div
             style={{
@@ -895,37 +895,6 @@ export default function Weather({ back, isActive = true }: Props) {
             </div>
           </div>
 
-          <div
-            style={{
-              marginTop: 8,
-              padding: isDesktop ? "7px 14px" : "8px 10px",
-              borderRadius: 12,
-              background: "rgba(17,17,17,0.18)",
-              fontSize: isDesktop ? 16 : 14,
-              fontWeight: 900,
-              color: "#6cf",
-              textAlign: isDesktop ? "center" : "left",
-            }}
-          >
-            🌙 潮名：
-            {state.status === "ok"
-              ? state.tideName
-                ? ` ${state.tideName}`
-                : " （未取得）"
-              : " -"}
-          </div>
-
-          {state.status === "ok" && !state.tideName && (
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 12,
-                color: "rgba(255,255,255,0.55)",
-              }}
-            >
-              ※潮名（大潮など）が未取得のキャッシュです（再取得タイミングで入ります）
-            </div>
-          )}
         </div>
 
         <div
@@ -934,11 +903,46 @@ export default function Weather({ back, isActive = true }: Props) {
             gridTemplateColumns: isDesktop
               ? "minmax(280px, 0.55fr) minmax(0, 1.75fr)"
               : "1fr",
-            gap: 12,
+            gap: isDesktop ? 10 : 12,
             minWidth: 0,
           }}
         >
           <div className="glass glass-strong" style={tileStyle}>
+            <div
+              style={{
+                padding: isDesktop ? "9px 12px" : "9px 10px",
+                marginBottom: isDesktop ? 12 : 10,
+                borderRadius: 12,
+                background:
+                  "linear-gradient(90deg, rgba(151,121,255,0.18), rgba(91,209,255,0.12))",
+                border: "1px solid rgba(125,205,255,0.20)",
+                color: "#78d9ff",
+                textAlign: "center",
+                fontSize: isDesktop ? 16 : 14,
+                fontWeight: 900,
+              }}
+            >
+              🌙 潮名：
+              {state.status === "ok"
+                ? state.tideName
+                  ? ` ${state.tideName}`
+                  : " （未取得）"
+                : " -"}
+            </div>
+
+            {state.status === "ok" && !state.tideName && (
+              <div
+                style={{
+                  margin: "-4px 2px 10px",
+                  fontSize: 11,
+                  lineHeight: 1.45,
+                  color: "rgba(255,255,255,0.55)",
+                }}
+              >
+                ※次回オンライン取得時に更新
+              </div>
+            )}
+
             <div
               style={{
                 fontWeight: 900,
