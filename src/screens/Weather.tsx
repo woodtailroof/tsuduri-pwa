@@ -677,7 +677,7 @@ export default function Weather({ back, isActive = true }: Props) {
 
   const tileStyle: CSSProperties = {
     borderRadius: 16,
-    padding: isDesktop ? 14 : 12,
+    padding: isDesktop ? 10 : 12,
     minWidth: 0,
     overflow: "hidden",
     border: "1px solid rgba(255,255,255,0.12)",
@@ -751,7 +751,7 @@ export default function Weather({ back, isActive = true }: Props) {
           maxWidth: "100%",
           minWidth: 0,
           display: "grid",
-          gap: isDesktop ? 10 : 12,
+          gap: isDesktop ? 6 : 12,
         }}
       >
         <div
@@ -832,78 +832,12 @@ export default function Weather({ back, isActive = true }: Props) {
         )}
 
         <div
-          className="glass glass-strong"
-          style={{ ...tileStyle, padding: isDesktop ? "8px 16px" : 12 }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 12,
-              alignItems: "center",
-              flexWrap: "wrap",
-              minWidth: 0,
-            }}
-          >
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-              📅 {targetDate.toLocaleDateString()}
-            </div>
-
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              {(() => {
-                const b = weatherStatusBadge();
-                if (!b) return null;
-                return (
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: b.color,
-                      whiteSpace: "nowrap",
-                    }}
-                    title="Open-Meteo"
-                  >
-                    🌤️ {b.text}
-                  </div>
-                );
-              })()}
-
-              {state.status === "ok" &&
-                (() => {
-                  const lab = sourceLabel(state.source, state.isStale);
-                  if (!lab) return null;
-                  return (
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: lab.color,
-                        whiteSpace: "nowrap",
-                      }}
-                      title="tide736取得元"
-                    >
-                      🌊 {lab.text}
-                    </div>
-                  );
-                })()}
-
-              {!online && (
-                <div
-                  style={{ fontSize: 11, color: "#f6c", whiteSpace: "nowrap" }}
-                >
-                  📴 オフライン
-                </div>
-              )}
-            </div>
-          </div>
-
-        </div>
-
-        <div
           style={{
             display: "grid",
             gridTemplateColumns: isDesktop
               ? "minmax(280px, 0.55fr) minmax(0, 1.75fr)"
               : "1fr",
-            gap: isDesktop ? 10 : 12,
+            gap: isDesktop ? 8 : 12,
             minWidth: 0,
           }}
         >
@@ -911,7 +845,7 @@ export default function Weather({ back, isActive = true }: Props) {
             <div
               style={{
                 padding: isDesktop ? "9px 12px" : "9px 10px",
-                marginBottom: isDesktop ? 12 : 10,
+                marginBottom: isDesktop ? 8 : 10,
                 borderRadius: 12,
                 background:
                   "linear-gradient(90deg, rgba(151,121,255,0.18), rgba(91,209,255,0.12))",
@@ -946,7 +880,7 @@ export default function Weather({ back, isActive = true }: Props) {
             <div
               style={{
                 fontWeight: 900,
-                marginBottom: 10,
+                marginBottom: isDesktop ? 7 : 10,
                 fontSize: isDesktop ? 18 : 16,
                 textAlign: isDesktop ? "center" : "left",
               }}
@@ -969,7 +903,7 @@ export default function Weather({ back, isActive = true }: Props) {
                 極値がうまく取れなかったよ（データ不足かも）
               </div>
             ) : (
-              <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ display: "grid", gap: isDesktop ? 6 : 8 }}>
                 {extremes.map((e) => {
                   const high = e.kind === "high";
                   return (
@@ -980,7 +914,7 @@ export default function Weather({ back, isActive = true }: Props) {
                         gridTemplateColumns: "72px 1fr auto",
                         alignItems: "center",
                         gap: 8,
-                        padding: isDesktop ? "10px 12px" : "9px 10px",
+                        padding: isDesktop ? "8px 12px" : "9px 10px",
                         borderRadius: 12,
                         color: "rgba(255,255,255,0.94)",
                         fontWeight: 800,
@@ -1007,6 +941,68 @@ export default function Weather({ back, isActive = true }: Props) {
                 })}
               </div>
             )}
+
+            <div
+              style={{
+                marginTop: isDesktop ? 10 : 12,
+                paddingTop: isDesktop ? 8 : 10,
+                borderTop: "1px solid rgba(255,255,255,0.10)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "5px 10px",
+                fontSize: 11,
+                color: "rgba(255,255,255,0.58)",
+              }}
+            >
+              <span style={{ whiteSpace: "nowrap" }}>
+                📅 {targetDate.toLocaleDateString()}
+              </span>
+
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  flexWrap: "wrap",
+                  gap: 8,
+                }}
+              >
+                {(() => {
+                  const b = weatherStatusBadge();
+                  if (!b) return null;
+                  return (
+                    <span
+                      style={{ color: b.color, whiteSpace: "nowrap" }}
+                      title="Open-Meteo"
+                    >
+                      🌤️ {b.text}
+                    </span>
+                  );
+                })()}
+
+                {state.status === "ok" &&
+                  (() => {
+                    const lab = sourceLabel(state.source, state.isStale);
+                    if (!lab) return null;
+                    return (
+                      <span
+                        style={{ color: lab.color, whiteSpace: "nowrap" }}
+                        title="tide736取得元"
+                      >
+                        🌊 {lab.text}
+                      </span>
+                    );
+                  })()}
+
+                {!online && (
+                  <span style={{ color: "#f6c", whiteSpace: "nowrap" }}>
+                    📴 オフライン
+                  </span>
+                )}
+              </span>
+            </div>
           </div>
 
           <div
@@ -1032,14 +1028,14 @@ export default function Weather({ back, isActive = true }: Props) {
                 series={state.status === "ok" ? state.series : []}
                 baseDate={targetDate}
                 highlightAt={highlightAt}
-                height={isDesktop ? 188 : 170}
+                height={isDesktop ? 180 : 170}
                 yDomain={{ min: -50, max: 200 }}
               />
             </div>
             <div
               style={{
-                marginTop: 8,
-                padding: isDesktop ? "9px 10px" : 10,
+                marginTop: isDesktop ? 5 : 8,
+                padding: isDesktop ? "7px 10px" : 10,
                 borderRadius: 14,
                 background:
                   "linear-gradient(135deg, rgba(255,105,174,0.12), rgba(127,116,255,0.10) 48%, rgba(83,211,255,0.10))",
@@ -1052,7 +1048,7 @@ export default function Weather({ back, isActive = true }: Props) {
                   justifyContent: "space-between",
                   alignItems: "center",
                   gap: 10,
-                  marginBottom: 7,
+                  marginBottom: isDesktop ? 5 : 7,
                 }}
               >
                 <div style={{ fontWeight: 900, fontSize: 14 }}>
