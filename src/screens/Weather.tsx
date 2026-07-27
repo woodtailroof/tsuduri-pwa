@@ -627,7 +627,7 @@ export default function Weather({ back, isActive = true }: Props) {
 
   const tileStyle: CSSProperties = {
     borderRadius: 16,
-    padding: 12,
+    padding: isDesktop ? 16 : 12,
     minWidth: 0,
     overflow: "hidden",
     border: "1px solid rgba(255,255,255,0.12)",
@@ -842,8 +842,15 @@ export default function Weather({ back, isActive = true }: Props) {
             </div>
           </div>
 
-          <div style={{ marginTop: 10 }}>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>
+          <div style={{ marginTop: 16 }}>
+            <div
+              style={{
+                fontWeight: 900,
+                marginBottom: 14,
+                fontSize: isDesktop ? 21 : 17,
+                textAlign: isDesktop ? "center" : "left",
+              }}
+            >
               🌤️ 天気（焼津）
             </div>
             {wState.status !== "ok" ? (
@@ -855,8 +862,27 @@ export default function Weather({ back, isActive = true }: Props) {
                     : "天気データが取れなかったよ"}
               </div>
             ) : (
-              <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
-                <div style={{ color: "rgba(255,255,255,0.88)" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isDesktop
+                    ? "repeat(4, minmax(0, 1fr))"
+                    : "1fr",
+                  gap: isDesktop ? 12 : 8,
+                  fontSize: isDesktop ? 17 : 14,
+                  lineHeight: 1.55,
+                }}
+              >
+                <div
+                  style={{
+                    color: "rgba(255,255,255,0.9)",
+                    fontWeight: 800,
+                    padding: isDesktop ? "13px 10px" : "8px 10px",
+                    borderRadius: 12,
+                    background: "rgba(17,17,17,0.18)",
+                    textAlign: isDesktop ? "center" : "left",
+                  }}
+                >
                   🧾 概況：
                   <span style={{ color: "#fff", marginLeft: 4 }}>
                     {wState.summary.overview}
@@ -867,14 +893,41 @@ export default function Weather({ back, isActive = true }: Props) {
                     （{wState.summary.label}）
                   </span>
                 </div>
-                <div style={{ color: "rgba(255,255,255,0.78)" }}>
+                <div
+                  style={{
+                    color: "rgba(255,255,255,0.9)",
+                    fontWeight: 700,
+                    padding: isDesktop ? "13px 10px" : "8px 10px",
+                    borderRadius: 12,
+                    background: "rgba(17,17,17,0.18)",
+                    textAlign: isDesktop ? "center" : "left",
+                  }}
+                >
                   🌡️ 気温：{wState.summary.tempMin}〜{wState.summary.tempMax}℃
                 </div>
-                <div style={{ color: "rgba(255,255,255,0.78)" }}>
+                <div
+                  style={{
+                    color: "rgba(255,255,255,0.9)",
+                    fontWeight: 700,
+                    padding: isDesktop ? "13px 10px" : "8px 10px",
+                    borderRadius: 12,
+                    background: "rgba(17,17,17,0.18)",
+                    textAlign: isDesktop ? "center" : "left",
+                  }}
+                >
                   🌬️ 風：最大{wState.summary.windMax}（突風
                   {wState.summary.gustMax}）m/s
                 </div>
-                <div style={{ color: "rgba(255,255,255,0.78)" }}>
+                <div
+                  style={{
+                    color: "rgba(255,255,255,0.9)",
+                    fontWeight: 700,
+                    padding: isDesktop ? "13px 10px" : "8px 10px",
+                    borderRadius: 12,
+                    background: "rgba(17,17,17,0.18)",
+                    textAlign: isDesktop ? "center" : "left",
+                  }}
+                >
                   ☔ 雨：最大{wState.summary.rainProbMax}% / 合計
                   {wState.summary.rainSum}mm
                 </div>
@@ -882,7 +935,18 @@ export default function Weather({ back, isActive = true }: Props) {
             )}
           </div>
 
-          <div style={{ marginTop: 12, fontSize: 12, color: "#6cf" }}>
+          <div
+            style={{
+              marginTop: 12,
+              padding: isDesktop ? "11px 14px" : "8px 10px",
+              borderRadius: 12,
+              background: "rgba(17,17,17,0.18)",
+              fontSize: isDesktop ? 18 : 14,
+              fontWeight: 900,
+              color: "#6cf",
+              textAlign: isDesktop ? "center" : "left",
+            }}
+          >
             🌙 潮名：
             {state.status === "ok"
               ? state.tideName
@@ -907,13 +971,20 @@ export default function Weather({ back, isActive = true }: Props) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: isDesktop ? "minmax(280px, 360px) 1fr" : "1fr",
+            gridTemplateColumns: isDesktop ? "minmax(390px, 0.9fr) 1.65fr" : "1fr",
             gap: 12,
             minWidth: 0,
           }}
         >
           <div className="glass glass-strong" style={tileStyle}>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>
+            <div
+              style={{
+                fontWeight: 900,
+                marginBottom: 16,
+                fontSize: isDesktop ? 21 : 16,
+                textAlign: isDesktop ? "center" : "left",
+              }}
+            >
               🟡 満潮 / 🔵 干潮
             </div>
 
@@ -932,8 +1003,25 @@ export default function Weather({ back, isActive = true }: Props) {
                 極値がうまく取れなかったよ（データ不足かも）
               </div>
             ) : (
-              <div style={{ display: "grid", gap: 8, fontSize: 12 }}>
-                <div style={{ color: "rgba(255,255,255,0.78)" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr",
+                  gap: 12,
+                  fontSize: isDesktop ? 18 : 14,
+                  lineHeight: 1.5,
+                }}
+              >
+                <div
+                  style={{
+                    color: "rgba(255,255,255,0.92)",
+                    fontWeight: 800,
+                    padding: isDesktop ? "16px 12px" : "9px 10px",
+                    borderRadius: 12,
+                    background: "rgba(255,196,64,0.10)",
+                    textAlign: isDesktop ? "center" : "left",
+                  }}
+                >
                   🟡 満潮：
                   {highs.length ? (
                     highs.map((e, i) => (
@@ -946,7 +1034,16 @@ export default function Weather({ back, isActive = true }: Props) {
                     <span> -</span>
                   )}
                 </div>
-                <div style={{ color: "rgba(255,255,255,0.78)" }}>
+                <div
+                  style={{
+                    color: "rgba(255,255,255,0.92)",
+                    fontWeight: 800,
+                    padding: isDesktop ? "16px 12px" : "9px 10px",
+                    borderRadius: 12,
+                    background: "rgba(82,190,255,0.10)",
+                    textAlign: isDesktop ? "center" : "left",
+                  }}
+                >
                   🔵 干潮：
                   {lows.length ? (
                     lows.map((e, i) => (

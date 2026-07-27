@@ -582,7 +582,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
           </div>
         </div>
       }
-      maxWidth={1100}
+      maxWidth={1320}
       showBack
       onBack={back}
       titleLayout="left"

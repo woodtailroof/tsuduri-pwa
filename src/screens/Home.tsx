@@ -87,65 +87,19 @@ type TonePalette = {
   sheen: string;
 };
 
-function getTonePalette(tone: TimeTone): TonePalette {
-  switch (tone) {
-    case "morning":
-      return {
-        shellTop: "rgba(255,255,255,0.22)",
-        shellBottom: "rgba(180,220,255,0.10)",
-        border: "rgba(255,255,255,0.32)",
-        textSub: "rgba(255,255,255,0.82)",
-        chevron: "rgba(255,255,255,0.82)",
-        iconTop: "rgba(210,235,255,0.44)",
-        iconBottom: "rgba(130,190,255,0.18)",
-        iconBorder: "rgba(255,255,255,0.42)",
-        glow: "rgba(170,215,255,0.22)",
-        sheen: "rgba(255,255,255,0.28)",
-      };
-
-    case "day":
-      return {
-        shellTop: "rgba(255,255,255,0.18)",
-        shellBottom: "rgba(155,210,255,0.08)",
-        border: "rgba(255,255,255,0.28)",
-        textSub: "rgba(255,255,255,0.76)",
-        chevron: "rgba(255,255,255,0.78)",
-        iconTop: "rgba(190,228,255,0.36)",
-        iconBottom: "rgba(118,184,255,0.14)",
-        iconBorder: "rgba(255,255,255,0.38)",
-        glow: "rgba(145,205,255,0.18)",
-        sheen: "rgba(255,255,255,0.24)",
-      };
-
-    case "evening":
-      return {
-        shellTop: "rgba(255,240,245,0.20)",
-        shellBottom: "rgba(255,186,214,0.08)",
-        border: "rgba(255,255,255,0.30)",
-        textSub: "rgba(255,245,248,0.78)",
-        chevron: "rgba(255,240,245,0.82)",
-        iconTop: "rgba(255,215,232,0.38)",
-        iconBottom: "rgba(255,162,196,0.14)",
-        iconBorder: "rgba(255,240,245,0.40)",
-        glow: "rgba(255,182,216,0.18)",
-        sheen: "rgba(255,255,255,0.24)",
-      };
-
-    case "night":
-    default:
-      return {
-        shellTop: "rgba(220,235,255,0.16)",
-        shellBottom: "rgba(115,155,255,0.07)",
-        border: "rgba(220,235,255,0.24)",
-        textSub: "rgba(226,236,255,0.76)",
-        chevron: "rgba(230,238,255,0.78)",
-        iconTop: "rgba(170,205,255,0.28)",
-        iconBottom: "rgba(110,138,255,0.14)",
-        iconBorder: "rgba(225,236,255,0.34)",
-        glow: "rgba(120,155,255,0.18)",
-        sheen: "rgba(255,255,255,0.16)",
-      };
-  }
+function getTonePalette(_tone: TimeTone): TonePalette {
+  return {
+    shellTop: "rgba(10,35,62,0.80)",
+    shellBottom: "rgba(8,65,78,0.72)",
+    border: "rgba(185,235,255,0.36)",
+    textSub: "rgba(225,242,250,0.80)",
+    chevron: "rgba(230,247,255,0.88)",
+    iconTop: "rgba(190,235,255,0.25)",
+    iconBottom: "rgba(60,145,180,0.18)",
+    iconBorder: "rgba(210,245,255,0.38)",
+    glow: "rgba(100,220,235,0.16)",
+    sheen: "rgba(255,255,255,0.18)",
+  };
 }
 
 type Ripple = {
@@ -163,6 +117,7 @@ type SmartBtnProps = {
   fallbackLabel: string;
   fallbackSub?: string;
   fallbackIcon?: string;
+  accent: string;
   disabled?: boolean;
 };
 
@@ -174,6 +129,7 @@ function SmartButton({
   fallbackLabel,
   fallbackSub,
   fallbackIcon,
+  accent,
   disabled,
 }: SmartBtnProps) {
   const [failed, setFailed] = useState(false);
@@ -244,7 +200,7 @@ function SmartButton({
     WebkitBackdropFilter: "blur(16px) saturate(125%)",
     border: `1px solid ${palette.border}`,
     boxShadow: `
-      0 10px 24px rgba(0,0,0,0.14),
+      0 10px 26px rgba(0,20,38,0.24),
       0 0 0 1px rgba(255,255,255,0.04) inset,
       0 1px 0 rgba(255,255,255,0.18) inset
     `,
@@ -296,6 +252,20 @@ function SmartButton({
     zIndex: 1,
   };
 
+  const accentLineStyle: CSSProperties = {
+    position: "absolute",
+    left: 0,
+    top: 12,
+    bottom: 12,
+    width: 3,
+    borderRadius: "0 999px 999px 0",
+    background: accent,
+    boxShadow: `0 0 12px ${accent}`,
+    opacity: 0.88,
+    pointerEvents: "none",
+    zIndex: 2,
+  };
+
   const left: CSSProperties = {
     display: "flex",
     alignItems: "center",
@@ -321,7 +291,8 @@ function SmartButton({
     boxShadow: `
       inset 0 2px 7px rgba(255,255,255,0.34),
       inset 0 -4px 8px rgba(255,255,255,0.04),
-      0 4px 10px rgba(0,0,0,0.14)
+      0 4px 10px rgba(0,0,0,0.14),
+      0 0 16px ${accent}
     `,
   };
 
@@ -473,6 +444,7 @@ function SmartButton({
           </div>
 
           <div style={sheenLineStyle} aria-hidden="true" />
+          <div style={accentLineStyle} aria-hidden="true" />
 
           {ripples.map((r) => (
             <span
@@ -993,6 +965,7 @@ export default function Home({ go, goSecret }: Props) {
                         fallbackLabel={isMobile ? "記録" : "記録する"}
                         fallbackSub="写真/潮を保存"
                         fallbackIcon="📸"
+                        accent="rgba(255,145,196,0.72)"
                       />
 
                       <SmartButton
@@ -1003,6 +976,7 @@ export default function Home({ go, goSecret }: Props) {
                         fallbackLabel={isMobile ? "履歴" : "履歴をみる"}
                         fallbackSub="過去ログを確認"
                         fallbackIcon="🗃"
+                        accent="rgba(115,205,255,0.72)"
                       />
 
                       <SmartButton
@@ -1013,6 +987,7 @@ export default function Home({ go, goSecret }: Props) {
                         fallbackLabel={isMobile ? "分析" : "釣行分析"}
                         fallbackSub="相関/時間帯を掘る"
                         fallbackIcon="📊"
+                        accent="rgba(183,150,255,0.72)"
                       />
 
                       <SmartButton
@@ -1023,6 +998,7 @@ export default function Home({ go, goSecret }: Props) {
                         fallbackLabel={isMobile ? "タックル" : "タックル管理"}
                         fallbackSub="ロッド/リールを管理"
                         fallbackIcon="🎣"
+                        accent="rgba(92,225,191,0.72)"
                       />
 
                       <SmartButton
@@ -1033,6 +1009,7 @@ export default function Home({ go, goSecret }: Props) {
                         fallbackLabel={isMobile ? "天気" : "天気・潮をみる"}
                         fallbackSub="予報/タイド"
                         fallbackIcon="🌦"
+                        accent="rgba(95,175,255,0.72)"
                       />
 
                       <SmartButton
@@ -1043,6 +1020,7 @@ export default function Home({ go, goSecret }: Props) {
                         fallbackLabel="話す"
                         fallbackSub="つづりと作戦会議"
                         fallbackIcon="💬"
+                        accent="rgba(255,174,213,0.72)"
                       />
                     </div>
 
@@ -1055,6 +1033,7 @@ export default function Home({ go, goSecret }: Props) {
                         fallbackLabel="設定"
                         fallbackSub="表示/背景/ガラス"
                         fallbackIcon="⚙️"
+                        accent="rgba(205,223,235,0.68)"
                       />
                     </div>
                   </div>

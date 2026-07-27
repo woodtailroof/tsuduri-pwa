@@ -1464,7 +1464,17 @@ export default function Settings({ back }: Props) {
                   {loading ? "読み込み中…" : "キャッシュがまだ無いよ"}
                 </div>
               ) : (
-                <div style={{ display: "grid", gap: 10 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 10,
+                    maxHeight: isNarrow ? 360 : 430,
+                    overflowY: "auto",
+                    overscrollBehavior: "contain",
+                    paddingRight: 6,
+                    scrollbarGutter: "stable",
+                  }}
+                >
                   {entries.slice(0, 80).map((e) => {
                     const v = e as unknown as {
                       key: string;

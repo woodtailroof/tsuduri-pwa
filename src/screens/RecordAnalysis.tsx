@@ -154,6 +154,24 @@ function iconPath(characterId: string, characterName: string): string {
   return `/assets/character-icons/${encodeURIComponent(knownIconId)}.png`;
 }
 
+function characterOrder(characterId: string, characterName: string): number {
+  const identity = `${characterId} ${characterName}`.toLowerCase();
+
+  if (identity.includes("tsuduri") || identity.includes("つづり")) return 0;
+  if (identity.includes("matsuri") || identity.includes("まつり")) return 1;
+  if (identity.includes("kokoro") || identity.includes("こころ")) return 2;
+  if (identity.includes("lulu") || identity.includes("るる")) return 3;
+  return 99;
+}
+
+function sortAiComments(comments: AiCharacterComment[]): AiCharacterComment[] {
+  return [...comments].sort(
+    (a, b) =>
+      characterOrder(a.characterId, a.characterName) -
+      characterOrder(b.characterId, b.characterName),
+  );
+}
+
 const TIMEBANDS: Array<TripRecord["timeBand"]> = [
   "morning",
   "day",
@@ -1324,9 +1342,10 @@ export default function RecordAnalysis({ back }: Props) {
       cached.fingerprint === analysisFingerprint &&
       Array.isArray(cached.comments)
     ) {
-      setAiComments(cached.comments);
+      const sortedComments = sortAiComments(cached.comments);
+      setAiComments(sortedComments);
       setAiGeneratedAt(cached.generatedAt);
-      setSelectedAiCharacterId(cached.comments[0]?.characterId ?? "");
+      setSelectedAiCharacterId(sortedComments[0]?.characterId ?? "");
     } else {
       setAiComments([]);
       setAiGeneratedAt("");
@@ -1365,22 +1384,24 @@ export default function RecordAnalysis({ back }: Props) {
       }
 
       const byId = new Map(characters.map((character) => [character.id, character]));
-      const comments = json.comments.flatMap((item) => {
-        const character =
-          typeof item.characterId === "string"
-            ? byId.get(item.characterId)
-            : undefined;
-        const text = typeof item.text === "string" ? item.text.trim() : "";
-        if (!character || !text) return [];
-        return [
-          {
-            characterId: character.id,
-            characterName: character.name,
-            color: character.color || "#ff7aa2",
-            text,
-          },
-        ];
-      });
+      const comments = sortAiComments(
+        json.comments.flatMap((item) => {
+          const character =
+            typeof item.characterId === "string"
+              ? byId.get(item.characterId)
+              : undefined;
+          const text = typeof item.text === "string" ? item.text.trim() : "";
+          if (!character || !text) return [];
+          return [
+            {
+              characterId: character.id,
+              characterName: character.name,
+              color: character.color || "#ff7aa2",
+              text,
+            },
+          ];
+        }),
+      );
       if (comments.length === 0) {
         throw new Error("コメントを受け取れませんでした");
       }
@@ -1444,9 +1465,9 @@ export default function RecordAnalysis({ back }: Props) {
           position:relative; top:auto; align-self:start; display:grid;
           grid-template-columns:auto minmax(0,1fr); gap:14px 18px;
           min-width:0; max-width:100%; padding:20px; border-radius:22px;
-          border:1px solid rgba(255,153,195,.28);
-          background:linear-gradient(165deg,rgba(31,21,43,.94),rgba(8,19,34,.90));
-          box-shadow:0 18px 48px rgba(0,0,0,.22);
+          border:1px solid rgba(255,255,255,.14);
+          background:linear-gradient(145deg,rgba(17,28,46,.76),rgba(26,15,43,.66));
+          box-shadow:0 16px 40px rgba(0,0,0,.18);
         }
         .analysis-ai-sidebar h2 { grid-column:1/-1; margin:0; font-size:20px; }
         .analysis-ai-sidebar-note { grid-column:1/-1; margin:-8px 0 0; color:rgba(255,255,255,.58); font-size:11px; line-height:1.6; }
