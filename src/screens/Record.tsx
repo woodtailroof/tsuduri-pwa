@@ -291,6 +291,39 @@ export default function Record({ back, onSaved }: Props) {
     WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
   };
 
+  function coverStarStyle(selected: boolean): CSSProperties {
+    return {
+      width: 36,
+      height: 36,
+      padding: 0,
+      borderRadius: 999,
+      border: selected
+        ? "1px solid rgba(255,125,166,0.98)"
+        : "1px solid rgba(255,255,255,0.32)",
+      background: selected
+        ? "rgba(255,45,111,0.82)"
+        : "rgba(0,0,0,0.34)",
+      color: selected ? "#fff0f6" : "rgba(255,255,255,0.88)",
+      cursor: "pointer",
+      userSelect: "none",
+      lineHeight: 1,
+      display: "grid",
+      placeItems: "center",
+      fontSize: 23,
+      fontFamily: "inherit",
+      textShadow: selected
+        ? "0 0 7px rgba(255,255,255,0.95)"
+        : "0 2px 5px rgba(0,0,0,0.7)",
+      boxShadow: selected
+        ? "0 0 0 3px rgba(255,77,109,0.24), 0 0 18px rgba(255,45,111,0.95), 0 5px 12px rgba(0,0,0,0.28)"
+        : "0 4px 10px rgba(0,0,0,0.24)",
+      backdropFilter: "blur(var(--glass-blur,10px))",
+      WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+      transition:
+        "border-color 150ms ease, background 150ms ease, color 150ms ease, box-shadow 150ms ease, transform 150ms ease",
+    };
+  }
+
   const selectStyle: CSSProperties = {
     ...fieldStyle,
     padding: "8px 10px",
@@ -1144,18 +1177,27 @@ export default function Record({ back, onSaved }: Props) {
                               position: "absolute",
                               inset: 6,
                               display: "flex",
-                              gap: 6,
-                              justifyContent: "flex-end",
+                              justifyContent: "space-between",
                               alignItems: "flex-start",
                             }}
                           >
                             <button
                               type="button"
                               onClick={() => setCover(p.id)}
-                              style={pillBtnStyle}
-                              title="サムネ（表紙）にする"
+                              style={coverStarStyle(p.isCover)}
+                              title={
+                                p.isCover
+                                  ? "この写真が表紙です"
+                                  : "この写真を表紙にする"
+                              }
+                              aria-label={
+                                p.isCover
+                                  ? "表紙に選択中"
+                                  : "この写真を表紙にする"
+                              }
+                              aria-pressed={p.isCover}
                             >
-                              {p.isCover ? "★ 表紙" : "表紙"}
+                              {p.isCover ? "★" : "☆"}
                             </button>
                             <button
                               type="button"
