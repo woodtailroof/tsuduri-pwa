@@ -1,5 +1,11 @@
 // src/screens/Record.tsx
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type DragEvent,
+} from "react";
 import exifr from "exifr";
 import {
   db,
@@ -315,6 +321,7 @@ export default function Record({ back, onSaved }: Props) {
   const [reelId, setReelId] = useState<number | null>(null);
 
   const [saving, setSaving] = useState(false);
+  const [isPhotoDragActive, setIsPhotoDragActive] = useState(false);
 
   const [online, setOnline] = useState<boolean>(
     typeof navigator !== "undefined" ? navigator.onLine : true,
@@ -545,8 +552,10 @@ export default function Record({ back, onSaved }: Props) {
     fishRowsOk &&
     (baseCapturedAt != null || allowUnknown || photos.length === 0);
 
-  async function addFiles(files: FileList) {
-    const list = Array.from(files);
+  async function addFiles(files: FileList | File[]) {
+    const list = Array.from(files).filter((file) =>
+      file.type.startsWith("image/"),
+    );
     if (list.length === 0) return;
 
     const next: PhotoItem[] = [];
@@ -613,6 +622,38 @@ export default function Record({ back, onSaved }: Props) {
       }
       return merged;
     });
+  }
+
+  function handlePhotoDragOver(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+    setIsPhotoDragActive(true);
+  }
+
+  function handlePhotoDragLeave(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const nextTarget = e.relatedTarget;
+    if (nextTarget instanceof Node && e.currentTarget.contains(nextTarget)) {
+      return;
+    }
+
+    setIsPhotoDragActive(false);
+  }
+
+  async function handlePhotoDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsPhotoDragActive(false);
+
+    const imageFiles = Array.from(e.dataTransfer.files).filter((file) =>
+      file.type.startsWith("image/"),
+    );
+    if (imageFiles.length === 0) return;
+
+    await addFiles(imageFiles);
   }
 
   function setCover(id: string) {
@@ -890,10 +931,50 @@ export default function Record({ back, onSaved }: Props) {
           min-height: 0;
         }
 
+        .record-photo-dropzone {
+          display: none;
+        }
+
         .record-fish-grid {
           display: grid;
           gap: 8px;
           grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        }
+
+        @media (hover: hover) and (pointer: fine) {
+          .record-photo-dropzone {
+            min-height: 92px;
+            display: grid;
+            place-items: center;
+            padding: 14px;
+            border: 2px dashed rgba(255, 255, 255, 0.28);
+            border-radius: 14px;
+            background: rgba(0, 0, 0, 0.16);
+            color: rgba(255, 255, 255, 0.72);
+            text-align: center;
+            font-size: 13px;
+            line-height: 1.55;
+            cursor: copy;
+            transition:
+              border-color 160ms ease,
+              background 160ms ease,
+              color 160ms ease,
+              box-shadow 160ms ease,
+              transform 160ms ease;
+            box-sizing: border-box;
+            backdrop-filter: blur(var(--glass-blur, 10px));
+            -webkit-backdrop-filter: blur(var(--glass-blur, 10px));
+          }
+
+          .record-photo-dropzone.is-drag-active {
+            border-color: rgba(255, 77, 109, 0.95);
+            background: rgba(255, 77, 109, 0.16);
+            color: #fff;
+            box-shadow:
+              0 0 0 3px rgba(255, 77, 109, 0.16),
+              0 10px 28px rgba(0, 0, 0, 0.22);
+            transform: translateY(-1px);
+          }
         }
 
         @media (min-width: 760px) and (max-width: 1179px) {
@@ -1004,6 +1085,37 @@ export default function Record({ back, onSaved }: Props) {
                     />
                   </div>
                 </label>
+
+                <div
+                  className={`record-photo-dropzone${isPhotoDragActive ? " is-drag-active" : ""}`}
+                  onDragEnter={handlePhotoDragOver}
+                  onDragOver={handlePhotoDragOver}
+                  onDragLeave={handlePhotoDragLeave}
+                  onDrop={(e) => {
+                    void handlePhotoDrop(e);
+                  }}
+                  aria-label="写真のドロップゾーン"
+                >
+                  <div>
+                    <div style={{ fontSize: 24, marginBottom: 4 }}>📥</div>
+                    <strong>
+                      {isPhotoDragActive
+                        ? "ここにドロップ！"
+                        : "写真をここにドラッグ＆ドロップ"}
+                    </strong>
+                    <div
+                      style={{
+                        marginTop: 3,
+                        fontSize: 11,
+                        color: isPhotoDragActive
+                          ? "rgba(255,255,255,0.86)"
+                          : "rgba(255,255,255,0.50)",
+                      }}
+                    >
+                      複数枚まとめて追加できるよ
+                    </div>
+                  </div>
+                </div>
 
                 {photos.length === 0 ? (
                   <div
