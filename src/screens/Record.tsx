@@ -90,6 +90,7 @@ const LURE_OPTIONS: Array<{ value: LureType; label: string }> = [
   { value: "worm", label: "ワーム" },
   { value: "blade", label: "ブレード" },
   { value: "bigbait", label: "ビッグベイト" },
+  { value: "egi", label: "エギ" },
   { value: "sabiki", label: "サビキ" },
   { value: "bait", label: "エサ釣り" },
   { value: "other", label: "その他" },

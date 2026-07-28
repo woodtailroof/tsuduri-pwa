@@ -209,6 +209,7 @@ const LURE_LABEL: Record<LureType, string> = {
   worm: "ワーム",
   blade: "ブレード",
   bigbait: "ビッグベイト",
+  egi: "エギ",
   sabiki: "サビキ",
   bait: "エサ釣り",
   other: "その他",
@@ -264,6 +265,7 @@ function normalizeLureType(value: DbLureType | null | undefined): LureType {
     value === "worm" ||
     value === "blade" ||
     value === "bigbait" ||
+    value === "egi" ||
     value === "sabiki" ||
     value === "bait" ||
     value === "other"
@@ -1161,6 +1163,19 @@ export default function RecordAnalysis({ back }: Props) {
   }, [patterns]);
 
   const characterComments = useMemo<CharacterComment[]>(() => {
+    const configuredCharacters = loadCharacters();
+    const accentFor = (
+      id: CharacterComment["id"],
+      name: string,
+      fallback: string,
+    ) => {
+      const character = configuredCharacters.find((item) => {
+        const identity = `${item.id} ${item.name}`.toLowerCase();
+        return identity.includes(id) || identity.includes(name);
+      });
+      const color = character?.color?.trim();
+      return color && /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
+    };
     const bestTime = timeStats[0];
     const bestTackle = [...tackleInsights.rods, ...tackleInsights.reels].sort(
       (a, b) =>
@@ -1175,7 +1190,7 @@ export default function RecordAnalysis({ back }: Props) {
           name: "つづり",
           role: "総合成績",
           mark: "つ",
-          accent: "#ff87b6",
+          accent: accentFor("tsuduri", "つづり", "#ff87b6"),
           text: "最初の一投は、まだ真っ白な海の向こう。記録が入ったら一緒に勝ち筋を見つけようね、ひろっち。",
         },
         {
@@ -1183,7 +1198,7 @@ export default function RecordAnalysis({ back }: Props) {
           name: "まつり",
           role: "勝ちパターン",
           mark: "ま",
-          accent: "#a995ff",
+          accent: accentFor("matsuri", "まつり", "#a995ff"),
           text: "時間帯と潮の動きまで残してくれたら、アタシが好機をズバッと暴いてあげる！",
         },
         {
@@ -1191,7 +1206,7 @@ export default function RecordAnalysis({ back }: Props) {
           name: "こころ",
           role: "魚種・サイズ",
           mark: "こ",
-          accent: "#ffb57a",
+          accent: accentFor("kokoro", "こころ", "#ffb57a"),
           text: "魚種やサイズは分かる範囲だけで大丈夫。少しずつ積み重ねれば、ちゃんと大切な記録になるよ。",
         },
         {
@@ -1199,7 +1214,7 @@ export default function RecordAnalysis({ back }: Props) {
           name: "るる",
           role: "タックル・検証",
           mark: "る",
-          accent: "#72d7ff",
+          accent: accentFor("lulu", "るる", "#72d7ff"),
           text: "使ったロッドとリールも選んでおくと、ひろっちの頼れる相棒が見えてくるよ。るるも一緒に探すね！",
         },
       ];
@@ -1237,7 +1252,7 @@ export default function RecordAnalysis({ back }: Props) {
         name: "つづり",
         role: "総合成績",
         mark: "つ",
-        accent: "#ff87b6",
+        accent: accentFor("tsuduri", "つづり", "#ff87b6"),
         text: tsuduriText,
       },
       {
@@ -1245,7 +1260,7 @@ export default function RecordAnalysis({ back }: Props) {
         name: "まつり",
         role: "勝ちパターン",
         mark: "ま",
-        accent: "#a995ff",
+        accent: accentFor("matsuri", "まつり", "#a995ff"),
         text: matsuriText,
       },
       {
@@ -1253,7 +1268,7 @@ export default function RecordAnalysis({ back }: Props) {
         name: "こころ",
         role: "魚種・サイズ",
         mark: "こ",
-        accent: "#ffb57a",
+        accent: accentFor("kokoro", "こころ", "#ffb57a"),
         text: kokoroText,
       },
       {
@@ -1261,7 +1276,7 @@ export default function RecordAnalysis({ back }: Props) {
         name: "るる",
         role: "タックル・検証",
         mark: "る",
-        accent: "#72d7ff",
+        accent: accentFor("lulu", "るる", "#72d7ff"),
         text: luluText,
       },
     ];

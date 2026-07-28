@@ -232,6 +232,7 @@ function normalizeLureLabel(raw: string): string {
     sinking_pencil: "シンペン",
     bigbait: "ビッグベイト",
     big_bait: "ビッグベイト",
+    egi: "エギ",
     sabiki: "サビキ",
     bait: "エサ釣り",
     sinking_minnow: "シンキングミノー",

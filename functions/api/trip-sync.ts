@@ -27,6 +27,7 @@ type TripSyncRecord = {
     | "worm"
     | "blade"
     | "bigbait"
+    | "egi"
     | "sabiki"
     | "bait"
     | "other"
@@ -81,6 +82,7 @@ type TripSyncFish = {
     | "worm"
     | "blade"
     | "bigbait"
+    | "egi"
     | "sabiki"
     | "bait"
     | "other"
@@ -181,12 +183,11 @@ function badRequest(message: string) {
   return json({ ok: false, error: message }, { status: 400 });
 }
 
-function serverError(message: string) {
+function serverError(_message: string) {
   return json(
     {
       ok: false,
       error: "sync_internal_error",
-      detail: message,
     },
     { status: 500 },
   );
