@@ -680,7 +680,7 @@ export default function Home({ go, goSecret }: Props) {
         @media (max-width:720px){
           .home-inner{
             padding:0 6px 8px;
-            gap:18px;
+            gap:clamp(42px, 5.5vh, 68px);
           }
           .home-safe-logo{ padding-right:0; }
         }
