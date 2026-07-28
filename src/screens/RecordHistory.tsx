@@ -232,6 +232,8 @@ function normalizeLureLabel(raw: string): string {
     sinking_pencil: "シンペン",
     bigbait: "ビッグベイト",
     big_bait: "ビッグベイト",
+    sabiki: "サビキ",
+    bait: "エサ釣り",
     sinking_minnow: "シンキングミノー",
     floating_minnow: "フローティングミノー",
     suspending_minnow: "サスペンドミノー",
@@ -1619,7 +1621,7 @@ export default function RecordHistory({ back }: Props) {
         </div>
 
         <div className="glass glass-strong" style={detailCardStyle}>
-          <div style={{ fontWeight: 900 }}>🪤 使用したルアー</div>
+          <div style={{ fontWeight: 900 }}>🪤 使用したルアー・釣法</div>
 
           {lureLines.length > 0 ? (
             <div style={{ display: "grid", gap: 8 }}>
@@ -1642,7 +1644,7 @@ export default function RecordHistory({ back }: Props) {
             </div>
           ) : (
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-              ルアー情報なし
+              ルアー・釣法情報なし
             </div>
           )}
         </div>

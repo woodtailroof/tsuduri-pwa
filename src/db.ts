@@ -21,6 +21,8 @@ export type LureType =
   | "worm"
   | "blade"
   | "bigbait"
+  | "sabiki"
+  | "bait"
   | "other";
 
 /* =========================
