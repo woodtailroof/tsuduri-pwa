@@ -650,7 +650,7 @@ export default function Home({ go, goSecret }: Props) {
         @media (max-width:720px){
           .home-fit{
             place-items:start center;
-            padding-top: calc(max(12px, env(safe-area-inset-top)) + 2px);
+            padding-top: calc(max(12px, env(safe-area-inset-top)) + 22px);
           }
         }
 
@@ -680,7 +680,7 @@ export default function Home({ go, goSecret }: Props) {
         @media (max-width:720px){
           .home-inner{
             padding:0 6px 8px;
-            gap:clamp(42px, 5.5vh, 68px);
+            gap:clamp(68px, 8vh, 88px);
           }
           .home-safe-logo{ padding-right:0; }
         }
@@ -713,7 +713,7 @@ export default function Home({ go, goSecret }: Props) {
         }
         @media (max-width:720px){
           .home-logo-box{
-            width:min(89vw, 570px);
+            width:min(86vw, 550px);
             margin:0 auto;
           }
         }
@@ -781,9 +781,9 @@ export default function Home({ go, goSecret }: Props) {
 
         @media (max-width:720px){
           .home-actions-scale{
-            width:min(47vw, 320px);
+            width:min(43vw, 290px);
             justify-content:stretch;
-            margin-left:max(18px, env(safe-area-inset-left));
+            margin-left:max(14px, env(safe-area-inset-left));
             padding:0;
             transform-origin:top left;
             --gapy:clamp(5px, 0.7vh, 7px);
