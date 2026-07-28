@@ -7,7 +7,13 @@ import {
   type ReactNode,
 } from "react";
 import PageShell from "../components/PageShell";
-import { db, type TripFish, type TripRecord, type TackleItem } from "../db";
+import {
+  db,
+  type LureType as DbLureType,
+  type TripFish,
+  type TripRecord,
+  type TackleItem,
+} from "../db";
 import { getTimeBand } from "../lib/timeband";
 import {
   CHARACTERS_STORAGE_KEY,
@@ -18,16 +24,7 @@ type Props = {
   back: () => void;
 };
 
-type LureType =
-  | "metaljig"
-  | "minnow"
-  | "sinkingpencil"
-  | "top"
-  | "worm"
-  | "blade"
-  | "bigbait"
-  | "other"
-  | "unknown";
+type LureType = DbLureType | "unknown";
 
 type JoinedTrip = {
   id: number;
@@ -43,6 +40,7 @@ type JoinedTrip = {
   reelId: number | null;
   rodUid: string | null;
   reelUid: string | null;
+  lureType: LureType;
 };
 
 type JoinedFish = {
@@ -154,6 +152,24 @@ function iconPath(characterId: string, characterName: string): string {
   return `/assets/character-icons/${encodeURIComponent(knownIconId)}.png`;
 }
 
+function characterOrder(characterId: string, characterName: string): number {
+  const identity = `${characterId} ${characterName}`.toLowerCase();
+
+  if (identity.includes("tsuduri") || identity.includes("つづり")) return 0;
+  if (identity.includes("matsuri") || identity.includes("まつり")) return 1;
+  if (identity.includes("kokoro") || identity.includes("こころ")) return 2;
+  if (identity.includes("lulu") || identity.includes("るる")) return 3;
+  return 99;
+}
+
+function sortAiComments(comments: AiCharacterComment[]): AiCharacterComment[] {
+  return [...comments].sort(
+    (a, b) =>
+      characterOrder(a.characterId, a.characterName) -
+      characterOrder(b.characterId, b.characterName),
+  );
+}
+
 const TIMEBANDS: Array<TripRecord["timeBand"]> = [
   "morning",
   "day",
@@ -193,6 +209,8 @@ const LURE_LABEL: Record<LureType, string> = {
   worm: "ワーム",
   blade: "ブレード",
   bigbait: "ビッグベイト",
+  sabiki: "サビキ",
+  bait: "エサ釣り",
   other: "その他",
   unknown: "不明",
 };
@@ -237,8 +255,7 @@ function labelTrend(value: TripRecord["tideTrend"] | null | undefined) {
   return "不明";
 }
 
-function getLureType(fish: TripFish): LureType {
-  const value = fish.lureType;
+function normalizeLureType(value: DbLureType | null | undefined): LureType {
   if (
     value === "metaljig" ||
     value === "minnow" ||
@@ -247,11 +264,17 @@ function getLureType(fish: TripFish): LureType {
     value === "worm" ||
     value === "blade" ||
     value === "bigbait" ||
+    value === "sabiki" ||
+    value === "bait" ||
     value === "other"
   ) {
     return value;
   }
   return "unknown";
+}
+
+function getLureType(fish: TripFish): LureType {
+  return normalizeLureType(fish.lureType);
 }
 
 function getFishCount(count: number | null | undefined) {
@@ -717,6 +740,7 @@ export default function RecordAnalysis({ back }: Props) {
           typeof trip.reelUid === "string" && trip.reelUid.trim()
             ? trip.reelUid
             : null,
+        lureType: normalizeLureType(trip.lureType),
       })),
     [trips],
   );
@@ -753,6 +777,33 @@ export default function RecordAnalysis({ back }: Props) {
   ).length;
   const totalFish = joinedFish.reduce((sum, row) => sum + row.count, 0);
   const catchRate = safeRate(caughtTrips, totalTrips);
+
+  const lureInsights = useMemo(() => {
+    const map = new Map<
+      LureType,
+      { lureType: LureType; total: number; caught: number }
+    >();
+    joinedTrips.forEach((trip) => {
+      if (trip.lureType === "unknown") return;
+      const current = map.get(trip.lureType) ?? {
+        lureType: trip.lureType,
+        total: 0,
+        caught: 0,
+      };
+      current.total += 1;
+      if (trip.outcome === "caught") current.caught += 1;
+      map.set(trip.lureType, current);
+    });
+    return Array.from(map.values())
+      .map((row) => ({
+        ...row,
+        label: LURE_LABEL[row.lureType],
+        rate: safeRate(row.caught, row.total),
+        score: wilsonLower(row.caught, row.total),
+      }))
+      .sort((a, b) => b.score - a.score || b.total - a.total)
+      .slice(0, limitTop);
+  }, [joinedTrips, limitTop]);
   const uniqueSpecies = new Set(joinedFish.map((row) => row.species)).size;
   const measuredFish = joinedFish.filter(
     (row) => row.sizeCm != null && row.sizeCm > 0,
@@ -1149,7 +1200,7 @@ export default function RecordAnalysis({ back }: Props) {
           role: "タックル・検証",
           mark: "る",
           accent: "#72d7ff",
-          text: "使ったロッドとリールも選んでおくと、ひろっち様の頼れる相棒が見えてまいりますよ♪",
+          text: "使ったロッドとリールも選んでおくと、ひろっちの頼れる相棒が見えてくるよ。るるも一緒に探すね！",
         },
       ];
     }
@@ -1177,8 +1228,8 @@ export default function RecordAnalysis({ back }: Props) {
           : `${uniqueSpecies}魚種・${totalFish}匹まで育ったね。次からサイズも少し残せると、成長の輪郭がもっときれいに見えるよ。`;
 
     const luluText = bestTackle
-      ? `${bestTackle.label}は使用${bestTackle.useCount}回、キャッチ率${fmtPct(bestTackle.rate)}。まだ暫定でも、頼れる武器候補として注目です♪`
-      : `${mission.title}が次の検証候補です。タックルも一緒に記録すれば、るるが“勝てる組み合わせ”までお仕立てしますね♪`;
+      ? `${bestTackle.label}は使用${bestTackle.useCount}回、キャッチ率${fmtPct(bestTackle.rate)}！ まだ暫定だけど、頼れる武器候補として覚えておこうね。`
+      : `${mission.title}が次の検証候補だね。タックルも一緒に記録すれば、“勝てる組み合わせ”までるるが探し出すよ！`;
 
     return [
       {
@@ -1324,9 +1375,10 @@ export default function RecordAnalysis({ back }: Props) {
       cached.fingerprint === analysisFingerprint &&
       Array.isArray(cached.comments)
     ) {
-      setAiComments(cached.comments);
+      const sortedComments = sortAiComments(cached.comments);
+      setAiComments(sortedComments);
       setAiGeneratedAt(cached.generatedAt);
-      setSelectedAiCharacterId(cached.comments[0]?.characterId ?? "");
+      setSelectedAiCharacterId(sortedComments[0]?.characterId ?? "");
     } else {
       setAiComments([]);
       setAiGeneratedAt("");
@@ -1365,22 +1417,24 @@ export default function RecordAnalysis({ back }: Props) {
       }
 
       const byId = new Map(characters.map((character) => [character.id, character]));
-      const comments = json.comments.flatMap((item) => {
-        const character =
-          typeof item.characterId === "string"
-            ? byId.get(item.characterId)
-            : undefined;
-        const text = typeof item.text === "string" ? item.text.trim() : "";
-        if (!character || !text) return [];
-        return [
-          {
-            characterId: character.id,
-            characterName: character.name,
-            color: character.color || "#ff7aa2",
-            text,
-          },
-        ];
-      });
+      const comments = sortAiComments(
+        json.comments.flatMap((item) => {
+          const character =
+            typeof item.characterId === "string"
+              ? byId.get(item.characterId)
+              : undefined;
+          const text = typeof item.text === "string" ? item.text.trim() : "";
+          if (!character || !text) return [];
+          return [
+            {
+              characterId: character.id,
+              characterName: character.name,
+              color: character.color || "#ff7aa2",
+              text,
+            },
+          ];
+        }),
+      );
       if (comments.length === 0) {
         throw new Error("コメントを受け取れませんでした");
       }
@@ -1423,7 +1477,7 @@ export default function RecordAnalysis({ back }: Props) {
         </h1>
       }
       titleLayout="left"
-      maxWidth={1280}
+      maxWidth={1320}
       showBack
       onBack={back}
       scrollY="auto"
@@ -1438,20 +1492,21 @@ export default function RecordAnalysis({ back }: Props) {
         }
         .analysis-toolbar button { cursor:pointer; }
         .analysis-toolbar button:disabled { opacity:.5; cursor:not-allowed; }
-        .analysis-stage { display:grid; grid-template-columns:260px minmax(0,1fr); gap:14px; align-items:start; }
+        .analysis-stage { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; align-items:start; }
         .analysis-main { display:grid; gap:14px; min-width:0; }
         .analysis-ai-sidebar {
-          position:relative; top:auto; align-self:start; display:grid; gap:12px;
-          min-width:0; max-width:100%; padding:14px; border-radius:22px;
-          border:1px solid rgba(255,153,195,.28);
-          background:linear-gradient(165deg,rgba(31,21,43,.94),rgba(8,19,34,.90));
-          box-shadow:0 18px 48px rgba(0,0,0,.22);
+          position:relative; top:auto; align-self:start; display:grid;
+          grid-template-columns:auto minmax(0,1fr); gap:14px 18px;
+          min-width:0; max-width:100%; padding:20px; border-radius:22px;
+          border:1px solid rgba(255,255,255,.14);
+          background:linear-gradient(145deg,rgba(17,28,46,.76),rgba(26,15,43,.66));
+          box-shadow:0 16px 40px rgba(0,0,0,.18);
         }
-        .analysis-ai-sidebar h2 { margin:0; font-size:15px; }
-        .analysis-ai-sidebar-note { margin:-6px 0 0; color:rgba(255,255,255,.52); font-size:9px; line-height:1.5; }
-        .analysis-ai-tabs { display:flex; gap:8px; flex-wrap:wrap; }
+        .analysis-ai-sidebar h2 { grid-column:1/-1; margin:0; font-size:20px; }
+        .analysis-ai-sidebar-note { grid-column:1/-1; margin:-8px 0 0; color:rgba(255,255,255,.58); font-size:11px; line-height:1.6; }
+        .analysis-ai-tabs { display:flex; gap:12px; flex-wrap:wrap; align-content:start; }
         .analysis-ai-tab {
-          width:48px; height:48px; padding:0; overflow:hidden; border-radius:50%; cursor:pointer;
+          position:relative; width:82px; height:82px; padding:0; overflow:hidden; border-radius:50%; cursor:pointer;
           border:2px solid color-mix(in srgb,var(--ai-accent) 55%,transparent);
           background:color-mix(in srgb,var(--ai-accent) 18%,rgba(12,20,34,.9));
           color:#fff; font-weight:900;
@@ -1461,15 +1516,16 @@ export default function RecordAnalysis({ back }: Props) {
           box-shadow:0 0 0 3px color-mix(in srgb,var(--ai-accent) 20%,transparent);
           transform:translateY(-2px);
         }
-        .analysis-ai-tab img { width:100%; height:100%; object-fit:cover; display:block; }
+        .analysis-ai-tab img { position:absolute; inset:0; z-index:2; width:100%; height:100%; object-fit:cover; display:block; }
+        .analysis-ai-tab span { position:relative; z-index:1; font-size:20px; }
         .analysis-ai-bubble {
-          position:relative; min-height:118px; padding:12px; border-radius:16px;
+          position:relative; min-height:132px; padding:18px; border-radius:18px;
           border:1px solid color-mix(in srgb,var(--ai-accent) 32%,transparent);
           background:color-mix(in srgb,var(--ai-accent) 9%,rgba(255,255,255,.035));
         }
-        .analysis-ai-bubble strong { display:block; margin-bottom:7px; color:var(--ai-accent); font-size:12px; }
-        .analysis-ai-bubble p { margin:0; color:rgba(255,255,255,.84); font-size:11px; line-height:1.78; white-space:pre-wrap; }
-        .analysis-ai-time { color:rgba(255,255,255,.38); font-size:8px; }
+        .analysis-ai-bubble strong { display:block; margin-bottom:9px; color:var(--ai-accent); font-size:15px; }
+        .analysis-ai-bubble p { margin:0; color:rgba(255,255,255,.88); font-size:14px; line-height:1.8; white-space:pre-wrap; }
+        .analysis-ai-time { grid-column:1/-1; color:rgba(255,255,255,.42); font-size:10px; }
         .analysis-ai-error { color:#ff9dad; font-size:10px; line-height:1.5; }
         .analysis-dashboard { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr); gap:14px; }
         .analysis-grid-2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
@@ -1579,9 +1635,12 @@ export default function RecordAnalysis({ back }: Props) {
           .analysis-voice-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
         }
         @media (max-width:620px) {
-          .analysis-ai-tabs { flex-wrap:nowrap; overflow-x:auto; padding:3px; scrollbar-width:none; }
+          .analysis-ai-sidebar { grid-template-columns:1fr; padding:16px; }
+          .analysis-ai-tabs { grid-column:1; flex-wrap:nowrap; overflow-x:auto; padding:3px; scrollbar-width:none; }
           .analysis-ai-tabs::-webkit-scrollbar { display:none; }
-          .analysis-ai-tab { flex:0 0 52px; width:52px; height:52px; }
+          .analysis-ai-tab { flex:0 0 66px; width:66px; height:66px; }
+          .analysis-ai-bubble { min-height:132px; padding:14px; }
+          .analysis-ai-bubble p { font-size:13px; }
           .analysis-hero { grid-template-columns:1fr; text-align:center; }
           .analysis-grade { width:132px; margin:auto; }
           .analysis-score-copy p { text-align:left; }
@@ -1633,63 +1692,7 @@ export default function RecordAnalysis({ back }: Props) {
         {error && <div className="analysis-error">読み込みエラー：{error}</div>}
         {aiError && <div className="analysis-error">コメント生成エラー：{aiError}</div>}
 
-        <div
-          className="analysis-stage"
-          style={
-            aiComments.length === 0
-              ? { gridTemplateColumns: "minmax(0,1fr)" }
-              : undefined
-          }
-        >
-        {aiComments.length > 0 && selectedAiComment && (
-          <aside className="analysis-ai-sidebar" aria-label="みんなのGPTコメント">
-            <h2>✨ 釣嫁評議会</h2>
-            <p className="analysis-ai-sidebar-note">
-              アイコンを選ぶと、それぞれのコメントを読めるよ
-            </p>
-            <div className="analysis-ai-tabs">
-              {aiComments.map((comment) => (
-                <button
-                  type="button"
-                  className="analysis-ai-tab"
-                  key={comment.characterId}
-                  data-active={comment.characterId === selectedAiComment.characterId}
-                  aria-label={`${comment.characterName}のコメント`}
-                  onClick={() => setSelectedAiCharacterId(comment.characterId)}
-                  style={
-                    { "--ai-accent": comment.color } as CSSProperties
-                  }
-                >
-                  <img
-                    src={iconPath(
-                      comment.characterId,
-                      comment.characterName,
-                    )}
-                    alt=""
-                    onError={(event) => {
-                      event.currentTarget.style.display = "none";
-                    }}
-                  />
-                  <span>{comment.characterName.slice(0, 1)}</span>
-                </button>
-              ))}
-            </div>
-            <div
-              className="analysis-ai-bubble"
-              style={
-                { "--ai-accent": selectedAiComment.color } as CSSProperties
-              }
-            >
-              <strong>{selectedAiComment.characterName}</strong>
-              <p>{selectedAiComment.text}</p>
-            </div>
-            {aiGeneratedAt && (
-              <div className="analysis-ai-time">
-                {new Date(aiGeneratedAt).toLocaleString("ja-JP")} に生成
-              </div>
-            )}
-          </aside>
-        )}
+        <div className="analysis-stage">
         <div className="analysis-main">
         <div className="analysis-dashboard">
           <Panel
@@ -1796,6 +1799,56 @@ export default function RecordAnalysis({ back }: Props) {
             ))}
           </div>
         </Panel>
+
+        {aiComments.length > 0 && selectedAiComment && (
+          <aside className="analysis-ai-sidebar" aria-label="みんなのGPTコメント">
+            <h2>✨ 釣嫁評議会</h2>
+            <p className="analysis-ai-sidebar-note">
+              アイコンを選ぶと、それぞれのコメントを読めるよ
+            </p>
+            <div className="analysis-ai-tabs">
+              {aiComments.map((comment) => (
+                <button
+                  type="button"
+                  className="analysis-ai-tab"
+                  key={comment.characterId}
+                  data-active={comment.characterId === selectedAiComment.characterId}
+                  aria-label={`${comment.characterName}のコメント`}
+                  onClick={() => setSelectedAiCharacterId(comment.characterId)}
+                  style={
+                    { "--ai-accent": comment.color } as CSSProperties
+                  }
+                >
+                  <img
+                    src={iconPath(
+                      comment.characterId,
+                      comment.characterName,
+                    )}
+                    alt=""
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                    }}
+                  />
+                  <span>{comment.characterName.slice(0, 1)}</span>
+                </button>
+              ))}
+            </div>
+            <div
+              className="analysis-ai-bubble"
+              style={
+                { "--ai-accent": selectedAiComment.color } as CSSProperties
+              }
+            >
+              <strong>{selectedAiComment.characterName}</strong>
+              <p>{selectedAiComment.text}</p>
+            </div>
+            {aiGeneratedAt && (
+              <div className="analysis-ai-time">
+                {new Date(aiGeneratedAt).toLocaleString("ja-JP")} に生成
+              </div>
+            )}
+          </aside>
+        )}
 
         <div className="analysis-grid-2">
           <Panel
@@ -1930,6 +1983,31 @@ export default function RecordAnalysis({ back }: Props) {
             </div>
           </Panel>
         </div>
+
+        <Panel
+          title="ルアー・釣法別戦績"
+          icon="🪤"
+          note="使用回数にはボウズも含みます"
+        >
+          {lureInsights.length === 0 ? (
+            <div className="analysis-empty">
+              使用したルアー・釣法を記録すると戦績が育つよ
+            </div>
+          ) : (
+            <div className="analysis-bar-list">
+              {lureInsights.map((row) => (
+                <BarRow
+                  key={row.lureType}
+                  label={row.label}
+                  value={row.rate}
+                  max={1}
+                  text={`${fmtPct(row.rate)} (${row.caught}/${row.total}釣行)`}
+                  color="#ff70aa"
+                />
+              ))}
+            </div>
+          )}
+        </Panel>
 
         <Panel
           title="魚種別 攻略カルテ"

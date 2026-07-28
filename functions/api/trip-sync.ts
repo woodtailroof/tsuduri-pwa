@@ -27,6 +27,8 @@ type TripSyncRecord = {
     | "worm"
     | "blade"
     | "bigbait"
+    | "sabiki"
+    | "bait"
     | "other"
     | null;
 
@@ -79,6 +81,8 @@ type TripSyncFish = {
     | "worm"
     | "blade"
     | "bigbait"
+    | "sabiki"
+    | "bait"
     | "other"
     | null;
 

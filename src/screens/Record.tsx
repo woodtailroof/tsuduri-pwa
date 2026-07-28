@@ -90,6 +90,8 @@ const LURE_OPTIONS: Array<{ value: LureType; label: string }> = [
   { value: "worm", label: "ワーム" },
   { value: "blade", label: "ブレード" },
   { value: "bigbait", label: "ビッグベイト" },
+  { value: "sabiki", label: "サビキ" },
+  { value: "bait", label: "エサ釣り" },
   { value: "other", label: "その他" },
 ];
 
@@ -341,6 +343,7 @@ export default function Record({ back, onSaved }: Props) {
   const [allowUnknown, setAllowUnknown] = useState(false);
 
   const [outcome, setOutcome] = useState<TripOutcome>("skunk");
+  const [skunkLureType, setSkunkLureType] = useState<LureType | "">("");
   const [memo, setMemo] = useState("");
 
   const [spotType, setSpotType] = useState<SpotType>("port");
@@ -495,6 +498,7 @@ export default function Record({ back, onSaved }: Props) {
     setAllowUnknown(false);
 
     setOutcome("skunk");
+    setSkunkLureType("");
     setMemo("");
 
     setSpotType("port");
@@ -739,7 +743,7 @@ export default function Record({ back, onSaved }: Props) {
       const primaryLure =
         outcome === "caught"
           ? (fishDrafts.find((f) => f.lureType !== "")?.lureType ?? null)
-          : null;
+          : skunkLureType || null;
 
       const selectedRod = rodId != null ? (tackleMap.get(rodId) ?? null) : null;
       const selectedReel =
@@ -1765,7 +1769,7 @@ export default function Record({ back, onSaved }: Props) {
                                   gap: 6,
                                 }}
                               >
-                                ルアー
+                                ルアー・釣法
                                 <select
                                   value={f.lureType}
                                   onChange={(e) =>
@@ -1867,6 +1871,34 @@ export default function Record({ back, onSaved }: Props) {
                         </button>
                       </div>
                     </div>
+                  )}
+
+                  {outcome === "skunk" && (
+                    <label
+                      style={{
+                        marginTop: 12,
+                        fontSize: 12,
+                        color: "rgba(255,255,255,0.72)",
+                        display: "grid",
+                        gap: 6,
+                      }}
+                    >
+                      使用したルアー・釣法（任意）
+                      <select
+                        value={skunkLureType}
+                        onChange={(e) =>
+                          setSkunkLureType(e.target.value as LureType | "")
+                        }
+                        style={selectStyle}
+                      >
+                        <option value="">未選択</option>
+                        {LURE_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   )}
                 </div>
               </div>
