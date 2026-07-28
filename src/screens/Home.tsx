@@ -460,8 +460,12 @@ function SmartButton({
             />
           ))}
 
-          <div style={left}>
-            <div style={iconWrapStyle} aria-hidden="true">
+          <div style={left} className="home-btn-main">
+            <div
+              style={iconWrapStyle}
+              className="home-btn-icon"
+              aria-hidden="true"
+            >
               <div style={iconBubbleStyle}>
                 <div style={iconBubble1Style} />
                 <div style={iconBubble2Style} />
@@ -477,7 +481,7 @@ function SmartButton({
             </div>
           </div>
 
-          <div style={chevron} aria-hidden="true">
+          <div style={chevron} className="home-btn-chevron" aria-hidden="true">
             ▶
           </div>
         </div>
@@ -646,7 +650,7 @@ export default function Home({ go, goSecret }: Props) {
         @media (max-width:720px){
           .home-fit{
             place-items:start center;
-            --home-top-nudge:-10px;
+            --home-top-nudge:-4px;
             padding-top: calc(max(2px, env(safe-area-inset-top)) + var(--home-top-nudge));
           }
         }
@@ -675,6 +679,10 @@ export default function Home({ go, goSecret }: Props) {
           min-width:0;
         }
         @media (max-width:720px){
+          .home-inner{
+            padding:4px 6px 8px;
+            gap:8px;
+          }
           .home-safe-logo{ padding-right:0; }
         }
 
@@ -706,7 +714,7 @@ export default function Home({ go, goSecret }: Props) {
         }
         @media (max-width:720px){
           .home-logo-box{
-            width:min(96vw, 620px);
+            width:min(89vw, 570px);
             margin:0 auto;
           }
         }
@@ -743,7 +751,10 @@ export default function Home({ go, goSecret }: Props) {
           min-width:0;
         }
         @media (max-width:720px){
-          .home-safe-actions{ padding-right:50vw; }
+          .home-safe-actions{
+            padding-right:47vw;
+            margin-top:-2px;
+          }
         }
 
         .home-actions-scale{
@@ -770,17 +781,42 @@ export default function Home({ go, goSecret }: Props) {
 
         @media (max-width:720px){
           .home-actions-scale{
-            width:min(48vw, 320px);
+            width:min(50vw, 320px);
             justify-content:center;
-            padding-left:max(8px, env(safe-area-inset-left));
-            padding-right:8px;
-            transform:scale(0.92);
+            padding-left:max(10px, env(safe-area-inset-left));
+            padding-right:4px;
             transform-origin:top center;
-            --gapy:clamp(4px, 0.65vh, 8px);
+            --gapy:clamp(5px, 0.7vh, 7px);
             --btnw:100%;
           }
           .home-grid{ justify-items:center; }
           .home-settings{ justify-items:center; }
+
+          .home-fallback-btn{
+            min-height:66px !important;
+            padding:9px 11px !important;
+            border-radius:18px !important;
+            gap:8px !important;
+          }
+
+          .home-btn-main{
+            gap:9px !important;
+          }
+
+          .home-btn-icon{
+            width:38px !important;
+            height:38px !important;
+          }
+
+          .home-btn-label{
+            font-size:15px !important;
+            letter-spacing:0 !important;
+          }
+
+          .home-btn-chevron{
+            font-size:13px !important;
+            padding-left:2px !important;
+          }
         }
 
         .home-smart-btn{
