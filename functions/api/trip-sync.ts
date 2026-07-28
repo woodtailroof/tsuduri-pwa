@@ -181,8 +181,15 @@ function badRequest(message: string) {
   return json({ ok: false, error: message }, { status: 400 });
 }
 
-function serverError(_message: string) {
-  return json({ ok: false, error: "sync_internal_error" }, { status: 500 });
+function serverError(message: string) {
+  return json(
+    {
+      ok: false,
+      error: "sync_internal_error",
+      detail: message,
+    },
+    { status: 500 },
+  );
 }
 
 function asIsoOrNull(value: unknown): string | null {
