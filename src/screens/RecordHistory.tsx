@@ -232,7 +232,6 @@ function normalizeLureLabel(raw: string): string {
     sinking_pencil: "シンペン",
     bigbait: "ビッグベイト",
     big_bait: "ビッグベイト",
-    egi: "エギ",
     sabiki: "サビキ",
     bait: "エサ釣り",
     sinking_minnow: "シンキングミノー",
@@ -1076,8 +1075,19 @@ export default function RecordHistory({ back }: Props) {
   async function loadAll(): Promise<void> {
     setAllLoading(true);
     try {
-      const raw = await db.trips.orderBy("createdAt").reverse().toArray();
-      const list = raw.filter((r) => !r.deletedAt);
+      const raw = await db.trips.toArray();
+      const list = raw
+        .filter((r) => !r.deletedAt)
+        .sort((a, b) => {
+          const aBaseTime = new Date(a.startedAt ?? a.createdAt).getTime();
+          const bBaseTime = new Date(b.startedAt ?? b.createdAt).getTime();
+          const baseDiff = bBaseTime - aBaseTime;
+          if (baseDiff !== 0) return baseDiff;
+
+          return (
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+        });
       setAll(list);
       setAllLoadedOnce(true);
 
