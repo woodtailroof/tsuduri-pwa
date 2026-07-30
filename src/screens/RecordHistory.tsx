@@ -25,7 +25,10 @@ import PageShell from "../components/PageShell";
 import { useAppSettings } from "../lib/appSettings";
 import { formatRodLabel, formatReelLabel } from "../lib/tackle";
 
-type Props = { back: () => void };
+type Props = {
+  back: () => void;
+  onEdit: (tripId: number) => void;
+};
 
 type TideInfo = { cm: number; trend: string };
 
@@ -200,7 +203,7 @@ function normalizeSpeciesLabel(raw: string): string {
     bonito: "カツオ",
     barracuda: "カマス",
     rockfish: "カサゴ",
-    grouper: "ハタ（種類不明）",
+    grouper: "ハタ",
     red_spotted_grouper: "キジハタ",
     areolate_grouper: "オオモンハタ",
     red_grouper: "アカハタ",
@@ -837,7 +840,7 @@ function PhotoLightbox({
   );
 }
 
-export default function RecordHistory({ back }: Props) {
+export default function RecordHistory({ back, onEdit }: Props) {
   const { settings } = useAppSettings();
 
   const isMobile = useIsMobile();
@@ -1476,7 +1479,33 @@ export default function RecordHistory({ back }: Props) {
             {trip.memo || "（メモなし）"}
           </div>
 
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                if (trip.id != null) onEdit(trip.id);
+              }}
+              style={{
+                fontSize: 12,
+                color: "#8ee7ff",
+                border: "1px solid rgba(142, 231, 255, 0.42)",
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: "rgba(0,0,0,0.18)",
+                cursor: "pointer",
+                backdropFilter: "blur(var(--glass-blur,10px))",
+                WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
+              }}
+            >
+              ✏️ 編集
+            </button>
             <button
               type="button"
               onClick={() => void onDelete(trip.id)}

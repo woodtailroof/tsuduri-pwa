@@ -82,6 +82,7 @@ function useMinuteTick() {
 
 function AppInner() {
   const [screen, setScreen] = useState<Screen>("home");
+  const [editingTripId, setEditingTripId] = useState<number | null>(null);
   const { settings } = useAppSettings();
   const minuteTick = useMinuteTick();
 
@@ -178,7 +179,10 @@ function AppInner() {
     };
   }, [lockReady, unlocked]);
 
-  const backHome = () => setScreen("home");
+  const backHome = () => {
+    setEditingTripId(null);
+    setScreen("home");
+  };
 
   const goFromHome = (
     s:
@@ -202,14 +206,34 @@ function AppInner() {
   if (screen === "record") {
     content = (
       <Record
-        back={backHome}
+        editTripId={editingTripId}
+        back={() => {
+          if (editingTripId != null) {
+            setEditingTripId(null);
+            setScreen("recordHistory");
+          } else {
+            backHome();
+          }
+        }}
         onSaved={() => {
           void runAppSync("manual-save");
+          if (editingTripId != null) {
+            setEditingTripId(null);
+            setScreen("recordHistory");
+          }
         }}
       />
     );
   } else if (screen === "recordHistory") {
-    content = <RecordHistory back={backHome} />;
+    content = (
+      <RecordHistory
+        back={backHome}
+        onEdit={(tripId) => {
+          setEditingTripId(tripId);
+          setScreen("record");
+        }}
+      />
+    );
   } else if (screen === "recordAnalysis") {
     content = <RecordAnalysis back={backHome} />;
   } else if (screen === "tackleManager") {

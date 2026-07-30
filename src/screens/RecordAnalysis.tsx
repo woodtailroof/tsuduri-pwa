@@ -195,7 +195,7 @@ const SPECIES_LABEL: Record<string, string> = {
   mackerel: "サバ",
   whiting: "キス",
   rockfish: "カサゴ",
-  grouper: "ハタ（種類不明）",
+  grouper: "ハタ",
   red_spotted_grouper: "キジハタ",
   areolate_grouper: "オオモンハタ",
   red_grouper: "アカハタ",

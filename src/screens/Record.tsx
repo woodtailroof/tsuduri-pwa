@@ -37,6 +37,7 @@ import {
 type Props = {
   back: () => void;
   onSaved?: () => void;
+  editTripId?: number | null;
 };
 
 type TidePoint = { unix?: number; cm: number; time?: string };
@@ -44,6 +45,10 @@ type TideInfo = { cm: number; trend: string };
 
 type PhotoItem = {
   id: string;
+  sourceId?: number;
+  sourceUid?: string;
+  remoteKey?: string | null;
+  isNew: boolean;
   file: File;
   previewUrl: string;
   capturedAt: Date | null;
@@ -55,6 +60,8 @@ type PhotoItem = {
 
 type FishDraft = {
   id: string;
+  sourceId?: number;
+  sourceUid?: string;
   species: string;
   sizeCm: string;
   count: string;
@@ -63,6 +70,8 @@ type FishDraft = {
 
 type TripTackleDraft = {
   id: string;
+  sourceId?: number;
+  sourceUid?: string;
   rodId: number | null;
   reelId: number | null;
   lureType: LureType | "";
@@ -83,7 +92,7 @@ const SPECIES_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "mackerel", label: "サバ" },
   { value: "whiting", label: "キス" },
   { value: "rockfish", label: "カサゴ" },
-  { value: "grouper", label: "ハタ（種類不明）" },
+  { value: "grouper", label: "ハタ" },
   { value: "red_spotted_grouper", label: "キジハタ" },
   { value: "areolate_grouper", label: "オオモンハタ" },
   { value: "red_grouper", label: "アカハタ" },
@@ -195,7 +204,7 @@ function parsePositiveInt(raw: string): number | null {
   return v;
 }
 
-export default function Record({ back, onSaved }: Props) {
+export default function Record({ back, onSaved, editTripId = null }: Props) {
   const { settings } = useAppSettings();
 
   const glassVars = {
@@ -391,6 +400,8 @@ export default function Record({ back, onSaved }: Props) {
   const [tackles, setTackles] = useState<TackleItem[]>([]);
 
   const [saving, setSaving] = useState(false);
+  const [editLoading, setEditLoading] = useState(editTripId != null);
+  const [editingTrip, setEditingTrip] = useState<TripRecord | null>(null);
   const [isPhotoDragActive, setIsPhotoDragActive] = useState(false);
 
   const [online, setOnline] = useState<boolean>(
@@ -416,6 +427,131 @@ export default function Record({ back, onSaved }: Props) {
       window.removeEventListener("offline", onDown);
     };
   }, []);
+
+  useEffect(() => {
+    if (editTripId == null) {
+      setEditLoading(false);
+      setEditingTrip(null);
+      return;
+    }
+    const targetTripId = editTripId;
+
+    let cancelled = false;
+
+    async function loadEditingTrip() {
+      setEditLoading(true);
+      try {
+        const trip = await db.trips.get(targetTripId);
+        if (!trip || trip.deletedAt) {
+          throw new Error("編集する記録が見つからなかったよ");
+        }
+
+        const [photoRows, fishRows, setupRows] = await Promise.all([
+          db.tripPhotos.where("tripId").equals(targetTripId).sortBy("order"),
+          db.tripFish.where("tripId").equals(targetTripId).toArray(),
+          db.tripTackles.where("tripId").equals(targetTripId).sortBy("order"),
+        ]);
+        if (cancelled) return;
+
+        const activeSetups = setupRows.filter((row) => !row.deletedAt);
+        const setupDrafts: TripTackleDraft[] =
+          activeSetups.length > 0
+            ? activeSetups.map((row) => ({
+                id: row.uid,
+                sourceId: row.id,
+                sourceUid: row.uid,
+                rodId: row.rodId ?? null,
+                reelId: row.reelId ?? null,
+                lureType: row.lureType,
+              }))
+            : [
+                {
+                  ...emptyTripTackleDraft(),
+                  rodId: trip.rodId ?? null,
+                  reelId: trip.reelId ?? null,
+                  lureType: trip.lureType ?? "",
+                },
+              ];
+
+        const fallbackSetupId = setupDrafts[0]!.id;
+        const setupIdByUid = new Map(
+          activeSetups.map((row) => [row.uid, row.uid]),
+        );
+        const activeFish = fishRows.filter((row) => !row.deletedAt);
+        const loadedFish: FishDraft[] =
+          activeFish.length > 0
+            ? activeFish.map((row) => ({
+                id: row.uid,
+                sourceId: row.id,
+                sourceUid: row.uid,
+                species: row.species,
+                sizeCm: row.sizeCm == null ? "" : String(row.sizeCm),
+                count: row.count == null ? "1" : String(row.count),
+                tackleDraftId:
+                  (row.tripTackleUid &&
+                    setupIdByUid.get(row.tripTackleUid)) ||
+                  fallbackSetupId,
+              }))
+            : [{ ...emptyFishDraft(), tackleDraftId: fallbackSetupId }];
+
+        const loadedPhotos: PhotoItem[] = photoRows
+          .filter((row) => !row.deletedAt)
+          .map((row) => {
+            const file = new File(
+              [row.photoBlob],
+              row.photoName || `photo-${row.uid}`,
+              { type: row.photoType || row.photoBlob.type || "image/*" },
+            );
+            return {
+              id: row.uid,
+              sourceId: row.id,
+              sourceUid: row.uid,
+              remoteKey: row.remoteKey ?? null,
+              isNew: false,
+              file,
+              previewUrl: URL.createObjectURL(row.photoBlob),
+              capturedAt: row.capturedAt ? new Date(row.capturedAt) : null,
+              lat: null,
+              lon: null,
+              isCover: row.isCover === 1,
+            };
+          });
+
+        const started = new Date(trip.startedAt);
+        setEditingTrip(trip);
+        setPhotos(loadedPhotos);
+        setTripTackleDrafts(setupDrafts);
+        setFishDrafts(loadedFish);
+        setOutcome(trip.outcome);
+        setMemo(trip.memo ?? "");
+        setSpotType(trip.spotType ?? "port");
+        setWaterClarity(trip.waterClarity ?? "normal");
+        setBaitPresent(trip.baitPresent ?? false);
+        if (Number.isFinite(started.getTime())) {
+          setBaseCapturedAt(started);
+          setManualMode(true);
+          setManualValue(toDateTimeLocalValue(started));
+          setAllowUnknown(trip.timeBand === "unknown");
+        } else {
+          setBaseCapturedAt(null);
+          setManualMode(true);
+          setManualValue("");
+          setAllowUnknown(true);
+        }
+      } catch (error) {
+        console.error(error);
+        alert(error instanceof Error ? error.message : "記録の読込に失敗したよ");
+        back();
+      } finally {
+        if (!cancelled) setEditLoading(false);
+      }
+    }
+
+    void loadEditingTrip();
+    return () => {
+      cancelled = true;
+    };
+  }, [editTripId]);
 
   useEffect(() => {
     void db.tackleItems
@@ -635,6 +771,7 @@ export default function Record({ back, onSaved }: Props) {
 
   const canSave =
     !saving &&
+    !editLoading &&
     fishRowsOk &&
     tripTackleDrafts.length > 0 &&
     tripTackleDrafts.every((row) => row.lureType !== "") &&
@@ -693,6 +830,7 @@ export default function Record({ back, onSaved }: Props) {
 
       next.push({
         id: makeUid(),
+        isNew: true,
         file,
         previewUrl,
         capturedAt: captured,
@@ -817,7 +955,7 @@ export default function Record({ back, onSaved }: Props) {
     setSaving(true);
     try {
       const nowIso = new Date().toISOString();
-      const tripUid = makeUid();
+      const tripUid = editingTrip?.uid ?? makeUid();
 
       const startedAt =
         baseCapturedAt?.toISOString() ?? (allowUnknown ? nowIso : nowIso);
@@ -838,8 +976,9 @@ export default function Record({ back, onSaved }: Props) {
           : null;
 
       const trip: TripRecord = {
+        ...editingTrip,
         uid: tripUid,
-        createdAt: nowIso,
+        createdAt: editingTrip?.createdAt ?? nowIso,
         updatedAt: nowIso,
         deletedAt: null,
         syncStatus: "pending",
@@ -861,8 +1000,8 @@ export default function Record({ back, onSaved }: Props) {
         spotType,
         waterClarity,
         baitPresent,
-        lat: autoBaseLatLon.lat,
-        lon: autoBaseLatLon.lon,
+        lat: autoBaseLatLon.lat ?? editingTrip?.lat ?? null,
+        lon: autoBaseLatLon.lon ?? editingTrip?.lon ?? null,
 
         tideDayKey: baseCapturedAt
           ? `${baseCapturedAt.getFullYear()}-${pad2(baseCapturedAt.getMonth() + 1)}-${pad2(baseCapturedAt.getDate())}`
@@ -879,12 +1018,12 @@ export default function Record({ back, onSaved }: Props) {
                 : "unknown",
         tideCm: typeof tideAtShot?.cm === "number" ? tideAtShot.cm : null,
 
-        weatherCode: null,
-        windSpeedMs: null,
-        windDirDeg: null,
-        waveHeightM: null,
-        airTempC: null,
-        envFetchedAt: null,
+        weatherCode: editingTrip?.weatherCode ?? null,
+        windSpeedMs: editingTrip?.windSpeedMs ?? null,
+        windDirDeg: editingTrip?.windDirDeg ?? null,
+        waveHeightM: editingTrip?.waveHeightM ?? null,
+        airTempC: editingTrip?.airTempC ?? null,
+        envFetchedAt: editingTrip?.envFetchedAt ?? null,
       };
 
       const savedPhotoTargets: SavedPhotoUploadTarget[] = [];
@@ -896,11 +1035,37 @@ export default function Record({ back, onSaved }: Props) {
         db.tripFish,
         db.tripTackles,
         async () => {
-          const tripId = await db.trips.add(trip);
+          const tripId =
+            editTripId != null
+              ? (await db.trips.update(editTripId, trip), editTripId)
+              : await db.trips.add(trip);
+
+          if (editTripId != null) {
+            const [oldSetups, oldPhotos, oldFish] = await Promise.all([
+              db.tripTackles.where("tripId").equals(tripId).toArray(),
+              db.tripPhotos.where("tripId").equals(tripId).toArray(),
+              db.tripFish.where("tripId").equals(tripId).toArray(),
+            ]);
+            for (const row of [...oldSetups, ...oldPhotos, ...oldFish]) {
+              if (row.id == null) continue;
+              const table =
+                "lureType" in row && "order" in row
+                  ? db.tripTackles
+                  : "photoBlob" in row
+                    ? db.tripPhotos
+                    : db.tripFish;
+              await table.update(row.id, {
+                deletedAt: nowIso,
+                updatedAt: nowIso,
+                syncStatus: "pending",
+              } as never);
+            }
+          }
+
           const setupUidByDraftId = new Map<string, string>();
           for (const [index, draft] of tripTackleDrafts.entries()) {
             if (!draft.lureType) continue;
-            const setupUid = makeUid();
+            const setupUid = draft.sourceUid ?? makeUid();
             setupUidByDraftId.set(draft.id, setupUid);
             const rod =
               draft.rodId != null ? (tackleMap.get(draft.rodId) ?? null) : null;
@@ -923,20 +1088,24 @@ export default function Record({ back, onSaved }: Props) {
               rodUid: rod?.uid ?? null,
               reelUid: reel?.uid ?? null,
             };
-            await db.tripTackles.add(setup);
+            if (draft.sourceId != null) {
+              await db.tripTackles.update(draft.sourceId, setup);
+            } else {
+              await db.tripTackles.add(setup);
+            }
           }
 
           const ordered = [...photos].map((p, idx) => ({ p, idx }));
           for (const { p, idx } of ordered) {
             const row: TripPhoto = {
-              uid: makeUid(),
+              uid: p.sourceUid ?? makeUid(),
               tripUid,
               tripId,
               createdAt: nowIso,
               updatedAt: nowIso,
               deletedAt: null,
               syncStatus: "pending",
-              remoteKey: null,
+              remoteKey: p.remoteKey ?? null,
 
               capturedAt: p.capturedAt ? p.capturedAt.toISOString() : null,
               photoName: p.file.name,
@@ -945,21 +1114,26 @@ export default function Record({ back, onSaved }: Props) {
               order: idx,
               isCover: p.isCover ? 1 : 0,
             };
-            const photoId = await db.tripPhotos.add(row);
+            const photoId =
+              p.sourceId != null
+                ? (await db.tripPhotos.update(p.sourceId, row), p.sourceId)
+                : await db.tripPhotos.add(row);
 
-            savedPhotoTargets.push({
-              photoId,
-              photoUid: row.uid,
-              tripUid,
-              file: p.file,
-              fileName: p.file.name,
-            });
+            if (p.isNew) {
+              savedPhotoTargets.push({
+                photoId,
+                photoUid: row.uid,
+                tripUid,
+                file: p.file,
+                fileName: p.file.name,
+              });
+            }
           }
 
           if (outcome === "caught") {
             for (const f of fishDrafts) {
               const fish: TripFish = {
-                uid: makeUid(),
+                uid: f.sourceUid ?? makeUid(),
                 tripUid,
                 tripId,
                 createdAt: nowIso,
@@ -979,7 +1153,11 @@ export default function Record({ back, onSaved }: Props) {
                   setupUidByDraftId.get(f.tackleDraftId) ?? null,
                 timeBand: band,
               };
-              await db.tripFish.add(fish);
+              if (f.sourceId != null) {
+                await db.tripFish.update(f.sourceId, fish);
+              } else {
+                await db.tripFish.add(fish);
+              }
             }
           }
         },
@@ -1011,10 +1189,10 @@ export default function Record({ back, onSaved }: Props) {
 
       if (uploadFailures.length > 0) {
         alert(
-          `記録したよ！\nただし一部の写真アップロードに失敗したよ:\n${uploadFailures.join("\n")}`,
+          `${editTripId != null ? "更新" : "記録"}したよ！\nただし一部の写真アップロードに失敗したよ:\n${uploadFailures.join("\n")}`,
         );
       } else {
-        alert("記録したよ！");
+        alert(editTripId != null ? "更新したよ！" : "記録したよ！");
       }
 
       try {
@@ -1056,7 +1234,7 @@ export default function Record({ back, onSaved }: Props) {
             lineHeight: 1.15,
           }}
         >
-          📸 釣果を記録
+          {editTripId != null ? "✏️ 釣果を編集" : "📸 釣果を記録"}
         </h1>
       }
       titleLayout="left"
