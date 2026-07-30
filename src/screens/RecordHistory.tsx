@@ -177,6 +177,7 @@ function normalizeSpeciesLabel(raw: string): string {
     red_seabream: "マダイ",
     sea_bream: "タイ",
     horse_mackerel: "アジ",
+    sappa: "サッパ",
     mackerel: "サバ",
     chub_mackerel: "サバ",
     sardine: "イワシ",
@@ -199,6 +200,19 @@ function normalizeSpeciesLabel(raw: string): string {
     bonito: "カツオ",
     barracuda: "カマス",
     rockfish: "カサゴ",
+    grouper: "ハタ（種類不明）",
+    red_spotted_grouper: "キジハタ",
+    areolate_grouper: "オオモンハタ",
+    red_grouper: "アカハタ",
+    whiting: "キス",
+    gizzard_shad: "コノシロ",
+    mejina: "メジナ",
+    rockfish_mebaru: "メバル",
+    wrasse: "ベラ",
+    cardinalfish: "ネンブツダイ",
+    lizardfish: "エソ",
+    pufferfish: "フグ",
+    squid: "アオリイカ",
     scorpionfish: "カサゴ",
     grunt: "メッキ",
     trevally: "メッキ",
@@ -232,6 +246,7 @@ function normalizeLureLabel(raw: string): string {
     sinking_pencil: "シンペン",
     bigbait: "ビッグベイト",
     big_bait: "ビッグベイト",
+    egi: "エギ",
     sabiki: "サビキ",
     bait: "エサ釣り",
     sinking_minnow: "シンキングミノー",
@@ -1075,19 +1090,8 @@ export default function RecordHistory({ back }: Props) {
   async function loadAll(): Promise<void> {
     setAllLoading(true);
     try {
-      const raw = await db.trips.toArray();
-      const list = raw
-        .filter((r) => !r.deletedAt)
-        .sort((a, b) => {
-          const aBaseTime = new Date(a.startedAt ?? a.createdAt).getTime();
-          const bBaseTime = new Date(b.startedAt ?? b.createdAt).getTime();
-          const baseDiff = bBaseTime - aBaseTime;
-          if (baseDiff !== 0) return baseDiff;
-
-          return (
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          );
-        });
+      const raw = await db.trips.orderBy("createdAt").reverse().toArray();
+      const list = raw.filter((r) => !r.deletedAt);
       setAll(list);
       setAllLoadedOnce(true);
 
@@ -1250,6 +1254,7 @@ export default function RecordHistory({ back }: Props) {
       db.trips,
       db.tripPhotos,
       db.tripFish,
+      db.tripTackles,
       async () => {
         const trip = await db.trips.get(id);
         if (!trip) return;
@@ -1274,6 +1279,15 @@ export default function RecordHistory({ back }: Props) {
         for (const row of fish) {
           if (!row.id) continue;
           await db.tripFish.update(row.id, {
+            deletedAt: nowIso,
+            updatedAt: nowIso,
+            syncStatus: "pending",
+          });
+        }
+        const setups = await db.tripTackles.where("tripId").equals(id).toArray();
+        for (const row of setups) {
+          if (!row.id) continue;
+          await db.tripTackles.update(row.id, {
             deletedAt: nowIso,
             updatedAt: nowIso,
             syncStatus: "pending",

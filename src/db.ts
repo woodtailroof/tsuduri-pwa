@@ -166,10 +166,28 @@ export type TripFish = {
   count?: number | null;
 
   lureType?: LureType | null;
+  tripTackleUid?: string | null;
 
   timeBand?: TripTimeBand | null;
 
   createdAt: string;
+};
+
+export type TripTackle = {
+  id?: number;
+  uid: string;
+  tripUid: string;
+  tripId: number;
+  updatedAt: string;
+  deletedAt?: string | null;
+  syncStatus: SyncStatus;
+  createdAt: string;
+  order: number;
+  lureType: LureType;
+  rodId?: number | null;
+  reelId?: number | null;
+  rodUid?: string | null;
+  reelUid?: string | null;
 };
 
 export type TripPhoto = {
@@ -260,6 +278,7 @@ class AppDB extends Dexie {
   tripFish!: Table<TripFish, number>;
 
   tripPhotos!: Table<TripPhoto, number>;
+  tripTackles!: Table<TripTackle, number>;
 
   tideCache!: Table<TideCacheEntry, string>;
 
@@ -306,6 +325,55 @@ class AppDB extends Dexie {
 
       tackleItems:
         "++id, uid, updatedAt, deletedAt, syncStatus, createdAt, kind, active",
+    });
+
+    this.version(8).stores({
+      trips:
+        "++id, uid, createdAt, updatedAt, deletedAt, syncStatus, startedAt, pointId, outcome, timeBand, lureType, rodId, reelId, rodUid, reelUid, [rodUid+createdAt], [reelUid+createdAt]",
+      tripFish:
+        "++id, uid, tripId, tripUid, tripTackleUid, updatedAt, deletedAt, syncStatus, species, lureType, timeBand, createdAt",
+      tripPhotos:
+        "++id, uid, tripId, tripUid, updatedAt, deletedAt, syncStatus, createdAt, remoteKey, capturedAt, isCover, order",
+      tripTackles:
+        "++id, uid, tripId, tripUid, updatedAt, deletedAt, syncStatus, order, lureType, rodUid, reelUid",
+      tideCache: "key, day, pc, hc, fetchedAt",
+      catches: "++id, createdAt, capturedAt, result",
+      tackleItems:
+        "++id, uid, updatedAt, deletedAt, syncStatus, createdAt, kind, active",
+    }).upgrade(async (tx) => {
+      const trips = await tx.table("trips").toArray();
+      const fishTable = tx.table("tripFish");
+      const setupTable = tx.table("tripTackles");
+      for (const trip of trips) {
+        if (!trip.id || !trip.uid || trip.deletedAt) continue;
+        const hasLegacySetup =
+          trip.rodUid || trip.reelUid || trip.lureType;
+        if (!hasLegacySetup) continue;
+        const uid = `${trip.uid}:legacy-tackle`;
+        await setupTable.add({
+          uid,
+          tripUid: trip.uid,
+          tripId: trip.id,
+          updatedAt: trip.updatedAt ?? trip.createdAt,
+          deletedAt: null,
+          syncStatus: "pending",
+          createdAt: trip.createdAt,
+          order: 0,
+          lureType: trip.lureType ?? "other",
+          rodId: trip.rodId ?? null,
+          reelId: trip.reelId ?? null,
+          rodUid: trip.rodUid ?? null,
+          reelUid: trip.reelUid ?? null,
+        });
+        const rows = await fishTable.where("tripId").equals(trip.id).toArray();
+        for (const row of rows) {
+          await fishTable.update(row.id, {
+            tripTackleUid: uid,
+            updatedAt: new Date().toISOString(),
+            syncStatus: "pending",
+          });
+        }
+      }
     });
   }
 }

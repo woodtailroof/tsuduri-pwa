@@ -89,6 +89,22 @@ type TripSyncFish = {
     | null;
 
   timeBand?: string | null;
+  tripTackleUid?: string | null;
+};
+
+type TripSyncTripTackle = {
+  uid: string;
+  tripUid: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  syncStatus: SyncStatus;
+  order: number;
+  lureType: string;
+  rodId?: number | null;
+  reelId?: number | null;
+  rodUid?: string | null;
+  reelUid?: string | null;
 };
 
 type TripSyncPhoto = {
@@ -155,6 +171,7 @@ type TripPushPayload = {
   fish: TripSyncFish[];
   photos: TripSyncPhoto[];
   tackles: TripSyncTackle[];
+  tripTackles: TripSyncTripTackle[];
 };
 
 type TripPullResponse = {
@@ -163,6 +180,7 @@ type TripPullResponse = {
   fish: TripSyncFish[];
   photos: TripSyncPhoto[];
   tackles: TripSyncTackle[];
+  tripTackles: TripSyncTripTackle[];
 };
 
 type Env = {
@@ -307,6 +325,19 @@ function isTripTackle(value: unknown): value is TripSyncTackle {
   );
 }
 
+function isTripSetup(value: unknown): value is TripSyncTripTackle {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.uid === "string" &&
+    typeof v.tripUid === "string" &&
+    typeof v.createdAt === "string" &&
+    typeof v.updatedAt === "string" &&
+    typeof v.order === "number" &&
+    typeof v.lureType === "string"
+  );
+}
+
 async function upsertTrip(db: D1Database, row: TripSyncRecord) {
   await db
     .prepare(
@@ -412,8 +443,8 @@ async function upsertFish(db: D1Database, row: TripSyncFish) {
         uid, trip_uid,
         created_at, updated_at, deleted_at, sync_status,
         species, size_cm, count,
-        lure_type, time_band
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        lure_type, time_band, trip_tackle_uid
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(uid) DO UPDATE SET
         trip_uid = excluded.trip_uid,
         created_at = excluded.created_at,
@@ -424,7 +455,8 @@ async function upsertFish(db: D1Database, row: TripSyncFish) {
         size_cm = excluded.size_cm,
         count = excluded.count,
         lure_type = excluded.lure_type,
-        time_band = excluded.time_band
+        time_band = excluded.time_band,
+        trip_tackle_uid = excluded.trip_tackle_uid
       WHERE excluded.updated_at > sync_trip_fish.updated_at
       `,
     )
@@ -440,8 +472,32 @@ async function upsertFish(db: D1Database, row: TripSyncFish) {
       asNumberOrNull(row.count),
       asStringOrNull(row.lureType),
       row.timeBand == null ? null : normalizeTimeBand(row.timeBand),
+      asStringOrNull(row.tripTackleUid),
     )
     .run();
+}
+
+async function upsertTripTackle(db: D1Database, row: TripSyncTripTackle) {
+  await db.prepare(`
+    INSERT INTO sync_trip_tackles (
+      uid, trip_uid, created_at, updated_at, deleted_at, sync_status,
+      tackle_order, lure_type, rod_id, reel_id, rod_uid, reel_uid
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(uid) DO UPDATE SET
+      trip_uid=excluded.trip_uid, created_at=excluded.created_at,
+      updated_at=excluded.updated_at, deleted_at=excluded.deleted_at,
+      sync_status=excluded.sync_status, tackle_order=excluded.tackle_order,
+      lure_type=excluded.lure_type, rod_id=excluded.rod_id,
+      reel_id=excluded.reel_id, rod_uid=excluded.rod_uid,
+      reel_uid=excluded.reel_uid
+    WHERE excluded.updated_at > sync_trip_tackles.updated_at
+  `).bind(
+    row.uid, row.tripUid, row.createdAt, row.updatedAt,
+    asIsoOrNull(row.deletedAt), row.syncStatus, row.order,
+    asStringOrNull(row.lureType), asNumberOrNull(row.rodId),
+    asNumberOrNull(row.reelId), asStringOrNull(row.rodUid),
+    asStringOrNull(row.reelUid),
+  ).run();
 }
 
 async function upsertPhoto(db: D1Database, row: TripSyncPhoto) {
@@ -551,6 +607,9 @@ async function handlePost(request: Request, env: Env) {
   }
 
   const tackles = Array.isArray(payload.tackles) ? payload.tackles : [];
+  const tripTackles = Array.isArray(payload.tripTackles)
+    ? payload.tripTackles
+    : [];
 
   for (const row of payload.trips) {
     if (!isTripRecord(row)) {
@@ -572,6 +631,9 @@ async function handlePost(request: Request, env: Env) {
       return badRequest("invalid tackle row");
     }
   }
+  for (const row of tripTackles) {
+    if (!isTripSetup(row)) return badRequest("invalid trip tackle row");
+  }
 
   try {
     await env.DB.batch([
@@ -587,6 +649,9 @@ async function handlePost(request: Request, env: Env) {
 
     for (const row of payload.trips) {
       await upsertTrip(env.DB, row);
+    }
+    for (const row of tripTackles) {
+      await upsertTripTackle(env.DB, row);
     }
     for (const row of payload.fish) {
       await upsertFish(env.DB, row);
@@ -734,7 +799,8 @@ async function fetchFishSince(db: D1Database, since: string | null) {
           size_cm as sizeCm,
           count,
           lure_type as lureType,
-          time_band as timeBand
+          time_band as timeBand,
+          trip_tackle_uid as tripTackleUid
         FROM sync_trip_fish
         WHERE updated_at > ?
         ORDER BY updated_at ASC
@@ -754,13 +820,29 @@ async function fetchFishSince(db: D1Database, since: string | null) {
           size_cm as sizeCm,
           count,
           lure_type as lureType,
-          time_band as timeBand
+          time_band as timeBand,
+          trip_tackle_uid as tripTackleUid
         FROM sync_trip_fish
         ORDER BY updated_at ASC
         `,
       );
 
   const result = await stmt.all<TripSyncFish>();
+  return result.results ?? [];
+}
+
+async function fetchTripTacklesSince(db: D1Database, since: string | null) {
+  const sql = `
+    SELECT uid, trip_uid as tripUid, created_at as createdAt,
+      updated_at as updatedAt, deleted_at as deletedAt,
+      sync_status as syncStatus, tackle_order as "order",
+      lure_type as lureType, rod_id as rodId, reel_id as reelId,
+      rod_uid as rodUid, reel_uid as reelUid
+    FROM sync_trip_tackles
+    ${since ? "WHERE updated_at > ?" : ""}
+    ORDER BY updated_at ASC`;
+  const stmt = since ? db.prepare(sql).bind(since) : db.prepare(sql);
+  const result = await stmt.all<TripSyncTripTackle>();
   return result.results ?? [];
 }
 
@@ -935,11 +1017,12 @@ async function handleGet(request: Request, env: Env) {
         .run();
     }
 
-    const [trips, fish, photos, tackles] = await Promise.all([
+    const [trips, fish, photos, tackles, tripTackles] = await Promise.all([
       fetchTripsSince(env.DB, since),
       fetchFishSince(env.DB, since),
       fetchPhotosSince(env.DB, since),
       fetchTacklesSince(env.DB, since),
+      fetchTripTacklesSince(env.DB, since),
     ]);
 
     const response: TripPullResponse = {
@@ -948,6 +1031,7 @@ async function handleGet(request: Request, env: Env) {
       fish,
       photos,
       tackles,
+      tripTackles,
     };
 
     return json(response);

@@ -68,8 +68,24 @@ export type TripSyncFish = {
   count?: number | null;
 
   lureType?: string | null;
+  tripTackleUid?: string | null;
 
   timeBand?: "morning" | "day" | "evening" | "night" | "unknown" | null;
+};
+
+export type TripSyncTripTackle = {
+  uid: string;
+  tripUid: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  syncStatus: SyncStatus;
+  order: number;
+  lureType: string;
+  rodId?: number | null;
+  reelId?: number | null;
+  rodUid?: string | null;
+  reelUid?: string | null;
 };
 
 export type TripSyncPhoto = {
@@ -138,6 +154,7 @@ export type TripPushPayload = {
 
   trips: TripSyncRecord[];
   fish: TripSyncFish[];
+  tripTackles: TripSyncTripTackle[];
   photos: TripSyncPhoto[];
   tackles: TripSyncTackle[];
 };
@@ -149,6 +166,7 @@ export type TripPullResponse = {
 
   trips: TripSyncRecord[];
   fish: TripSyncFish[];
+  tripTackles: TripSyncTripTackle[];
   photos: TripSyncPhoto[];
   tackles: TripSyncTackle[];
 };

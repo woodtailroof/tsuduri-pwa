@@ -17,6 +17,7 @@ import {
   type WaterClarity,
   type LureType,
   type TackleItem,
+  type TripTackle,
 } from "../db";
 import PageShell from "../components/PageShell";
 import { FIXED_PORT } from "../points";
@@ -57,6 +58,13 @@ type FishDraft = {
   species: string;
   sizeCm: string;
   count: string;
+  tackleDraftId: string;
+};
+
+type TripTackleDraft = {
+  id: string;
+  rodId: number | null;
+  reelId: number | null;
   lureType: LureType | "";
 };
 
@@ -69,6 +77,16 @@ type SavedPhotoUploadTarget = {
 };
 
 const SPECIES_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "horse_mackerel", label: "アジ" },
+  { value: "sappa", label: "サッパ" },
+  { value: "sardine", label: "イワシ" },
+  { value: "mackerel", label: "サバ" },
+  { value: "whiting", label: "キス" },
+  { value: "rockfish", label: "カサゴ" },
+  { value: "grouper", label: "ハタ（種類不明）" },
+  { value: "red_spotted_grouper", label: "キジハタ" },
+  { value: "areolate_grouper", label: "オオモンハタ" },
+  { value: "red_grouper", label: "アカハタ" },
   { value: "seabass", label: "シーバス" },
   { value: "flounder", label: "ヒラメ" },
   { value: "flathead", label: "マゴチ" },
@@ -77,6 +95,17 @@ const SPECIES_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "spanish_mackerel", label: "サワラ（サゴシ）" },
   { value: "yellowtail", label: "ブリ（ワカシ / イナダ / ワラサ）" },
   { value: "cutlassfish", label: "タチウオ" },
+  { value: "barracuda", label: "カマス" },
+  { value: "gizzard_shad", label: "コノシロ" },
+  { value: "mejina", label: "メジナ" },
+  { value: "rockfish_mebaru", label: "メバル" },
+  { value: "goby", label: "ハゼ" },
+  { value: "wrasse", label: "ベラ" },
+  { value: "cardinalfish", label: "ネンブツダイ" },
+  { value: "mullet", label: "ボラ" },
+  { value: "lizardfish", label: "エソ" },
+  { value: "pufferfish", label: "フグ" },
+  { value: "squid", label: "アオリイカ" },
   { value: "bass", label: "ブラックバス" },
   { value: "catfish", label: "ナマズ" },
   { value: "other", label: "その他" },
@@ -143,8 +172,12 @@ function emptyFishDraft(): FishDraft {
     species: "",
     sizeCm: "",
     count: "1",
-    lureType: "",
+    tackleDraftId: "",
   };
+}
+
+function emptyTripTackleDraft(): TripTackleDraft {
+  return { id: makeUid(), rodId: null, reelId: null, lureType: "" };
 }
 
 function parsePositiveNumber(raw: string): number | null {
@@ -344,7 +377,6 @@ export default function Record({ back, onSaved }: Props) {
   const [allowUnknown, setAllowUnknown] = useState(false);
 
   const [outcome, setOutcome] = useState<TripOutcome>("skunk");
-  const [skunkLureType, setSkunkLureType] = useState<LureType | "">("");
   const [memo, setMemo] = useState("");
 
   const [spotType, setSpotType] = useState<SpotType>("port");
@@ -352,10 +384,11 @@ export default function Record({ back, onSaved }: Props) {
   const [baitPresent, setBaitPresent] = useState<boolean>(false);
 
   const [fishDrafts, setFishDrafts] = useState<FishDraft[]>([emptyFishDraft()]);
+  const [tripTackleDrafts, setTripTackleDrafts] = useState<TripTackleDraft[]>([
+    emptyTripTackleDraft(),
+  ]);
 
   const [tackles, setTackles] = useState<TackleItem[]>([]);
-  const [rodId, setRodId] = useState<number | null>(null);
-  const [reelId, setReelId] = useState<number | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [isPhotoDragActive, setIsPhotoDragActive] = useState(false);
@@ -408,6 +441,16 @@ export default function Record({ back, onSaved }: Props) {
     }
   }, [outcome, fishDrafts.length]);
 
+  useEffect(() => {
+    const firstId = tripTackleDrafts[0]?.id ?? "";
+    if (!firstId) return;
+    setFishDrafts((prev) =>
+      prev.map((fish) =>
+        fish.tackleDraftId ? fish : { ...fish, tackleDraftId: firstId },
+      ),
+    );
+  }, [tripTackleDrafts]);
+
   const fishDraftValidation = useMemo(() => {
     return fishDrafts.map((f) => {
       const sizeNum =
@@ -421,16 +464,21 @@ export default function Record({ back, onSaved }: Props) {
         sizeOk: f.sizeCm.trim() === "" || sizeNum != null,
         countOk: countNum != null,
         speciesOk: f.species.trim() !== "",
-        lureOk: f.lureType !== "",
+        tackleOk:
+          f.tackleDraftId !== "" &&
+          tripTackleDrafts.some(
+            (setup) =>
+              setup.id === f.tackleDraftId && setup.lureType !== "",
+          ),
       };
     });
-  }, [fishDrafts]);
+  }, [fishDrafts, tripTackleDrafts]);
 
   const fishRowsOk = useMemo(() => {
     if (outcome !== "caught") return true;
     if (fishDrafts.length === 0) return false;
     return fishDraftValidation.every(
-      (v) => v.sizeOk && v.countOk && v.speciesOk && v.lureOk,
+      (v) => v.sizeOk && v.countOk && v.speciesOk && v.tackleOk,
     );
   }, [outcome, fishDrafts.length, fishDraftValidation]);
 
@@ -499,7 +547,6 @@ export default function Record({ back, onSaved }: Props) {
     setAllowUnknown(false);
 
     setOutcome("skunk");
-    setSkunkLureType("");
     setMemo("");
 
     setSpotType("port");
@@ -508,8 +555,9 @@ export default function Record({ back, onSaved }: Props) {
 
     setFishDrafts([emptyFishDraft()]);
 
-    setRodId(null);
-    setReelId(null);
+    const firstSetup = emptyTripTackleDraft();
+    setTripTackleDrafts([firstSetup]);
+    setFishDrafts([{ ...emptyFishDraft(), tackleDraftId: firstSetup.id }]);
 
     setTideLoading(false);
     setTideError("");
@@ -588,6 +636,8 @@ export default function Record({ back, onSaved }: Props) {
   const canSave =
     !saving &&
     fishRowsOk &&
+    tripTackleDrafts.length > 0 &&
+    tripTackleDrafts.every((row) => row.lureType !== "") &&
     (baseCapturedAt != null || allowUnknown || photos.length === 0);
 
   async function addFiles(files: FileList | File[]) {
@@ -718,13 +768,48 @@ export default function Record({ back, onSaved }: Props) {
   }
 
   function addFishDraft() {
-    setFishDrafts((prev) => [...prev, emptyFishDraft()]);
+    setFishDrafts((prev) => [
+      ...prev,
+      {
+        ...emptyFishDraft(),
+        tackleDraftId: tripTackleDrafts[0]?.id ?? "",
+      },
+    ]);
   }
 
   function removeFishDraft(id: string) {
     setFishDrafts((prev) => {
       const next = prev.filter((f) => f.id !== id);
       return next.length > 0 ? next : [emptyFishDraft()];
+    });
+  }
+
+  function updateTripTackleDraft(
+    id: string,
+    patch: Partial<TripTackleDraft>,
+  ) {
+    setTripTackleDrafts((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+    );
+  }
+
+  function addTripTackleDraft() {
+    setTripTackleDrafts((prev) => [...prev, emptyTripTackleDraft()]);
+  }
+
+  function removeTripTackleDraft(id: string) {
+    setTripTackleDrafts((prev) => {
+      if (prev.length <= 1) return prev;
+      const next = prev.filter((row) => row.id !== id);
+      const fallback = next[0]?.id ?? "";
+      setFishDrafts((fish) =>
+        fish.map((row) =>
+          row.tackleDraftId === id
+            ? { ...row, tackleDraftId: fallback }
+            : row,
+        ),
+      );
+      return next;
     });
   }
 
@@ -741,14 +826,16 @@ export default function Record({ back, onSaved }: Props) {
         ? (getTimeBand(baseCapturedAt) as TripRecord["timeBand"])
         : "unknown";
 
-      const primaryLure =
-        outcome === "caught"
-          ? (fishDrafts.find((f) => f.lureType !== "")?.lureType ?? null)
-          : skunkLureType || null;
-
-      const selectedRod = rodId != null ? (tackleMap.get(rodId) ?? null) : null;
+      const primarySetup = tripTackleDrafts[0]!;
+      const primaryLure = primarySetup.lureType || null;
+      const selectedRod =
+        primarySetup.rodId != null
+          ? (tackleMap.get(primarySetup.rodId) ?? null)
+          : null;
       const selectedReel =
-        reelId != null ? (tackleMap.get(reelId) ?? null) : null;
+        primarySetup.reelId != null
+          ? (tackleMap.get(primarySetup.reelId) ?? null)
+          : null;
 
       const trip: TripRecord = {
         uid: tripUid,
@@ -766,8 +853,8 @@ export default function Record({ back, onSaved }: Props) {
         // 互換・暫定橋
         lureType: primaryLure || null,
 
-        rodId,
-        reelId,
+        rodId: primarySetup.rodId,
+        reelId: primarySetup.reelId,
         rodUid: selectedRod?.uid ?? null,
         reelUid: selectedReel?.uid ?? null,
 
@@ -807,8 +894,37 @@ export default function Record({ back, onSaved }: Props) {
         db.trips,
         db.tripPhotos,
         db.tripFish,
+        db.tripTackles,
         async () => {
           const tripId = await db.trips.add(trip);
+          const setupUidByDraftId = new Map<string, string>();
+          for (const [index, draft] of tripTackleDrafts.entries()) {
+            if (!draft.lureType) continue;
+            const setupUid = makeUid();
+            setupUidByDraftId.set(draft.id, setupUid);
+            const rod =
+              draft.rodId != null ? (tackleMap.get(draft.rodId) ?? null) : null;
+            const reel =
+              draft.reelId != null
+                ? (tackleMap.get(draft.reelId) ?? null)
+                : null;
+            const setup: TripTackle = {
+              uid: setupUid,
+              tripUid,
+              tripId,
+              createdAt: nowIso,
+              updatedAt: nowIso,
+              deletedAt: null,
+              syncStatus: "pending",
+              order: index,
+              lureType: draft.lureType,
+              rodId: draft.rodId,
+              reelId: draft.reelId,
+              rodUid: rod?.uid ?? null,
+              reelUid: reel?.uid ?? null,
+            };
+            await db.tripTackles.add(setup);
+          }
 
           const ordered = [...photos].map((p, idx) => ({ p, idx }));
           for (const { p, idx } of ordered) {
@@ -855,7 +971,12 @@ export default function Record({ back, onSaved }: Props) {
                 sizeCm:
                   f.sizeCm.trim() === "" ? null : parsePositiveNumber(f.sizeCm),
                 count: f.count.trim() === "" ? 1 : parsePositiveInt(f.count),
-                lureType: f.lureType || null,
+                lureType:
+                  tripTackleDrafts.find(
+                    (setup) => setup.id === f.tackleDraftId,
+                  )?.lureType || null,
+                tripTackleUid:
+                  setupUidByDraftId.get(f.tackleDraftId) ?? null,
                 timeBand: band,
               };
               await db.tripFish.add(fish);
@@ -1470,56 +1591,87 @@ export default function Record({ back, onSaved }: Props) {
               {/* 使用タックル */}
               <div className="glass glass-strong" style={glassBoxStyle}>
                 <div style={{ fontWeight: 700 }}>🛠 使用タックル</div>
-
-                <label
-                  style={{
-                    fontSize: 12,
-                    color: "rgba(255,255,255,0.72)",
-                    display: "grid",
-                    gap: 6,
-                  }}
-                >
-                  ロッド
-                  <select
-                    value={rodId ?? ""}
-                    onChange={(e) =>
-                      setRodId(e.target.value ? Number(e.target.value) : null)
-                    }
-                    style={selectStyle}
+                {tripTackleDrafts.map((setup, index) => (
+                  <div
+                    key={setup.id}
+                    style={{
+                      display: "grid",
+                      gap: 8,
+                      padding: 10,
+                      borderRadius: 14,
+                      background: "rgba(0,0,0,.10)",
+                      border: "1px solid rgba(255,255,255,.10)",
+                    }}
                   >
-                    <option value="">未選択</option>
-                    {rodOptions.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {formatRodLabel(t)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label
-                  style={{
-                    fontSize: 12,
-                    color: "rgba(255,255,255,0.72)",
-                    display: "grid",
-                    gap: 6,
-                  }}
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <strong>タックル {index + 1}</strong>
+                      {tripTackleDrafts.length > 1 && (
+                        <button
+                          type="button"
+                          style={pillBtnStyle}
+                          onClick={() => removeTripTackleDraft(setup.id)}
+                        >
+                          削除
+                        </button>
+                      )}
+                    </div>
+                    <select
+                      value={setup.rodId ?? ""}
+                      onChange={(e) =>
+                        updateTripTackleDraft(setup.id, {
+                          rodId: e.target.value ? Number(e.target.value) : null,
+                        })
+                      }
+                      style={selectStyle}
+                    >
+                      <option value="">ロッド未選択</option>
+                      {rodOptions.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {formatRodLabel(t)}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={setup.reelId ?? ""}
+                      onChange={(e) =>
+                        updateTripTackleDraft(setup.id, {
+                          reelId: e.target.value ? Number(e.target.value) : null,
+                        })
+                      }
+                      style={selectStyle}
+                    >
+                      <option value="">リール未選択</option>
+                      {reelOptions.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {formatReelLabel(t)}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={setup.lureType}
+                      onChange={(e) =>
+                        updateTripTackleDraft(setup.id, {
+                          lureType: e.target.value as LureType | "",
+                        })
+                      }
+                      style={selectStyle}
+                    >
+                      <option value="">ルアー・釣法を選択</option>
+                      {LURE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addTripTackleDraft}
+                  style={pillBtnStyle}
                 >
-                  リール
-                  <select
-                    value={reelId ?? ""}
-                    onChange={(e) =>
-                      setReelId(e.target.value ? Number(e.target.value) : null)
-                    }
-                    style={selectStyle}
-                  >
-                    <option value="">未選択</option>
-                    {reelOptions.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {formatReelLabel(t)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  ＋ タックルを追加
+                </button>
               </div>
             </div>
 
@@ -1770,20 +1922,23 @@ export default function Record({ back, onSaved }: Props) {
                                   gap: 6,
                                 }}
                               >
-                                ルアー・釣法
+                                釣ったタックル
                                 <select
-                                  value={f.lureType}
+                                  value={f.tackleDraftId}
                                   onChange={(e) =>
                                     updateFishDraft(f.id, {
-                                      lureType: e.target.value as LureType | "",
+                                      tackleDraftId: e.target.value,
                                     })
                                   }
                                   style={selectStyle}
                                 >
                                   <option value="">選択してね</option>
-                                  {LURE_OPTIONS.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>
-                                      {opt.label}
+                                  {tripTackleDrafts.map((setup, setupIndex) => (
+                                    <option key={setup.id} value={setup.id}>
+                                      タックル {setupIndex + 1}
+                                      {setup.lureType
+                                        ? `（${LURE_OPTIONS.find((opt) => opt.value === setup.lureType)?.label ?? setup.lureType}）`
+                                        : ""}
                                     </option>
                                   ))}
                                 </select>
@@ -1852,9 +2007,9 @@ export default function Record({ back, onSaved }: Props) {
                               </div>
                             )}
 
-                            {validation && !validation.lureOk && (
+                            {validation && !validation.tackleOk && (
                               <div style={{ fontSize: 12, color: "#f6c" }}>
-                                ※ルアーを選んでね
+                                ※釣ったタックルと、そのルアー・釣法を選んでね
                               </div>
                             )}
                           </div>
@@ -1874,33 +2029,6 @@ export default function Record({ back, onSaved }: Props) {
                     </div>
                   )}
 
-                  {outcome === "skunk" && (
-                    <label
-                      style={{
-                        marginTop: 12,
-                        fontSize: 12,
-                        color: "rgba(255,255,255,0.72)",
-                        display: "grid",
-                        gap: 6,
-                      }}
-                    >
-                      使用したルアー・釣法（任意）
-                      <select
-                        value={skunkLureType}
-                        onChange={(e) =>
-                          setSkunkLureType(e.target.value as LureType | "")
-                        }
-                        style={selectStyle}
-                      >
-                        <option value="">未選択</option>
-                        {LURE_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
                 </div>
               </div>
 

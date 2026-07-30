@@ -6,6 +6,7 @@ import {
   type TripFish,
   type TripPhoto,
   type TripRecord,
+  type TripTackle,
 } from "../db";
 import type {
   SyncApiResponse,
@@ -17,6 +18,7 @@ import type {
   TripSyncPhoto,
   TripSyncRecord,
   TripSyncTackle,
+  TripSyncTripTackle,
 } from "./tripSyncTypes";
 
 const DEVICE_ID_STORAGE_KEY = "tsuduri_sync_device_id_v1";
@@ -28,6 +30,7 @@ type PendingSyncBundle = {
   fish: TripFish[];
   photos: TripPhoto[];
   tackles: TackleItem[];
+  tripTackles: TripTackle[];
 };
 
 function makeUid() {
@@ -82,19 +85,21 @@ export function getSyncConfig(endpoint = DEFAULT_SYNC_ENDPOINT): SyncConfig {
 }
 
 export async function collectPendingTripBundle(): Promise<PendingSyncBundle> {
-  const [tripsRaw, fishRaw, photosRaw, tacklesRaw] = await Promise.all([
+  const [tripsRaw, fishRaw, photosRaw, tacklesRaw, tripTacklesRaw] = await Promise.all([
     db.trips.where("syncStatus").anyOf("pending", "error").toArray(),
     db.tripFish.where("syncStatus").anyOf("pending", "error").toArray(),
     db.tripPhotos.where("syncStatus").anyOf("pending", "error").toArray(),
     db.tackleItems.where("syncStatus").anyOf("pending", "error").toArray(),
+    db.tripTackles.where("syncStatus").anyOf("pending", "error").toArray(),
   ]);
 
   const trips = tripsRaw.filter((x) => !!x.uid);
   const fish = fishRaw.filter((x) => !!x.uid && !!x.tripUid);
   const photos = photosRaw.filter((x) => !!x.uid && !!x.tripUid);
   const tackles = tacklesRaw.filter((x) => !!x.uid);
+  const tripTackles = tripTacklesRaw.filter((x) => !!x.uid && !!x.tripUid);
 
-  return { trips, fish, photos, tackles };
+  return { trips, fish, photos, tackles, tripTackles };
 }
 
 function serializeTrip(row: TripRecord): TripSyncRecord {
@@ -144,6 +149,23 @@ function serializeTrip(row: TripRecord): TripSyncRecord {
   };
 }
 
+function serializeTripTackle(row: TripTackle): TripSyncTripTackle {
+  return {
+    uid: row.uid,
+    tripUid: row.tripUid,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    deletedAt: row.deletedAt ?? null,
+    syncStatus: row.syncStatus,
+    order: row.order,
+    lureType: row.lureType,
+    rodId: row.rodId ?? null,
+    reelId: row.reelId ?? null,
+    rodUid: row.rodUid ?? null,
+    reelUid: row.reelUid ?? null,
+  };
+}
+
 function serializeFish(row: TripFish): TripSyncFish {
   return {
     uid: row.uid,
@@ -158,6 +180,7 @@ function serializeFish(row: TripFish): TripSyncFish {
     sizeCm: row.sizeCm ?? null,
     count: row.count ?? null,
     lureType: row.lureType ?? null,
+    tripTackleUid: row.tripTackleUid ?? null,
     timeBand: row.timeBand ?? null,
   };
 }
@@ -212,6 +235,7 @@ export async function buildTripPushPayload(): Promise<TripPushPayload> {
     fish: bundle.fish.map(serializeFish),
     photos: bundle.photos.map(serializePhoto),
     tackles: bundle.tackles.map(serializeTackle),
+    tripTackles: bundle.tripTackles.map(serializeTripTackle),
   };
 }
 
@@ -222,6 +246,7 @@ export async function hasPendingSyncData(): Promise<boolean> {
     bundle.fish.length > 0 ||
     bundle.photos.length > 0 ||
     bundle.tackles.length > 0
+    || bundle.tripTackles.length > 0
   );
 }
 
@@ -273,6 +298,18 @@ async function markTacklesAsSynced(tackles: TackleItem[], syncedAt: string) {
   });
 }
 
+async function markTripTacklesAsSynced(rows: TripTackle[], syncedAt: string) {
+  await db.transaction("rw", db.tripTackles, async () => {
+    for (const row of rows) {
+      if (!row.id) continue;
+      await db.tripTackles.update(row.id, {
+        syncStatus: "synced",
+        updatedAt: row.deletedAt ? row.updatedAt : syncedAt,
+      });
+    }
+  });
+}
+
 async function markTripsAsError(trips: TripRecord[]) {
   await db.transaction("rw", db.trips, async () => {
     for (const row of trips) {
@@ -309,12 +346,22 @@ async function markTacklesAsError(tackles: TackleItem[]) {
   });
 }
 
+async function markTripTacklesAsError(rows: TripTackle[]) {
+  await db.transaction("rw", db.tripTackles, async () => {
+    for (const row of rows) {
+      if (!row.id) continue;
+      await db.tripTackles.update(row.id, { syncStatus: "error" });
+    }
+  });
+}
+
 async function markBundleAsSynced(bundle: PendingSyncBundle, syncedAt: string) {
   await Promise.all([
     markTripsAsSynced(bundle.trips, syncedAt),
     markFishAsSynced(bundle.fish, syncedAt),
     markPhotosAsSynced(bundle.photos, syncedAt),
     markTacklesAsSynced(bundle.tackles, syncedAt),
+    markTripTacklesAsSynced(bundle.tripTackles, syncedAt),
   ]);
 }
 
@@ -324,6 +371,7 @@ async function markBundleAsError(bundle: PendingSyncBundle) {
     markFishAsError(bundle.fish),
     markPhotosAsError(bundle.photos),
     markTacklesAsError(bundle.tackles),
+    markTripTacklesAsError(bundle.tripTackles),
   ]);
 }
 
@@ -410,6 +458,38 @@ async function upsertPulledFish(rows: TripSyncFish[]): Promise<number> {
     }
   });
 
+  return changed;
+}
+
+async function upsertPulledTripTackles(
+  rows: TripSyncTripTackle[],
+): Promise<number> {
+  let changed = 0;
+  await db.transaction("rw", db.tripTackles, db.trips, async () => {
+    for (const remote of rows) {
+      if (!remote.uid || !remote.tripUid) continue;
+      const parent = await db.trips.where("uid").equals(remote.tripUid).first();
+      if (!parent?.id) continue;
+      const local = await db.tripTackles.where("uid").equals(remote.uid).first();
+      const normalized: TripTackle = {
+        ...(remote as TripTackle),
+        tripId: parent.id,
+        syncStatus: "synced",
+      };
+      if (!local) {
+        await db.tripTackles.add(normalized);
+        changed += 1;
+      } else if (
+        Date.parse(remote.updatedAt) > Date.parse(local.updatedAt || local.createdAt)
+      ) {
+        await db.tripTackles.update(local.id!, {
+          ...normalized,
+          id: local.id,
+        });
+        changed += 1;
+      }
+    }
+  });
   return changed;
 }
 
@@ -554,6 +634,7 @@ export async function applyPullResponse(
   >
 > {
   const pulledTrips = await upsertPulledTrips(response.trips ?? []);
+  await upsertPulledTripTackles(response.tripTackles ?? []);
   const pulledFish = await upsertPulledFish(response.fish ?? []);
   const pulledPhotos = await upsertPulledPhotos(response.photos ?? []);
   const pulledTackles = await upsertPulledTackles(response.tackles ?? []);
@@ -576,6 +657,7 @@ export async function pushTripSync(
     bundle.fish.length === 0 &&
     bundle.photos.length === 0 &&
     bundle.tackles.length === 0
+    && bundle.tripTackles.length === 0
   ) {
     return {
       ok: true,
@@ -763,6 +845,7 @@ export async function syncTrips(
     pendingBundle.fish.length > 0 ||
     pendingBundle.photos.length > 0 ||
     pendingBundle.tackles.length > 0
+    || pendingBundle.tripTackles.length > 0
   ) {
     await markBundleAsSynced(pendingBundle, nowIso());
   }

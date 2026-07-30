@@ -13,6 +13,7 @@ import {
   type TripFish,
   type TripRecord,
   type TackleItem,
+  type TripTackle,
 } from "../db";
 import { getTimeBand } from "../lib/timeband";
 import {
@@ -188,6 +189,27 @@ const TIMEBAND_LABEL: Record<TripRecord["timeBand"], string> = {
 const TREND_ORDER = ["上げ", "下げ", "止まり"];
 
 const SPECIES_LABEL: Record<string, string> = {
+  horse_mackerel: "アジ",
+  sappa: "サッパ",
+  sardine: "イワシ",
+  mackerel: "サバ",
+  whiting: "キス",
+  rockfish: "カサゴ",
+  grouper: "ハタ（種類不明）",
+  red_spotted_grouper: "キジハタ",
+  areolate_grouper: "オオモンハタ",
+  red_grouper: "アカハタ",
+  barracuda: "カマス",
+  gizzard_shad: "コノシロ",
+  mejina: "メジナ",
+  rockfish_mebaru: "メバル",
+  goby: "ハゼ",
+  wrasse: "ベラ",
+  cardinalfish: "ネンブツダイ",
+  mullet: "ボラ",
+  lizardfish: "エソ",
+  pufferfish: "フグ",
+  squid: "アオリイカ",
   seabass: "シーバス",
   flounder: "ヒラメ",
   flathead: "マゴチ",
@@ -671,6 +693,9 @@ export default function RecordAnalysis({ back }: Props) {
   const [tackles, setTackles] = useState<Array<TackleItem & { id: number }>>(
     [],
   );
+  const [tripTackles, setTripTackles] = useState<
+    Array<TripTackle & { id: number }>
+  >([]);
   const [error, setError] = useState("");
   const [limitTop, setLimitTop] = useState(5);
   const [aiComments, setAiComments] = useState<AiCharacterComment[]>([]);
@@ -683,10 +708,11 @@ export default function RecordAnalysis({ back }: Props) {
     setLoading(true);
     setError("");
     try {
-      const [tripRows, fishRows, tackleRows] = await Promise.all([
+      const [tripRows, fishRows, tackleRows, tripTackleRows] = await Promise.all([
         db.trips.orderBy("createdAt").reverse().toArray(),
         db.tripFish.orderBy("createdAt").reverse().toArray(),
         db.tackleItems.toArray(),
+        db.tripTackles.toArray(),
       ]);
       setTrips(
         tripRows.filter(
@@ -703,6 +729,12 @@ export default function RecordAnalysis({ back }: Props) {
       setTackles(
         tackleRows.filter(
           (row): row is TackleItem & { id: number } =>
+            typeof row.id === "number" && !row.deletedAt,
+        ),
+      );
+      setTripTackles(
+        tripTackleRows.filter(
+          (row): row is TripTackle & { id: number } =>
             typeof row.id === "number" && !row.deletedAt,
         ),
       );
@@ -749,6 +781,7 @@ export default function RecordAnalysis({ back }: Props) {
 
   const joinedFish = useMemo<JoinedFish[]>(() => {
     const tripMap = new Map(trips.map((trip) => [trip.id, trip]));
+    const setupMap = new Map(tripTackles.map((row) => [row.uid, row]));
     return fish.flatMap((row) => {
       const trip = tripMap.get(row.tripId);
       if (!trip) return [];
@@ -761,7 +794,12 @@ export default function RecordAnalysis({ back }: Props) {
             trip.startedAt,
           ),
           tideTrend: labelTrend(trip.tideTrend),
-          lureType: getLureType(row),
+          lureType:
+            (row.tripTackleUid
+              ? normalizeLureType(setupMap.get(row.tripTackleUid)?.lureType)
+              : "unknown") !== "unknown"
+              ? normalizeLureType(setupMap.get(row.tripTackleUid!)?.lureType)
+              : getLureType(row),
           species: normalizeSpecies(row.species),
           sizeCm:
             typeof row.sizeCm === "number" && Number.isFinite(row.sizeCm)
@@ -771,7 +809,7 @@ export default function RecordAnalysis({ back }: Props) {
         },
       ];
     });
-  }, [trips, fish]);
+  }, [trips, fish, tripTackles]);
 
   const totalTrips = joinedTrips.length;
   const caughtTrips = joinedTrips.filter(
@@ -785,16 +823,20 @@ export default function RecordAnalysis({ back }: Props) {
       LureType,
       { lureType: LureType; total: number; caught: number }
     >();
-    joinedTrips.forEach((trip) => {
-      if (trip.lureType === "unknown") return;
-      const current = map.get(trip.lureType) ?? {
-        lureType: trip.lureType,
+    const caughtSetupUids = new Set(
+      fish.map((row) => row.tripTackleUid).filter(Boolean),
+    );
+    tripTackles.forEach((setup) => {
+      const lureType = normalizeLureType(setup.lureType);
+      if (lureType === "unknown") return;
+      const current = map.get(lureType) ?? {
+        lureType,
         total: 0,
         caught: 0,
       };
       current.total += 1;
-      if (trip.outcome === "caught") current.caught += 1;
-      map.set(trip.lureType, current);
+      if (caughtSetupUids.has(setup.uid)) current.caught += 1;
+      map.set(lureType, current);
     });
     return Array.from(map.values())
       .map((row) => ({
@@ -805,7 +847,7 @@ export default function RecordAnalysis({ back }: Props) {
       }))
       .sort((a, b) => b.score - a.score || b.total - a.total)
       .slice(0, limitTop);
-  }, [joinedTrips, limitTop]);
+  }, [tripTackles, fish, limitTop]);
   const uniqueSpecies = new Set(joinedFish.map((row) => row.species)).size;
   const measuredFish = joinedFish.filter(
     (row) => row.sizeCm != null && row.sizeCm > 0,
@@ -997,9 +1039,20 @@ export default function RecordAnalysis({ back }: Props) {
         .filter((tackle) => tackle.uid?.trim())
         .map((tackle) => [tackle.uid, tackle]),
     );
-    const tripFish = new Map<number, JoinedFish[]>();
-    joinedFish.forEach((row) => {
-      tripFish.set(row.tripId, [...(tripFish.get(row.tripId) ?? []), row]);
+    const rawFishBySetup = new Map<string, JoinedFish[]>();
+    fish.forEach((row) => {
+      if (!row.tripTackleUid) return;
+      const joined = joinedFish.find(
+        (item) =>
+          item.tripId === row.tripId &&
+          item.species === normalizeSpecies(row.species),
+      );
+      if (joined) {
+        rawFishBySetup.set(row.tripTackleUid, [
+          ...(rawFishBySetup.get(row.tripTackleUid) ?? []),
+          joined,
+        ]);
+      }
     });
 
     const build = (kind: "rod" | "reel"): TackleInsight[] => {
@@ -1013,9 +1066,9 @@ export default function RecordAnalysis({ back }: Props) {
           species: Map<string, number>;
         }
       >();
-      joinedTrips.forEach((trip) => {
-        const id = kind === "rod" ? trip.rodId : trip.reelId;
-        const uid = kind === "rod" ? trip.rodUid : trip.reelUid;
+      tripTackles.forEach((setup) => {
+        const id = kind === "rod" ? setup.rodId : setup.reelId;
+        const uid = kind === "rod" ? setup.rodUid : setup.reelUid;
         const tackle =
           (id != null ? byId.get(id) : undefined) ??
           (uid ? byUid.get(uid) : undefined);
@@ -1029,8 +1082,9 @@ export default function RecordAnalysis({ back }: Props) {
           species: new Map<string, number>(),
         };
         current.useCount += 1;
-        if (trip.outcome === "caught") current.caughtTrips += 1;
-        (tripFish.get(trip.id) ?? []).forEach((fishRow) => {
+        const setupFish = rawFishBySetup.get(setup.uid) ?? [];
+        if (setupFish.length > 0) current.caughtTrips += 1;
+        setupFish.forEach((fishRow) => {
           current.totalFish += fishRow.count;
           addCount(current.species, fishRow.species, fishRow.count);
         });
@@ -1057,7 +1111,7 @@ export default function RecordAnalysis({ back }: Props) {
         .slice(0, limitTop);
     };
     return { rods: build("rod"), reels: build("reel") };
-  }, [tackles, joinedTrips, joinedFish, limitTop]);
+  }, [tackles, tripTackles, fish, joinedFish, limitTop]);
 
   const envStats = useMemo(() => {
     const wind = [
