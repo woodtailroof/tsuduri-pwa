@@ -56,6 +56,15 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+function appendAssetVersion(url: string, assetVersion: string) {
+  const u = (url ?? "").trim();
+  const av = (assetVersion ?? "").trim();
+  if (!u || !av) return u;
+
+  const encoded = encodeURIComponent(av);
+  return u.includes("?") ? `${u}&av=${encoded}` : `${u}?av=${encoded}`;
+}
+
 function useMinuteTick() {
   const [tick, setTick] = useState(0);
 
@@ -289,6 +298,12 @@ function AppInner() {
     return autoPreviewSrc;
   }, [bgMode, fixedBgSrc, autoPreviewSrc]);
 
+  const assetVersion = (settings.assetVersion ?? "").trim();
+  const effectiveBgSrcWithAv = useMemo(
+    () => appendAssetVersion(effectiveBgSrc, assetVersion),
+    [effectiveBgSrc, assetVersion],
+  );
+
   const bgBlur = Number.isFinite(settings.bgBlur)
     ? settings.bgBlur
     : DEFAULT_SETTINGS.bgBlur;
@@ -311,8 +326,8 @@ function AppInner() {
 
     const vars: CSSProperties & CSSVars = {
       "--bg-image":
-        effectiveBgSrc && bgMode !== "off"
-          ? `url("${effectiveBgSrc}")`
+        effectiveBgSrcWithAv && bgMode !== "off"
+          ? `url("${effectiveBgSrcWithAv}")`
           : "none",
       "--bg-blur": `${bgBlurPx}px`,
       "--glass-blur": `${glassBlurUnitless}`,
@@ -327,7 +342,14 @@ function AppInner() {
     }
 
     return vars;
-  }, [effectiveBgSrc, bgMode, bgBlur, glassBlur, glassAlpha, screen]);
+  }, [
+    effectiveBgSrcWithAv,
+    bgMode,
+    bgBlur,
+    glassBlur,
+    glassAlpha,
+    screen,
+  ]);
 
   const isCalmViewer = screen === "albumViewer";
   const skipFade = screen === "albumPicker" || screen === "albumViewer";

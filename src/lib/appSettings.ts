@@ -61,6 +61,7 @@ export type AppSettings = {
 
 export const AUTO_BG_SETS: Array<{ id: string; label: string }> = [
   { id: "surf", label: "サーフ" },
+  { id: "port", label: "港" },
 ] as const;
 
 /* =========================
