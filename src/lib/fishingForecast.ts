@@ -95,24 +95,24 @@ function tideMovement(series: TidePoint[], selectedHour: number) {
 
 function safetyLevelForHeight(point: FishingPoint, waveHeight: number) {
   if (point.waveExposure === "open") {
-    if (waveHeight >= 1.5) return 4;
-    if (waveHeight >= 1.2) return 3;
-    if (waveHeight >= 0.8) return 2;
-    if (waveHeight >= 0.5) return 1;
+    if (waveHeight >= 2.5) return 4;
+    if (waveHeight >= 2.0) return 3;
+    if (waveHeight >= 1.6) return 2;
+    if (waveHeight >= 0.9) return 1;
     return 0;
   }
   if (point.waveExposure === "partial") {
-    if (waveHeight >= 2.0) return 4;
-    if (waveHeight >= 1.5) return 3;
-    if (waveHeight >= 1.0) return 2;
-    if (waveHeight >= 0.7) return 1;
+    if (waveHeight >= 3.0) return 4;
+    if (waveHeight >= 2.4) return 3;
+    if (waveHeight >= 1.8) return 2;
+    if (waveHeight >= 1.2) return 1;
     return 0;
   }
   if (point.waveExposure === "sheltered") {
-    if (waveHeight >= 3.0) return 4;
-    if (waveHeight >= 2.2) return 3;
-    if (waveHeight >= 1.5) return 2;
-    if (waveHeight >= 1.0) return 1;
+    if (waveHeight >= 4.0) return 4;
+    if (waveHeight >= 3.2) return 3;
+    if (waveHeight >= 2.5) return 2;
+    if (waveHeight >= 1.8) return 1;
     return 0;
   }
   return 0;
@@ -164,12 +164,12 @@ export function buildFishingForecast(input: {
     safetyLevel = safetyLevelForHeight(point, waveHeight);
     let waveRiskAdjustment = false;
 
-    if (swellPeriod != null && swellPeriod >= 13 && waveHeight >= 0.7) {
+    if (swellPeriod != null && swellPeriod >= 14 && waveHeight >= 1.0) {
       waveRiskAdjustment = true;
       reasons.push(`長周期うねり ${swellPeriod.toFixed(1)}秒`);
     } else if (
-      (swellPeriod != null && swellPeriod >= 11 && waveHeight >= 0.8) ||
-      (wavePeriod != null && wavePeriod >= 9 && waveHeight >= 0.8)
+      (swellPeriod != null && swellPeriod >= 12 && waveHeight >= 1.2) ||
+      (wavePeriod != null && wavePeriod >= 11 && waveHeight >= 1.2)
     ) {
       waveRiskAdjustment = true;
       reasons.push(
@@ -180,8 +180,8 @@ export function buildFishingForecast(input: {
     if (
       point.seaFacingDeg != null &&
       waveDirection != null &&
-      waveHeight >= 0.7 &&
-      angularDistance(point.seaFacingDeg, waveDirection) <= 45
+      waveHeight >= 1.8 &&
+      angularDistance(point.seaFacingDeg, waveDirection) <= 35
     ) {
       waveRiskAdjustment = true;
       reasons.push("正面寄りの波向");
@@ -191,15 +191,18 @@ export function buildFishingForecast(input: {
     if (waveRiskAdjustment) safetyLevel += 1;
   }
 
-  if (windMax != null && windMax >= 10) {
+  if (windMax != null && windMax >= 12) {
     safetyLevel = Math.max(safetyLevel, 4);
     reasons.push(`強風 ${windMax.toFixed(1)}m/s`);
-  } else if (windMax != null && windMax >= 8) {
+  } else if (windMax != null && windMax >= 10) {
     safetyLevel = Math.max(safetyLevel, 3);
     reasons.push(`風強め ${windMax.toFixed(1)}m/s`);
-  } else if (windMax != null && windMax >= 6) {
+  } else if (windMax != null && windMax >= 8) {
     safetyLevel = Math.max(safetyLevel, 2);
     reasons.push(`やや強風 ${windMax.toFixed(1)}m/s`);
+  } else if (windMax != null && windMax >= 6) {
+    safetyLevel = Math.max(safetyLevel, 1);
+    reasons.push(`風に注意 ${windMax.toFixed(1)}m/s`);
   }
 
   safetyLevel = clamp(safetyLevel, 0, 4);

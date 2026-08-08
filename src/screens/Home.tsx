@@ -87,7 +87,8 @@ type TonePalette = {
   sheen: string;
 };
 
-function getTonePalette(_tone: TimeTone): TonePalette {
+function getTonePalette(tone: TimeTone): TonePalette {
+  void tone;
   return {
     shellTop: "rgba(10,35,62,0.80)",
     shellBottom: "rgba(8,65,78,0.72)",
@@ -616,6 +617,7 @@ export default function Home({ go, goSecret }: Props) {
       showBack={false}
       scrollY="hidden"
       contentPadding={0}
+      desktopContentLayout="home-centered"
     >
       <style>
         {`

@@ -1397,7 +1397,7 @@ export default function Weather({ back, isActive = true }: Props) {
               series={tideState.status === "ok" ? tideState.series : []}
               baseDate={targetDate}
               highlightAt={highlightAt}
-              height={isDesktop ? 138 : 170}
+              height={isDesktop ? 190 : 170}
               yDomain={{ min: -50, max: 200 }}
             />
             <div

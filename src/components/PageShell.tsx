@@ -22,7 +22,7 @@ type Props = {
   showTestCharacter?: boolean;
   displayCharacterId?: string;
   displayExpression?: string;
-  desktopContentLayout?: "default" | "wide-left";
+  desktopContentLayout?: "default" | "wide-left" | "home-centered";
 };
 
 function useIsMobile() {
@@ -235,6 +235,10 @@ export default function PageShell(props: Props) {
     <div
       className={`page-shell${
         desktopContentLayout === "wide-left" ? " page-shell--wide-left" : ""
+      }${
+        desktopContentLayout === "home-centered"
+          ? " page-shell--home-centered"
+          : ""
       }`}
       style={shellStyle}
     >
@@ -270,6 +274,14 @@ export default function PageShell(props: Props) {
 
           .page-shell--wide-left {
             --page-character-reserve: clamp(500px, 31vw, 620px);
+          }
+
+          .page-shell--home-centered .page-shell-header-inner,
+          .page-shell--home-centered .page-shell-frame {
+            width: 100% !important;
+            max-width: var(--page-content-max);
+            margin-left: auto !important;
+            margin-right: auto !important;
           }
         }
 
