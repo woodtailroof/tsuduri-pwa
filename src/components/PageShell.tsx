@@ -240,8 +240,8 @@ export default function PageShell(props: Props) {
     >
       <style>{`
         .page-shell {
-          --page-character-reserve: clamp(420px, 29vw, 560px);
-          --page-desktop-gutter: clamp(18px, 3vw, 56px);
+          --page-character-reserve: clamp(500px, 31vw, 620px);
+          --page-desktop-gutter: clamp(14px, 1.6vw, 30px);
         }
 
         .page-shell-header-inner,
@@ -269,13 +269,13 @@ export default function PageShell(props: Props) {
           }
 
           .page-shell--wide-left {
-            --page-character-reserve: clamp(300px, 19vw, 380px);
+            --page-character-reserve: clamp(500px, 31vw, 620px);
           }
         }
 
         @media (min-width: 1180px) and (max-width: 1499px) {
           .page-shell {
-            --page-character-reserve: clamp(360px, 27vw, 430px);
+            --page-character-reserve: clamp(400px, 29vw, 470px);
           }
         }
 

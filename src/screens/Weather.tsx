@@ -919,9 +919,10 @@ export default function Weather({ back, isActive = true }: Props) {
             flexWrap: isWideLayout ? "nowrap" : "wrap",
             flexDirection: isWideLayout ? "column" : "row",
             alignItems: isWideLayout ? "stretch" : "center",
-            alignSelf: isWideLayout ? "start" : undefined,
+            alignSelf: isWideLayout ? "stretch" : undefined,
             gridColumn: isWideLayout ? 1 : undefined,
             gridRow: isWideLayout ? "1 / 3" : undefined,
+            minHeight: 0,
           }}
         >
           {isWideLayout && (
@@ -996,31 +997,69 @@ export default function Weather({ back, isActive = true }: Props) {
             </select>
           </label>
 
-          <label
+          <div
             style={{
-              display: "inline-flex",
-              flexDirection: isWideLayout ? "column" : "row",
-              alignItems: isWideLayout ? "stretch" : "center",
+              display: "flex",
+              flexDirection: "column",
               gap: 6,
+              minHeight: 0,
             }}
           >
-            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.62)" }}>判定時刻</span>
-            <select
-              value={selectedHour}
-              onChange={(event) => setSelectedHour(Number(event.target.value))}
+            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.62)" }}>
+              判定時刻（前後3時間）
+            </span>
+            <div
+              role="group"
+              aria-label="判定時刻"
               style={{
-                ...controlStyle,
-                borderRadius: 10,
-                width: isWideLayout ? "100%" : undefined,
+                display: "grid",
+                gridTemplateColumns: isWideLayout ? "1fr" : "repeat(4, minmax(68px, 1fr))",
+                gap: isWideLayout ? 5 : 6,
+                minHeight: 0,
               }}
             >
-              {THREE_HOUR_SLOTS.map((hour) => (
-                <option key={hour} value={hour} style={{ color: "#111" }}>
-                  {pad2(hour)}:00（前後3時間）
-                </option>
-              ))}
-            </select>
-          </label>
+              {THREE_HOUR_SLOTS.map((hour) => {
+                const selected = selectedHour === hour;
+                return (
+                  <button
+                    key={hour}
+                    type="button"
+                    onClick={() => setSelectedHour(hour)}
+                    aria-pressed={selected}
+                    style={{
+                      ...tabStyle(selected),
+                      minHeight: isWideLayout ? 36 : 34,
+                      width: "100%",
+                      borderRadius: 10,
+                      padding: isWideLayout ? "5px 10px" : "5px 7px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      background: selected
+                        ? "linear-gradient(90deg, rgba(255,84,139,0.28), rgba(151,121,255,0.18))"
+                        : "rgba(17,17,17,var(--glass-alpha-strong,0.35))",
+                    }}
+                  >
+                    <strong style={{ fontSize: isWideLayout ? 15 : 13 }}>
+                      {pad2(hour)}:00
+                    </strong>
+                    {isWideLayout && (
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          fontSize: 10,
+                          color: selected ? "#ffd4e6" : "rgba(255,255,255,0.48)",
+                        }}
+                      >
+                        {selected ? "選択中 ●" : "○"}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           {isMobile && camera && (
             <button onClick={openCamera} style={tabStyle(false)}>
@@ -1174,7 +1213,15 @@ export default function Weather({ back, isActive = true }: Props) {
             gridRow: isWideLayout ? 2 : undefined,
           }}
         >
-          <div className="glass glass-strong" style={{ ...tileStyle, minHeight: 0 }}>
+          <div
+            className="glass glass-strong"
+            style={{
+              ...tileStyle,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
             <div
               style={{
                 padding: "8px 10px",
@@ -1236,11 +1283,16 @@ export default function Weather({ back, isActive = true }: Props) {
             <div
               style={{
                 marginTop: 10,
-                padding: "12px 12px 13px",
+                padding: "16px 15px 17px",
                 borderRadius: 14,
                 background:
                   "linear-gradient(145deg, rgba(255,177,74,0.18), rgba(255,105,174,0.12) 48%, rgba(83,211,255,0.14))",
                 border: "1px solid rgba(255,255,255,0.14)",
+                flex: "1 1 auto",
+                minHeight: 0,
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-evenly",
               }}
             >
               <div
@@ -1249,12 +1301,12 @@ export default function Weather({ back, isActive = true }: Props) {
                   alignItems: "center",
                   justifyContent: "space-between",
                   gap: 10,
-                  marginBottom: 8,
+                  marginBottom: 10,
                 }}
               >
-                <strong style={{ fontSize: 16 }}>🌤️ 天気概況</strong>
+                <strong style={{ fontSize: 19 }}>🌤️ 天気概況</strong>
                 {weatherState.status === "ok" && (
-                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
                     {weatherState.summary.label}
                   </span>
                 )}
@@ -1264,16 +1316,16 @@ export default function Weather({ back, isActive = true }: Props) {
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "58px minmax(0, 1fr)",
+                      gridTemplateColumns: "82px minmax(0, 1fr)",
                       alignItems: "center",
-                      gap: 10,
-                      marginBottom: 10,
+                      gap: 14,
+                      marginBottom: 14,
                     }}
                   >
                     <span
                       aria-hidden="true"
                       style={{
-                        fontSize: 48,
+                        fontSize: 72,
                         lineHeight: 1,
                         filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.22))",
                       }}
@@ -1282,8 +1334,8 @@ export default function Weather({ back, isActive = true }: Props) {
                     </span>
                     <strong
                       style={{
-                        fontSize: 23,
-                        lineHeight: 1.15,
+                        fontSize: 30,
+                        lineHeight: 1.1,
                         color: "#fff",
                       }}
                     >
@@ -1294,21 +1346,21 @@ export default function Weather({ back, isActive = true }: Props) {
                     style={{
                       display: "grid",
                       gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                      gap: 7,
+                      gap: 9,
                     }}
                   >
-                    <div style={{ padding: "8px 9px", borderRadius: 10, background: "rgba(255,255,255,0.07)" }}>
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>気温</div>
-                      <strong style={{ fontSize: 15 }}>🌡️ {weatherState.summary.tempMin}〜{weatherState.summary.tempMax}℃</strong>
+                    <div style={{ padding: "11px 10px", borderRadius: 11, background: "rgba(255,255,255,0.07)" }}>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.58)" }}>気温</div>
+                      <strong style={{ fontSize: 18 }}>🌡️ {weatherState.summary.tempMin}〜{weatherState.summary.tempMax}℃</strong>
                     </div>
-                    <div style={{ padding: "8px 9px", borderRadius: 10, background: "rgba(83,211,255,0.09)" }}>
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>降水</div>
-                      <strong style={{ fontSize: 15, color: "#9ee8ff" }}>☔ {weatherState.summary.rainProbMax}%</strong>
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.62)" }}>計 {weatherState.summary.rainSum}mm</div>
+                    <div style={{ padding: "11px 10px", borderRadius: 11, background: "rgba(83,211,255,0.09)" }}>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.58)" }}>降水</div>
+                      <strong style={{ fontSize: 18, color: "#9ee8ff" }}>☔ {weatherState.summary.rainProbMax}%</strong>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>計 {weatherState.summary.rainSum}mm</div>
                     </div>
-                    <div style={{ gridColumn: "1 / -1", padding: "8px 9px", borderRadius: 10, background: "rgba(255,105,174,0.08)" }}>
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>最大風速 / 最大瞬間風速</div>
-                      <strong style={{ fontSize: 15, color: "#ffd0e4" }}>
+                    <div style={{ gridColumn: "1 / -1", padding: "11px 10px", borderRadius: 11, background: "rgba(255,105,174,0.08)" }}>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.58)" }}>最大風速 / 最大瞬間風速</div>
+                      <strong style={{ fontSize: 18, color: "#ffd0e4" }}>
                         🍃 {weatherState.summary.windMax}m/s / ⚡ {weatherState.summary.gustMax}m/s
                       </strong>
                     </div>
