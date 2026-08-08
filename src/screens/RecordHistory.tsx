@@ -2238,7 +2238,10 @@ export default function RecordHistory({ back, onEdit }: Props) {
           maxWidth: "100vw",
           minHeight: 0,
           height: isMobile ? "auto" : "100%",
+          boxSizing: "border-box",
           paddingBottom: 8,
+          display: isMobile ? "block" : "flex",
+          flexDirection: isMobile ? undefined : "column",
         }}
       >
         {isMobile ? (
@@ -2283,12 +2286,14 @@ export default function RecordHistory({ back, onEdit }: Props) {
               display: "grid",
               gridTemplateColumns:
                 "minmax(240px, 0.82fr) minmax(0, 0.94fr) minmax(0, 1.06fr)",
+              gridTemplateRows: "minmax(0, 1fr)",
               gap: 14,
               alignItems: "stretch",
               minWidth: 0,
               minHeight: 0,
-              height: "100%",
-              maxHeight: "100%",
+              flex: "1 1 0",
+              height: 0,
+              overflow: "hidden",
             }}
           >
             <div
@@ -2334,6 +2339,9 @@ export default function RecordHistory({ back, onEdit }: Props) {
                 minHeight: 0,
                 height: "100%",
                 overflow: "hidden",
+                boxSizing: "border-box",
+                display: "flex",
+                flexDirection: "column",
               }}
             >
               <div
@@ -2341,9 +2349,12 @@ export default function RecordHistory({ back, onEdit }: Props) {
                 style={{
                   minWidth: 0,
                   minHeight: 0,
-                  height: "100%",
+                  flex: "1 1 0",
+                  height: 0,
                   overflowY: "auto",
+                  overflowX: "hidden",
                   paddingRight: 4,
+                  scrollbarGutter: "stable",
                   overscrollBehavior: "contain",
                   WebkitOverflowScrolling: "touch",
                 }}

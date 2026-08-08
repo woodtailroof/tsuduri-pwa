@@ -171,9 +171,35 @@ export default function Stage(props: Props) {
     settings.characterCostumeMode ?? DEFAULT_SETTINGS.characterCostumeMode,
   );
 
-  // ✅ HOMEなどではここで強制neutralできる
+  const [forcedExpressionFromShell, setForcedExpressionFromShell] =
+    useState<Emotion | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handler = (event: Event) => {
+      const customEvent = event as CustomEvent<{ expression?: unknown }>;
+      const raw = customEvent.detail?.expression;
+      const expression = typeof raw === "string" ? raw.trim() : "";
+      setForcedExpressionFromShell(
+        expression ? normalizeExpression(expression) : null,
+      );
+    };
+
+    window.addEventListener(
+      "tsuduri-display-expression",
+      handler as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        "tsuduri-display-expression",
+        handler as EventListener,
+      );
+  }, []);
+
+  // HOMEの固定表情、画面固有表情、共有感情の順で採用する。
   const effectiveExpression = normalizeExpression(
-    props.forcedExpression ?? globalEmotion,
+    props.forcedExpression ?? forcedExpressionFromShell ?? globalEmotion,
   );
 
   const reducedMotion = useMemo(() => prefersReducedMotion(), []);

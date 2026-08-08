@@ -128,6 +128,17 @@ export default function PageShell(props: Props) {
   useLayoutEffect(() => {
     if (typeof window === "undefined") return;
 
+    const expression = (props.displayExpression ?? "").trim();
+    window.dispatchEvent(
+      new CustomEvent("tsuduri-display-expression", {
+        detail: { expression },
+      }),
+    );
+  }, [props.displayExpression]);
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+
     window.dispatchEvent(
       new CustomEvent("tsuduri-stage-route", {
         detail: { key: routeKey },
