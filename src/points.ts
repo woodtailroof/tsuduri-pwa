@@ -51,13 +51,11 @@ export const FISHING_POINTS: readonly FishingPoint[] = [
     camera: { ...OOHAMA_CAMERA, sameLocation: true },
   },
   {
-    id: "hirono",
-    name: "広野海岸公園",
-    shortName: "広野",
-    waveExposure: "open",
-    seaFacingDeg: 145,
-    note: "開放岸として厳しめに判定",
-    camera: { ...OOHAMA_CAMERA, sameLocation: false },
+    id: "fishuna",
+    name: "焼津ふぃしゅーな",
+    shortName: "ふぃしゅーな",
+    waveExposure: "sheltered",
+    note: "焼津港内の親水広場周辺。外向き護岸にはこの判定を使わない",
   },
   {
     id: "abekawa-mouth",

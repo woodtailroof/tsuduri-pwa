@@ -22,6 +22,7 @@ type Props = {
   showTestCharacter?: boolean;
   displayCharacterId?: string;
   displayExpression?: string;
+  desktopContentLayout?: "default" | "wide-left";
 };
 
 function useIsMobile() {
@@ -73,6 +74,7 @@ export default function PageShell(props: Props) {
   const scrollY = props.scrollY ?? "auto";
   const contentPadding = props.contentPadding;
   const titleLayout = props.titleLayout ?? "center";
+  const desktopContentLayout = props.desktopContentLayout ?? "default";
 
   const isMobile = useIsMobile();
 
@@ -100,8 +102,16 @@ export default function PageShell(props: Props) {
     const y = String(scrollY);
     const tl = String(titleLayout);
     const sb = String(showBack);
-    return `${t}|${s}|${w}|${y}|${tl}|${sb}`;
-  }, [title, subtitle, maxWidth, scrollY, titleLayout, showBack]);
+    return `${t}|${s}|${w}|${y}|${tl}|${sb}|${desktopContentLayout}`;
+  }, [
+    title,
+    subtitle,
+    maxWidth,
+    scrollY,
+    titleLayout,
+    showBack,
+    desktopContentLayout,
+  ]);
 
   useLayoutEffect(() => {
     if (typeof window === "undefined") return;
@@ -222,7 +232,12 @@ export default function PageShell(props: Props) {
   };
 
   return (
-    <div className="page-shell" style={shellStyle}>
+    <div
+      className={`page-shell${
+        desktopContentLayout === "wide-left" ? " page-shell--wide-left" : ""
+      }`}
+      style={shellStyle}
+    >
       <style>{`
         .page-shell {
           --page-character-reserve: clamp(420px, 29vw, 560px);
@@ -251,6 +266,10 @@ export default function PageShell(props: Props) {
             max-width: none;
             margin-left: var(--page-desktop-gutter);
             margin-right: auto;
+          }
+
+          .page-shell--wide-left {
+            --page-character-reserve: clamp(300px, 19vw, 380px);
           }
         }
 

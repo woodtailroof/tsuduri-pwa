@@ -453,6 +453,22 @@ function useIsMobile() {
   return isMobile;
 }
 
+function useWideWeatherLayout() {
+  const [isWide, setIsWide] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(min-width: 1180px)").matches;
+  });
+
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1180px)");
+    const update = () => setIsWide(query.matches);
+    query.addEventListener?.("change", update);
+    return () => query.removeEventListener?.("change", update);
+  }, []);
+
+  return isWide;
+}
+
 const toneStyle: Record<ForecastTone, { color: string; bg: string; border: string }> = {
   good: {
     color: "#83f5c1",
@@ -525,6 +541,7 @@ export default function Weather({ back, isActive = true }: Props) {
   const { emitEmotion, clearEmotion } = useEmotion();
   const isMobile = useIsMobile();
   const isDesktop = !isMobile;
+  const isWideLayout = useWideWeatherLayout();
 
   const [tab, setTab] = useState<"today" | "tomorrow" | "pick">("today");
   const [picked, setPicked] = useState(toDateInputValue(new Date()));
@@ -844,11 +861,12 @@ export default function Weather({ back, isActive = true }: Props) {
         </div>
       }
       titleLayout="left"
-      maxWidth={1320}
+      maxWidth={1580}
       showBack
       onBack={onBack}
-      scrollY={isDesktop ? "hidden" : "auto"}
+      scrollY={isWideLayout ? "hidden" : "auto"}
       displayExpression={weatherEmotion}
+      desktopContentLayout={isWideLayout ? "wide-left" : "default"}
       contentPadding={isDesktop ? "10px 18px 14px" : "14px 14px 20px"}
     >
       <div
@@ -857,7 +875,12 @@ export default function Weather({ back, isActive = true }: Props) {
           minHeight: 0,
           overflowX: "clip",
           display: "grid",
-          gridTemplateRows: isDesktop ? "auto auto minmax(0, 1fr)" : undefined,
+          gridTemplateColumns: isWideLayout
+            ? "minmax(236px, 0.43fr) minmax(0, 2.57fr)"
+            : "1fr",
+          gridTemplateRows: isWideLayout
+            ? "auto minmax(0, 1fr)"
+            : undefined,
           gap: isDesktop ? 7 : 12,
         }}
       >
@@ -868,10 +891,26 @@ export default function Weather({ back, isActive = true }: Props) {
             padding: isDesktop ? "7px 10px" : 10,
             display: "flex",
             gap: 8,
-            flexWrap: "wrap",
-            alignItems: "center",
+            flexWrap: isWideLayout ? "nowrap" : "wrap",
+            flexDirection: isWideLayout ? "column" : "row",
+            alignItems: isWideLayout ? "stretch" : "center",
+            alignSelf: isWideLayout ? "start" : undefined,
+            gridColumn: isWideLayout ? 1 : undefined,
+            gridRow: isWideLayout ? "1 / 3" : undefined,
           }}
         >
+          {isWideLayout && (
+            <div style={{ fontSize: 14, fontWeight: 950, marginBottom: 2 }}>
+              📍 日時・釣場を選ぶ
+            </div>
+          )}
+          <div
+            style={{
+              display: "flex",
+              gap: 6,
+              flexWrap: "wrap",
+            }}
+          >
           <button onClick={() => setTab("today")} style={tabStyle(tab === "today")}>
             今日
           </button>
@@ -884,23 +923,45 @@ export default function Weather({ back, isActive = true }: Props) {
           <button onClick={() => setTab("pick")} style={tabStyle(tab === "pick")}>
             日付指定
           </button>
+          </div>
           {tab === "pick" && (
             <input
               type="date"
               value={picked}
               onChange={(event) => setPicked(event.target.value)}
-              style={{ ...controlStyle, borderRadius: 10 }}
+              style={{
+                ...controlStyle,
+                borderRadius: 10,
+                width: isWideLayout ? "100%" : undefined,
+              }}
             />
           )}
 
-          <span style={{ width: 1, height: 24, background: "rgba(255,255,255,0.14)" }} />
+          <span
+            style={{
+              width: isWideLayout ? "100%" : 1,
+              height: isWideLayout ? 1 : 24,
+              background: "rgba(255,255,255,0.14)",
+            }}
+          />
 
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <label
+            style={{
+              display: "inline-flex",
+              flexDirection: isWideLayout ? "column" : "row",
+              alignItems: isWideLayout ? "stretch" : "center",
+              gap: 6,
+            }}
+          >
             <span style={{ fontSize: 11, color: "rgba(255,255,255,0.62)" }}>釣場</span>
             <select
               value={selectedPointId}
               onChange={(event) => setSelectedPointId(event.target.value)}
-              style={{ ...controlStyle, borderRadius: 10 }}
+              style={{
+                ...controlStyle,
+                borderRadius: 10,
+                width: isWideLayout ? "100%" : undefined,
+              }}
             >
               {FISHING_POINTS.map((point) => (
                 <option key={point.id} value={point.id} style={{ color: "#111" }}>
@@ -910,12 +971,23 @@ export default function Weather({ back, isActive = true }: Props) {
             </select>
           </label>
 
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <label
+            style={{
+              display: "inline-flex",
+              flexDirection: isWideLayout ? "column" : "row",
+              alignItems: isWideLayout ? "stretch" : "center",
+              gap: 6,
+            }}
+          >
             <span style={{ fontSize: 11, color: "rgba(255,255,255,0.62)" }}>判定時刻</span>
             <select
               value={selectedHour}
               onChange={(event) => setSelectedHour(Number(event.target.value))}
-              style={{ ...controlStyle, borderRadius: 10 }}
+              style={{
+                ...controlStyle,
+                borderRadius: 10,
+                width: isWideLayout ? "100%" : undefined,
+              }}
             >
               {THREE_HOUR_SLOTS.map((hour) => (
                 <option key={hour} value={hour} style={{ color: "#111" }}>
@@ -938,6 +1010,8 @@ export default function Weather({ back, isActive = true }: Props) {
             gridTemplateColumns: isDesktop && camera ? "minmax(0, 1.6fr) minmax(280px, 0.7fr)" : "1fr",
             gap: isDesktop ? 8 : 12,
             minWidth: 0,
+            gridColumn: isWideLayout ? 2 : undefined,
+            gridRow: isWideLayout ? 1 : undefined,
           }}
         >
           <div className="glass glass-strong" style={{ ...tileStyle, padding: isDesktop ? 9 : 11 }}>
@@ -1044,6 +1118,8 @@ export default function Weather({ back, isActive = true }: Props) {
             display: "grid",
             gridTemplateColumns: isDesktop ? "minmax(270px, 0.52fr) minmax(0, 1.78fr)" : "1fr",
             gap: isDesktop ? 8 : 12,
+            gridColumn: isWideLayout ? 2 : undefined,
+            gridRow: isWideLayout ? 2 : undefined,
           }}
         >
           <div className="glass glass-strong" style={{ ...tileStyle, minHeight: 0 }}>
@@ -1144,29 +1220,49 @@ export default function Weather({ back, isActive = true }: Props) {
                 marginTop: 5,
                 padding: "7px 9px",
                 borderRadius: 14,
-                background: "linear-gradient(135deg, rgba(255,105,174,0.12), rgba(127,116,255,0.10) 48%, rgba(83,211,255,0.10))",
+                background:
+                  "linear-gradient(135deg, rgba(255,105,174,0.12), rgba(127,116,255,0.10) 48%, rgba(83,211,255,0.10))",
                 border: "1px solid rgba(255,255,255,0.12)",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 5 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 10,
+                  marginBottom: 5,
+                }}
+              >
                 <strong style={{ fontSize: 13 }}>🌤️ 3時間ごとの天気・海況</strong>
                 {weatherState.status === "ok" && (
-                  <span style={{ fontSize: 10, color: "rgba(255,255,255,0.58)" }}>
-                    {weatherState.summary.overview} / {weatherState.summary.tempMin}〜{weatherState.summary.tempMax}℃
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: "rgba(255,255,255,0.58)",
+                    }}
+                  >
+                    {weatherState.summary.overview} / {weatherState.summary.tempMin}〜
+                    {weatherState.summary.tempMax}℃
                   </span>
                 )}
               </div>
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: isDesktop ? "repeat(8, minmax(66px, 1fr))" : "repeat(8, minmax(82px, 1fr))",
+                  gridTemplateColumns: isDesktop
+                    ? "repeat(8, minmax(66px, 1fr))"
+                    : "repeat(8, minmax(82px, 1fr))",
                   gap: 5,
                   overflowX: "auto",
                   paddingBottom: 2,
                 }}
               >
                 {THREE_HOUR_SLOTS.map((hour) => {
-                  const weather = weatherState.status === "ok" ? weatherState.hours.find((item) => item.hour === hour) : undefined;
+                  const weather =
+                    weatherState.status === "ok"
+                      ? weatherState.hours.find((item) => item.hour === hour)
+                      : undefined;
                   const marine = marineThreeHourly.find((item) => item.hour === hour);
                   const selected = selectedHour === hour;
                   return (
@@ -1181,32 +1277,231 @@ export default function Weather({ back, isActive = true }: Props) {
                         textAlign: "center",
                         color: "#fff",
                         cursor: "pointer",
-                        background: selected ? "rgba(255,84,139,0.20)" : "rgba(12,18,38,0.28)",
-                        border: selected ? "2px solid #ff6598" : "1px solid rgba(255,255,255,0.09)",
+                        background: selected
+                          ? "rgba(255,84,139,0.20)"
+                          : "rgba(12,18,38,0.28)",
+                        border: selected
+                          ? "2px solid #ff6598"
+                          : "1px solid rgba(255,255,255,0.09)",
                       }}
                     >
-                      <div style={{ fontSize: 11, fontWeight: 950, color: selected ? "#ffd4e6" : "#ffd4ed" }}>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 950,
+                          color: selected ? "#ffd4e6" : "#ffd4ed",
+                        }}
+                      >
                         {pad2(hour)}時
                       </div>
-                      <div style={{ fontSize: 17, lineHeight: 1.2 }}>{weather ? wmoToIcon(weather.weatherCode) : "・"}</div>
-                      <div style={{ fontSize: 10, fontWeight: 850 }}>{weather ? `${weather.temp}℃` : "-℃"}</div>
+                      <div style={{ fontSize: 17, lineHeight: 1.2 }}>
+                        {weather ? wmoToIcon(weather.weatherCode) : "・"}
+                      </div>
+                      <div style={{ fontSize: 10, fontWeight: 850 }}>
+                        {weather ? `${weather.temp}℃` : "-℃"}
+                      </div>
                       <div style={{ fontSize: 9, color: "#82ddff", whiteSpace: "nowrap" }}>
                         ☔ {weather ? `${weather.rainProb}%` : "-"}
                       </div>
-                      <div style={{ fontSize: 9, color: "rgba(255,255,255,0.68)", whiteSpace: "nowrap" }}>
-                        {weather ? `${directionLabel(weather.windDirection)} ${weather.windSpeed}m` : "風 -"}
+                      <div
+                        style={{
+                          fontSize: 9,
+                          color: "rgba(255,255,255,0.68)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {weather
+                          ? `${directionLabel(weather.windDirection)} ${weather.windSpeed}m`
+                          : "風 -"}
                       </div>
-                      <div style={{ marginTop: 2, fontSize: 9, color: marine?.waveHeight != null ? "#ffc0dc" : "rgba(255,255,255,0.46)", whiteSpace: "nowrap" }}>
+                      <div
+                        style={{
+                          marginTop: 2,
+                          fontSize: 9,
+                          color:
+                            marine?.waveHeight != null
+                              ? "#ffc0dc"
+                              : "rgba(255,255,255,0.46)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         🌊 {marine?.waveHeight != null ? `${marine.waveHeight.toFixed(1)}m` : "-"}
                       </div>
-                      <div style={{ fontSize: 8, color: "rgba(255,255,255,0.55)", whiteSpace: "nowrap" }}>
-                        {marine?.wavePeriod != null ? `${marine.wavePeriod.toFixed(1)}秒` : "周期 -"}
+                      <div
+                        style={{
+                          fontSize: 8,
+                          color: "rgba(255,255,255,0.55)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {marine?.wavePeriod != null
+                          ? `${marine.wavePeriod.toFixed(1)}秒`
+                          : "周期 -"}
                       </div>
                     </button>
                   );
                 })}
               </div>
             </div>
+          </div>
+        </div>
+
+        <div
+          className="glass glass-strong"
+          style={{
+            ...tileStyle,
+            minHeight: 0,
+            padding: 9,
+            gridColumn: isWideLayout ? 1 : undefined,
+            gridRow: isWideLayout ? "1 / 4" : undefined,
+            display: "none",
+            flexDirection: "column",
+          }}
+        >
+          <div
+            style={{
+              padding: "8px 9px",
+              borderRadius: 13,
+              background:
+                "linear-gradient(135deg, rgba(255,105,174,0.15), rgba(127,116,255,0.12) 48%, rgba(83,211,255,0.12))",
+              border: "1px solid rgba(255,255,255,0.12)",
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 950, marginBottom: 6 }}>
+              🌤️ 天気概況
+            </div>
+            {weatherState.status === "ok" ? (
+              <div style={{ display: "grid", gap: 4 }}>
+                <strong style={{ fontSize: 18, color: "#fff" }}>
+                  {weatherState.summary.overview}
+                </strong>
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.76)" }}>
+                  🌡 {weatherState.summary.tempMin}〜{weatherState.summary.tempMax}℃
+                </span>
+                <span style={{ fontSize: 11, color: "#83ddff" }}>
+                  ☔ 最大 {weatherState.summary.rainProbMax}% / {weatherState.summary.rainSum}mm
+                </span>
+                <span style={{ fontSize: 11, color: "#ffd0e4" }}>
+                  🍃 最大 {weatherState.summary.windMax}m/s・瞬間 {weatherState.summary.gustMax}m/s
+                </span>
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
+                {weatherState.status === "error"
+                  ? "天気概況を取得できなかったよ"
+                  : "天気概況を準備中…"}
+              </div>
+            )}
+          </div>
+
+          <div
+            style={{
+              marginTop: 8,
+              marginBottom: 6,
+              fontSize: 12,
+              fontWeight: 950,
+            }}
+          >
+            🕒 3時間ごとの天気・海況
+          </div>
+          <div
+            style={{
+              minHeight: 0,
+              overflowY: isWideLayout ? "auto" : "visible",
+              overflowX: isWideLayout ? "hidden" : "auto",
+              display: "grid",
+              gridTemplateColumns: isWideLayout
+                ? "repeat(2, minmax(0, 1fr))"
+                : "repeat(8, minmax(82px, 1fr))",
+              alignContent: "start",
+              gap: 5,
+              paddingRight: isWideLayout ? 2 : 0,
+              paddingBottom: 2,
+            }}
+          >
+            {THREE_HOUR_SLOTS.map((hour) => {
+              const weather =
+                weatherState.status === "ok"
+                  ? weatherState.hours.find((item) => item.hour === hour)
+                  : undefined;
+              const marine = marineThreeHourly.find((item) => item.hour === hour);
+              const selected = selectedHour === hour;
+              return (
+                <button
+                  key={hour}
+                  onClick={() => setSelectedHour(hour)}
+                  title="この時間を釣行判定に使う"
+                  style={{
+                    minWidth: 0,
+                    padding: "6px 3px",
+                    borderRadius: 10,
+                    textAlign: "center",
+                    color: "#fff",
+                    cursor: "pointer",
+                    background: selected
+                      ? "rgba(255,84,139,0.20)"
+                      : "rgba(12,18,38,0.28)",
+                    border: selected
+                      ? "2px solid #ff6598"
+                      : "1px solid rgba(255,255,255,0.09)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 950,
+                      color: selected ? "#ffd4e6" : "#ffd4ed",
+                    }}
+                  >
+                    {pad2(hour)}時
+                  </div>
+                  <div style={{ fontSize: 17, lineHeight: 1.2 }}>
+                    {weather ? wmoToIcon(weather.weatherCode) : "・"}
+                  </div>
+                  <div style={{ fontSize: 10, fontWeight: 850 }}>
+                    {weather ? `${weather.temp}℃` : "-℃"}
+                  </div>
+                  <div style={{ fontSize: 9, color: "#82ddff", whiteSpace: "nowrap" }}>
+                    ☔ {weather ? `${weather.rainProb}%` : "-"}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 9,
+                      color: "rgba(255,255,255,0.68)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {weather
+                      ? `${directionLabel(weather.windDirection)} ${weather.windSpeed}m`
+                      : "風 -"}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 2,
+                      fontSize: 9,
+                      color:
+                        marine?.waveHeight != null
+                          ? "#ffc0dc"
+                          : "rgba(255,255,255,0.46)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    🌊 {marine?.waveHeight != null ? `${marine.waveHeight.toFixed(1)}m` : "-"}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 8,
+                      color: "rgba(255,255,255,0.55)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {marine?.wavePeriod != null
+                      ? `${marine.wavePeriod.toFixed(1)}秒`
+                      : "周期 -"}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
