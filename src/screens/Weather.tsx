@@ -6,175 +6,40 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { FIXED_PORT } from "../points";
+import PageShell from "../components/PageShell";
 import TideGraph from "../components/TideGraph";
+import type { TidePoint } from "../db";
+import { useEmotion } from "../lib/emotion";
+import { decideWeatherEmotion } from "../lib/emotionDeciders/weatherEmotion";
 import {
+  buildFishingForecast,
+  type ForecastBadge,
+  type ForecastTone,
+} from "../lib/fishingForecast";
+import {
+  getMarineDay,
+  marineWindow,
+  pickMarineAtThreeHours,
+  type MarineHour,
+} from "../lib/marineWeather";
+import { useAppSettings } from "../lib/appSettings";
+import {
+  dayKey as dayKeyFromDate,
   getTide736DayCached,
   type TideCacheSource,
-  dayKey as dayKeyFromDate,
 } from "../lib/tide736Cache";
-import type { TidePoint } from "../db";
-import PageShell from "../components/PageShell";
-import { useAppSettings } from "../lib/appSettings";
-import { decideWeatherEmotion } from "../lib/emotionDeciders/weatherEmotion";
-import { useEmotion } from "../lib/emotion";
+import {
+  DEFAULT_FISHING_POINT_ID,
+  FISHING_POINTS,
+  FIXED_PORT,
+  getFishingPoint,
+  WAVE_REFERENCE,
+} from "../points";
 
 type Props = {
   back: () => void;
   isActive?: boolean;
 };
-
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
-}
-
-function startOfDay(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
-}
-
-function sameDay(a: Date, b: Date) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
-
-function toDateInputValue(d: Date) {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-function parseDateInputValue(v: string): Date | null {
-  if (!v) return null;
-  const [y, m, d] = v.split("-").map(Number);
-  if (![y, m, d].every(Number.isFinite)) return null;
-  if (m < 1 || m > 12) return null;
-  if (d < 1 || d > 31) return null;
-  return new Date(y, m - 1, d, 0, 0, 0, 0);
-}
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function formatHMFromMinutes(totalMin: number) {
-  const m = clamp(Math.round(totalMin), 0, 1440);
-  const h = Math.floor(m / 60);
-  const mm = m % 60;
-  return `${pad2(h)}:${pad2(mm)}`;
-}
-
-/**
- * TideGraph と同じ思想：time(HH:mm) 優先、unixはfallback
- */
-function toMinutes(p: TidePoint): number | null {
-  if (p.time) {
-    const [hh, mm] = p.time.split(":").map((v) => Number(v));
-    if (Number.isFinite(hh) && Number.isFinite(mm)) return hh * 60 + mm;
-  }
-  if (typeof p.unix === "number") {
-    const ms = p.unix < 1e12 ? p.unix * 1000 : p.unix;
-    const d = new Date(ms);
-    return d.getHours() * 60 + d.getMinutes();
-  }
-  return null;
-}
-
-type Pt = { min: number; cm: number };
-type TideExtreme = { kind: "high" | "low"; min: number; cm: number };
-
-function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
-  const pts: Pt[] = [];
-  for (const p of series) {
-    const m = toMinutes(p);
-    if (m == null) continue;
-    pts.push({ min: clamp(m, 0, 1440), cm: p.cm });
-  }
-  if (pts.length < 3) return [];
-
-  pts.sort((a, b) => a.min - b.min);
-
-  const uniq: Pt[] = [];
-  for (const p of pts) {
-    const last = uniq[uniq.length - 1];
-    if (last && last.min === p.min) uniq[uniq.length - 1] = p;
-    else uniq.push(p);
-  }
-
-  if (uniq.length >= 2) {
-    const first = uniq[0];
-    const last = uniq[uniq.length - 1];
-    if (first.min > 0) uniq.unshift({ min: 0, cm: first.cm });
-    if (last.min < 1440) uniq.push({ min: 1440, cm: last.cm });
-  }
-
-  const EPS_CM = 1;
-  const raw: TideExtreme[] = [];
-  let prevSlope = 0;
-
-  for (let i = 1; i < uniq.length; i++) {
-    const d = uniq[i].cm - uniq[i - 1].cm;
-    const slope = Math.abs(d) <= EPS_CM ? 0 : d > 0 ? 1 : -1;
-
-    if (i >= 2) {
-      const a = prevSlope;
-      const b = slope;
-      const mid = uniq[i - 1];
-      if (a > 0 && b < 0) {
-        raw.push({ kind: "high", min: mid.min, cm: mid.cm });
-      } else if (a < 0 && b > 0) {
-        raw.push({ kind: "low", min: mid.min, cm: mid.cm });
-      }
-    }
-
-    if (slope !== 0) prevSlope = slope;
-  }
-
-  const MERGE_MIN = 5;
-  const merged: TideExtreme[] = [];
-  for (const e of raw) {
-    const last = merged[merged.length - 1];
-    if (
-      last &&
-      last.kind === e.kind &&
-      Math.abs(e.min - last.min) <= MERGE_MIN
-    ) {
-      const pick =
-        e.kind === "high"
-          ? e.cm >= last.cm
-            ? e
-            : last
-          : e.cm <= last.cm
-            ? e
-            : last;
-      merged[merged.length - 1] = pick;
-    } else {
-      merged.push(e);
-    }
-  }
-
-  const highs = merged
-    .filter((e) => e.kind === "high")
-    .sort((a, b) => a.min - b.min)
-    .slice(0, 2);
-
-  const lows = merged
-    .filter((e) => e.kind === "low")
-    .sort((a, b) => a.min - b.min)
-    .slice(0, 2);
-
-  return [...highs, ...lows].sort((a, b) => a.min - b.min);
-}
-
-function sourceLabel(source: TideCacheSource | null, isStale: boolean) {
-  if (!source) return null;
-  if (source === "fetch") return { text: "取得", color: "#0a6" };
-  if (source === "cache") return { text: "キャッシュ", color: "#6cf" };
-  return {
-    text: isStale ? "期限切れキャッシュ" : "キャッシュ",
-    color: "#f6c",
-  };
-}
 
 type WeatherSummary = {
   label: string;
@@ -196,9 +61,14 @@ type WeatherHour = {
   windDirection: number;
 };
 
+type TideExtreme = {
+  kind: "high" | "low";
+  min: number;
+  cm: number;
+};
+
 type LoadState =
-  | { status: "idle" }
-  | { status: "loading" }
+  | { status: "idle" | "loading" }
   | {
       status: "ok";
       series: TidePoint[];
@@ -210,8 +80,7 @@ type LoadState =
   | { status: "error"; message: string };
 
 type WeatherLoadState =
-  | { status: "idle" }
-  | { status: "loading" }
+  | { status: "idle" | "loading" }
   | {
       status: "ok";
       dayKey: string;
@@ -221,42 +90,171 @@ type WeatherLoadState =
     }
   | { status: "error"; message: string };
 
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    const mq = window.matchMedia("(max-width: 820px)");
-    const coarse = window.matchMedia("(pointer: coarse)");
-    return mq.matches || coarse.matches;
-  });
+type MarineLoadState =
+  | { status: "idle" | "loading" }
+  | {
+      status: "ok";
+      dayKey: string;
+      hours: MarineHour[];
+      source: "fetch" | "cache";
+      isStale: boolean;
+      gridLat: number | null;
+      gridLon: number | null;
+    }
+  | { status: "error"; message: string };
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const mq = window.matchMedia("(max-width: 820px)");
-    const coarse = window.matchMedia("(pointer: coarse)");
-
-    const onChange = () => setIsMobile(mq.matches || coarse.matches);
-
-    mq.addEventListener?.("change", onChange);
-    coarse.addEventListener?.("change", onChange);
-    window.addEventListener("orientationchange", onChange);
-
-    return () => {
-      mq.removeEventListener?.("change", onChange);
-      coarse.removeEventListener?.("change", onChange);
-      window.removeEventListener("orientationchange", onChange);
-    };
-  }, []);
-
-  return isMobile;
-}
+type WeatherApiResponse = {
+  daily?: {
+    time?: unknown[];
+    weather_code?: unknown[];
+    temperature_2m_max?: unknown[];
+    temperature_2m_min?: unknown[];
+    precipitation_probability_max?: unknown[];
+    precipitation_sum?: unknown[];
+    wind_speed_10m_max?: unknown[];
+    wind_gusts_10m_max?: unknown[];
+  };
+  hourly?: {
+    time?: unknown[];
+    weather_code?: unknown[];
+    temperature_2m?: unknown[];
+    precipitation_probability?: unknown[];
+    wind_speed_10m?: unknown[];
+    wind_direction_10m?: unknown[];
+  };
+};
 
 const YAIZU = { lat: 34.868, lon: 138.3236 };
-
 const WEATHER_CACHE_PREFIX = "tsuduri_openmeteo_daily_v1:";
 const WEATHER_TTL_MS = 10 * 60 * 1000;
+const POINT_STORAGE_KEY = "tsuduri_weather_point_v1";
+const THREE_HOUR_SLOTS = [0, 3, 6, 9, 12, 15, 18, 21] as const;
 
-function wmoToJa(code: number): string {
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function startOfDay(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+}
+
+function sameDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function toDateInputValue(d: Date) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function parseDateInputValue(value: string): Date | null {
+  if (!value) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  if (![year, month, day].every(Number.isFinite)) return null;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return new Date(year, month - 1, day, 0, 0, 0, 0);
+}
+
+function dayKeyLocal(d: Date) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function formatHMFromMinutes(totalMin: number) {
+  const minute = clamp(Math.round(totalMin), 0, 1440);
+  return `${pad2(Math.floor(minute / 60))}:${pad2(minute % 60)}`;
+}
+
+function toMinutes(point: TidePoint): number | null {
+  if (point.time) {
+    const [hour, minute] = point.time.split(":").map(Number);
+    if (Number.isFinite(hour) && Number.isFinite(minute)) {
+      return hour * 60 + minute;
+    }
+  }
+  if (typeof point.unix === "number") {
+    const ms = point.unix < 1e12 ? point.unix * 1000 : point.unix;
+    const date = new Date(ms);
+    return date.getHours() * 60 + date.getMinutes();
+  }
+  return null;
+}
+
+function extractExtremesBySlope(series: TidePoint[]): TideExtreme[] {
+  const points = series
+    .map((point) => {
+      const min = toMinutes(point);
+      return min == null ? null : { min: clamp(min, 0, 1440), cm: point.cm };
+    })
+    .filter((point): point is { min: number; cm: number } => !!point)
+    .sort((a, b) => a.min - b.min);
+
+  if (points.length < 3) return [];
+
+  const unique: { min: number; cm: number }[] = [];
+  for (const point of points) {
+    const last = unique[unique.length - 1];
+    if (last?.min === point.min) unique[unique.length - 1] = point;
+    else unique.push(point);
+  }
+
+  const raw: TideExtreme[] = [];
+  let previousSlope = 0;
+  for (let i = 1; i < unique.length; i += 1) {
+    const delta = unique[i].cm - unique[i - 1].cm;
+    const slope = Math.abs(delta) <= 1 ? 0 : delta > 0 ? 1 : -1;
+    if (i >= 2) {
+      const middle = unique[i - 1];
+      if (previousSlope > 0 && slope < 0) {
+        raw.push({ kind: "high", min: middle.min, cm: middle.cm });
+      } else if (previousSlope < 0 && slope > 0) {
+        raw.push({ kind: "low", min: middle.min, cm: middle.cm });
+      }
+    }
+    if (slope !== 0) previousSlope = slope;
+  }
+
+  const merged: TideExtreme[] = [];
+  for (const extreme of raw) {
+    const last = merged[merged.length - 1];
+    if (
+      last &&
+      last.kind === extreme.kind &&
+      Math.abs(last.min - extreme.min) <= 5
+    ) {
+      const replace =
+        extreme.kind === "high"
+          ? extreme.cm >= last.cm
+          : extreme.cm <= last.cm;
+      if (replace) merged[merged.length - 1] = extreme;
+    } else {
+      merged.push(extreme);
+    }
+  }
+
+  const highs = merged.filter((item) => item.kind === "high").slice(0, 2);
+  const lows = merged.filter((item) => item.kind === "low").slice(0, 2);
+  return [...highs, ...lows].sort((a, b) => a.min - b.min);
+}
+
+function sourceLabel(source: TideCacheSource, isStale: boolean) {
+  if (source === "fetch") return { text: "取得", color: "#4be1a1" };
+  if (isStale) return { text: "期限切れキャッシュ", color: "#ff83cc" };
+  return { text: "キャッシュ", color: "#76dcff" };
+}
+
+function safeNumber(value: unknown, fallback = 0) {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function wmoToJa(code: number) {
   if (!Number.isFinite(code)) return "不明";
   if (code === 0) return "快晴";
   if (code === 1) return "晴れ";
@@ -271,7 +269,7 @@ function wmoToJa(code: number): string {
   return "天気";
 }
 
-function wmoToIcon(code: number): string {
+function wmoToIcon(code: number) {
   if (!Number.isFinite(code)) return "❔";
   if (code === 0) return "☀️";
   if (code === 1 || code === 2) return "🌤️";
@@ -285,134 +283,113 @@ function wmoToIcon(code: number): string {
   return "🌤️";
 }
 
-function windDirectionLabel(deg: number): string {
-  if (!Number.isFinite(deg)) return "-";
+function directionLabel(deg: number | null) {
+  if (deg == null || !Number.isFinite(deg)) return "-";
   const labels = ["北", "北東", "東", "南東", "南", "南西", "西", "北西"];
   return labels[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
 }
 
-function safeNumber(v: unknown, fallback = 0) {
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
-
 async function fetchOpenMeteoDaily(lat: number, lon: number) {
-  const tz = "Asia/Tokyo";
-  const url =
-    `https://api.open-meteo.com/v1/forecast` +
-    `?latitude=${encodeURIComponent(String(lat))}` +
-    `&longitude=${encodeURIComponent(String(lon))}` +
-    `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max` +
-    `&hourly=weather_code,temperature_2m,precipitation_probability,wind_speed_10m,wind_direction_10m` +
-    `&forecast_days=16` +
-    `&timezone=${encodeURIComponent(tz)}` +
-    `&wind_speed_unit=ms`;
+  const url = new URL("https://api.open-meteo.com/v1/forecast");
+  url.searchParams.set("latitude", String(lat));
+  url.searchParams.set("longitude", String(lon));
+  url.searchParams.set(
+    "daily",
+    "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max",
+  );
+  url.searchParams.set(
+    "hourly",
+    "weather_code,temperature_2m,precipitation_probability,wind_speed_10m,wind_direction_10m",
+  );
+  url.searchParams.set("forecast_days", "16");
+  url.searchParams.set("timezone", "Asia/Tokyo");
+  url.searchParams.set("wind_speed_unit", "ms");
 
-  const res = await fetch(url, { method: "GET" });
-  const text = await res.text().catch(() => "");
-  if (!res.ok) {
-    const head = (text || "").replace(/\s+/g, " ").trim().slice(0, 160);
-    if (res.status === 429) {
-      throw new Error(`openmeteo_rate_limited_429${head ? `:${head}` : ""}`);
-    }
-    throw new Error(`openmeteo_http_${res.status}${head ? `:${head}` : ""}`);
+  const response = await fetch(url.toString(), { method: "GET" });
+  const text = await response.text().catch(() => "");
+  if (!response.ok) {
+    const head = text.replace(/\s+/g, " ").trim().slice(0, 160);
+    throw new Error(
+      `openmeteo_http_${response.status}${head ? `:${head}` : ""}`,
+    );
   }
-
-  let json: any;
   try {
-    json = JSON.parse(text);
+    return JSON.parse(text) as WeatherApiResponse;
   } catch {
     throw new Error(`openmeteo_json_parse_failed:${text.slice(0, 160)}`);
   }
-  return json;
 }
 
-function pickDailySummary(json: any, day: string): WeatherSummary | null {
-  const d = json?.daily;
-  const times: string[] = Array.isArray(d?.time) ? d.time : [];
-  const idx = times.findIndex((t) => typeof t === "string" && t === day);
-  if (idx < 0) return null;
-
-  const code = safeNumber(d?.weather_code?.[idx], NaN);
-  const tmax = safeNumber(d?.temperature_2m_max?.[idx], 0);
-  const tmin = safeNumber(d?.temperature_2m_min?.[idx], 0);
-  const pop = safeNumber(d?.precipitation_probability_max?.[idx], 0);
-  const psum = safeNumber(d?.precipitation_sum?.[idx], 0);
-  const wmax = safeNumber(d?.wind_speed_10m_max?.[idx], 0);
-  const gmax = safeNumber(d?.wind_gusts_10m_max?.[idx], 0);
-
+function pickDailySummary(
+  json: WeatherApiResponse,
+  day: string,
+): WeatherSummary | null {
+  const daily = json?.daily;
+  const times = Array.isArray(daily?.time)
+    ? daily.time.filter((value): value is string => typeof value === "string")
+    : [];
+  const index = times.findIndex((time) => time === day);
+  if (index < 0) return null;
+  const code = safeNumber(daily?.weather_code?.[index], Number.NaN);
   return {
     label: day,
     overview: wmoToJa(code),
-    tempMin: Math.round(tmin * 10) / 10,
-    tempMax: Math.round(tmax * 10) / 10,
-    windMax: Math.round(wmax * 10) / 10,
-    gustMax: Math.round(gmax * 10) / 10,
-    rainProbMax: Math.round(pop),
-    rainSum: Math.round(psum * 10) / 10,
+    tempMin: Math.round(safeNumber(daily?.temperature_2m_min?.[index]) * 10) / 10,
+    tempMax: Math.round(safeNumber(daily?.temperature_2m_max?.[index]) * 10) / 10,
+    windMax: Math.round(safeNumber(daily?.wind_speed_10m_max?.[index]) * 10) / 10,
+    gustMax: Math.round(safeNumber(daily?.wind_gusts_10m_max?.[index]) * 10) / 10,
+    rainProbMax: Math.round(
+      safeNumber(daily?.precipitation_probability_max?.[index]),
+    ),
+    rainSum:
+      Math.round(safeNumber(daily?.precipitation_sum?.[index]) * 10) / 10,
   };
 }
 
-function pickHourlyWeather(json: any, day: string): WeatherHour[] {
-  const h = json?.hourly;
-  const times: string[] = Array.isArray(h?.time) ? h.time : [];
-  const result: WeatherHour[] = [];
-
-  for (let hour = 0; hour < 24; hour += 3) {
-    const idx = times.findIndex((t) => t === `${day}T${pad2(hour)}:00`);
-    if (idx < 0) continue;
-    result.push({
-      hour,
-      weatherCode: safeNumber(h?.weather_code?.[idx], NaN),
-      temp: Math.round(safeNumber(h?.temperature_2m?.[idx], 0) * 10) / 10,
-      rainProb: Math.round(safeNumber(h?.precipitation_probability?.[idx], 0)),
-      windSpeed: Math.round(safeNumber(h?.wind_speed_10m?.[idx], 0) * 10) / 10,
-      windDirection: Math.round(safeNumber(h?.wind_direction_10m?.[idx], 0)),
-    });
-  }
-
-  return result;
+function pickHourlyWeather(json: WeatherApiResponse, day: string): WeatherHour[] {
+  const hourly = json?.hourly;
+  const times = Array.isArray(hourly?.time)
+    ? hourly.time.filter((value): value is string => typeof value === "string")
+    : [];
+  return THREE_HOUR_SLOTS.flatMap((hour) => {
+    const index = times.findIndex((time) => time === `${day}T${pad2(hour)}:00`);
+    if (index < 0) return [];
+    return [
+      {
+        hour,
+        weatherCode: safeNumber(hourly?.weather_code?.[index], Number.NaN),
+        temp:
+          Math.round(safeNumber(hourly?.temperature_2m?.[index]) * 10) / 10,
+        rainProb: Math.round(
+          safeNumber(hourly?.precipitation_probability?.[index]),
+        ),
+        windSpeed:
+          Math.round(safeNumber(hourly?.wind_speed_10m?.[index]) * 10) / 10,
+        windDirection: Math.round(
+          safeNumber(hourly?.wind_direction_10m?.[index]),
+        ),
+      },
+    ];
+  });
 }
 
-function dayKeyLocal(d: Date) {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-function loadWeatherCache(
-  day: string,
-): { ts: number; summary: WeatherSummary; hours: WeatherHour[] } | null {
+function loadWeatherCache(day: string) {
   try {
     const raw = localStorage.getItem(`${WEATHER_CACHE_PREFIX}${day}`);
     if (!raw) return null;
-    const obj = JSON.parse(raw) as any;
-    if (!obj || typeof obj !== "object") return null;
-    const ts = safeNumber(obj.ts, 0);
-    const s = obj.summary;
-    if (!s || typeof s !== "object") return null;
-
-    const summary: WeatherSummary = {
-      label: String(s.label ?? day),
-      overview: String(s.overview ?? "不明"),
-      tempMin: safeNumber(s.tempMin, 0),
-      tempMax: safeNumber(s.tempMax, 0),
-      windMax: safeNumber(s.windMax, 0),
-      gustMax: safeNumber(s.gustMax, 0),
-      rainProbMax: safeNumber(s.rainProbMax, 0),
-      rainSum: safeNumber(s.rainSum, 0),
+    const parsed = JSON.parse(raw) as {
+      ts: number;
+      summary: WeatherSummary;
+      hours: WeatherHour[];
     };
-    const hours: WeatherHour[] = Array.isArray(obj.hours)
-      ? obj.hours
-          .map((item: any) => ({
-            hour: safeNumber(item?.hour, -1),
-            weatherCode: safeNumber(item?.weatherCode, NaN),
-            temp: safeNumber(item?.temp, 0),
-            rainProb: safeNumber(item?.rainProb, 0),
-            windSpeed: safeNumber(item?.windSpeed, 0),
-            windDirection: safeNumber(item?.windDirection, 0),
-          }))
-          .filter((item: WeatherHour) => item.hour >= 0 && item.hour < 24)
-      : [];
-    return { ts, summary, hours };
+    if (
+      !parsed?.summary ||
+      !Array.isArray(parsed.hours) ||
+      !Number.isFinite(parsed.ts)
+    ) {
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -429,79 +406,192 @@ function saveWeatherCache(
       JSON.stringify({ ts: Date.now(), summary, hours }),
     );
   } catch {
-    // ignore
+    // キャッシュ不可でも表示は継続する。
   }
 }
 
-export default function Weather({ back, isActive = true }: Props) {
-  console.log("Weather render");
+function initialPointId() {
+  try {
+    const stored = localStorage.getItem(POINT_STORAGE_KEY) ?? "";
+    return FISHING_POINTS.some((point) => point.id === stored)
+      ? stored
+      : DEFAULT_FISHING_POINT_ID;
+  } catch {
+    return DEFAULT_FISHING_POINT_ID;
+  }
+}
 
-  useAppSettings();
+function defaultHourFor(date: Date) {
+  const now = new Date();
+  if (sameDay(date, now)) return clamp(Math.floor(now.getHours() / 3) * 3, 0, 21);
+  return 6;
+}
 
-  const { emitEmotion, clearEmotion } = useEmotion();
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return (
+      window.matchMedia("(max-width: 820px)").matches ||
+      window.matchMedia("(pointer: coarse)").matches
+    );
+  });
 
   useEffect(() => {
-    console.log("Weather mounted");
+    const narrow = window.matchMedia("(max-width: 820px)");
+    const coarse = window.matchMedia("(pointer: coarse)");
+    const update = () => setIsMobile(narrow.matches || coarse.matches);
+    narrow.addEventListener?.("change", update);
+    coarse.addEventListener?.("change", update);
+    window.addEventListener("orientationchange", update);
     return () => {
-      console.log("Weather unmounted");
+      narrow.removeEventListener?.("change", update);
+      coarse.removeEventListener?.("change", update);
+      window.removeEventListener("orientationchange", update);
     };
   }, []);
 
-  const onBack = useCallback(() => {
-    clearEmotion("weather");
-    back();
-  }, [clearEmotion, back]);
+  return isMobile;
+}
 
+const toneStyle: Record<ForecastTone, { color: string; bg: string; border: string }> = {
+  good: {
+    color: "#83f5c1",
+    bg: "rgba(39,205,139,0.13)",
+    border: "rgba(93,243,180,0.30)",
+  },
+  caution: {
+    color: "#ffe18a",
+    bg: "rgba(255,193,78,0.13)",
+    border: "rgba(255,218,121,0.30)",
+  },
+  hard: {
+    color: "#ffad82",
+    bg: "rgba(255,119,75,0.14)",
+    border: "rgba(255,155,112,0.32)",
+  },
+  danger: {
+    color: "#ff87aa",
+    bg: "rgba(255,67,119,0.16)",
+    border: "rgba(255,101,143,0.38)",
+  },
+  stop: {
+    color: "#fff",
+    bg: "linear-gradient(135deg, rgba(225,36,80,0.52), rgba(129,24,79,0.48))",
+    border: "rgba(255,110,145,0.72)",
+  },
+};
+
+function ForecastCard(props: {
+  icon: string;
+  title: string;
+  badge: ForecastBadge;
+}) {
+  const tone = toneStyle[props.badge.tone];
+  return (
+    <div
+      style={{
+        minWidth: 0,
+        borderRadius: 14,
+        padding: "9px 11px",
+        background: tone.bg,
+        border: `1px solid ${tone.border}`,
+        display: "grid",
+        gap: 2,
+      }}
+    >
+      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.64)" }}>
+        {props.icon} {props.title}
+      </div>
+      <div style={{ fontSize: 19, fontWeight: 950, color: tone.color }}>
+        {props.badge.label}
+      </div>
+      <div
+        style={{
+          fontSize: 10,
+          color: "rgba(255,255,255,0.66)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {props.badge.detail}
+      </div>
+    </div>
+  );
+}
+
+export default function Weather({ back, isActive = true }: Props) {
+  useAppSettings();
+  const { emitEmotion, clearEmotion } = useEmotion();
   const isMobile = useIsMobile();
   const isDesktop = !isMobile;
 
   const [tab, setTab] = useState<"today" | "tomorrow" | "pick">("today");
-  const [picked, setPicked] = useState<string>(toDateInputValue(new Date()));
-
-  const [online, setOnline] = useState<boolean>(
+  const [picked, setPicked] = useState(toDateInputValue(new Date()));
+  const [selectedPointId, setSelectedPointId] = useState(initialPointId);
+  const [selectedHour, setSelectedHour] = useState(() =>
+    defaultHourFor(new Date()),
+  );
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [online, setOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true,
   );
-  const [state, setState] = useState<LoadState>({ status: "idle" });
-  const [wState, setWState] = useState<WeatherLoadState>({ status: "idle" });
-
-  useEffect(() => {
-    const onUp = () => setOnline(true);
-    const onDown = () => setOnline(false);
-    window.addEventListener("online", onUp);
-    window.addEventListener("offline", onDown);
-    return () => {
-      window.removeEventListener("online", onUp);
-      window.removeEventListener("offline", onDown);
-    };
-  }, []);
+  const [tideState, setTideState] = useState<LoadState>({ status: "idle" });
+  const [weatherState, setWeatherState] = useState<WeatherLoadState>({
+    status: "idle",
+  });
+  const [marineState, setMarineState] = useState<MarineLoadState>({
+    status: "idle",
+  });
 
   const targetDate = useMemo(() => {
     const now = new Date();
     if (tab === "today") return startOfDay(now);
     if (tab === "tomorrow") {
-      const t = startOfDay(now);
-      t.setDate(t.getDate() + 1);
-      return t;
+      const tomorrow = startOfDay(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      return tomorrow;
     }
-    const d = parseDateInputValue(picked);
-    return d ? startOfDay(d) : startOfDay(now);
+    return startOfDay(parseDateInputValue(picked) ?? now);
   }, [tab, picked]);
 
+  const selectedPoint = useMemo(
+    () => getFishingPoint(selectedPointId),
+    [selectedPointId],
+  );
+
   useEffect(() => {
-    if (tab !== "pick") return;
-    setPicked(toDateInputValue(targetDate));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+    const onOnline = () => setOnline(true);
+    const onOffline = () => setOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    setSelectedHour(defaultHourFor(targetDate));
+  }, [targetDate]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(POINT_STORAGE_KEY, selectedPointId);
+    } catch {
+      // 保存できない環境でも選択中の表示は継続する。
+    }
+  }, [selectedPointId]);
 
   useEffect(() => {
     let cancelled = false;
+    const day = dayKeyLocal(targetDate);
 
     async function run() {
-      const day = dayKeyLocal(targetDate);
+      const cached = loadWeatherCache(day);
       if (!online) {
-        const cached = loadWeatherCache(day);
         if (cached) {
-          setWState({
+          setWeatherState({
             status: "ok",
             dayKey: day,
             summary: cached.summary,
@@ -509,16 +599,13 @@ export default function Weather({ back, isActive = true }: Props) {
             source: "cache",
           });
         } else {
-          setWState({ status: "error", message: "offline_no_cache" });
+          setWeatherState({ status: "error", message: "offline_no_cache" });
         }
         return;
       }
 
-      setWState({ status: "loading" });
-
-      const cached = loadWeatherCache(day);
       if (cached && Date.now() - cached.ts <= WEATHER_TTL_MS) {
-        setWState({
+        setWeatherState({
           status: "ok",
           dayKey: day,
           summary: cached.summary,
@@ -528,39 +615,38 @@ export default function Weather({ back, isActive = true }: Props) {
         return;
       }
 
+      setWeatherState({ status: "loading" });
       try {
         const json = await fetchOpenMeteoDaily(YAIZU.lat, YAIZU.lon);
         const summary = pickDailySummary(json, day);
         if (!summary) throw new Error("openmeteo_day_not_in_range");
         const hours = pickHourlyWeather(json, day);
-
-        const now = new Date();
-        const today = startOfDay(now);
-        const tomorrow = startOfDay(now);
-        tomorrow.setDate(today.getDate() + 1);
-
+        const today = startOfDay(new Date());
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
         const label = sameDay(targetDate, today)
           ? "今日"
           : sameDay(targetDate, tomorrow)
             ? "明日"
             : day;
-
-        const s: WeatherSummary = { ...summary, label };
-
-        saveWeatherCache(day, s, hours);
-
+        const labeled = { ...summary, label };
+        saveWeatherCache(day, labeled, hours);
         if (!cancelled) {
-          setWState({
+          setWeatherState({
             status: "ok",
             dayKey: day,
-            summary: s,
+            summary: labeled,
             hours,
             source: "fetch",
           });
         }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        if (!cancelled) setWState({ status: "error", message: msg });
+      } catch (error) {
+        if (!cancelled) {
+          setWeatherState({
+            status: "error",
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
     }
 
@@ -572,62 +658,87 @@ export default function Weather({ back, isActive = true }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    const day = dayKeyLocal(targetDate);
+    setMarineState({ status: "loading" });
+    getMarineDay(day, { online })
+      .then((result) => {
+        if (cancelled) return;
+        setMarineState({
+          status: "ok",
+          dayKey: result.dayKey,
+          hours: result.hours,
+          source: result.source,
+          isStale: result.isStale,
+          gridLat: result.gridLat,
+          gridLon: result.gridLon,
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setMarineState({
+          status: "error",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [targetDate, online]);
 
-    async function run() {
-      setState({ status: "loading" });
-      try {
-        const res = await getTide736DayCached(
-          FIXED_PORT.pc,
-          FIXED_PORT.hc,
-          targetDate,
-          { ttlDays: 30 },
-        );
-        const dayKey = dayKeyFromDate(targetDate);
-        if (!cancelled) {
-          setState({
-            status: "ok",
-            series: res.series ?? [],
-            tideName: res.tideName ?? null,
-            source: res.source,
-            isStale: res.isStale,
-            dayKey,
-          });
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        if (!cancelled) setState({ status: "error", message: msg });
-      }
-    }
-
-    run();
+  useEffect(() => {
+    let cancelled = false;
+    setTideState({ status: "loading" });
+    getTide736DayCached(FIXED_PORT.pc, FIXED_PORT.hc, targetDate, {
+      ttlDays: 30,
+    })
+      .then((result) => {
+        if (cancelled) return;
+        setTideState({
+          status: "ok",
+          series: result.series ?? [],
+          tideName: result.tideName ?? null,
+          source: result.source,
+          isStale: result.isStale,
+          dayKey: dayKeyFromDate(targetDate),
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setTideState({
+          status: "error",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
     return () => {
       cancelled = true;
     };
   }, [targetDate]);
 
-  const weatherEmotion = useMemo(() => {
-    const overview = wState.status === "ok" ? wState.summary.overview : null;
-    const rainProbMax =
-      wState.status === "ok" ? wState.summary.rainProbMax : null;
-    const windMax = wState.status === "ok" ? wState.summary.windMax : null;
-    const gustMax = wState.status === "ok" ? wState.summary.gustMax : null;
-    const tideName = state.status === "ok" ? state.tideName : null;
-
-    return decideWeatherEmotion({
-      overview,
-      rainProbMax,
-      windMax,
-      gustMax,
-      tideName,
-    });
-  }, [wState, state]);
+  const weatherEmotion = useMemo(
+    () =>
+      decideWeatherEmotion({
+        overview:
+          weatherState.status === "ok"
+            ? weatherState.summary.overview
+            : null,
+        rainProbMax:
+          weatherState.status === "ok"
+            ? weatherState.summary.rainProbMax
+            : null,
+        windMax:
+          weatherState.status === "ok" ? weatherState.summary.windMax : null,
+        gustMax:
+          weatherState.status === "ok" ? weatherState.summary.gustMax : null,
+        tideName: tideState.status === "ok" ? tideState.tideName : null,
+      }),
+    [weatherState, tideState],
+  );
 
   useEffect(() => {
     if (!isActive) {
       clearEmotion("weather");
       return;
     }
-
     emitEmotion({
       source: "weather",
       emotion: weatherEmotion,
@@ -636,44 +747,52 @@ export default function Weather({ back, isActive = true }: Props) {
     });
   }, [isActive, emitEmotion, clearEmotion, weatherEmotion]);
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       clearEmotion("weather");
-    };
-  }, [clearEmotion]);
-
-  const highlightAt = useMemo(() => {
-    const now = new Date();
-    if (sameDay(targetDate, now)) return now;
-    return null;
-  }, [targetDate]);
-
-  const extremes = useMemo(() => {
-    if (state.status !== "ok") return [];
-    return extractExtremesBySlope(state.series ?? []);
-  }, [state]);
-
-  const titleNode = (
-    <h1
-      style={{
-        margin: 0,
-        fontSize: "clamp(20px, 5.5vw, 32px)",
-        lineHeight: 1.15,
-      }}
-    >
-      ☀️ 天気・潮を見る
-    </h1>
+    },
+    [clearEmotion],
   );
 
-  const subNode = (
-    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-      📍 天気：焼津周辺（Open-Meteo） / 🌊 潮汐：{FIXED_PORT.name}（pc:
-      {FIXED_PORT.pc} / hc:{FIXED_PORT.hc}）
-      {!online && (
-        <span style={{ marginLeft: 10, color: "#f6c" }}>📴 オフライン</span>
-      )}
-    </div>
+  const onBack = useCallback(() => {
+    clearEmotion("weather");
+    back();
+  }, [clearEmotion, back]);
+
+  const extremes = useMemo(
+    () =>
+      tideState.status === "ok"
+        ? extractExtremesBySlope(tideState.series)
+        : [],
+    [tideState],
   );
+
+  const marineHours = useMemo(
+    () => (marineState.status === "ok" ? marineState.hours : []),
+    [marineState],
+  );
+  const marineThreeHourly = useMemo(
+    () => pickMarineAtThreeHours(marineHours),
+    [marineHours],
+  );
+
+  const forecast = useMemo(() => {
+    const selectedMarine = marineWindow(marineHours, selectedHour, 3);
+    const weatherHours =
+      weatherState.status === "ok"
+        ? weatherState.hours.filter(
+            (item) => Math.abs(item.hour - selectedHour) <= 3,
+          )
+        : [];
+    return buildFishingForecast({
+      point: selectedPoint,
+      selectedHour,
+      marine: selectedMarine,
+      weather: weatherHours,
+      tideSeries: tideState.status === "ok" ? tideState.series : [],
+      tideName: tideState.status === "ok" ? tideState.tideName : null,
+    });
+  }, [marineHours, selectedHour, weatherState, selectedPoint, tideState]);
 
   const tileStyle: CSSProperties = {
     borderRadius: 16,
@@ -684,258 +803,302 @@ export default function Weather({ back, isActive = true }: Props) {
     boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
   };
 
-  const tabBtnBase: CSSProperties = {
+  const controlStyle: CSSProperties = {
+    minHeight: 34,
     borderRadius: 999,
-    padding: "8px 12px",
+    padding: "7px 11px",
     border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(17,17,17,var(--glass-alpha,0.22))",
-    color: "rgba(255,255,255,0.82)",
-    cursor: "pointer",
-    userSelect: "none",
-    lineHeight: 1,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    whiteSpace: "nowrap",
-  };
-
-  const tabBtn = (active: boolean): CSSProperties => ({
-    ...tabBtnBase,
-    border: active ? "2px solid #ff4d6d" : tabBtnBase.border,
-    background: active
-      ? "rgba(17,17,17,var(--glass-alpha-strong,0.35))"
-      : tabBtnBase.background,
-    color: active ? "#fff" : tabBtnBase.color,
-    boxShadow: active
-      ? "0 6px 18px rgba(0,0,0,0.22), inset 0 0 0 1px rgba(255,77,109,0.22)"
-      : "none",
-  });
-
-  const dateInputStyle: CSSProperties = {
     background: "rgba(17,17,17,var(--glass-alpha-strong,0.35))",
     color: "rgba(255,255,255,0.92)",
-    border: "1px solid rgba(255,255,255,0.18)",
-    borderRadius: 10,
-    padding: "6px 10px",
-    maxWidth: "100%",
+    fontWeight: 800,
   };
 
-  function weatherSourceText() {
-    if (wState.status !== "ok") return null;
-    return wState.source === "fetch" ? "取得" : "キャッシュ";
-  }
+  const tabStyle = (active: boolean): CSSProperties => ({
+    ...controlStyle,
+    cursor: "pointer",
+    border: active ? "2px solid #ff5f8d" : controlStyle.border,
+    color: active ? "#fff" : "rgba(255,255,255,0.74)",
+    boxShadow: active ? "inset 0 0 0 1px rgba(255,95,141,0.20)" : "none",
+  });
 
-  function weatherStatusBadge() {
-    if (wState.status === "loading") return { text: "取得中…", color: "#0a6" };
-    if (wState.status === "error") {
-      return { text: "取得失敗", color: "#ff7a7a" };
-    }
-    const src = weatherSourceText();
-    return src ? { text: src, color: "#6cf" } : null;
-  }
+  const camera = selectedPoint.camera;
+  const highlightAt = sameDay(targetDate, new Date()) ? new Date() : null;
 
   return (
     <PageShell
-      title={titleNode}
-      subtitle={subNode}
+      title={
+        <h1
+          style={{
+            margin: 0,
+            fontSize: "clamp(20px, 5.5vw, 32px)",
+            lineHeight: 1.15,
+          }}
+        >
+          ☀️ 天気・潮を見る
+        </h1>
+      }
+      subtitle={
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
+          📍 天気・潮：焼津基準 / 🌊 海況：{WAVE_REFERENCE.name}
+          {!online && <span style={{ marginLeft: 10, color: "#f6c" }}>📴 オフライン</span>}
+        </div>
+      }
       titleLayout="left"
       maxWidth={1320}
       showBack
       onBack={onBack}
-      scrollY="auto"
+      scrollY={isDesktop ? "hidden" : "auto"}
       displayExpression={weatherEmotion}
+      contentPadding={isDesktop ? "10px 18px 14px" : "14px 14px 20px"}
     >
       <div
         style={{
+          height: isDesktop ? "100%" : undefined,
+          minHeight: 0,
           overflowX: "clip",
-          maxWidth: "100%",
-          minWidth: 0,
           display: "grid",
-          gap: isDesktop ? 6 : 12,
+          gridTemplateRows: isDesktop ? "auto auto minmax(0, 1fr)" : undefined,
+          gap: isDesktop ? 7 : 12,
         }}
       >
         <div
           className="glass glass-strong"
           style={{
             ...tileStyle,
+            padding: isDesktop ? "7px 10px" : 10,
             display: "flex",
-            gap: 10,
+            gap: 8,
             flexWrap: "wrap",
             alignItems: "center",
           }}
         >
-          <button
-            onClick={() => setTab("today")}
-            style={tabBtn(tab === "today")}
-          >
+          <button onClick={() => setTab("today")} style={tabStyle(tab === "today")}>
             今日
           </button>
           <button
             onClick={() => setTab("tomorrow")}
-            style={tabBtn(tab === "tomorrow")}
+            style={tabStyle(tab === "tomorrow")}
           >
             明日
           </button>
-          <button onClick={() => setTab("pick")} style={tabBtn(tab === "pick")}>
+          <button onClick={() => setTab("pick")} style={tabStyle(tab === "pick")}>
             日付指定
           </button>
-
           {tab === "pick" && (
-            <label
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                minWidth: 0,
-                color: "rgba(255,255,255,0.72)",
-              }}
+            <input
+              type="date"
+              value={picked}
+              onChange={(event) => setPicked(event.target.value)}
+              style={{ ...controlStyle, borderRadius: 10 }}
+            />
+          )}
+
+          <span style={{ width: 1, height: 24, background: "rgba(255,255,255,0.14)" }} />
+
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.62)" }}>釣場</span>
+            <select
+              value={selectedPointId}
+              onChange={(event) => setSelectedPointId(event.target.value)}
+              style={{ ...controlStyle, borderRadius: 10 }}
             >
-              <span style={{ fontSize: 12 }}>📅</span>
-              <input
-                type="date"
-                value={picked}
-                onChange={(e) => setPicked(e.target.value)}
-                style={dateInputStyle}
-              />
-            </label>
+              {FISHING_POINTS.map((point) => (
+                <option key={point.id} value={point.id} style={{ color: "#111" }}>
+                  {point.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.62)" }}>判定時刻</span>
+            <select
+              value={selectedHour}
+              onChange={(event) => setSelectedHour(Number(event.target.value))}
+              style={{ ...controlStyle, borderRadius: 10 }}
+            >
+              {THREE_HOUR_SLOTS.map((hour) => (
+                <option key={hour} value={hour} style={{ color: "#111" }}>
+                  {pad2(hour)}:00（前後3時間）
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {isMobile && camera && (
+            <button onClick={() => setCameraOpen(true)} style={tabStyle(false)}>
+              📹 現地カメラ
+            </button>
           )}
         </div>
-
-        {(wState.status === "loading" || wState.status === "error") && (
-          <div
-            className="glass glass-strong"
-            style={{
-              ...tileStyle,
-              fontSize: 12,
-              color: wState.status === "loading" ? "#0a6" : "#ff7a7a",
-            }}
-          >
-            {wState.status === "loading"
-              ? "🌤️ Open-Meteo：取得中…"
-              : `🌤️ Open-Meteo：取得失敗 → ${wState.message}`}
-          </div>
-        )}
-
-        {(state.status === "loading" || state.status === "error") && (
-          <div
-            className="glass glass-strong"
-            style={{
-              ...tileStyle,
-              fontSize: 12,
-              color: state.status === "loading" ? "#0a6" : "#ff7a7a",
-            }}
-          >
-            {state.status === "loading"
-              ? "🌊 tide736：取得中…"
-              : `🌊 tide736：取得失敗 → ${state.message}`}
-          </div>
-        )}
 
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: isDesktop
-              ? "minmax(280px, 0.55fr) minmax(0, 1.75fr)"
-              : "1fr",
+            gridTemplateColumns: isDesktop && camera ? "minmax(0, 1.6fr) minmax(280px, 0.7fr)" : "1fr",
             gap: isDesktop ? 8 : 12,
             minWidth: 0,
           }}
         >
-          <div className="glass glass-strong" style={tileStyle}>
+          <div className="glass glass-strong" style={{ ...tileStyle, padding: isDesktop ? 9 : 11 }}>
             <div
               style={{
-                padding: isDesktop ? "9px 12px" : "9px 10px",
-                marginBottom: isDesktop ? 8 : 10,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 7,
+              }}
+            >
+              <div style={{ fontWeight: 950, fontSize: 14 }}>
+                🎣 {selectedPoint.shortName}・{pad2(selectedHour)}時の釣行予測
+              </div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: marineState.status === "error" ? "#ff93a9" : "rgba(255,255,255,0.56)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {marineState.status === "loading"
+                  ? "海況取得中…"
+                  : marineState.status === "error"
+                    ? "海況取得不可"
+                    : marineState.status !== "ok"
+                      ? "海況準備中…"
+                      : marineState.source === "fetch"
+                        ? "海況 取得"
+                        : marineState.isStale
+                          ? "海況 期限切れキャッシュ"
+                          : "海況 キャッシュ"}
+              </div>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "repeat(3, minmax(128px, 1fr))" : "repeat(3, minmax(0, 1fr))",
+                gap: 7,
+                overflowX: isMobile ? "auto" : "visible",
+                paddingBottom: isMobile ? 3 : 0,
+              }}
+            >
+              <ForecastCard icon="🛟" title="安全度" badge={forecast.safety} />
+              <ForecastCard icon="🎣" title="釣りやすさ" badge={forecast.comfort} />
+              <ForecastCard icon="🐟" title="釣れそう度" badge={forecast.bite} />
+            </div>
+            <div
+              style={{
+                marginTop: 7,
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "4px 12px",
+                fontSize: 11,
+                color: "rgba(255,255,255,0.69)",
+              }}
+            >
+              <span>波 {forecast.marineSummary.waveHeight?.toFixed(1) ?? "-"}m</span>
+              <span>周期 {forecast.marineSummary.wavePeriod?.toFixed(1) ?? "-"}秒</span>
+              <span>
+                うねり {forecast.marineSummary.swellHeight?.toFixed(1) ?? "-"}m / {forecast.marineSummary.swellPeriod?.toFixed(1) ?? "-"}秒
+              </span>
+              <span>波向 {directionLabel(forecast.marineSummary.waveDirection)}</span>
+              <span>水温 {forecast.marineSummary.seaSurfaceTemperature?.toFixed(1) ?? "-"}℃</span>
+              <span style={{ color: "#ffd0e4" }}>{forecast.reasons.join("・")}</span>
+            </div>
+            <div style={{ marginTop: 4, fontSize: 10, color: "rgba(255,255,255,0.48)" }}>
+              ※安全度は沖波の予報と釣場属性による目安。港内でも外向き護岸・立入規制・現地の波を優先。
+            </div>
+          </div>
+
+          {isDesktop && camera && (
+            <div
+              className="glass glass-strong"
+              style={{ ...tileStyle, padding: 8, display: "grid", gridTemplateRows: "auto minmax(88px, 1fr) auto", gap: 5 }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <strong style={{ fontSize: 12 }}>📹 {camera.name}</strong>
+                <button onClick={() => setCameraOpen(true)} style={{ ...tabStyle(false), minHeight: 26, padding: "4px 8px", fontSize: 10 }}>
+                  拡大
+                </button>
+              </div>
+              <iframe
+                src={camera.url}
+                title={camera.name}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                style={{ width: "100%", height: "100%", minHeight: 88, border: 0, borderRadius: 10, background: "rgba(7,12,27,0.42)" }}
+              />
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 9, color: "rgba(255,255,255,0.48)" }}>
+                <span>{camera.sameLocation ? "選択釣場のカメラ" : "参考地点（選択釣場とは別地点）"}</span>
+                <a href={camera.url} target="_blank" rel="noreferrer" style={{ color: "#7fddff" }}>
+                  公式を開く ↗
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div
+          style={{
+            minHeight: 0,
+            display: "grid",
+            gridTemplateColumns: isDesktop ? "minmax(270px, 0.52fr) minmax(0, 1.78fr)" : "1fr",
+            gap: isDesktop ? 8 : 12,
+          }}
+        >
+          <div className="glass glass-strong" style={{ ...tileStyle, minHeight: 0 }}>
+            <div
+              style={{
+                padding: "8px 10px",
+                marginBottom: 7,
                 borderRadius: 12,
-                background:
-                  "linear-gradient(90deg, rgba(151,121,255,0.18), rgba(91,209,255,0.12))",
+                background: "linear-gradient(90deg, rgba(151,121,255,0.18), rgba(91,209,255,0.12))",
                 border: "1px solid rgba(125,205,255,0.20)",
                 color: "#78d9ff",
                 textAlign: "center",
-                fontSize: isDesktop ? 16 : 14,
-                fontWeight: 900,
+                fontSize: 15,
+                fontWeight: 950,
               }}
             >
-              🌙 潮名：
-              {state.status === "ok"
-                ? state.tideName
-                  ? ` ${state.tideName}`
-                  : " （未取得）"
-                : " -"}
+              🌙 潮名：{tideState.status === "ok" ? tideState.tideName ?? "未取得" : "-"}
             </div>
-
-            {state.status === "ok" && !state.tideName && (
-              <div
-                style={{
-                  margin: "-4px 2px 10px",
-                  fontSize: 11,
-                  lineHeight: 1.45,
-                  color: "rgba(255,255,255,0.55)",
-                }}
-              >
-                ※次回オンライン取得時に更新
-              </div>
-            )}
-
-            <div
-              style={{
-                fontWeight: 900,
-                marginBottom: isDesktop ? 7 : 10,
-                fontSize: isDesktop ? 18 : 16,
-                textAlign: isDesktop ? "center" : "left",
-              }}
-            >
+            <div style={{ fontWeight: 950, marginBottom: 6, fontSize: 16, textAlign: "center" }}>
               🟡 満潮 / 🔵 干潮
             </div>
 
-            {state.status !== "ok" ? (
+            {tideState.status !== "ok" ? (
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
-                データ準備中…
-              </div>
-            ) : state.series.length === 0 ? (
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
-                {!online
-                  ? "📴 オフラインで、この日のキャッシュが無いよ（オンライン復帰後に取得できる）"
-                  : "潮位データが無いよ"}
+                {tideState.status === "error" ? "潮位を取得できなかったよ" : "データ準備中…"}
               </div>
             ) : extremes.length === 0 ? (
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
-                極値がうまく取れなかったよ（データ不足かも）
+                潮位の極値データがないよ
               </div>
             ) : (
-              <div style={{ display: "grid", gap: isDesktop ? 6 : 8 }}>
-                {extremes.map((e) => {
-                  const high = e.kind === "high";
+              <div style={{ display: "grid", gap: 5 }}>
+                {extremes.map((extreme) => {
+                  const high = extreme.kind === "high";
                   return (
                     <div
-                      key={`${e.kind}-${e.min}-${e.cm}`}
+                      key={`${extreme.kind}-${extreme.min}-${extreme.cm}`}
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "72px 1fr auto",
+                        gridTemplateColumns: "70px 1fr auto",
                         alignItems: "center",
                         gap: 8,
-                        padding: isDesktop ? "8px 12px" : "9px 10px",
-                        borderRadius: 12,
-                        color: "rgba(255,255,255,0.94)",
-                        fontWeight: 800,
+                        padding: "7px 10px",
+                        borderRadius: 11,
                         background: high
                           ? "linear-gradient(90deg, rgba(255,193,111,0.18), rgba(255,126,182,0.08))"
                           : "linear-gradient(90deg, rgba(91,209,255,0.18), rgba(151,121,255,0.08))",
-                        border: `1px solid ${
-                          high
-                            ? "rgba(255,207,132,0.22)"
-                            : "rgba(106,218,255,0.22)"
-                        }`,
-                        fontSize: isDesktop ? 15 : 14,
+                        border: `1px solid ${high ? "rgba(255,207,132,0.22)" : "rgba(106,218,255,0.22)"}`,
+                        fontSize: 14,
+                        fontWeight: 850,
                       }}
                     >
                       <span>{high ? "🟡 満潮" : "🔵 干潮"}</span>
-                      <span style={{ fontSize: isDesktop ? 19 : 17 }}>
-                        {formatHMFromMinutes(e.min)}
-                      </span>
-                      <span style={{ color: "rgba(255,255,255,0.66)" }}>
-                        {Math.round(e.cm)}cm
-                      </span>
+                      <span style={{ fontSize: 18 }}>{formatHMFromMinutes(extreme.min)}</span>
+                      <span style={{ color: "rgba(255,255,255,0.66)" }}>{Math.round(extreme.cm)}cm</span>
                     </div>
                   );
                 })}
@@ -944,205 +1107,158 @@ export default function Weather({ back, isActive = true }: Props) {
 
             <div
               style={{
-                marginTop: isDesktop ? 10 : 12,
-                paddingTop: isDesktop ? 8 : 10,
+                marginTop: 8,
+                paddingTop: 7,
                 borderTop: "1px solid rgba(255,255,255,0.10)",
                 display: "flex",
                 justifyContent: "space-between",
-                alignItems: "center",
                 flexWrap: "wrap",
-                gap: "5px 10px",
-                fontSize: 11,
+                gap: 6,
+                fontSize: 10,
                 color: "rgba(255,255,255,0.58)",
               }}
             >
-              <span style={{ whiteSpace: "nowrap" }}>
-                📅 {targetDate.toLocaleDateString()}
-              </span>
-
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "flex-end",
-                  flexWrap: "wrap",
-                  gap: 8,
-                }}
-              >
-                {(() => {
-                  const b = weatherStatusBadge();
-                  if (!b) return null;
-                  return (
-                    <span
-                      style={{ color: b.color, whiteSpace: "nowrap" }}
-                      title="Open-Meteo"
-                    >
-                      🌤️ {b.text}
-                    </span>
-                  );
-                })()}
-
-                {state.status === "ok" &&
-                  (() => {
-                    const lab = sourceLabel(state.source, state.isStale);
-                    if (!lab) return null;
-                    return (
-                      <span
-                        style={{ color: lab.color, whiteSpace: "nowrap" }}
-                        title="tide736取得元"
-                      >
-                        🌊 {lab.text}
-                      </span>
-                    );
-                  })()}
-
-                {!online && (
-                  <span style={{ color: "#f6c", whiteSpace: "nowrap" }}>
-                    📴 オフライン
-                  </span>
+              <span>📅 {targetDate.toLocaleDateString()}</span>
+              <span style={{ display: "inline-flex", gap: 8, flexWrap: "wrap" }}>
+                {weatherState.status === "ok" && (
+                  <span style={{ color: "#76dcff" }}>🌤️ {weatherState.source === "fetch" ? "取得" : "キャッシュ"}</span>
                 )}
+                {tideState.status === "ok" && (() => {
+                  const label = sourceLabel(tideState.source, tideState.isStale);
+                  return <span style={{ color: label.color }}>🌊 {label.text}</span>;
+                })()}
               </span>
             </div>
           </div>
 
-          <div
-            className="glass glass-strong"
-            style={{
-              ...tileStyle,
-              padding: 10,
-              minHeight: 0,
-            }}
-          >
+          <div className="glass glass-strong" style={{ ...tileStyle, padding: 9, minHeight: 0 }}>
+            <TideGraph
+              series={tideState.status === "ok" ? tideState.series : []}
+              baseDate={targetDate}
+              highlightAt={highlightAt}
+              height={isDesktop ? 154 : 170}
+              yDomain={{ min: -50, max: 200 }}
+            />
             <div
               style={{
-                opacity: state.status === "loading" ? 0.65 : 1,
-                transform:
-                  state.status === "loading"
-                    ? "translateY(4px)"
-                    : "translateY(0px)",
-                transition: "opacity 220ms ease, transform 220ms ease",
-                willChange: "opacity, transform",
-              }}
-            >
-              <TideGraph
-                series={state.status === "ok" ? state.series : []}
-                baseDate={targetDate}
-                highlightAt={highlightAt}
-                height={isDesktop ? 180 : 170}
-                yDomain={{ min: -50, max: 200 }}
-              />
-            </div>
-            <div
-              style={{
-                marginTop: isDesktop ? 5 : 8,
-                padding: isDesktop ? "7px 10px" : 10,
+                marginTop: 5,
+                padding: "7px 9px",
                 borderRadius: 14,
-                background:
-                  "linear-gradient(135deg, rgba(255,105,174,0.12), rgba(127,116,255,0.10) 48%, rgba(83,211,255,0.10))",
+                background: "linear-gradient(135deg, rgba(255,105,174,0.12), rgba(127,116,255,0.10) 48%, rgba(83,211,255,0.10))",
                 border: "1px solid rgba(255,255,255,0.12)",
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 10,
-                  marginBottom: isDesktop ? 5 : 7,
-                }}
-              >
-                <div style={{ fontWeight: 900, fontSize: 14 }}>
-                  🌤️ 3時間ごとの概況
-                </div>
-                {wState.status === "ok" && (
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: "rgba(255,255,255,0.58)",
-                    }}
-                  >
-                    {wState.summary.overview} / {wState.summary.tempMin}〜
-                    {wState.summary.tempMax}℃
-                  </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 5 }}>
+                <strong style={{ fontSize: 13 }}>🌤️ 3時間ごとの天気・海況</strong>
+                {weatherState.status === "ok" && (
+                  <span style={{ fontSize: 10, color: "rgba(255,255,255,0.58)" }}>
+                    {weatherState.summary.overview} / {weatherState.summary.tempMin}〜{weatherState.summary.tempMax}℃
+                  </span>
                 )}
               </div>
-              {wState.status !== "ok" ? (
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
-                  {wState.status === "loading"
-                    ? "時間別の天気を取得中…"
-                    : "時間別の天気データを取得できなかったよ"}
-                </div>
-              ) : wState.hours.length === 0 ? (
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
-                  以前のキャッシュには時間別情報がないため、次回オンライン取得時に表示されます
-                </div>
-              ) : (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: isDesktop
-                      ? "repeat(8, minmax(68px, 1fr))"
-                      : "repeat(8, minmax(78px, 1fr))",
-                    gap: 6,
-                    overflowX: "auto",
-                    paddingBottom: 2,
-                  }}
-                >
-                  {wState.hours.map((hour) => (
-                    <div
-                      key={hour.hour}
-                      title={`${wmoToJa(hour.weatherCode)} / 風向 ${windDirectionLabel(hour.windDirection)}`}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isDesktop ? "repeat(8, minmax(66px, 1fr))" : "repeat(8, minmax(82px, 1fr))",
+                  gap: 5,
+                  overflowX: "auto",
+                  paddingBottom: 2,
+                }}
+              >
+                {THREE_HOUR_SLOTS.map((hour) => {
+                  const weather = weatherState.status === "ok" ? weatherState.hours.find((item) => item.hour === hour) : undefined;
+                  const marine = marineThreeHourly.find((item) => item.hour === hour);
+                  const selected = selectedHour === hour;
+                  return (
+                    <button
+                      key={hour}
+                      onClick={() => setSelectedHour(hour)}
+                      title="この時間を釣行判定に使う"
                       style={{
                         minWidth: 0,
-                        padding: "6px 4px",
-                        borderRadius: 11,
+                        padding: "5px 3px",
+                        borderRadius: 10,
                         textAlign: "center",
-                        background: "rgba(12,18,38,0.28)",
-                        border: "1px solid rgba(255,255,255,0.09)",
+                        color: "#fff",
+                        cursor: "pointer",
+                        background: selected ? "rgba(255,84,139,0.20)" : "rgba(12,18,38,0.28)",
+                        border: selected ? "2px solid #ff6598" : "1px solid rgba(255,255,255,0.09)",
                       }}
                     >
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 900,
-                          color: "#ffd4ed",
-                        }}
-                      >
-                        {pad2(hour.hour)}時
+                      <div style={{ fontSize: 11, fontWeight: 950, color: selected ? "#ffd4e6" : "#ffd4ed" }}>
+                        {pad2(hour)}時
                       </div>
-                      <div style={{ fontSize: 19, lineHeight: 1.25 }}>
-                        {wmoToIcon(hour.weatherCode)}
+                      <div style={{ fontSize: 17, lineHeight: 1.2 }}>{weather ? wmoToIcon(weather.weatherCode) : "・"}</div>
+                      <div style={{ fontSize: 10, fontWeight: 850 }}>{weather ? `${weather.temp}℃` : "-℃"}</div>
+                      <div style={{ fontSize: 9, color: "#82ddff", whiteSpace: "nowrap" }}>
+                        ☔ {weather ? `${weather.rainProb}%` : "-"}
                       </div>
-                      <div style={{ fontSize: 12, fontWeight: 800 }}>
-                        {hour.temp}℃
+                      <div style={{ fontSize: 9, color: "rgba(255,255,255,0.68)", whiteSpace: "nowrap" }}>
+                        {weather ? `${directionLabel(weather.windDirection)} ${weather.windSpeed}m` : "風 -"}
                       </div>
-                      <div
-                        style={{
-                          fontSize: 10,
-                          color: "#82ddff",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        ☔ {hour.rainProb}%
+                      <div style={{ marginTop: 2, fontSize: 9, color: marine?.waveHeight != null ? "#ffc0dc" : "rgba(255,255,255,0.46)", whiteSpace: "nowrap" }}>
+                        🌊 {marine?.waveHeight != null ? `${marine.waveHeight.toFixed(1)}m` : "-"}
                       </div>
-                      <div
-                        style={{
-                          fontSize: 10,
-                          color: "rgba(255,255,255,0.68)",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {windDirectionLabel(hour.windDirection)}{" "}
-                        {hour.windSpeed}m
+                      <div style={{ fontSize: 8, color: "rgba(255,255,255,0.55)", whiteSpace: "nowrap" }}>
+                        {marine?.wavePeriod != null ? `${marine.wavePeriod.toFixed(1)}秒` : "周期 -"}
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {cameraOpen && camera && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={camera.name}
+          onClick={() => setCameraOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1400,
+            padding: isMobile ? 12 : 34,
+            display: "grid",
+            placeItems: "center",
+            background: "rgba(3,7,18,0.72)",
+            backdropFilter: "blur(10px)",
+          }}
+        >
+          <div
+            className="glass glass-strong"
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "min(920px, 100%)",
+              height: isMobile ? "min(78vh, 660px)" : "min(82vh, 720px)",
+              padding: 10,
+              borderRadius: 18,
+              display: "grid",
+              gridTemplateRows: "auto minmax(0, 1fr) auto",
+              gap: 8,
+              border: "1px solid rgba(255,255,255,0.18)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <strong>📹 {camera.name}</strong>
+              <button onClick={() => setCameraOpen(false)} style={tabStyle(false)}>閉じる</button>
+            </div>
+            <iframe
+              src={camera.url}
+              title={`${camera.name} 拡大表示`}
+              referrerPolicy="no-referrer"
+              style={{ width: "100%", height: "100%", border: 0, borderRadius: 12, background: "rgba(7,12,27,0.42)" }}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, fontSize: 11, color: "rgba(255,255,255,0.60)" }}>
+              <span>{camera.sameLocation ? "大浜海岸の現況確認用" : `参考カメラ：${selectedPoint.name}と同一地点ではありません`}</span>
+              <a href={camera.url} target="_blank" rel="noreferrer" style={{ color: "#7fddff" }}>表示されない場合は公式ページを開く ↗</a>
+            </div>
+          </div>
+        </div>
+      )}
     </PageShell>
   );
 }
