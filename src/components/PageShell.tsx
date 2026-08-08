@@ -264,8 +264,8 @@ export default function PageShell(props: Props) {
               calc(100vw - var(--page-character-reserve))
             ) !important;
             max-width: none;
-            margin-left: var(--page-desktop-gutter);
-            margin-right: auto;
+            margin-left: var(--page-desktop-gutter) !important;
+            margin-right: auto !important;
           }
 
           .page-shell--wide-left {

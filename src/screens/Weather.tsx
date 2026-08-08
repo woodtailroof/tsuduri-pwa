@@ -130,6 +130,10 @@ const WEATHER_CACHE_PREFIX = "tsuduri_openmeteo_daily_v1:";
 const WEATHER_TTL_MS = 10 * 60 * 1000;
 const POINT_STORAGE_KEY = "tsuduri_weather_point_v1";
 const THREE_HOUR_SLOTS = [0, 3, 6, 9, 12, 15, 18, 21] as const;
+const SHIZUOKA_COAST_CAMERA_URL =
+  "http://shizuokakaigan.pref.shizuoka.jp/sys/cam/";
+const SHIMIZU_NOWPHAS_URL =
+  "https://nowphas.mlit.go.jp/yugiha_graph/505/7/";
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -839,32 +843,28 @@ export default function Weather({ back, isActive = true }: Props) {
     boxShadow: active ? "inset 0 0 0 1px rgba(255,95,141,0.20)" : "none",
   });
 
-  const camera = selectedPoint.camera;
-  const cameraIcon = camera?.kind === "wave" ? "🌊" : "📹";
-  const cameraCategory = camera?.kind === "wave" ? "波浪実況" : "現地カメラ";
-  const cameraLocationNote = camera
-    ? camera.locationNote ??
-      (camera.sameLocation
-        ? "選択釣場の現況情報"
-        : "参考地点（選択釣場とは別地点）")
-    : "";
-  const summaryWeatherCode =
-    weatherState.status === "ok" &&
-    Number.isFinite(weatherState.summary.weatherCode)
-      ? weatherState.summary.weatherCode
-      : weatherState.status === "ok"
-        ? (weatherState.hours.find((item) => item.hour === 12)?.weatherCode ??
-          weatherState.hours[0]?.weatherCode ??
-          Number.NaN)
-        : Number.NaN;
+  const selectedWeather =
+    weatherState.status === "ok"
+      ? weatherState.hours.find((item) => item.hour === selectedHour)
+      : undefined;
   const highlightAt = sameDay(targetDate, new Date()) ? new Date() : null;
 
-  const openCamera = useCallback(() => {
-    if (!camera) return;
-    // 静岡海岸情報管理システムは個別カメラへの直リンクに対応していない。
-    // 公式のカメラ一覧を通常タブで開き、表示したい観測局は画面上で選ぶ。
-    window.open(camera.url, "_blank", "noopener,noreferrer");
-  }, [camera]);
+  const openExternalInfo = useCallback(
+    (url: string, windowName: string) => {
+      if (isMobile) {
+        // PWA本体の表示を置き換えず、OS側の別タブ／ブラウザで開く。
+        window.open(url, "_blank", "noopener,noreferrer");
+        return;
+      }
+      const popup = window.open(
+        url,
+        windowName,
+        "popup=yes,width=1080,height=760,resizable=yes,scrollbars=yes",
+      );
+      popup?.focus();
+    },
+    [isMobile],
+  );
 
   return (
     <PageShell
@@ -1061,17 +1061,14 @@ export default function Weather({ back, isActive = true }: Props) {
             </div>
           </div>
 
-          {isMobile && camera && (
-            <button onClick={openCamera} style={tabStyle(false)}>
-              {cameraIcon} {cameraCategory}
-            </button>
-          )}
         </div>
 
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: isDesktop && camera ? "minmax(0, 1.6fr) minmax(280px, 0.7fr)" : "1fr",
+            gridTemplateColumns: isDesktop
+              ? "minmax(0, 1.75fr) minmax(270px, 0.65fr)"
+              : "1fr",
             gap: isDesktop ? 8 : 12,
             minWidth: 0,
             gridColumn: isWideLayout ? 2 : undefined,
@@ -1148,59 +1145,51 @@ export default function Weather({ back, isActive = true }: Props) {
             </div>
           </div>
 
-          {isDesktop && camera && (
-            <div
-              className="glass glass-strong"
+          <div
+            className="glass glass-strong"
+            style={{
+              ...tileStyle,
+              padding: 9,
+              display: "grid",
+              gridTemplateColumns: isMobile
+                ? "repeat(2, minmax(145px, 1fr))"
+                : "1fr",
+              alignContent: "center",
+              gap: 7,
+              overflowX: isMobile ? "auto" : "visible",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                openExternalInfo(SHIZUOKA_COAST_CAMERA_URL, "tsuduriCoastCamera")
+              }
               style={{
-                ...tileStyle,
-                padding: 8,
-                display: "grid",
-                gridTemplateRows: "auto minmax(88px, 1fr) auto",
-                gap: 5,
+                ...tabStyle(false),
+                minHeight: 48,
+                borderRadius: 12,
+                background:
+                  "linear-gradient(135deg, rgba(43,155,213,0.28), rgba(20,52,91,0.52))",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                <strong style={{ fontSize: 12 }}>{cameraIcon} {camera.name}</strong>
-                <button onClick={openCamera} style={{ ...tabStyle(false), minHeight: 26, padding: "4px 8px", fontSize: 10 }}>
-                  公式を開く ↗
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={openCamera}
-                aria-label={`${camera.name}の公式ページを開く`}
-                style={{
-                  minHeight: 88,
-                  border: "1px solid rgba(127,221,255,0.24)",
-                  borderRadius: 10,
-                  color: "#fff",
-                  cursor: "pointer",
-                  background:
-                    "radial-gradient(circle at 20% 18%, rgba(108,218,255,0.28), transparent 34%), linear-gradient(145deg, rgba(22,72,104,0.72), rgba(8,20,43,0.78))",
-                  display: "grid",
-                  placeItems: "center",
-                  gap: 2,
-                  padding: 10,
-                }}
-              >
-                <span style={{ fontSize: 26, lineHeight: 1 }}>{cameraIcon}</span>
-                <strong style={{ fontSize: 13 }}>{camera.actionLabel}</strong>
-                <span style={{ fontSize: 9, color: "rgba(255,255,255,0.60)" }}>
-                  公式の{cameraCategory}を新しいタブで表示
-                </span>
-              </button>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 9, color: "rgba(255,255,255,0.48)" }}>
-                <span>
-                  {camera.stationLabel
-                    ? `開いた画面で「${camera.stationLabel}」を選択` 
-                    : cameraLocationNote}
-                </span>
-                <a href={camera.url} target="_blank" rel="noreferrer" style={{ color: "#7fddff" }}>
-                  公式を開く ↗
-                </a>
-              </div>
-            </div>
-          )}
+              📹 静岡海岸ライブカメラ ↗
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                openExternalInfo(SHIMIZU_NOWPHAS_URL, "tsuduriShimizuNowphas")
+              }
+              style={{
+                ...tabStyle(false),
+                minHeight: 48,
+                borderRadius: 12,
+                background:
+                  "linear-gradient(135deg, rgba(95,105,220,0.28), rgba(22,51,104,0.52))",
+              }}
+            >
+              🌊 清水港NOWPHAS ↗
+            </button>
+          </div>
         </div>
 
         <div
@@ -1304,14 +1293,16 @@ export default function Weather({ back, isActive = true }: Props) {
                   marginBottom: 10,
                 }}
               >
-                <strong style={{ fontSize: 19 }}>🌤️ 天気概況</strong>
+                <strong style={{ fontSize: 19 }}>
+                  🌤️ {pad2(selectedHour)}時の天気
+                </strong>
                 {weatherState.status === "ok" && (
                   <span style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
                     {weatherState.summary.label}
                   </span>
                 )}
               </div>
-              {weatherState.status === "ok" ? (
+              {weatherState.status === "ok" && selectedWeather ? (
                 <>
                   <div
                     style={{
@@ -1330,7 +1321,7 @@ export default function Weather({ back, isActive = true }: Props) {
                         filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.22))",
                       }}
                     >
-                      {wmoToIcon(summaryWeatherCode)}
+                      {wmoToIcon(selectedWeather.weatherCode)}
                     </span>
                     <strong
                       style={{
@@ -1339,7 +1330,7 @@ export default function Weather({ back, isActive = true }: Props) {
                         color: "#fff",
                       }}
                     >
-                      {weatherState.summary.overview}
+                      {wmoToJa(selectedWeather.weatherCode)}
                     </strong>
                   </div>
                   <div
@@ -1351,17 +1342,17 @@ export default function Weather({ back, isActive = true }: Props) {
                   >
                     <div style={{ padding: "11px 10px", borderRadius: 11, background: "rgba(255,255,255,0.07)" }}>
                       <div style={{ fontSize: 12, color: "rgba(255,255,255,0.58)" }}>気温</div>
-                      <strong style={{ fontSize: 18 }}>🌡️ {weatherState.summary.tempMin}〜{weatherState.summary.tempMax}℃</strong>
+                      <strong style={{ fontSize: 18 }}>🌡️ {selectedWeather.temp}℃</strong>
                     </div>
                     <div style={{ padding: "11px 10px", borderRadius: 11, background: "rgba(83,211,255,0.09)" }}>
                       <div style={{ fontSize: 12, color: "rgba(255,255,255,0.58)" }}>降水</div>
-                      <strong style={{ fontSize: 18, color: "#9ee8ff" }}>☔ {weatherState.summary.rainProbMax}%</strong>
-                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>計 {weatherState.summary.rainSum}mm</div>
+                      <strong style={{ fontSize: 18, color: "#9ee8ff" }}>☔ {selectedWeather.rainProb}%</strong>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>日計 {weatherState.summary.rainSum}mm</div>
                     </div>
                     <div style={{ gridColumn: "1 / -1", padding: "11px 10px", borderRadius: 11, background: "rgba(255,105,174,0.08)" }}>
-                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.58)" }}>最大風速 / 最大瞬間風速</div>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.58)" }}>選択時刻の風 / 日最大瞬間風速</div>
                       <strong style={{ fontSize: 18, color: "#ffd0e4" }}>
-                        🍃 {weatherState.summary.windMax}m/s / ⚡ {weatherState.summary.gustMax}m/s
+                        🍃 {directionLabel(selectedWeather.windDirection)} {selectedWeather.windSpeed}m/s / ⚡ {weatherState.summary.gustMax}m/s
                       </strong>
                     </div>
                   </div>
@@ -1406,7 +1397,7 @@ export default function Weather({ back, isActive = true }: Props) {
               series={tideState.status === "ok" ? tideState.series : []}
               baseDate={targetDate}
               highlightAt={highlightAt}
-              height={isDesktop ? 108 : 170}
+              height={isDesktop ? 138 : 170}
               yDomain={{ min: -50, max: 200 }}
             />
             <div
