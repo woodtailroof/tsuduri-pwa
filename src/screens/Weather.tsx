@@ -736,51 +736,6 @@ export default function Weather({ back, isActive = true }: Props) {
     };
   }, [targetDate]);
 
-  const weatherEmotion = useMemo(
-    () =>
-      decideWeatherEmotion({
-        overview:
-          weatherState.status === "ok"
-            ? weatherState.summary.overview
-            : null,
-        rainProbMax:
-          weatherState.status === "ok"
-            ? weatherState.summary.rainProbMax
-            : null,
-        windMax:
-          weatherState.status === "ok" ? weatherState.summary.windMax : null,
-        gustMax:
-          weatherState.status === "ok" ? weatherState.summary.gustMax : null,
-        tideName: tideState.status === "ok" ? tideState.tideName : null,
-      }),
-    [weatherState, tideState],
-  );
-
-  useEffect(() => {
-    if (!isActive) {
-      clearEmotion("weather");
-      return;
-    }
-    emitEmotion({
-      source: "weather",
-      emotion: weatherEmotion,
-      priority: 10,
-      ttlMs: 30 * 60 * 1000,
-    });
-  }, [isActive, emitEmotion, clearEmotion, weatherEmotion]);
-
-  useEffect(
-    () => () => {
-      clearEmotion("weather");
-    },
-    [clearEmotion],
-  );
-
-  const onBack = useCallback(() => {
-    clearEmotion("weather");
-    back();
-  }, [clearEmotion, back]);
-
   const extremes = useMemo(
     () =>
       tideState.status === "ok"
@@ -815,6 +770,42 @@ export default function Weather({ back, isActive = true }: Props) {
       tideName: tideState.status === "ok" ? tideState.tideName : null,
     });
   }, [marineHours, selectedHour, weatherState, selectedPoint, tideState]);
+
+  const weatherEmotion = useMemo(
+    () =>
+      decideWeatherEmotion({
+        safetyTone: forecast.safety.tone,
+        comfortTone: forecast.comfort.tone,
+        biteTone: forecast.bite.tone,
+        tideName: tideState.status === "ok" ? tideState.tideName : null,
+      }),
+    [forecast, tideState],
+  );
+
+  useEffect(() => {
+    if (!isActive) {
+      clearEmotion("weather");
+      return;
+    }
+    emitEmotion({
+      source: "weather",
+      emotion: weatherEmotion,
+      priority: 10,
+      ttlMs: 30 * 60 * 1000,
+    });
+  }, [isActive, emitEmotion, clearEmotion, weatherEmotion]);
+
+  useEffect(
+    () => () => {
+      clearEmotion("weather");
+    },
+    [clearEmotion],
+  );
+
+  const onBack = useCallback(() => {
+    clearEmotion("weather");
+    back();
+  }, [clearEmotion, back]);
 
   const tileStyle: CSSProperties = {
     borderRadius: 16,
