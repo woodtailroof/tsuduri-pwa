@@ -35,28 +35,36 @@ export type FishingPoint = {
     sameLocation: boolean;
     locationNote?: string;
     actionLabel: string;
+    /** 公式ページ側で選択してもらう観測局。URLからの自動選択には非対応。 */
+    stationLabel?: string;
   };
 };
+
+const SHIZUOKA_COAST_CAMERA_URL =
+  "http://shizuokakaigan.pref.shizuoka.jp/sys/cam/";
 
 const OOHAMA_CAMERA = {
   kind: "camera",
   name: "静岡海岸・大浜海岸カメラ",
-  url: "https://shizuokakaigan.pref.shizuoka.jp/sys/sp/cam/oohamakaigan.html",
-  actionLabel: "大浜海岸の映像を見る",
+  url: SHIZUOKA_COAST_CAMERA_URL,
+  actionLabel: "監視カメラ映像を開く",
+  stationLabel: "大浜海岸カメラ",
 } as const;
 
 const HAMAKAWA_EAST_CAMERA = {
   kind: "camera",
   name: "静岡海岸・浜川東観測局カメラ",
-  url: "https://shizuokakaigan.pref.shizuoka.jp/sys/sp/cam/hamakawahigashi.html",
-  actionLabel: "浜川東の映像を見る",
+  url: SHIZUOKA_COAST_CAMERA_URL,
+  actionLabel: "監視カメラ映像を開く",
+  stationLabel: "浜川東カメラ",
 } as const;
 
 const NAKAJIMA_CAMERA = {
   kind: "camera",
   name: "静岡海岸・中島観測局カメラ",
-  url: "https://shizuokakaigan.pref.shizuoka.jp/sys/sp/cam/nakajima.html",
-  actionLabel: "中島の映像を見る",
+  url: SHIZUOKA_COAST_CAMERA_URL,
+  actionLabel: "監視カメラ映像を開く",
+  stationLabel: "中島カメラ",
 } as const;
 
 const SHIMIZU_NOWPHAS = {

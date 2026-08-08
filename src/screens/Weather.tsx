@@ -43,6 +43,7 @@ type Props = {
 
 type WeatherSummary = {
   label: string;
+  weatherCode: number;
   overview: string;
   tempMin: number;
   tempMax: number;
@@ -333,6 +334,7 @@ function pickDailySummary(
   const code = safeNumber(daily?.weather_code?.[index], Number.NaN);
   return {
     label: day,
+    weatherCode: code,
     overview: wmoToJa(code),
     tempMin: Math.round(safeNumber(daily?.temperature_2m_min?.[index]) * 10) / 10,
     tempMax: Math.round(safeNumber(daily?.temperature_2m_max?.[index]) * 10) / 10,
@@ -846,24 +848,22 @@ export default function Weather({ back, isActive = true }: Props) {
         ? "選択釣場の現況情報"
         : "参考地点（選択釣場とは別地点）")
     : "";
+  const summaryWeatherCode =
+    weatherState.status === "ok" &&
+    Number.isFinite(weatherState.summary.weatherCode)
+      ? weatherState.summary.weatherCode
+      : weatherState.status === "ok"
+        ? (weatherState.hours.find((item) => item.hour === 12)?.weatherCode ??
+          weatherState.hours[0]?.weatherCode ??
+          Number.NaN)
+        : Number.NaN;
   const highlightAt = sameDay(targetDate, new Date()) ? new Date() : null;
 
   const openCamera = useCallback(() => {
     if (!camera) return;
-
-    const popup = window.open(
-      camera.url,
-      "tsuduri-live-info",
-      "popup=yes,width=960,height=720,resizable=yes,scrollbars=yes",
-    );
-
-    // ポップアップを使えないブラウザでは通常の新規タブへフォールバックする。
-    if (!popup) {
-      window.open(camera.url, "_blank", "noopener,noreferrer");
-      return;
-    }
-
-    popup.focus();
+    // 静岡海岸情報管理システムは個別カメラへの直リンクに対応していない。
+    // 公式のカメラ一覧を通常タブで開き、表示したい観測局は画面上で選ぶ。
+    window.open(camera.url, "_blank", "noopener,noreferrer");
   }, [camera]);
 
   return (
@@ -1123,13 +1123,13 @@ export default function Weather({ back, isActive = true }: Props) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                 <strong style={{ fontSize: 12 }}>{cameraIcon} {camera.name}</strong>
                 <button onClick={openCamera} style={{ ...tabStyle(false), minHeight: 26, padding: "4px 8px", fontSize: 10 }}>
-                  小窓で開く ↗
+                  公式を開く ↗
                 </button>
               </div>
               <button
                 type="button"
                 onClick={openCamera}
-                aria-label={`${camera.name}を小窓で開く`}
+                aria-label={`${camera.name}の公式ページを開く`}
                 style={{
                   minHeight: 88,
                   border: "1px solid rgba(127,221,255,0.24)",
@@ -1147,11 +1147,15 @@ export default function Weather({ back, isActive = true }: Props) {
                 <span style={{ fontSize: 26, lineHeight: 1 }}>{cameraIcon}</span>
                 <strong style={{ fontSize: 13 }}>{camera.actionLabel}</strong>
                 <span style={{ fontSize: 9, color: "rgba(255,255,255,0.60)" }}>
-                  公式の{cameraCategory}を専用ウィンドウで表示
+                  公式の{cameraCategory}を新しいタブで表示
                 </span>
               </button>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 9, color: "rgba(255,255,255,0.48)" }}>
-                <span>{cameraLocationNote}</span>
+                <span>
+                  {camera.stationLabel
+                    ? `開いた画面で「${camera.stationLabel}」を選択` 
+                    : cameraLocationNote}
+                </span>
                 <a href={camera.url} target="_blank" rel="noreferrer" style={{ color: "#7fddff" }}>
                   公式を開く ↗
                 </a>
@@ -1228,6 +1232,96 @@ export default function Weather({ back, isActive = true }: Props) {
                 })}
               </div>
             )}
+
+            <div
+              style={{
+                marginTop: 10,
+                padding: "12px 12px 13px",
+                borderRadius: 14,
+                background:
+                  "linear-gradient(145deg, rgba(255,177,74,0.18), rgba(255,105,174,0.12) 48%, rgba(83,211,255,0.14))",
+                border: "1px solid rgba(255,255,255,0.14)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginBottom: 8,
+                }}
+              >
+                <strong style={{ fontSize: 16 }}>🌤️ 天気概況</strong>
+                {weatherState.status === "ok" && (
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>
+                    {weatherState.summary.label}
+                  </span>
+                )}
+              </div>
+              {weatherState.status === "ok" ? (
+                <>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "58px minmax(0, 1fr)",
+                      alignItems: "center",
+                      gap: 10,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        fontSize: 48,
+                        lineHeight: 1,
+                        filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.22))",
+                      }}
+                    >
+                      {wmoToIcon(summaryWeatherCode)}
+                    </span>
+                    <strong
+                      style={{
+                        fontSize: 23,
+                        lineHeight: 1.15,
+                        color: "#fff",
+                      }}
+                    >
+                      {weatherState.summary.overview}
+                    </strong>
+                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: 7,
+                    }}
+                  >
+                    <div style={{ padding: "8px 9px", borderRadius: 10, background: "rgba(255,255,255,0.07)" }}>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>気温</div>
+                      <strong style={{ fontSize: 15 }}>🌡️ {weatherState.summary.tempMin}〜{weatherState.summary.tempMax}℃</strong>
+                    </div>
+                    <div style={{ padding: "8px 9px", borderRadius: 10, background: "rgba(83,211,255,0.09)" }}>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>降水</div>
+                      <strong style={{ fontSize: 15, color: "#9ee8ff" }}>☔ {weatherState.summary.rainProbMax}%</strong>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.62)" }}>計 {weatherState.summary.rainSum}mm</div>
+                    </div>
+                    <div style={{ gridColumn: "1 / -1", padding: "8px 9px", borderRadius: 10, background: "rgba(255,105,174,0.08)" }}>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>最大風速 / 最大瞬間風速</div>
+                      <strong style={{ fontSize: 15, color: "#ffd0e4" }}>
+                        🍃 {weatherState.summary.windMax}m/s / ⚡ {weatherState.summary.gustMax}m/s
+                      </strong>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div style={{ padding: "16px 4px", fontSize: 13, color: "rgba(255,255,255,0.62)" }}>
+                  {weatherState.status === "error"
+                    ? "天気概況を取得できなかったよ"
+                    : "天気概況を準備中…"}
+                </div>
+              )}
+            </div>
 
             <div
               style={{
