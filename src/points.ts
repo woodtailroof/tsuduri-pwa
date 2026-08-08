@@ -29,15 +29,41 @@ export type FishingPoint = {
   seaFacingDeg?: number;
   note: string;
   camera?: {
+    kind: "camera" | "wave";
     name: string;
     url: string;
     sameLocation: boolean;
+    locationNote?: string;
+    actionLabel: string;
   };
 };
 
 const OOHAMA_CAMERA = {
+  kind: "camera",
   name: "静岡海岸・大浜海岸カメラ",
   url: "https://shizuokakaigan.pref.shizuoka.jp/sys/sp/cam/oohamakaigan.html",
+  actionLabel: "大浜海岸の映像を見る",
+} as const;
+
+const HAMAKAWA_EAST_CAMERA = {
+  kind: "camera",
+  name: "静岡海岸・浜川東観測局カメラ",
+  url: "https://shizuokakaigan.pref.shizuoka.jp/sys/sp/cam/hamakawahigashi.html",
+  actionLabel: "浜川東の映像を見る",
+} as const;
+
+const NAKAJIMA_CAMERA = {
+  kind: "camera",
+  name: "静岡海岸・中島観測局カメラ",
+  url: "https://shizuokakaigan.pref.shizuoka.jp/sys/sp/cam/nakajima.html",
+  actionLabel: "中島の映像を見る",
+} as const;
+
+const SHIMIZU_NOWPHAS = {
+  kind: "wave",
+  name: "NOWPHAS 清水港・有義波実況",
+  url: "https://nowphas.mlit.go.jp/yugiha_graph/505/7/",
+  actionLabel: "清水港の波浪実況を見る",
 } as const;
 
 export const FISHING_POINTS: readonly FishingPoint[] = [
@@ -48,7 +74,11 @@ export const FISHING_POINTS: readonly FishingPoint[] = [
     waveExposure: "open",
     seaFacingDeg: 145,
     note: "開放サーフとして厳しめに判定",
-    camera: { ...OOHAMA_CAMERA, sameLocation: true },
+    camera: {
+      ...HAMAKAWA_EAST_CAMERA,
+      sameLocation: false,
+      locationNote: "大浜海岸の参考：浜川東観測局",
+    },
   },
   {
     id: "fishuna",
@@ -64,7 +94,11 @@ export const FISHING_POINTS: readonly FishingPoint[] = [
     waveExposure: "open",
     seaFacingDeg: 145,
     note: "開放河口。増水・濁りは別途現地確認",
-    camera: { ...OOHAMA_CAMERA, sameLocation: false },
+    camera: {
+      ...NAKAJIMA_CAMERA,
+      sameLocation: false,
+      locationNote: "安倍川河口の参考：中島観測局",
+    },
   },
   {
     id: "mochimune-port",
@@ -72,7 +106,11 @@ export const FISHING_POINTS: readonly FishingPoint[] = [
     shortName: "用宗港",
     waveExposure: "sheltered",
     note: "港内想定。外向き護岸にはこの判定を使わない",
-    camera: { ...OOHAMA_CAMERA, sameLocation: false },
+    camera: {
+      ...OOHAMA_CAMERA,
+      sameLocation: false,
+      locationNote: "用宗港の参考：大浜海岸",
+    },
   },
   {
     id: "shimizu-port",
@@ -80,6 +118,11 @@ export const FISHING_POINTS: readonly FishingPoint[] = [
     shortName: "清水港",
     waveExposure: "sheltered",
     note: "港内想定。外向き・港口は実際の波を優先",
+    camera: {
+      ...SHIMIZU_NOWPHAS,
+      sameLocation: true,
+      locationNote: "清水港の有義波高・周期の実況",
+    },
   },
   {
     id: "tomoe-mouth",

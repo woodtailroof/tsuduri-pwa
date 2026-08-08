@@ -549,7 +549,6 @@ export default function Weather({ back, isActive = true }: Props) {
   const [selectedHour, setSelectedHour] = useState(() =>
     defaultHourFor(new Date()),
   );
-  const [cameraOpen, setCameraOpen] = useState(false);
   const [online, setOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true,
   );
@@ -839,7 +838,33 @@ export default function Weather({ back, isActive = true }: Props) {
   });
 
   const camera = selectedPoint.camera;
+  const cameraIcon = camera?.kind === "wave" ? "🌊" : "📹";
+  const cameraCategory = camera?.kind === "wave" ? "波浪実況" : "現地カメラ";
+  const cameraLocationNote = camera
+    ? camera.locationNote ??
+      (camera.sameLocation
+        ? "選択釣場の現況情報"
+        : "参考地点（選択釣場とは別地点）")
+    : "";
   const highlightAt = sameDay(targetDate, new Date()) ? new Date() : null;
+
+  const openCamera = useCallback(() => {
+    if (!camera) return;
+
+    const popup = window.open(
+      camera.url,
+      "tsuduri-live-info",
+      "popup=yes,width=960,height=720,resizable=yes,scrollbars=yes",
+    );
+
+    // ポップアップを使えないブラウザでは通常の新規タブへフォールバックする。
+    if (!popup) {
+      window.open(camera.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    popup.focus();
+  }, [camera]);
 
   return (
     <PageShell
@@ -998,8 +1023,8 @@ export default function Weather({ back, isActive = true }: Props) {
           </label>
 
           {isMobile && camera && (
-            <button onClick={() => setCameraOpen(true)} style={tabStyle(false)}>
-              📹 現地カメラ
+            <button onClick={openCamera} style={tabStyle(false)}>
+              {cameraIcon} {cameraCategory}
             </button>
           )}
         </div>
@@ -1087,23 +1112,46 @@ export default function Weather({ back, isActive = true }: Props) {
           {isDesktop && camera && (
             <div
               className="glass glass-strong"
-              style={{ ...tileStyle, padding: 8, display: "grid", gridTemplateRows: "auto minmax(88px, 1fr) auto", gap: 5 }}
+              style={{
+                ...tileStyle,
+                padding: 8,
+                display: "grid",
+                gridTemplateRows: "auto minmax(88px, 1fr) auto",
+                gap: 5,
+              }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                <strong style={{ fontSize: 12 }}>📹 {camera.name}</strong>
-                <button onClick={() => setCameraOpen(true)} style={{ ...tabStyle(false), minHeight: 26, padding: "4px 8px", fontSize: 10 }}>
-                  拡大
+                <strong style={{ fontSize: 12 }}>{cameraIcon} {camera.name}</strong>
+                <button onClick={openCamera} style={{ ...tabStyle(false), minHeight: 26, padding: "4px 8px", fontSize: 10 }}>
+                  小窓で開く ↗
                 </button>
               </div>
-              <iframe
-                src={camera.url}
-                title={camera.name}
-                loading="lazy"
-                referrerPolicy="no-referrer"
-                style={{ width: "100%", height: "100%", minHeight: 88, border: 0, borderRadius: 10, background: "rgba(7,12,27,0.42)" }}
-              />
+              <button
+                type="button"
+                onClick={openCamera}
+                aria-label={`${camera.name}を小窓で開く`}
+                style={{
+                  minHeight: 88,
+                  border: "1px solid rgba(127,221,255,0.24)",
+                  borderRadius: 10,
+                  color: "#fff",
+                  cursor: "pointer",
+                  background:
+                    "radial-gradient(circle at 20% 18%, rgba(108,218,255,0.28), transparent 34%), linear-gradient(145deg, rgba(22,72,104,0.72), rgba(8,20,43,0.78))",
+                  display: "grid",
+                  placeItems: "center",
+                  gap: 2,
+                  padding: 10,
+                }}
+              >
+                <span style={{ fontSize: 26, lineHeight: 1 }}>{cameraIcon}</span>
+                <strong style={{ fontSize: 13 }}>{camera.actionLabel}</strong>
+                <span style={{ fontSize: 9, color: "rgba(255,255,255,0.60)" }}>
+                  公式の{cameraCategory}を専用ウィンドウで表示
+                </span>
+              </button>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 9, color: "rgba(255,255,255,0.48)" }}>
-                <span>{camera.sameLocation ? "選択釣場のカメラ" : "参考地点（選択釣場とは別地点）"}</span>
+                <span>{cameraLocationNote}</span>
                 <a href={camera.url} target="_blank" rel="noreferrer" style={{ color: "#7fddff" }}>
                   公式を開く ↗
                 </a>
@@ -1212,7 +1260,7 @@ export default function Weather({ back, isActive = true }: Props) {
               series={tideState.status === "ok" ? tideState.series : []}
               baseDate={targetDate}
               highlightAt={highlightAt}
-              height={isDesktop ? 154 : 170}
+              height={isDesktop ? 108 : 170}
               yDomain={{ min: -50, max: 200 }}
             />
             <div
@@ -1506,54 +1554,6 @@ export default function Weather({ back, isActive = true }: Props) {
         </div>
       </div>
 
-      {cameraOpen && camera && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={camera.name}
-          onClick={() => setCameraOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1400,
-            padding: isMobile ? 12 : 34,
-            display: "grid",
-            placeItems: "center",
-            background: "rgba(3,7,18,0.72)",
-            backdropFilter: "blur(10px)",
-          }}
-        >
-          <div
-            className="glass glass-strong"
-            onClick={(event) => event.stopPropagation()}
-            style={{
-              width: "min(920px, 100%)",
-              height: isMobile ? "min(78vh, 660px)" : "min(82vh, 720px)",
-              padding: 10,
-              borderRadius: 18,
-              display: "grid",
-              gridTemplateRows: "auto minmax(0, 1fr) auto",
-              gap: 8,
-              border: "1px solid rgba(255,255,255,0.18)",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-              <strong>📹 {camera.name}</strong>
-              <button onClick={() => setCameraOpen(false)} style={tabStyle(false)}>閉じる</button>
-            </div>
-            <iframe
-              src={camera.url}
-              title={`${camera.name} 拡大表示`}
-              referrerPolicy="no-referrer"
-              style={{ width: "100%", height: "100%", border: 0, borderRadius: 12, background: "rgba(7,12,27,0.42)" }}
-            />
-            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, fontSize: 11, color: "rgba(255,255,255,0.60)" }}>
-              <span>{camera.sameLocation ? "大浜海岸の現況確認用" : `参考カメラ：${selectedPoint.name}と同一地点ではありません`}</span>
-              <a href={camera.url} target="_blank" rel="noreferrer" style={{ color: "#7fddff" }}>表示されない場合は公式ページを開く ↗</a>
-            </div>
-          </div>
-        </div>
-      )}
     </PageShell>
   );
 }
