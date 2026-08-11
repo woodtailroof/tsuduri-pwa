@@ -5,13 +5,13 @@ neutral
 smile, open mouth
 
 sad
-sad, teary eyes, hand on own face
+jitome, crossed arms
 
 think
 thinking, open mouth, looking up
 
 surprise
-(surprised:1.3), open mouth, hand on own mouth
+panicking
 
 love
 loving aura, (blush), hand forward
