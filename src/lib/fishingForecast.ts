@@ -1,6 +1,6 @@
 import type { TidePoint } from "../db";
 import type { FishingPoint } from "../points";
-import type { MarineHour } from "./marineWeather";
+import type { JmaCoastalWave } from "./jmaCoastalWave";
 
 export type ForecastTone = "good" | "caution" | "hard" | "danger" | "stop";
 
@@ -15,13 +15,9 @@ export type FishingForecast = {
   safety: ForecastBadge;
   comfort: ForecastBadge;
   bite: ForecastBadge;
-  marineSummary: {
+  waveSummary: {
     waveHeight: number | null;
-    wavePeriod: number | null;
-    waveDirection: number | null;
-    swellHeight: number | null;
-    swellPeriod: number | null;
-    seaSurfaceTemperature: number | null;
+    coastalWave: JmaCoastalWave | null;
     impactLabel: string;
     impactDetail: string;
   };
@@ -36,41 +32,6 @@ type WeatherLike = {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
-}
-
-function maxFinite(
-  rows: MarineHour[],
-  pick: (row: MarineHour) => number | null,
-): number | null {
-  const values = rows.map(pick).filter((v): v is number => v != null);
-  return values.length ? Math.max(...values) : null;
-}
-
-function meanFinite(
-  rows: MarineHour[],
-  pick: (row: MarineHour) => number | null,
-): number | null {
-  const values = rows.map(pick).filter((v): v is number => v != null);
-  if (!values.length) return null;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function angularDistance(a: number, b: number) {
-  const diff = Math.abs((((a - b) % 360) + 360) % 360);
-  return Math.min(diff, 360 - diff);
-}
-
-function nearestDirection(
-  rows: MarineHour[],
-  selectedHour: number,
-): number | null {
-  const candidates = rows
-    .filter((row) => row.waveDirection != null)
-    .sort(
-      (a, b) =>
-        Math.abs(a.hour - selectedHour) - Math.abs(b.hour - selectedHour),
-    );
-  return candidates[0]?.waveDirection ?? null;
 }
 
 function tideMovement(series: TidePoint[], selectedHour: number) {
@@ -128,22 +89,22 @@ function strongestReason(reasons: { level: number; text: string }[], fallback: s
 export function buildFishingForecast(input: {
   point: FishingPoint;
   selectedHour: number;
-  marine: MarineHour[];
   weather: WeatherLike[];
   tideSeries: TidePoint[];
   tideName: string | null;
+  coastalWave?: JmaCoastalWave | null;
 }): FishingForecast {
-  const { point, selectedHour, marine, weather, tideSeries, tideName } = input;
+  const {
+    point,
+    selectedHour,
+    weather,
+    tideSeries,
+    tideName,
+    coastalWave = null,
+  } = input;
 
-  const waveHeight = maxFinite(marine, (row) => row.waveHeight);
-  const wavePeriod = maxFinite(marine, (row) => row.wavePeriod);
-  const waveDirection = nearestDirection(marine, selectedHour);
-  const swellHeight = maxFinite(marine, (row) => row.swellHeight);
-  const swellPeriod = maxFinite(marine, (row) => row.swellPeriod);
-  const seaSurfaceTemperature = meanFinite(
-    marine,
-    (row) => row.seaSurfaceTemperature,
-  );
+  const waveHeight =
+    point.waveExposure === "none" ? null : coastalWave?.maxHeight ?? null;
   const windMax = weather.length
     ? Math.max(...weather.map((row) => row.windSpeed))
     : null;
@@ -155,52 +116,31 @@ export function buildFishingForecast(input: {
   let safetyLevel = 0;
 
   if (point.waveExposure === "none") {
-    safetyReasons.push({ level: 0, text: "沖波は判定対象外" });
+    safetyReasons.push({ level: 0, text: "沿岸波浪は判定対象外" });
   } else if (waveHeight == null) {
     safetyLevel = 1;
-    safetyReasons.push({ level: 1, text: "沖波データ不足のため注意" });
+    safetyReasons.push({ level: 1, text: "気象庁の沿岸波浪が未取得のため注意" });
   } else {
     safetyLevel = safetyLevelForHeight(point, waveHeight);
     if (safetyLevel > 0) {
       safetyReasons.push({
         level: safetyLevel,
-        text: `沖波${waveHeight.toFixed(1)}m・影響${point.waveImpactLabel}`,
-      });
-    }
-
-    let waveRiskAdjustment = false;
-    if (swellPeriod != null && swellPeriod >= 14 && waveHeight >= 1.0) {
-      waveRiskAdjustment = true;
-      safetyReasons.push({
-        level: Math.max(1, safetyLevel + 1),
-        text: `長周期うねり${swellPeriod.toFixed(1)}秒`,
-      });
-    } else if (
-      (swellPeriod != null && swellPeriod >= 12 && waveHeight >= 1.2) ||
-      (wavePeriod != null && wavePeriod >= 11 && waveHeight >= 1.2)
-    ) {
-      waveRiskAdjustment = true;
-      safetyReasons.push({
-        level: Math.max(1, safetyLevel + 1),
-        text: `周期長め${Math.max(swellPeriod ?? 0, wavePeriod ?? 0).toFixed(1)}秒`,
+        text: `気象庁沿岸予報 最大${waveHeight.toFixed(1)}m${coastalWave?.hasSwell ? "・うねりあり" : ""}`,
       });
     }
 
     if (
       point.waveExposure === "open" &&
-      point.seaFacingDeg != null &&
-      waveDirection != null &&
-      waveHeight >= 1.8 &&
-      angularDistance(point.seaFacingDeg, waveDirection) <= 35
+      coastalWave?.hasSwell &&
+      waveHeight >= 1.5 &&
+      safetyLevel < 4
     ) {
-      waveRiskAdjustment = true;
+      safetyLevel += 1;
       safetyReasons.push({
-        level: Math.max(1, safetyLevel + 1),
-        text: "正面寄りの波向",
+        level: safetyLevel,
+        text: `気象庁沿岸予報 最大${waveHeight.toFixed(1)}m・うねりあり`,
       });
     }
-
-    if (waveRiskAdjustment) safetyLevel += 1;
   }
 
   if (windMax != null && windMax >= 12) {
@@ -270,7 +210,7 @@ export function buildFishingForecast(input: {
     if (penalty >= 6) {
       comfortReasons.push({
         penalty,
-        text: `沖波の地点影響${point.waveImpactLabel}`,
+        text: `気象庁沿岸最大${waveHeight.toFixed(1)}m・影響${point.waveImpactLabel}`,
       });
     }
   }
@@ -368,15 +308,6 @@ export function buildFishingForecast(input: {
     }
   }
 
-  if (
-    point.waveExposure === "open" &&
-    waveHeight != null &&
-    waveHeight >= 0.3 &&
-    waveHeight <= 0.8
-  ) {
-    biteScore += 5;
-    biteGood.push({ points: 5, text: "適度な波気" });
-  }
   biteScore = clamp(Math.round(biteScore), 0, 100);
 
   const bestGood = [...biteGood].sort((a, b) => b.points - a.points)[0]?.text;
@@ -409,22 +340,18 @@ export function buildFishingForecast(input: {
 
   const impactDetail =
     point.waveExposure === "none"
-      ? "河川のため沖波を判定に使用しません"
+      ? "河川のため沿岸波浪を判定に使用しません"
       : waveHeight == null
-        ? `${point.waveImpactLabel}・沖波データなし`
-        : `${point.waveImpactLabel}・沖波${waveHeight.toFixed(1)}mを地点特性に合わせて評価`;
+        ? `${point.waveImpactLabel}・気象庁沿岸波浪データなし`
+        : `${point.waveImpactLabel}・気象庁沿岸予報の日内最大${waveHeight.toFixed(1)}mを地点特性に合わせて評価`;
 
   return {
     safety,
     comfort,
     bite,
-    marineSummary: {
+    waveSummary: {
       waveHeight,
-      wavePeriod,
-      waveDirection,
-      swellHeight,
-      swellPeriod,
-      seaSurfaceTemperature,
+      coastalWave,
       impactLabel: point.waveImpactLabel,
       impactDetail,
     },

@@ -7,17 +7,6 @@ export const FIXED_PORT = {
   hc: "15",
 } as const;
 
-/**
- * Open-Meteo Marine API に渡す駿河湾西岸の代表座標。
- * 岸際の実波高ではなく、4地点で共有する「静岡沿岸の沖波予報」として使う。
- */
-export const WAVE_REFERENCE = {
-  id: "shizuoka-coast",
-  name: "静岡沿岸沖",
-  lat: 34.91,
-  lon: 138.43,
-} as const;
-
 export type WaveExposure = "open" | "sheltered" | "none";
 export type WaterKind = "surf" | "port" | "river";
 export type TideInfluence = "normal" | "weak" | "none";
@@ -30,8 +19,6 @@ export type FishingPoint = {
   weatherLon: number;
   waterKind: WaterKind;
   waveExposure: WaveExposure;
-  /** 岸から見て海が開けている方角。波向は「波が来る方角」で比較する。 */
-  seaFacingDeg?: number;
   /** 河川は潮汐の影響を弱め、海の3地点では通常どおり加味する。 */
   tideInfluence: TideInfluence;
   waveImpactLabel: string;
@@ -85,7 +72,7 @@ export const FISHING_POINTS: readonly FishingPoint[] = [
     waveExposure: "none",
     tideInfluence: "weak",
     waveImpactLabel: "対象外（河川）",
-    note: "沖波は判定対象外。潮汐は下流域の参考として弱く反映し、増水・水位・濁りは現地情報を優先",
+    note: "沿岸波浪は判定対象外。潮汐は下流域の参考として弱く反映し、増水・水位・濁りは現地情報を優先",
     camera: {
       ...SHIMIZU_NOWPHAS,
       sameLocation: false,
@@ -100,10 +87,9 @@ export const FISHING_POINTS: readonly FishingPoint[] = [
     weatherLon: 138.405,
     waterKind: "surf",
     waveExposure: "open",
-    seaFacingDeg: 145,
     tideInfluence: "normal",
     waveImpactLabel: "強（開放サーフ）",
-    note: "沖波が入りやすい開放サーフ。波高・周期・波向を強く反映",
+    note: "沿岸波浪が直接入りやすい開放サーフ。気象庁の波高とうねりを強く反映",
     camera: {
       ...HAMAKAWA_EAST_CAMERA,
       sameLocation: false,
@@ -120,7 +106,7 @@ export const FISHING_POINTS: readonly FishingPoint[] = [
     waveExposure: "sheltered",
     tideInfluence: "normal",
     waveImpactLabel: "小（港内）",
-    note: "港内想定。沖波は港外の荒れ具合として弱く反映",
+    note: "港内想定。気象庁の沿岸波浪は港外の荒れ具合として弱く反映",
     camera: {
       ...OOHAMA_CAMERA,
       sameLocation: false,
@@ -137,7 +123,7 @@ export const FISHING_POINTS: readonly FishingPoint[] = [
     waveExposure: "sheltered",
     tideInfluence: "normal",
     waveImpactLabel: "小（港内）",
-    note: "焼津港内の親水広場周辺。沖波は港外の参考として弱く反映",
+    note: "焼津港内の親水広場周辺。気象庁の沿岸波浪は港外の参考として弱く反映",
   },
 ] as const;
 

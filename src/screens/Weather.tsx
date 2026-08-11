@@ -17,11 +17,9 @@ import {
   type ForecastTone,
 } from "../lib/fishingForecast";
 import {
-  getMarineDay,
-  marineWindow,
-  pickMarineAtThreeHours,
-  type MarineHour,
-} from "../lib/marineWeather";
+  getJmaCoastalWave,
+  type JmaCoastalWave,
+} from "../lib/jmaCoastalWave";
 import { useAppSettings } from "../lib/appSettings";
 import {
   dayKey as dayKeyFromDate,
@@ -33,7 +31,6 @@ import {
   FISHING_POINTS,
   FIXED_PORT,
   getFishingPoint,
-  WAVE_REFERENCE,
 } from "../points";
 
 type Props = {
@@ -89,16 +86,13 @@ type WeatherLoadState =
     }
   | { status: "error"; message: string };
 
-type MarineLoadState =
+type CoastalWaveLoadState =
   | { status: "idle" | "loading" }
   | {
       status: "ok";
-      dayKey: string;
-      hours: MarineHour[];
+      forecast: JmaCoastalWave;
       source: "fetch" | "cache";
       isStale: boolean;
-      gridLat: number | null;
-      gridLon: number | null;
     }
   | { status: "error"; message: string };
 
@@ -557,9 +551,8 @@ export default function Weather({ back, isActive = true }: Props) {
   const [weatherState, setWeatherState] = useState<WeatherLoadState>({
     status: "idle",
   });
-  const [marineState, setMarineState] = useState<MarineLoadState>({
-    status: "idle",
-  });
+  const [coastalWaveState, setCoastalWaveState] =
+    useState<CoastalWaveLoadState>({ status: "idle" });
 
   const targetDate = useMemo(() => {
     const now = new Date();
@@ -679,23 +672,16 @@ export default function Weather({ back, isActive = true }: Props) {
   useEffect(() => {
     let cancelled = false;
     const day = dayKeyLocal(targetDate);
-    setMarineState({ status: "loading" });
-    getMarineDay(day, { online })
+    setCoastalWaveState({ status: "loading" });
+    getJmaCoastalWave(day, { online })
       .then((result) => {
         if (cancelled) return;
-        setMarineState({
-          status: "ok",
-          dayKey: result.dayKey,
-          hours: result.hours,
-          source: result.source,
-          isStale: result.isStale,
-          gridLat: result.gridLat,
-          gridLon: result.gridLon,
-        });
+        const { source, isStale, ...forecast } = result;
+        setCoastalWaveState({ status: "ok", forecast, source, isStale });
       })
       .catch((error) => {
         if (cancelled) return;
-        setMarineState({
+        setCoastalWaveState({
           status: "error",
           message: error instanceof Error ? error.message : String(error),
         });
@@ -742,17 +728,7 @@ export default function Weather({ back, isActive = true }: Props) {
     [tideState],
   );
 
-  const marineHours = useMemo(
-    () => (marineState.status === "ok" ? marineState.hours : []),
-    [marineState],
-  );
-  const marineThreeHourly = useMemo(
-    () => pickMarineAtThreeHours(marineHours),
-    [marineHours],
-  );
-
   const forecast = useMemo(() => {
-    const selectedMarine = marineWindow(marineHours, selectedHour, 3);
     const weatherHours =
       weatherState.status === "ok"
         ? weatherState.hours.filter(
@@ -762,12 +738,21 @@ export default function Weather({ back, isActive = true }: Props) {
     return buildFishingForecast({
       point: selectedPoint,
       selectedHour,
-      marine: selectedMarine,
       weather: weatherHours,
       tideSeries: tideState.status === "ok" ? tideState.series : [],
       tideName: tideState.status === "ok" ? tideState.tideName : null,
+      coastalWave:
+        coastalWaveState.status === "ok"
+          ? coastalWaveState.forecast
+          : null,
     });
-  }, [marineHours, selectedHour, weatherState, selectedPoint, tideState]);
+  }, [
+    selectedHour,
+    weatherState,
+    selectedPoint,
+    tideState,
+    coastalWaveState,
+  ]);
 
   const weatherEmotion = useMemo(
     () =>
@@ -870,7 +855,7 @@ export default function Weather({ back, isActive = true }: Props) {
       }
       subtitle={
         <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-          📍 天気・潮：焼津基準 / 🌊 海況：{WAVE_REFERENCE.name}
+          📍 天気・風・雨：気象庁数値予報 / 潮：焼津港 / 🌊 波浪：静岡地方気象台
           {!online && <span style={{ marginLeft: 10, color: "#f6c" }}>📴 オフライン</span>}
         </div>
       }
@@ -1080,21 +1065,21 @@ export default function Weather({ back, isActive = true }: Props) {
               <div
                 style={{
                   fontSize: 10,
-                  color: marineState.status === "error" ? "#ff93a9" : "rgba(255,255,255,0.56)",
+                  color: coastalWaveState.status === "error" ? "#ff93a9" : "rgba(255,255,255,0.56)",
                   whiteSpace: "nowrap",
                 }}
               >
-                {marineState.status === "loading"
-                  ? "海況取得中…"
-                  : marineState.status === "error"
-                    ? "海況取得不可"
-                    : marineState.status !== "ok"
-                      ? "海況準備中…"
-                      : marineState.source === "fetch"
-                        ? "海況 取得"
-                        : marineState.isStale
-                          ? "海況 期限切れキャッシュ"
-                          : "海況 キャッシュ"}
+                {coastalWaveState.status === "loading"
+                  ? "沿岸波浪 取得中…"
+                  : coastalWaveState.status === "error"
+                    ? "沿岸波浪 取得不可"
+                    : coastalWaveState.status !== "ok"
+                      ? "沿岸波浪 準備中…"
+                      : coastalWaveState.source === "fetch"
+                        ? "沿岸波浪 取得"
+                        : coastalWaveState.isStale
+                          ? "沿岸波浪 期限切れキャッシュ"
+                          : "沿岸波浪 キャッシュ"}
               </div>
             </div>
             <div
@@ -1120,20 +1105,34 @@ export default function Weather({ back, isActive = true }: Props) {
                 color: "rgba(255,255,255,0.69)",
               }}
             >
-              <span>沖波 {forecast.marineSummary.waveHeight?.toFixed(1) ?? "-"}m</span>
-              <span>周期 {forecast.marineSummary.wavePeriod?.toFixed(1) ?? "-"}秒</span>
-              <span>
-                うねり {forecast.marineSummary.swellHeight?.toFixed(1) ?? "-"}m / {forecast.marineSummary.swellPeriod?.toFixed(1) ?? "-"}秒
-              </span>
-              <span>波向 {directionLabel(forecast.marineSummary.waveDirection)}</span>
-              <span>水温 {forecast.marineSummary.seaSurfaceTemperature?.toFixed(1) ?? "-"}℃</span>
+              {forecast.waveSummary.coastalWave && (
+                <span style={{ color: "#ffe18a", fontWeight: 850 }}>
+                  気象庁沿岸 {forecast.waveSummary.coastalWave.text}
+                </span>
+              )}
+              {coastalWaveState.status === "loading" && (
+                <span style={{ color: "rgba(255,255,255,0.56)" }}>
+                  気象庁沿岸 取得中…
+                </span>
+              )}
+              {coastalWaveState.status === "error" && (
+                <span style={{ color: "#ff93a9", fontWeight: 850 }}>
+                  気象庁沿岸 未取得（波を含む判定は注意扱い）
+                </span>
+              )}
+              {forecast.waveSummary.waveHeight != null && (
+                <span>日内最大 {forecast.waveSummary.waveHeight.toFixed(1)}m</span>
+              )}
+              {forecast.waveSummary.coastalWave?.hasSwell && (
+                <span style={{ color: "#ffe18a", fontWeight: 850 }}>うねりを伴う</span>
+              )}
               <span style={{ color: "#ffd0e4" }}>
-                地点への影響 {forecast.marineSummary.impactLabel}
+                地点への影響 {forecast.waveSummary.impactLabel}
               </span>
             </div>
             <div style={{ marginTop: 4, fontSize: 10, color: "rgba(255,255,255,0.48)" }}>
-              {forecast.marineSummary.impactDetail}。{selectedPoint.note}。
-              数値は静岡沿岸沖の予報で、岸際・港内の実波高ではありません。
+              {forecast.waveSummary.impactDetail}。{selectedPoint.note}。
+              気象庁沿岸予報は日単位のため、安全度と釣りやすさでは日内最大を使用します。
             </div>
           </div>
 
@@ -1231,7 +1230,15 @@ export default function Weather({ back, isActive = true }: Props) {
                 潮位の極値データがないよ
               </div>
             ) : (
-              <div style={{ display: "grid", gap: 5 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isWideLayout
+                    ? "repeat(2, minmax(0, 1fr))"
+                    : "1fr",
+                  gap: 5,
+                }}
+              >
                 {extremes.map((extreme) => {
                   const high = extreme.kind === "high";
                   return (
@@ -1239,22 +1246,36 @@ export default function Weather({ back, isActive = true }: Props) {
                       key={`${extreme.kind}-${extreme.min}-${extreme.cm}`}
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "70px 1fr auto",
+                        gridTemplateColumns: isWideLayout
+                          ? "1fr auto"
+                          : "70px 1fr auto",
                         alignItems: "center",
-                        gap: 8,
-                        padding: "7px 10px",
+                        gap: isWideLayout ? "2px 6px" : 8,
+                        padding: isWideLayout ? "6px 8px" : "7px 10px",
                         borderRadius: 11,
                         background: high
                           ? "linear-gradient(90deg, rgba(255,193,111,0.18), rgba(255,126,182,0.08))"
                           : "linear-gradient(90deg, rgba(91,209,255,0.18), rgba(151,121,255,0.08))",
                         border: `1px solid ${high ? "rgba(255,207,132,0.22)" : "rgba(106,218,255,0.22)"}`,
-                        fontSize: 14,
+                        fontSize: isWideLayout ? 11 : 14,
                         fontWeight: 850,
                       }}
                     >
-                      <span>{high ? "🟡 満潮" : "🔵 干潮"}</span>
-                      <span style={{ fontSize: 18 }}>{formatHMFromMinutes(extreme.min)}</span>
-                      <span style={{ color: "rgba(255,255,255,0.66)" }}>{Math.round(extreme.cm)}cm</span>
+                      <span
+                        style={
+                          isWideLayout
+                            ? { gridColumn: "1 / -1", whiteSpace: "nowrap" }
+                            : undefined
+                        }
+                      >
+                        {high ? "🟡 満潮" : "🔵 干潮"}
+                      </span>
+                      <span style={{ fontSize: isWideLayout ? 15 : 18 }}>
+                        {formatHMFromMinutes(extreme.min)}
+                      </span>
+                      <span style={{ color: "rgba(255,255,255,0.66)", whiteSpace: "nowrap" }}>
+                        {Math.round(extreme.cm)}cm
+                      </span>
                     </div>
                   );
                 })}
@@ -1413,7 +1434,7 @@ export default function Weather({ back, isActive = true }: Props) {
                   marginBottom: 5,
                 }}
               >
-                <strong style={{ fontSize: 13 }}>🌤️ 3時間ごとの天気・海況</strong>
+                <strong style={{ fontSize: 13 }}>🌤️ 3時間ごとの天気</strong>
                 {weatherState.status === "ok" && (
                   <span
                     style={{
@@ -1442,7 +1463,6 @@ export default function Weather({ back, isActive = true }: Props) {
                     weatherState.status === "ok"
                       ? weatherState.hours.find((item) => item.hour === hour)
                       : undefined;
-                  const marine = marineThreeHourly.find((item) => item.hour === hour);
                   const selected = selectedHour === hour;
                   return (
                     <button
@@ -1492,30 +1512,6 @@ export default function Weather({ back, isActive = true }: Props) {
                         {weather
                           ? `${directionLabel(weather.windDirection)} ${weather.windSpeed}m`
                           : "風 -"}
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 2,
-                          fontSize: 9,
-                          color:
-                            marine?.waveHeight != null
-                              ? "#ffc0dc"
-                              : "rgba(255,255,255,0.46)",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        🌊 {marine?.waveHeight != null ? `${marine.waveHeight.toFixed(1)}m` : "-"}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 8,
-                          color: "rgba(255,255,255,0.55)",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {marine?.wavePeriod != null
-                          ? `${marine.wavePeriod.toFixed(1)}秒`
-                          : "周期 -"}
                       </div>
                     </button>
                   );
@@ -1581,7 +1577,7 @@ export default function Weather({ back, isActive = true }: Props) {
               fontWeight: 950,
             }}
           >
-            🕒 3時間ごとの天気・海況
+            🕒 3時間ごとの天気
           </div>
           <div
             style={{
@@ -1603,7 +1599,6 @@ export default function Weather({ back, isActive = true }: Props) {
                 weatherState.status === "ok"
                   ? weatherState.hours.find((item) => item.hour === hour)
                   : undefined;
-              const marine = marineThreeHourly.find((item) => item.hour === hour);
               const selected = selectedHour === hour;
               return (
                 <button
@@ -1653,30 +1648,6 @@ export default function Weather({ back, isActive = true }: Props) {
                     {weather
                       ? `${directionLabel(weather.windDirection)} ${weather.windSpeed}m`
                       : "風 -"}
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 2,
-                      fontSize: 9,
-                      color:
-                        marine?.waveHeight != null
-                          ? "#ffc0dc"
-                          : "rgba(255,255,255,0.46)",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    🌊 {marine?.waveHeight != null ? `${marine.waveHeight.toFixed(1)}m` : "-"}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 8,
-                      color: "rgba(255,255,255,0.55)",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {marine?.wavePeriod != null
-                      ? `${marine.wavePeriod.toFixed(1)}秒`
-                      : "周期 -"}
                   </div>
                 </button>
               );

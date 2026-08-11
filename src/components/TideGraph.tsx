@@ -553,17 +553,6 @@ export default function TideGraph({
         </text>
       </svg>
 
-      {highlightAt && (
-        <div
-          style={{
-            marginTop: 8,
-            fontSize: 12,
-            color: "rgba(255,255,255,0.60)",
-          }}
-        >
-          📸 撮影時刻付近をマーキング：{highlightAt.toLocaleTimeString()}
-        </div>
-      )}
     </div>
   );
 }
