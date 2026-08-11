@@ -15,7 +15,6 @@ export type FishingForecast = {
   safety: ForecastBadge;
   comfort: ForecastBadge;
   bite: ForecastBadge;
-  reasons: string[];
   marineSummary: {
     waveHeight: number | null;
     wavePeriod: number | null;
@@ -23,12 +22,16 @@ export type FishingForecast = {
     swellHeight: number | null;
     swellPeriod: number | null;
     seaSurfaceTemperature: number | null;
+    impactLabel: string;
+    impactDetail: string;
   };
 };
 
 type WeatherLike = {
   windSpeed: number;
-  rainProb: number;
+  windDirection: number;
+  precipitation: number;
+  weatherCode: number;
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -101,19 +104,11 @@ function safetyLevelForHeight(point: FishingPoint, waveHeight: number) {
     if (waveHeight >= 0.9) return 1;
     return 0;
   }
-  if (point.waveExposure === "partial") {
-    if (waveHeight >= 3.0) return 4;
-    if (waveHeight >= 2.4) return 3;
-    if (waveHeight >= 1.8) return 2;
-    if (waveHeight >= 1.2) return 1;
-    return 0;
-  }
   if (point.waveExposure === "sheltered") {
     if (waveHeight >= 4.0) return 4;
     if (waveHeight >= 3.2) return 3;
     if (waveHeight >= 2.5) return 2;
     if (waveHeight >= 1.8) return 1;
-    return 0;
   }
   return 0;
 }
@@ -124,6 +119,10 @@ function safetyBadge(level: number, detail: string): ForecastBadge {
   if (level === 2) return { label: "厳しい", detail, tone: "hard" };
   if (level === 1) return { label: "注意", detail, tone: "caution" };
   return { label: "良好", detail, tone: "good" };
+}
+
+function strongestReason(reasons: { level: number; text: string }[], fallback: string) {
+  return [...reasons].sort((a, b) => b.level - a.level)[0]?.text ?? fallback;
 }
 
 export function buildFishingForecast(input: {
@@ -148,127 +147,227 @@ export function buildFishingForecast(input: {
   const windMax = weather.length
     ? Math.max(...weather.map((row) => row.windSpeed))
     : null;
-  const rainMax = weather.length
-    ? Math.max(...weather.map((row) => row.rainProb))
+  const precipitationMax = weather.length
+    ? Math.max(...weather.map((row) => row.precipitation))
     : null;
 
-  const reasons: string[] = [];
+  const safetyReasons: { level: number; text: string }[] = [];
   let safetyLevel = 0;
 
   if (point.waveExposure === "none") {
-    reasons.push("海の波浪判定対象外");
+    safetyReasons.push({ level: 0, text: "沖波は判定対象外" });
   } else if (waveHeight == null) {
     safetyLevel = 1;
-    reasons.push("波浪データ不足");
+    safetyReasons.push({ level: 1, text: "沖波データ不足のため注意" });
   } else {
     safetyLevel = safetyLevelForHeight(point, waveHeight);
-    let waveRiskAdjustment = false;
+    if (safetyLevel > 0) {
+      safetyReasons.push({
+        level: safetyLevel,
+        text: `沖波${waveHeight.toFixed(1)}m・影響${point.waveImpactLabel}`,
+      });
+    }
 
+    let waveRiskAdjustment = false;
     if (swellPeriod != null && swellPeriod >= 14 && waveHeight >= 1.0) {
       waveRiskAdjustment = true;
-      reasons.push(`長周期うねり ${swellPeriod.toFixed(1)}秒`);
+      safetyReasons.push({
+        level: Math.max(1, safetyLevel + 1),
+        text: `長周期うねり${swellPeriod.toFixed(1)}秒`,
+      });
     } else if (
       (swellPeriod != null && swellPeriod >= 12 && waveHeight >= 1.2) ||
       (wavePeriod != null && wavePeriod >= 11 && waveHeight >= 1.2)
     ) {
       waveRiskAdjustment = true;
-      reasons.push(
-        `周期長め ${Math.max(swellPeriod ?? 0, wavePeriod ?? 0).toFixed(1)}秒`,
-      );
+      safetyReasons.push({
+        level: Math.max(1, safetyLevel + 1),
+        text: `周期長め${Math.max(swellPeriod ?? 0, wavePeriod ?? 0).toFixed(1)}秒`,
+      });
     }
 
     if (
+      point.waveExposure === "open" &&
       point.seaFacingDeg != null &&
       waveDirection != null &&
       waveHeight >= 1.8 &&
       angularDistance(point.seaFacingDeg, waveDirection) <= 35
     ) {
       waveRiskAdjustment = true;
-      reasons.push("正面寄りの波向");
+      safetyReasons.push({
+        level: Math.max(1, safetyLevel + 1),
+        text: "正面寄りの波向",
+      });
     }
 
-    // 周期と波向は同じ「沖波の岸への効き方」の補正なので重ね掛けしない。
     if (waveRiskAdjustment) safetyLevel += 1;
   }
 
   if (windMax != null && windMax >= 12) {
     safetyLevel = Math.max(safetyLevel, 4);
-    reasons.push(`強風 ${windMax.toFixed(1)}m/s`);
+    safetyReasons.push({ level: 4, text: `強風${windMax.toFixed(1)}m/s` });
   } else if (windMax != null && windMax >= 10) {
     safetyLevel = Math.max(safetyLevel, 3);
-    reasons.push(`風強め ${windMax.toFixed(1)}m/s`);
+    safetyReasons.push({ level: 3, text: `風強め${windMax.toFixed(1)}m/s` });
   } else if (windMax != null && windMax >= 8) {
     safetyLevel = Math.max(safetyLevel, 2);
-    reasons.push(`やや強風 ${windMax.toFixed(1)}m/s`);
+    safetyReasons.push({ level: 2, text: `やや強風${windMax.toFixed(1)}m/s` });
   } else if (windMax != null && windMax >= 6) {
     safetyLevel = Math.max(safetyLevel, 1);
-    reasons.push(`風に注意 ${windMax.toFixed(1)}m/s`);
+    safetyReasons.push({ level: 1, text: `風${windMax.toFixed(1)}m/sに注意` });
+  }
+
+  if (precipitationMax != null && precipitationMax >= 10) {
+    safetyLevel = Math.max(safetyLevel, point.waterKind === "river" ? 3 : 2);
+    safetyReasons.push({
+      level: point.waterKind === "river" ? 3 : 2,
+      text: `強い雨${precipitationMax.toFixed(1)}mm/h`,
+    });
+  } else if (precipitationMax != null && precipitationMax >= 5) {
+    safetyLevel = Math.max(safetyLevel, point.waterKind === "river" ? 2 : 1);
+    safetyReasons.push({
+      level: point.waterKind === "river" ? 2 : 1,
+      text: `雨${precipitationMax.toFixed(1)}mm/h`,
+    });
+  } else if (precipitationMax != null && precipitationMax >= 2) {
+    safetyLevel = Math.max(safetyLevel, 1);
+    safetyReasons.push({ level: 1, text: `雨${precipitationMax.toFixed(1)}mm/h` });
   }
 
   safetyLevel = clamp(safetyLevel, 0, 4);
-  const waveDetail =
-    point.waveExposure === "none"
-      ? "海況は判定しません"
-      : waveHeight == null
-        ? "波浪データなし"
-        : `前後3時間 最大${waveHeight.toFixed(1)}m`;
-  const safety = safetyBadge(safetyLevel, waveDetail);
+  const safetyFallback =
+    point.waterKind === "river"
+      ? "風雨に大きな問題なし・増水は現地確認"
+      : "風雨と地点への波影響に大きな問題なし";
+  const safety = safetyBadge(
+    safetyLevel,
+    strongestReason(safetyReasons, safetyFallback),
+  );
 
   let comfortScore = 100;
-  if (windMax != null) comfortScore -= Math.max(0, windMax - 3) * 8;
-  if (rainMax != null) comfortScore -= rainMax * 0.18;
+  const comfortReasons: { penalty: number; text: string }[] = [];
+  if (windMax != null) {
+    const penalty = Math.max(0, windMax - 3) * 8;
+    comfortScore -= penalty;
+    if (penalty >= 8) {
+      comfortReasons.push({ penalty, text: `風${windMax.toFixed(1)}m/s` });
+    }
+  }
+  if (precipitationMax != null) {
+    const penalty = Math.min(38, precipitationMax * 8);
+    comfortScore -= penalty;
+    if (penalty >= 4) {
+      comfortReasons.push({
+        penalty,
+        text: `時間雨量${precipitationMax.toFixed(1)}mm`,
+      });
+    }
+  }
   if (point.waveExposure !== "none" && waveHeight != null) {
-    const exposureWeight =
-      point.waveExposure === "open"
-        ? 34
-        : point.waveExposure === "partial"
-          ? 24
-          : 10;
-    comfortScore -= Math.max(0, waveHeight - 0.35) * exposureWeight;
+    const exposureWeight = point.waveExposure === "open" ? 34 : 9;
+    const penalty = Math.max(0, waveHeight - 0.35) * exposureWeight;
+    comfortScore -= penalty;
+    if (penalty >= 6) {
+      comfortReasons.push({
+        penalty,
+        text: `沖波の地点影響${point.waveImpactLabel}`,
+      });
+    }
   }
   comfortScore = clamp(Math.round(comfortScore), 0, 100);
-
+  const comfortDetail =
+    [...comfortReasons].sort((a, b) => b.penalty - a.penalty)[0]?.text ??
+    "風雨・波影響とも小さめ";
   const comfort: ForecastBadge =
     comfortScore >= 75
       ? {
           label: "快適",
-          detail: `条件指数 ${comfortScore}`,
+          detail: comfortDetail,
           tone: "good",
           score: comfortScore,
         }
       : comfortScore >= 50
         ? {
-            label: "やや難",
-            detail: `条件指数 ${comfortScore}`,
+            label: "やや釣りづらい",
+            detail: comfortDetail,
             tone: "caution",
             score: comfortScore,
           }
         : {
-            label: "厳しい",
-            detail: `条件指数 ${comfortScore}`,
+            label: "釣りづらい",
+            detail: comfortDetail,
             tone: "hard",
             score: comfortScore,
           };
 
   let biteScore = 50;
-  const movement = tideMovement(tideSeries, selectedHour);
-  if (movement != null) {
-    if (movement >= 10) biteScore += 14;
-    else if (movement >= 5) biteScore += 8;
-    else if (movement < 2) biteScore -= 8;
+  const biteGood: { points: number; text: string }[] = [];
+  const biteBad: { points: number; text: string }[] = [];
+  if (point.tideInfluence !== "none") {
+    const movement = tideMovement(tideSeries, selectedHour);
+    const tideFactor = point.tideInfluence === "weak" ? 0.5 : 1;
+    if (movement != null) {
+      if (movement >= 10) {
+        const points = Math.round(14 * tideFactor);
+        biteScore += points;
+        biteGood.push({ points, text: point.tideInfluence === "weak" ? "潮位変化（参考）" : "潮が大きく動く" });
+      } else if (movement >= 5) {
+        const points = Math.round(8 * tideFactor);
+        biteScore += points;
+        biteGood.push({ points, text: point.tideInfluence === "weak" ? "潮位変化（参考）" : "潮が動く時間" });
+      } else if (movement < 2) {
+        const points = Math.round(8 * tideFactor);
+        biteScore -= points;
+        biteBad.push({ points, text: point.tideInfluence === "weak" ? "潮位変化小さめ（参考）" : "潮の動き小さめ" });
+      }
+    }
   }
-  if (selectedHour >= 5 && selectedHour <= 8) biteScore += 14;
-  else if (selectedHour >= 16 && selectedHour <= 19) biteScore += 14;
-  else if (selectedHour >= 20 || selectedHour <= 3) biteScore += 4;
+
+  if (selectedHour >= 5 && selectedHour <= 8) {
+    biteScore += 14;
+    biteGood.push({ points: 14, text: "朝まずめ" });
+  } else if (selectedHour >= 16 && selectedHour <= 19) {
+    biteScore += 14;
+    biteGood.push({ points: 14, text: "夕まずめ" });
+  } else if (selectedHour >= 20 || selectedHour <= 3) {
+    biteScore += 4;
+    biteGood.push({ points: 4, text: "夜間" });
+  }
 
   if (windMax != null) {
-    if (windMax >= 8) biteScore -= 18;
-    else if (windMax >= 6) biteScore -= 8;
-    else if (windMax >= 1.5 && windMax <= 5) biteScore += 6;
+    if (windMax >= 8) {
+      biteScore -= 18;
+      biteBad.push({ points: 18, text: "強風" });
+    } else if (windMax >= 6) {
+      biteScore -= 8;
+      biteBad.push({ points: 8, text: "風強め" });
+    } else if (windMax >= 1.5 && windMax <= 5) {
+      biteScore += 6;
+      biteGood.push({ points: 6, text: "適度な風" });
+    }
   }
-  if (rainMax != null && rainMax >= 70) biteScore -= 8;
-  if (tideName?.includes("大潮") || tideName?.includes("中潮")) biteScore += 5;
-  if (tideName?.includes("長潮") || tideName?.includes("若潮")) biteScore -= 4;
+
+  if (precipitationMax != null) {
+    if (precipitationMax >= 5) {
+      biteScore -= 8;
+      biteBad.push({ points: 8, text: "強い雨" });
+    } else if (precipitationMax >= 0.1 && precipitationMax <= 1.5) {
+      biteScore += 3;
+      biteGood.push({ points: 3, text: "弱い雨" });
+    }
+  }
+
+  if (point.tideInfluence === "normal") {
+    if (tideName?.includes("大潮") || tideName?.includes("中潮")) {
+      biteScore += 5;
+      biteGood.push({ points: 5, text: tideName });
+    }
+    if (tideName?.includes("長潮") || tideName?.includes("若潮")) {
+      biteScore -= 4;
+      biteBad.push({ points: 4, text: tideName });
+    }
+  }
+
   if (
     point.waveExposure === "open" &&
     waveHeight != null &&
@@ -276,38 +375,49 @@ export function buildFishingForecast(input: {
     waveHeight <= 0.8
   ) {
     biteScore += 5;
+    biteGood.push({ points: 5, text: "適度な波気" });
   }
   biteScore = clamp(Math.round(biteScore), 0, 100);
 
+  const bestGood = [...biteGood].sort((a, b) => b.points - a.points)[0]?.text;
+  const worstBad = [...biteBad].sort((a, b) => b.points - a.points)[0]?.text;
+  const biteDetail =
+    biteScore >= 45
+      ? bestGood ?? (point.tideInfluence !== "none" ? "目立つ好材料なし" : "時間帯と風雨から判定")
+      : worstBad ?? "好材料が少なめ";
   const bite: ForecastBadge =
     biteScore >= 70
       ? {
           label: "狙い目",
-          detail: `予報条件指数 ${biteScore}`,
+          detail: biteDetail,
           tone: "good",
           score: biteScore,
         }
       : biteScore >= 45
         ? {
             label: "ふつう",
-            detail: `予報条件指数 ${biteScore}`,
+            detail: biteDetail,
             tone: "caution",
             score: biteScore,
           }
         : {
             label: "期待薄",
-            detail: `予報条件指数 ${biteScore}`,
+            detail: biteDetail,
             tone: "hard",
             score: biteScore,
           };
 
-  if (!reasons.length) reasons.push("大きな阻害要因なし");
+  const impactDetail =
+    point.waveExposure === "none"
+      ? "河川のため沖波を判定に使用しません"
+      : waveHeight == null
+        ? `${point.waveImpactLabel}・沖波データなし`
+        : `${point.waveImpactLabel}・沖波${waveHeight.toFixed(1)}mを地点特性に合わせて評価`;
 
   return {
     safety,
     comfort,
     bite,
-    reasons,
     marineSummary: {
       waveHeight,
       wavePeriod,
@@ -315,6 +425,8 @@ export function buildFishingForecast(input: {
       swellHeight,
       swellPeriod,
       seaSurfaceTemperature,
+      impactLabel: point.waveImpactLabel,
+      impactDetail,
     },
   };
 }

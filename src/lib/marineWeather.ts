@@ -45,7 +45,7 @@ type MarineApiResponse = {
   hourly?: MarineApiHourly;
 };
 
-const CACHE_PREFIX = "tsuduri_openmeteo_marine_v1:";
+const CACHE_PREFIX = "tsuduri_openmeteo_marine_v2_shizuoka_coast:";
 const CACHE_TTL_MS = 20 * 60 * 1000;
 
 function finiteOrNull(value: unknown): number | null {

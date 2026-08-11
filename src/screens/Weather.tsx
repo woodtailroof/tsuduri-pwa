@@ -48,8 +48,6 @@ type WeatherSummary = {
   tempMin: number;
   tempMax: number;
   windMax: number;
-  gustMax: number;
-  rainProbMax: number;
   rainSum: number;
 };
 
@@ -57,7 +55,7 @@ type WeatherHour = {
   hour: number;
   weatherCode: number;
   temp: number;
-  rainProb: number;
+  precipitation: number;
   windSpeed: number;
   windDirection: number;
 };
@@ -110,23 +108,20 @@ type WeatherApiResponse = {
     weather_code?: unknown[];
     temperature_2m_max?: unknown[];
     temperature_2m_min?: unknown[];
-    precipitation_probability_max?: unknown[];
     precipitation_sum?: unknown[];
     wind_speed_10m_max?: unknown[];
-    wind_gusts_10m_max?: unknown[];
   };
   hourly?: {
     time?: unknown[];
     weather_code?: unknown[];
     temperature_2m?: unknown[];
-    precipitation_probability?: unknown[];
+    precipitation?: unknown[];
     wind_speed_10m?: unknown[];
     wind_direction_10m?: unknown[];
   };
 };
 
-const YAIZU = { lat: 34.868, lon: 138.3236 };
-const WEATHER_CACHE_PREFIX = "tsuduri_openmeteo_daily_v1:";
+const WEATHER_CACHE_PREFIX = "tsuduri_jma_point_weather_v2:";
 const WEATHER_TTL_MS = 10 * 60 * 1000;
 const POINT_STORAGE_KEY = "tsuduri_weather_point_v1";
 const THREE_HOUR_SLOTS = [0, 3, 6, 9, 12, 15, 18, 21] as const;
@@ -295,20 +290,21 @@ function directionLabel(deg: number | null) {
 }
 
 async function fetchOpenMeteoDaily(lat: number, lon: number) {
-  const url = new URL("https://api.open-meteo.com/v1/forecast");
+  const url = new URL("https://api.open-meteo.com/v1/jma");
   url.searchParams.set("latitude", String(lat));
   url.searchParams.set("longitude", String(lon));
   url.searchParams.set(
     "daily",
-    "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max",
+    "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max",
   );
   url.searchParams.set(
     "hourly",
-    "weather_code,temperature_2m,precipitation_probability,wind_speed_10m,wind_direction_10m",
+    "weather_code,temperature_2m,precipitation,wind_speed_10m,wind_direction_10m",
   );
-  url.searchParams.set("forecast_days", "16");
+  url.searchParams.set("forecast_days", "11");
   url.searchParams.set("timezone", "Asia/Tokyo");
   url.searchParams.set("wind_speed_unit", "ms");
+  url.searchParams.set("cell_selection", "land");
 
   const response = await fetch(url.toString(), { method: "GET" });
   const text = await response.text().catch(() => "");
@@ -343,10 +339,6 @@ function pickDailySummary(
     tempMin: Math.round(safeNumber(daily?.temperature_2m_min?.[index]) * 10) / 10,
     tempMax: Math.round(safeNumber(daily?.temperature_2m_max?.[index]) * 10) / 10,
     windMax: Math.round(safeNumber(daily?.wind_speed_10m_max?.[index]) * 10) / 10,
-    gustMax: Math.round(safeNumber(daily?.wind_gusts_10m_max?.[index]) * 10) / 10,
-    rainProbMax: Math.round(
-      safeNumber(daily?.precipitation_probability_max?.[index]),
-    ),
     rainSum:
       Math.round(safeNumber(daily?.precipitation_sum?.[index]) * 10) / 10,
   };
@@ -366,9 +358,8 @@ function pickHourlyWeather(json: WeatherApiResponse, day: string): WeatherHour[]
         weatherCode: safeNumber(hourly?.weather_code?.[index], Number.NaN),
         temp:
           Math.round(safeNumber(hourly?.temperature_2m?.[index]) * 10) / 10,
-        rainProb: Math.round(
-          safeNumber(hourly?.precipitation_probability?.[index]),
-        ),
+        precipitation:
+          Math.round(safeNumber(hourly?.precipitation?.[index]) * 10) / 10,
         windSpeed:
           Math.round(safeNumber(hourly?.wind_speed_10m?.[index]) * 10) / 10,
         windDirection: Math.round(
@@ -379,9 +370,13 @@ function pickHourlyWeather(json: WeatherApiResponse, day: string): WeatherHour[]
   });
 }
 
-function loadWeatherCache(day: string) {
+function weatherCacheKey(pointId: string, day: string) {
+  return `${WEATHER_CACHE_PREFIX}${pointId}:${day}`;
+}
+
+function loadWeatherCache(pointId: string, day: string) {
   try {
-    const raw = localStorage.getItem(`${WEATHER_CACHE_PREFIX}${day}`);
+    const raw = localStorage.getItem(weatherCacheKey(pointId, day));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as {
       ts: number;
@@ -402,13 +397,14 @@ function loadWeatherCache(day: string) {
 }
 
 function saveWeatherCache(
+  pointId: string,
   day: string,
   summary: WeatherSummary,
   hours: WeatherHour[],
 ) {
   try {
     localStorage.setItem(
-      `${WEATHER_CACHE_PREFIX}${day}`,
+      weatherCacheKey(pointId, day),
       JSON.stringify({ ts: Date.now(), summary, hours }),
     );
   } catch {
@@ -531,9 +527,8 @@ function ForecastCard(props: {
         style={{
           fontSize: 10,
           color: "rgba(255,255,255,0.66)",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
+          lineHeight: 1.35,
+          minHeight: "2.7em",
         }}
       >
         {props.badge.detail}
@@ -610,7 +605,7 @@ export default function Weather({ back, isActive = true }: Props) {
     const day = dayKeyLocal(targetDate);
 
     async function run() {
-      const cached = loadWeatherCache(day);
+      const cached = loadWeatherCache(selectedPoint.id, day);
       if (!online) {
         if (cached) {
           setWeatherState({
@@ -639,7 +634,10 @@ export default function Weather({ back, isActive = true }: Props) {
 
       setWeatherState({ status: "loading" });
       try {
-        const json = await fetchOpenMeteoDaily(YAIZU.lat, YAIZU.lon);
+        const json = await fetchOpenMeteoDaily(
+          selectedPoint.weatherLat,
+          selectedPoint.weatherLon,
+        );
         const summary = pickDailySummary(json, day);
         if (!summary) throw new Error("openmeteo_day_not_in_range");
         const hours = pickHourlyWeather(json, day);
@@ -652,7 +650,7 @@ export default function Weather({ back, isActive = true }: Props) {
             ? "明日"
             : day;
         const labeled = { ...summary, label };
-        saveWeatherCache(day, labeled, hours);
+        saveWeatherCache(selectedPoint.id, day, labeled, hours);
         if (!cancelled) {
           setWeatherState({
             status: "ok",
@@ -676,7 +674,7 @@ export default function Weather({ back, isActive = true }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [targetDate, online]);
+  }, [targetDate, online, selectedPoint]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1122,17 +1120,20 @@ export default function Weather({ back, isActive = true }: Props) {
                 color: "rgba(255,255,255,0.69)",
               }}
             >
-              <span>波 {forecast.marineSummary.waveHeight?.toFixed(1) ?? "-"}m</span>
+              <span>沖波 {forecast.marineSummary.waveHeight?.toFixed(1) ?? "-"}m</span>
               <span>周期 {forecast.marineSummary.wavePeriod?.toFixed(1) ?? "-"}秒</span>
               <span>
                 うねり {forecast.marineSummary.swellHeight?.toFixed(1) ?? "-"}m / {forecast.marineSummary.swellPeriod?.toFixed(1) ?? "-"}秒
               </span>
               <span>波向 {directionLabel(forecast.marineSummary.waveDirection)}</span>
               <span>水温 {forecast.marineSummary.seaSurfaceTemperature?.toFixed(1) ?? "-"}℃</span>
-              <span style={{ color: "#ffd0e4" }}>{forecast.reasons.join("・")}</span>
+              <span style={{ color: "#ffd0e4" }}>
+                地点への影響 {forecast.marineSummary.impactLabel}
+              </span>
             </div>
             <div style={{ marginTop: 4, fontSize: 10, color: "rgba(255,255,255,0.48)" }}>
-              ※安全度は沖波の予報と釣場属性による目安。港内でも外向き護岸・立入規制・現地の波を優先。
+              {forecast.marineSummary.impactDetail}。{selectedPoint.note}。
+              数値は静岡沿岸沖の予報で、岸際・港内の実波高ではありません。
             </div>
           </div>
 
@@ -1336,14 +1337,14 @@ export default function Weather({ back, isActive = true }: Props) {
                       <strong style={{ fontSize: 18 }}>🌡️ {selectedWeather.temp}℃</strong>
                     </div>
                     <div style={{ padding: "11px 10px", borderRadius: 11, background: "rgba(83,211,255,0.09)" }}>
-                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.58)" }}>降水</div>
-                      <strong style={{ fontSize: 18, color: "#9ee8ff" }}>☔ {selectedWeather.rainProb}%</strong>
-                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>日計 {weatherState.summary.rainSum}mm</div>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.58)" }}>時間雨量</div>
+                      <strong style={{ fontSize: 18, color: "#9ee8ff" }}>☔ {selectedWeather.precipitation.toFixed(1)}mm/h</strong>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>一日合計 {weatherState.summary.rainSum}mm</div>
                     </div>
                     <div style={{ gridColumn: "1 / -1", padding: "11px 10px", borderRadius: 11, background: "rgba(255,105,174,0.08)" }}>
-                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.58)" }}>選択時刻の風 / 日最大瞬間風速</div>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.58)" }}>選択時刻の風 / 日最大風速</div>
                       <strong style={{ fontSize: 18, color: "#ffd0e4" }}>
-                        🍃 {directionLabel(selectedWeather.windDirection)} {selectedWeather.windSpeed}m/s / ⚡ {weatherState.summary.gustMax}m/s
+                        🍃 {directionLabel(selectedWeather.windDirection)} {selectedWeather.windSpeed}m/s / 最大 {weatherState.summary.windMax}m/s
                       </strong>
                     </div>
                   </div>
@@ -1373,7 +1374,9 @@ export default function Weather({ back, isActive = true }: Props) {
               <span>📅 {targetDate.toLocaleDateString()}</span>
               <span style={{ display: "inline-flex", gap: 8, flexWrap: "wrap" }}>
                 {weatherState.status === "ok" && (
-                  <span style={{ color: "#76dcff" }}>🌤️ {weatherState.source === "fetch" ? "取得" : "キャッシュ"}</span>
+                  <span style={{ color: "#76dcff" }}>
+                    🌤️ {selectedPoint.shortName}・JMA {weatherState.source === "fetch" ? "取得" : "キャッシュ"}
+                  </span>
                 )}
                 {tideState.status === "ok" && (() => {
                   const label = sourceLabel(tideState.source, tideState.isStale);
@@ -1477,7 +1480,7 @@ export default function Weather({ back, isActive = true }: Props) {
                         {weather ? `${weather.temp}℃` : "-℃"}
                       </div>
                       <div style={{ fontSize: 9, color: "#82ddff", whiteSpace: "nowrap" }}>
-                        ☔ {weather ? `${weather.rainProb}%` : "-"}
+                        ☔ {weather ? `${weather.precipitation.toFixed(1)}mm` : "-"}
                       </div>
                       <div
                         style={{
@@ -1555,10 +1558,10 @@ export default function Weather({ back, isActive = true }: Props) {
                   🌡 {weatherState.summary.tempMin}〜{weatherState.summary.tempMax}℃
                 </span>
                 <span style={{ fontSize: 11, color: "#83ddff" }}>
-                  ☔ 最大 {weatherState.summary.rainProbMax}% / {weatherState.summary.rainSum}mm
+                  ☔ 一日合計 {weatherState.summary.rainSum}mm
                 </span>
                 <span style={{ fontSize: 11, color: "#ffd0e4" }}>
-                  🍃 最大 {weatherState.summary.windMax}m/s・瞬間 {weatherState.summary.gustMax}m/s
+                  🍃 最大 {weatherState.summary.windMax}m/s
                 </span>
               </div>
             ) : (
@@ -1638,7 +1641,7 @@ export default function Weather({ back, isActive = true }: Props) {
                     {weather ? `${weather.temp}℃` : "-℃"}
                   </div>
                   <div style={{ fontSize: 9, color: "#82ddff", whiteSpace: "nowrap" }}>
-                    ☔ {weather ? `${weather.rainProb}%` : "-"}
+                    ☔ {weather ? `${weather.precipitation.toFixed(1)}mm` : "-"}
                   </div>
                   <div
                     style={{
