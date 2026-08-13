@@ -8,6 +8,17 @@ import {
 } from "react";
 import PageShell from "../components/PageShell";
 import { useAppSettings } from "../lib/appSettings";
+import {
+  CHARACTERS_STORAGE_KEY,
+  SELECTED_CHARACTER_ID_KEY,
+  markCharacterSettingsDirty,
+} from "../lib/characterSync";
+import { syncTrips } from "../lib/tripSync";
+
+export {
+  CHARACTERS_STORAGE_KEY,
+  SELECTED_CHARACTER_ID_KEY,
+} from "../lib/characterSync";
 
 export type ReplyLength = "short" | "medium" | "long";
 
@@ -48,9 +59,6 @@ type CharacterExportV4 = {
   selectedId: string;
 };
 
-export const CHARACTERS_STORAGE_KEY = "tsuduri_characters_v2";
-export const SELECTED_CHARACTER_ID_KEY = "tsuduri_selected_character_id_v2";
-
 const BACKUP_KEY = "tsuduri_characters_backup_v1";
 
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
@@ -77,7 +85,7 @@ function normalizeColor(s: string) {
   return t || "#ff7aa2";
 }
 
-function normalizeReplyLength(_raw: unknown): ReplyLength {
+function normalizeReplyLength(): ReplyLength {
   // 旧JSONとの互換性のため項目は残すが、通常会話の長さはコード側で固定。
   return "medium";
 }
@@ -130,7 +138,7 @@ function normalizeCharacter(
     name,
     selfName,
     callUser,
-    replyLength: normalizeReplyLength(source.replyLength),
+    replyLength: normalizeReplyLength(),
     color: normalizeColor(
       typeof source.color === "string" ? source.color : "#ff7aa2",
     ),
@@ -230,8 +238,9 @@ function safeLoadCharacters(): CharacterProfile[] {
 function safeSaveCharacters(list: CharacterProfile[]) {
   try {
     const normalized = normalizeCharacterList(list);
-
-    localStorage.setItem(CHARACTERS_STORAGE_KEY, JSON.stringify(normalized));
+    const nextRaw = JSON.stringify(normalized);
+    const changed = localStorage.getItem(CHARACTERS_STORAGE_KEY) !== nextRaw;
+    localStorage.setItem(CHARACTERS_STORAGE_KEY, nextRaw);
 
     localStorage.setItem(
       BACKUP_KEY,
@@ -242,6 +251,7 @@ function safeSaveCharacters(list: CharacterProfile[]) {
         list: normalized,
       }),
     );
+    if (changed) markCharacterSettingsDirty();
   } catch {
     // ignore
   }
@@ -258,7 +268,9 @@ function safeLoadSelectedId(fallback: string) {
 
 function safeSaveSelectedId(id: string) {
   try {
+    const changed = localStorage.getItem(SELECTED_CHARACTER_ID_KEY) !== id;
     localStorage.setItem(SELECTED_CHARACTER_ID_KEY, id);
+    if (changed) markCharacterSettingsDirty();
   } catch {
     // ignore
   }
@@ -295,6 +307,8 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     const loaded = safeLoadCharacters();
     return safeLoadSelectedId(loaded[0]?.id ?? "tsuduri");
   });
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -319,6 +333,24 @@ export default function CharacterSettings({ back }: { back: () => void }) {
   useEffect(() => {
     safeSaveSelectedId(selectedId);
   }, [selectedId]);
+
+  useEffect(() => {
+    const reloadFromSync = () => {
+      const next = safeLoadCharacters();
+      const nextSelectedId = safeLoadSelectedId(next[0]?.id ?? "tsuduri");
+      setList(next);
+      setSelectedId(
+        next.some((character) => character.id === nextSelectedId)
+          ? nextSelectedId
+          : (next[0]?.id ?? "tsuduri"),
+      );
+    };
+
+    window.addEventListener("tsuduri-characters", reloadFromSync);
+    return () => {
+      window.removeEventListener("tsuduri-characters", reloadFromSync);
+    };
+  }, []);
 
   function updateSelected(patch: Partial<CharacterProfile>) {
     setList((prev) =>
@@ -392,13 +424,46 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     if (showToast) alert("保存したよ！");
   }
 
-  function saveOnly() {
-    normalizeAndSave(true);
+  async function syncCharactersNow(): Promise<boolean> {
+    setSyncing(true);
+    setSyncMessage("同期中…");
+
+    // 内容が同じでも明示的な「保存」では必ず同期対象にする。
+    markCharacterSettingsDirty();
+
+    try {
+      const result = await syncTrips();
+      if (!result.ok) {
+        const message = result.errors?.join(" / ") || "同期に失敗したよ";
+        setSyncMessage(`同期失敗: ${message}`);
+        return false;
+      }
+
+      setSyncMessage("クラウドへの同期が完了したよ");
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setSyncMessage(`同期失敗: ${message}`);
+      return false;
+    } finally {
+      setSyncing(false);
+    }
   }
 
-  function saveAndBack() {
+  async function saveOnly() {
     normalizeAndSave(false);
-    back();
+    const ok = await syncCharactersNow();
+    alert(ok ? "保存・同期したよ！" : "端末には保存したけど、同期に失敗したよ");
+  }
+
+  async function saveAndBack() {
+    normalizeAndSave(false);
+    const ok = await syncCharactersNow();
+    if (ok) {
+      back();
+    } else {
+      alert("端末には保存したけど、同期に失敗したよ。画面のエラーを確認してね");
+    }
   }
 
   function exportJson() {
@@ -578,7 +643,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
               lineHeight: 1.6,
             }}
           >
-            ※キャラはローカル（端末ごと）に保存されます。別端末へはエクスポート/インポートで移せるよ。
+            ※保存したキャラ設定は、自動でほかの端末にも同期されるよ。
           </div>
         </div>
       }
@@ -700,9 +765,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
               </button>
 
               <div className="full" style={smallHint}>
-                保存先: localStorage key = {CHARACTERS_STORAGE_KEY}
-                <br />
-                選択中: {SELECTED_CHARACTER_ID_KEY}
+                キャラ一覧・選択中キャラ・画像フォルダ設定は自動同期されるよ。
               </div>
             </div>
 
@@ -841,29 +904,51 @@ export default function CharacterSettings({ back }: { back: () => void }) {
               >
                 <button
                   type="button"
-                  onClick={saveOnly}
+                  onClick={() => void saveOnly()}
+                  disabled={syncing}
                   style={{
                     ...btn,
                     width: "auto",
                     padding: "10px 14px",
                   }}
                 >
-                  💾 保存
+                  {syncing ? "同期中…" : "💾 保存・同期"}
                 </button>
 
                 <button
                   type="button"
-                  onClick={saveAndBack}
+                  onClick={() => void saveAndBack()}
+                  disabled={syncing}
                   style={{
                     ...btn,
                     width: "auto",
                     padding: "10px 14px",
                   }}
                 >
-                  ✅ 保存して戻る
+                  {syncing ? "同期中…" : "✅ 保存・同期して戻る"}
                 </button>
               </div>
             </div>
+
+            {syncMessage ? (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: "9px 11px",
+                  borderRadius: 12,
+                  border: syncMessage.startsWith("同期失敗")
+                    ? "1px solid rgba(255,120,140,0.45)"
+                    : "1px solid rgba(120,235,205,0.35)",
+                  background: syncMessage.startsWith("同期失敗")
+                    ? "rgba(110,20,38,0.28)"
+                    : "rgba(16,88,74,0.24)",
+                  color: "rgba(255,255,255,0.9)",
+                  fontSize: 12,
+                }}
+              >
+                {syncMessage}
+              </div>
+            ) : null}
 
             <div
               style={{
@@ -1182,9 +1267,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
               </div>
 
               <div style={smallHint}>
-                保存先: localStorage key = {CHARACTERS_STORAGE_KEY}
-                <br />
-                選択中: {SELECTED_CHARACTER_ID_KEY}
+                保存すると、同じアプリを使うほかの端末にも自動で反映されるよ。
               </div>
             </div>
           </div>
