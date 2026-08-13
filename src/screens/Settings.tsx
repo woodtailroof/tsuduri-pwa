@@ -25,7 +25,14 @@ import {
   type CharacterCostumeMode,
   useAppSettings,
 } from "../lib/appSettings";
-import { CHARACTERS_STORAGE_KEY } from "./CharacterSettings";
+import {
+  CHARACTERS_STORAGE_KEY,
+  CHARACTER_IMAGE_MAP_KEY,
+  markCharacterSettingsDirty,
+  resolveCharacterFolderPath,
+  toCharacterFolderValue,
+  type CharacterImageMap,
+} from "../lib/characterSync";
 import { setSessionUnlocked } from "../lib/appLock";
 
 type Props = {
@@ -89,9 +96,6 @@ function loadCreatedCharacters(): CharacterOption[] {
   return uniq;
 }
 
-const CHARACTER_IMAGE_MAP_KEY = "tsuduri_character_image_map_v1";
-type CharacterImageMap = Record<string, string>;
-
 function loadCharacterImageMap(): CharacterImageMap {
   if (typeof window === "undefined") return {};
   const raw = localStorage.getItem(CHARACTER_IMAGE_MAP_KEY);
@@ -102,7 +106,11 @@ function loadCharacterImageMap(): CharacterImageMap {
 
 function saveCharacterImageMap(map: CharacterImageMap) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(CHARACTER_IMAGE_MAP_KEY, JSON.stringify(map));
+  const nextRaw = JSON.stringify(map);
+  if (localStorage.getItem(CHARACTER_IMAGE_MAP_KEY) !== nextRaw) {
+    localStorage.setItem(CHARACTER_IMAGE_MAP_KEY, nextRaw);
+    markCharacterSettingsDirty();
+  }
   window.dispatchEvent(new Event("tsuduri-settings"));
 }
 
@@ -306,10 +314,11 @@ export default function Settings({ back }: Props) {
   };
 
   const pillBase: CSSProperties = {
-    borderRadius: 999,
-    padding: "10px 12px",
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(17, 17, 17, var(--glass-alpha-strong, 0.35))",
+    minHeight: "var(--ui-control-height)",
+    borderRadius: "var(--ui-radius-control)",
+    padding: "9px 13px",
+    border: "1px solid var(--ui-control-border)",
+    background: "var(--ui-control-bg)",
     color: "rgba(255,255,255,0.82)",
     cursor: "pointer",
     userSelect: "none",
@@ -829,15 +838,15 @@ export default function Settings({ back }: Props) {
                     ) : (
                       <div style={{ display: "grid", gap: 10 }}>
                         {createdCharacters.map((c) => {
-                          const raw = charImageMap[c.id] ?? "";
-                          const normalized = normalizePublicPath(raw) || "";
-                          const isFile = normalized
-                            ? looksLikeImageFilePath(normalized)
-                            : false;
+                          const raw = toCharacterFolderValue(
+                            charImageMap[c.id] ?? "",
+                          );
+                          const characterBase = resolveCharacterFolderPath(raw);
+                          const isFile = false;
 
                           const previewSingle = isFile
                             ? appendAssetVersion(
-                                normalizePublicPath(raw),
+                                normalizePublicPath(characterBase),
                                 assetVersion,
                               )
                             : "";
@@ -845,12 +854,12 @@ export default function Settings({ back }: Props) {
                             ? EXPRESSION_KEYS.map((x) => {
                                 const costumeBase =
                                   resolveCharacterCostumePreviewSrc(
-                                    raw,
+                                    characterBase,
                                     effectiveCostumeId,
                                     x.key,
                                   );
                                 const legacyBase = resolveCharacterPreviewSrc(
-                                  raw,
+                                  characterBase,
                                   x.key,
                                 );
                                 const base = costumeBase || legacyBase;
@@ -921,27 +930,25 @@ export default function Settings({ back }: Props) {
                                 onChange={(e) => {
                                   const next = {
                                     ...charImageMap,
-                                    [c.id]: e.target.value,
+                                    [c.id]: toCharacterFolderValue(
+                                      e.target.value,
+                                    ),
                                   };
                                   setCharImageMap(next);
                                 }}
-                                placeholder="例: /assets/characters/tsuduri/  または /assets/characters/tsuduri/neutral.png"
+                                placeholder="フォルダ名（例: tsuduri）"
+                                aria-label={`${c.label}のキャラ画像フォルダ名`}
                                 style={fullWidthControl}
                               />
 
                               <div style={help}>
-                                public 配下のパスを指定。
-                                <br />✅ <b>おすすめ:</b>{" "}
-                                <code>/assets/characters/tsuduri/</code>{" "}
-                                のようにフォルダ指定（中に <code>uniform/</code>
-                                , <code>casual/</code>
-                                を作り、その中に <code>neutral.png</code>,{" "}
-                                <code>happy.png</code>
-                                … を置く）。
+                                キャラのフォルダ名だけを指定。共通パスは画面に表示せず、自動で補うよ。
                                 <br />
-                                🛟 旧互換: 単一画像（例{" "}
-                                <code>/assets/characters/tsuduri.png</code>
-                                ）もOK。
+                                例: <code>tsuduri</code>（中に{" "}
+                                <code>uniform/</code>, <code>casual/</code>
+                                を作り、その中に <code>neutral.png</code>,{" "}
+                                <code>happy.png</code>…
+                                を置く）。共通部分は自動で補われるよ。
                               </div>
 
                               {!raw.trim() ? (

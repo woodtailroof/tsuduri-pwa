@@ -249,13 +249,13 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
     alignItems: "center",
     gap: 8,
     padding: "8px 12px",
-    borderRadius: 16,
+    borderRadius: 999,
     lineHeight: 1.2,
     whiteSpace: "nowrap",
     minWidth: 0,
     maxWidth: "100%",
-    border: "1px solid rgba(255,255,255,0.22)",
-    background: "rgba(0,0,0,calc(0.10 + var(--glass-alpha,0.22) * 0.55))",
+    border: "1px solid var(--ui-control-border)",
+    background: "var(--ui-control-bg)",
     color: "#ddd",
     boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.12)",
     backdropFilter: "blur(var(--glass-blur,10px))",
@@ -304,10 +304,11 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
   };
 
   const primaryBtn: CSSProperties = {
-    padding: "8px 12px",
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(0,0,0,calc(0.12 + var(--glass-alpha,0.22) * 0.55))",
+    minHeight: "var(--ui-control-height)",
+    padding: "9px 13px",
+    borderRadius: "var(--ui-radius-control)",
+    border: "1px solid var(--ui-control-border)",
+    background: "var(--ui-control-bg)",
     color: "rgba(255,255,255,0.92)",
     cursor: "pointer",
     backdropFilter: "blur(var(--glass-blur,10px))",
@@ -316,14 +317,15 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
 
   const dangerBtn: CSSProperties = {
     ...primaryBtn,
-    background: "rgba(0,0,0,calc(0.10 + var(--glass-alpha,0.22) * 0.45))",
+    background: "rgba(91, 28, 43, 0.58)",
+    border: "1px solid rgba(255, 124, 151, 0.3)",
   };
 
   const pillBtnStyle: CSSProperties = {
     borderRadius: 999,
     padding: "7px 10px",
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(0,0,0,0.24)",
+    border: "1px solid var(--ui-control-border)",
+    background: "var(--ui-control-bg)",
     color: "rgba(255,255,255,0.78)",
     cursor: "pointer",
     userSelect: "none",

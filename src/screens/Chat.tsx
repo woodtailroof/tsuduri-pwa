@@ -14,6 +14,7 @@ import {
 } from "./CharacterSettings";
 import PageShell from "../components/PageShell";
 import { useEmotion, type Emotion } from "../lib/emotion";
+import { markCharacterSettingsDirty } from "../lib/characterSync";
 
 type Props = {
   back: () => void;
@@ -80,7 +81,9 @@ function safeLoadSelectedCharacterId(fallback: string) {
 
 function safeSaveSelectedCharacterId(id: string) {
   try {
+    const changed = localStorage.getItem(SELECTED_CHARACTER_ID_KEY) !== id;
     localStorage.setItem(SELECTED_CHARACTER_ID_KEY, id);
+    if (changed) markCharacterSettingsDirty();
   } catch {
     // ignore
   }
@@ -1236,9 +1239,11 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     };
 
     window.addEventListener("focus", onFocus);
+    window.addEventListener("tsuduri-characters", onFocus);
 
     return () => {
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("tsuduri-characters", onFocus);
     };
   }, []);
 
@@ -1610,14 +1615,14 @@ export default function Chat({ back, goCharacterSettings }: Props) {
   }
 
   const uiButtonStyle: CSSProperties = {
-    padding: "6px 10px",
-    borderRadius: 12,
+    padding: "9px 12px",
+    borderRadius: "var(--ui-radius-control)",
     cursor: "pointer",
-    height: 34,
+    height: "var(--ui-control-height)",
     lineHeight: "20px",
     color: "rgba(255,255,255,0.90)",
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(17,17,17,var(--glass-alpha,0.22))",
+    border: "1px solid var(--ui-control-border)",
+    background: "var(--ui-control-bg)",
     userSelect: "none",
   };
 
@@ -1692,14 +1697,14 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          height: 34px;
-          padding: 6px 10px;
-          border-radius: 12px;
+          height: var(--ui-control-height);
+          padding: 9px 12px;
+          border-radius: var(--ui-radius-control);
           cursor: pointer;
           user-select: none;
           color: rgba(255,255,255,0.90);
-          background: rgba(17,17,17,var(--glass-alpha,0.22));
-          border: 1px solid rgba(255,255,255,0.18);
+          background: var(--ui-control-bg);
+          border: 1px solid var(--ui-control-border);
         }
 
         .chat-room-select {

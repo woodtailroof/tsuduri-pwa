@@ -596,14 +596,15 @@ export default function CharacterSettings({ back }: { back: () => void }) {
 
   const cardBg = "rgba(0,0,0,calc(0.10 + var(--glass-alpha,0.22) * 0.70))";
   const fieldBg = "rgba(0,0,0,calc(0.16 + var(--glass-alpha,0.22) * 0.65))";
-  const btnBg = "rgba(0,0,0,calc(0.12 + var(--glass-alpha,0.22) * 0.55))";
 
   const glassCard: CSSProperties = {
-    border: "1px solid rgba(255,255,255,0.14)",
+    border: "1px solid rgba(196,237,250,0.16)",
     background: cardBg,
     backdropFilter: "blur(var(--glass-blur,10px))",
     WebkitBackdropFilter: "blur(var(--glass-blur,10px))",
-    borderRadius: 14,
+    borderRadius: "var(--ui-radius-panel)",
+    boxShadow:
+      "0 14px 34px rgba(0,8,20,0.17), inset 0 1px rgba(255,255,255,0.065)",
   };
 
   const sectionTitle: CSSProperties = {
@@ -622,10 +623,11 @@ export default function CharacterSettings({ back }: { back: () => void }) {
   const btn: CSSProperties = {
     width: "100%",
     textAlign: "center",
-    padding: "10px 12px",
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: btnBg,
+    minHeight: "var(--ui-control-height)",
+    padding: "9px 13px",
+    borderRadius: "var(--ui-radius-control)",
+    border: "1px solid var(--ui-control-border)",
+    background: "var(--ui-control-bg)",
     color: "rgba(255,255,255,0.92)",
     backdropFilter: "blur(var(--glass-blur,10px))",
     WebkitBackdropFilter: "blur(var(--glass-blur,10px))",

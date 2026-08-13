@@ -318,7 +318,11 @@ export default function PageShell(props: Props) {
 
             {showBack ? (
               <div style={backWrapStyle}>
-                <button type="button" onClick={onClickBack}>
+                <button
+                  type="button"
+                  className="app-back-button"
+                  onClick={onClickBack}
+                >
                   ← 戻る
                 </button>
               </div>

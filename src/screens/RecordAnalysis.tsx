@@ -1556,8 +1556,8 @@ export default function RecordAnalysis({ back }: Props) {
         .analysis-page-title { margin:0; font-size:clamp(22px,3vw,34px); line-height:1.1; letter-spacing:.04em; }
         .analysis-toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
         .analysis-toolbar button, .analysis-toolbar select {
-          border:1px solid rgba(255,255,255,.16); background:rgba(10,18,32,.62);
-          color:#fff; border-radius:999px; padding:8px 12px; font:inherit;
+          min-height:var(--ui-control-height); border:1px solid var(--ui-control-border); background:var(--ui-control-bg);
+          color:#fff; border-radius:var(--ui-radius-control); padding:9px 13px; font:inherit;
         }
         .analysis-toolbar button { cursor:pointer; }
         .analysis-toolbar button:disabled { opacity:.5; cursor:not-allowed; }

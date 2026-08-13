@@ -800,11 +800,11 @@ export default function Weather({ back, isActive = true }: Props) {
   };
 
   const controlStyle: CSSProperties = {
-    minHeight: 34,
+    minHeight: "var(--ui-control-height)",
     borderRadius: 999,
-    padding: "7px 11px",
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(17,17,17,var(--glass-alpha-strong,0.35))",
+    padding: "9px 13px",
+    border: "1px solid var(--ui-control-border)",
+    background: "var(--ui-control-bg)",
     color: "rgba(255,255,255,0.92)",
     fontWeight: 800,
   };
