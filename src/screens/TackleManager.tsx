@@ -1,21 +1,22 @@
-// src/screens/TackleManager.tsx
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import PageShell from "../components/PageShell";
 import {
   db,
-  type TackleItem,
-  type RodType,
   type ReelType,
+  type RodType,
+  type TackleItem,
   type TackleKind,
 } from "../db";
 import { syncTrips } from "../lib/tripSync";
 
-type Props = {
-  back: () => void;
-};
-
+type Props = { back: () => void };
 type TabKind = "rod" | "reel";
-
 type RodForm = {
   maker: string;
   model: string;
@@ -31,7 +32,6 @@ type RodForm = {
   memo: string;
   active: boolean;
 };
-
 type ReelForm = {
   maker: string;
   model: string;
@@ -45,255 +45,138 @@ type ReelForm = {
   active: boolean;
 };
 
-function makeUid() {
-  if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
-  ) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
-}
-
-function parseOptionalNumber(raw: string): number | null {
-  const s = raw.trim();
-  if (!s) return null;
+const emptyRod = (): RodForm => ({
+  maker: "",
+  model: "",
+  rodType: "spinning",
+  sizeLabel: "",
+  lengthFeet: "",
+  lengthInches: "",
+  tipMm: "",
+  buttMm: "",
+  weightG: "",
+  castWeightMinG: "",
+  castWeightMaxG: "",
+  memo: "",
+  active: true,
+});
+const emptyReel = (): ReelForm => ({
+  maker: "",
+  model: "",
+  reelType: "spinning",
+  sizeLabel: "",
+  weightG: "",
+  spoolDiameterMm: "",
+  spoolWidthMm: "",
+  retrieveCm: "",
+  memo: "",
+  active: true,
+});
+const num = (s: string) => {
+  if (!s.trim()) return null;
   const n = Number(s);
-  if (!Number.isFinite(n)) return null;
-  return n;
-}
-
-function parseOptionalInt(raw: string): number | null {
-  const s = raw.trim();
-  if (!s) return null;
-  const n = Number(s);
-  if (!Number.isFinite(n)) return null;
-  return Math.trunc(n);
-}
-
-function emptyRodForm(): RodForm {
-  return {
-    maker: "",
-    model: "",
-    rodType: "spinning",
-    sizeLabel: "",
-    lengthFeet: "",
-    lengthInches: "",
-    tipMm: "",
-    buttMm: "",
-    weightG: "",
-    castWeightMinG: "",
-    castWeightMaxG: "",
-    memo: "",
-    active: true,
-  };
-}
-
-function emptyReelForm(): ReelForm {
-  return {
-    maker: "",
-    model: "",
-    reelType: "spinning",
-    sizeLabel: "",
-    weightG: "",
-    spoolDiameterMm: "",
-    spoolWidthMm: "",
-    retrieveCm: "",
-    memo: "",
-    active: true,
-  };
-}
-
-function fmtMaybeNumber(value?: number | null, suffix = ""): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
-  return `${value}${suffix}`;
-}
-
-function fmtRodType(t: RodType): string {
-  return t === "spinning" ? "スピニング" : "ベイト";
-}
-
-function fmtReelType(t: ReelType): string {
-  return t === "spinning" ? "スピニング" : "ベイト";
-}
-
-function compareText(
-  a: string | null | undefined,
-  b: string | null | undefined,
-) {
-  return (a ?? "").localeCompare(b ?? "", "ja", {
+  return Number.isFinite(n) ? n : null;
+};
+const integer = (s: string) => {
+  const n = num(s);
+  return n == null ? null : Math.trunc(n);
+};
+const uid = () =>
+  typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+const textCmp = (a?: string | null, b?: string | null) =>
+  (a ?? "").localeCompare(b ?? "", "ja", {
     numeric: true,
     sensitivity: "base",
   });
-}
+const typeRank = (v?: RodType | ReelType | null) =>
+  v === "spinning" ? 0 : v === "bait" ? 1 : 2;
+const numberCmp = (a?: number | null, b?: number | null) =>
+  a == null ? (b == null ? 0 : 1) : b == null ? -1 : a - b;
+const rodLength = (v: TackleItem) =>
+  v.rod?.lengthFeet == null
+    ? null
+    : v.rod.lengthFeet * 12 + (v.rod.lengthInches ?? 0);
+const titleOf = (v: TackleItem) =>
+  [v.maker, v.model, v.kind === "rod" ? v.rod?.sizeLabel : v.reel?.sizeLabel]
+    .filter(Boolean)
+    .join(" ");
+const show = (v?: number | null, s = "") => (v == null ? "—" : `${v}${s}`);
 
-function compareActive(a: TackleItem, b: TackleItem): number {
-  return Number(b.active) - Number(a.active);
-}
-
-function compareType(
-  a: RodType | ReelType | null | undefined,
-  b: RodType | ReelType | null | undefined,
-): number {
-  const rank = (type: RodType | ReelType | null | undefined) =>
-    type === "spinning" ? 0 : type === "bait" ? 1 : 2;
-  return rank(a) - rank(b);
-}
-
-function compareOptionalNumber(
-  a: number | null | undefined,
-  b: number | null | undefined,
-): number {
-  const aValid = typeof a === "number" && Number.isFinite(a);
-  const bValid = typeof b === "number" && Number.isFinite(b);
-
-  if (aValid && bValid) return a - b;
-  if (aValid) return -1;
-  if (bValid) return 1;
-  return 0;
-}
-
-function rodLengthInches(item: TackleItem): number | null {
-  const feet = item.rod?.lengthFeet;
-  const inches = item.rod?.lengthInches;
-
-  if (typeof feet !== "number" || !Number.isFinite(feet) || feet < 0) {
-    return null;
-  }
-
-  const validInches =
-    typeof inches === "number" && Number.isFinite(inches) ? inches : 0;
-  return feet * 12 + validInches;
-}
-
-function sortRodItems(items: TackleItem[]): TackleItem[] {
+function sorted(items: TackleItem[], kind: TabKind) {
   return items
-    .filter((item) => item.kind === "rod" && item.rod)
+    .filter((v) => v.kind === kind)
     .slice()
     .sort((a, b) => {
+      const active = Number(b.active) - Number(a.active);
+      if (kind === "rod")
+        return (
+          active ||
+          typeRank(a.rod?.rodType) - typeRank(b.rod?.rodType) ||
+          numberCmp(rodLength(a), rodLength(b)) ||
+          textCmp(a.rod?.sizeLabel, b.rod?.sizeLabel) ||
+          textCmp(a.maker, b.maker) ||
+          textCmp(a.model, b.model)
+        );
       return (
-        compareActive(a, b) ||
-        compareType(a.rod?.rodType, b.rod?.rodType) ||
-        compareOptionalNumber(rodLengthInches(a), rodLengthInches(b)) ||
-        compareText(a.rod?.sizeLabel, b.rod?.sizeLabel) ||
-        compareText(a.maker, b.maker) ||
-        compareText(a.model, b.model)
+        active ||
+        typeRank(a.reel?.reelType) - typeRank(b.reel?.reelType) ||
+        numberCmp(a.reel?.weightG, b.reel?.weightG) ||
+        textCmp(a.reel?.sizeLabel, b.reel?.sizeLabel) ||
+        textCmp(a.maker, b.maker) ||
+        textCmp(a.model, b.model)
       );
     });
 }
 
-function sortReelItems(items: TackleItem[]): TackleItem[] {
-  return items
-    .filter((item) => item.kind === "reel" && item.reel)
-    .slice()
-    .sort((a, b) => {
-      return (
-        compareActive(a, b) ||
-        compareType(a.reel?.reelType, b.reel?.reelType) ||
-        compareOptionalNumber(a.reel?.weightG, b.reel?.weightG) ||
-        compareText(a.reel?.sizeLabel, b.reel?.sizeLabel) ||
-        compareText(a.maker, b.maker) ||
-        compareText(a.model, b.model)
-      );
-    });
-}
-
-function buildRodCardSub(item: TackleItem): string {
-  const rod = item.rod;
-  if (!rod) return "";
-  const len =
-    typeof rod.lengthFeet === "number"
-      ? `${rod.lengthFeet}'${rod.lengthInches ?? 0}"`
-      : "—";
-  const cast =
-    rod.castWeightMinG != null && rod.castWeightMaxG != null
-      ? `${rod.castWeightMinG}-${rod.castWeightMaxG}g`
-      : rod.castWeightMinG != null
-        ? `${rod.castWeightMinG}g〜`
-        : rod.castWeightMaxG != null
-          ? `〜${rod.castWeightMaxG}g`
-          : "—";
-  return `${fmtRodType(rod.rodType)} / ${len} / ${cast} / 先径 ${fmtMaybeNumber(rod.tipMm, "mm")} / 元径 ${fmtMaybeNumber(rod.buttMm, "mm")}`;
-}
-
-function buildReelCardSub(item: TackleItem): string {
-  const reel = item.reel;
-  if (!reel) return "";
-  const spool =
-    reel.reelType === "bait"
-      ? ` / スプール ${fmtMaybeNumber(reel.spoolDiameterMm, "mm")} × ${fmtMaybeNumber(reel.spoolWidthMm, "mm")}`
-      : "";
-  return `${fmtReelType(reel.reelType)} / ${fmtMaybeNumber(reel.weightG, "g")} / ${fmtMaybeNumber(reel.retrieveCm, "cm")}${spool}`;
-}
-
-function buildCardTitle(item: TackleItem): string {
-  const sizeLabel =
-    item.kind === "rod" ? item.rod?.sizeLabel : item.reel?.sizeLabel;
-  return [item.maker, item.model, sizeLabel]
-    .map((value) => value?.trim())
-    .filter((value): value is string => Boolean(value))
-    .join(" / ");
-}
-
-function useIsMobileLayout(): boolean {
-  const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.innerWidth < 768;
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onResize = () => setIsMobile(window.innerWidth < 768);
-    onResize();
-    window.addEventListener("resize", onResize);
-    window.addEventListener("orientationchange", onResize);
-    return () => {
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("orientationchange", onResize);
-    };
-  }, []);
-
-  return isMobile;
+function Field({
+  label,
+  children,
+  wide = false,
+}: {
+  label: string;
+  children: ReactNode;
+  wide?: boolean;
+}) {
+  return (
+    <label className={`tm-field${wide ? " tm-wide" : ""}`}>
+      <span>{label}</span>
+      {children}
+    </label>
+  );
 }
 
 export default function TackleManager({ back }: Props) {
+  const [items, setItems] = useState<TackleItem[]>([]);
+  const [tab, setTab] = useState<TabKind>("rod");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [items, setItems] = useState<TackleItem[]>([]);
-  const [tab, setTab] = useState<TabKind>("rod");
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [rodForm, setRodForm] = useState<RodForm>(emptyRodForm());
-  const [reelForm, setReelForm] = useState<ReelForm>(emptyReelForm());
   const [error, setError] = useState("");
-  const isMobileLayout = useIsMobileLayout();
+  const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [rod, setRod] = useState<RodForm>(emptyRod());
+  const [reel, setReel] = useState<ReelForm>(emptyReel());
 
   async function reload() {
     setLoading(true);
-    setError("");
     try {
-      const rows = await db.tackleItems
-        .filter((item) => !item.deletedAt)
-        .toArray();
-      setItems(rows);
+      setItems(await db.tackleItems.filter((v) => !v.deletedAt).toArray());
     } catch (e) {
-      console.error(e);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
   }
-
   async function syncAndReload() {
     setSyncing(true);
     try {
-      const result = await syncTrips();
-      if (!result.ok) {
-        console.warn("tackle sync failed", result.errors);
-      }
-      window.dispatchEvent(new CustomEvent("tsuduri-sync-complete"));
+      const r = await syncTrips();
+      if (!r.ok) console.warn("tackle sync failed", r.errors);
+      window.dispatchEvent(new Event("tsuduri-sync-complete"));
     } catch (e) {
-      console.warn("tackle sync failed", e);
+      console.warn(e);
     } finally {
       setSyncing(false);
       await reload();
@@ -302,228 +185,190 @@ export default function TackleManager({ back }: Props) {
 
   useEffect(() => {
     void syncAndReload();
-
-    const onSyncComplete = () => {
-      void reload();
+    const sync = () => void reload();
+    const focus = () => void syncAndReload();
+    const visible = () => {
+      if (document.visibilityState === "visible") void syncAndReload();
     };
-
-    const onFocus = () => {
-      void syncAndReload();
-    };
-
-    const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        void syncAndReload();
-      }
-    };
-
-    window.addEventListener("tsuduri-sync-complete", onSyncComplete);
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVisible);
-
+    window.addEventListener("tsuduri-sync-complete", sync);
+    window.addEventListener("focus", focus);
+    document.addEventListener("visibilitychange", visible);
     return () => {
-      window.removeEventListener("tsuduri-sync-complete", onSyncComplete);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("tsuduri-sync-complete", sync);
+      window.removeEventListener("focus", focus);
+      document.removeEventListener("visibilitychange", visible);
     };
+    // 画面を開いた時だけ購読し、各イベントではその時点のDBを読む。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEffect(() => {
+    if (!open) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !saving) setOpen(false);
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [open, saving]);
 
-  const rodList = useMemo(() => sortRodItems(items), [items]);
-  const reelList = useMemo(() => sortReelItems(items), [items]);
+  const list = useMemo(() => sorted(items, tab), [items, tab]);
+  const rodCount = useMemo(() => sorted(items, "rod").length, [items]);
+  const reelCount = useMemo(() => sorted(items, "reel").length, [items]);
 
-  const currentList = tab === "rod" ? rodList : reelList;
-
-  function startCreate(kind: TackleKind) {
-    setEditingId(null);
+  function create(kind: TackleKind) {
     setTab(kind);
-    if (kind === "rod") {
-      setRodForm(emptyRodForm());
-    } else {
-      setReelForm(emptyReelForm());
-    }
+    setEditingId(null);
+    if (kind === "rod") setRod(emptyRod());
+    else setReel(emptyReel());
     setError("");
+    setOpen(true);
   }
-
-  function loadIntoForm(item: TackleItem) {
-    setEditingId(item.id ?? null);
+  function edit(item: TackleItem) {
     setTab(item.kind);
-
-    if (item.kind === "rod") {
-      setRodForm({
-        maker: item.maker ?? "",
-        model: item.model ?? "",
+    setEditingId(item.id ?? null);
+    if (item.kind === "rod")
+      setRod({
+        maker: item.maker,
+        model: item.model,
         rodType: item.rod?.rodType ?? "spinning",
         sizeLabel: item.rod?.sizeLabel ?? "",
         lengthFeet:
-          item.rod?.lengthFeet != null ? String(item.rod.lengthFeet) : "",
+          item.rod?.lengthFeet == null ? "" : String(item.rod.lengthFeet),
         lengthInches:
-          item.rod?.lengthInches != null ? String(item.rod.lengthInches) : "",
-        tipMm: item.rod?.tipMm != null ? String(item.rod.tipMm) : "",
-        buttMm: item.rod?.buttMm != null ? String(item.rod.buttMm) : "",
-        weightG: item.rod?.weightG != null ? String(item.rod.weightG) : "",
+          item.rod?.lengthInches == null ? "" : String(item.rod.lengthInches),
+        tipMm: item.rod?.tipMm == null ? "" : String(item.rod.tipMm),
+        buttMm: item.rod?.buttMm == null ? "" : String(item.rod.buttMm),
+        weightG: item.rod?.weightG == null ? "" : String(item.rod.weightG),
         castWeightMinG:
-          item.rod?.castWeightMinG != null
-            ? String(item.rod.castWeightMinG)
-            : "",
+          item.rod?.castWeightMinG == null
+            ? ""
+            : String(item.rod.castWeightMinG),
         castWeightMaxG:
-          item.rod?.castWeightMaxG != null
-            ? String(item.rod.castWeightMaxG)
-            : "",
+          item.rod?.castWeightMaxG == null
+            ? ""
+            : String(item.rod.castWeightMaxG),
         memo: item.memo ?? "",
         active: item.active,
       });
-    } else {
-      setReelForm({
-        maker: item.maker ?? "",
-        model: item.model ?? "",
+    else
+      setReel({
+        maker: item.maker,
+        model: item.model,
         reelType: item.reel?.reelType ?? "spinning",
         sizeLabel: item.reel?.sizeLabel ?? "",
-        weightG: item.reel?.weightG != null ? String(item.reel.weightG) : "",
+        weightG: item.reel?.weightG == null ? "" : String(item.reel.weightG),
         spoolDiameterMm:
-          item.reel?.spoolDiameterMm != null
-            ? String(item.reel.spoolDiameterMm)
-            : "",
+          item.reel?.spoolDiameterMm == null
+            ? ""
+            : String(item.reel.spoolDiameterMm),
         spoolWidthMm:
-          item.reel?.spoolWidthMm != null ? String(item.reel.spoolWidthMm) : "",
+          item.reel?.spoolWidthMm == null ? "" : String(item.reel.spoolWidthMm),
         retrieveCm:
-          item.reel?.retrieveCm != null ? String(item.reel.retrieveCm) : "",
+          item.reel?.retrieveCm == null ? "" : String(item.reel.retrieveCm),
         memo: item.memo ?? "",
         active: item.active,
       });
-    }
-
     setError("");
+    setOpen(true);
   }
 
   async function saveRod() {
-    if (
-      !rodForm.maker.trim() ||
-      !rodForm.model.trim() ||
-      !rodForm.sizeLabel.trim()
-    ) {
+    if (!rod.maker.trim() || !rod.model.trim() || !rod.sizeLabel.trim()) {
       setError("メーカー・モデル名・番手は入れてね");
       return;
     }
-
     setSaving(true);
     setError("");
     try {
       const now = new Date().toISOString();
-      const existing =
-        editingId != null ? await db.tackleItems.get(editingId) : null;
-
+      const old =
+        editingId == null ? null : await db.tackleItems.get(editingId);
       const row: TackleItem = {
-        id: existing?.id,
-        uid: existing?.uid ?? makeUid(),
-        createdAt: existing?.createdAt ?? now,
+        id: old?.id,
+        uid: old?.uid ?? uid(),
+        createdAt: old?.createdAt ?? now,
         updatedAt: now,
         deletedAt: null,
         syncStatus: "pending",
         kind: "rod",
-        maker: rodForm.maker.trim(),
-        model: rodForm.model.trim(),
-        memo: rodForm.memo.trim() || null,
-        active: rodForm.active,
-        retiredAt: rodForm.active ? null : (existing?.retiredAt ?? now),
+        maker: rod.maker.trim(),
+        model: rod.model.trim(),
+        memo: rod.memo.trim() || null,
+        active: rod.active,
+        retiredAt: rod.active ? null : (old?.retiredAt ?? now),
         rod: {
-          rodType: rodForm.rodType,
-          sizeLabel: rodForm.sizeLabel.trim(),
-          lengthFeet: parseOptionalInt(rodForm.lengthFeet),
-          lengthInches: parseOptionalInt(rodForm.lengthInches),
-          tipMm: parseOptionalNumber(rodForm.tipMm),
-          buttMm: parseOptionalNumber(rodForm.buttMm),
-          weightG: parseOptionalNumber(rodForm.weightG),
-          castWeightMinG: parseOptionalNumber(rodForm.castWeightMinG),
-          castWeightMaxG: parseOptionalNumber(rodForm.castWeightMaxG),
+          rodType: rod.rodType,
+          sizeLabel: rod.sizeLabel.trim(),
+          lengthFeet: integer(rod.lengthFeet),
+          lengthInches: integer(rod.lengthInches),
+          tipMm: num(rod.tipMm),
+          buttMm: num(rod.buttMm),
+          weightG: num(rod.weightG),
+          castWeightMinG: num(rod.castWeightMinG),
+          castWeightMaxG: num(rod.castWeightMaxG),
         },
         reel: null,
       };
-
-      if (editingId != null) {
-        await db.tackleItems.put(row);
-      } else {
-        await db.tackleItems.add(row);
-      }
-
+      if (editingId == null) await db.tackleItems.add(row);
+      else await db.tackleItems.put(row);
+      setOpen(false);
       setEditingId(null);
-      setRodForm(emptyRodForm());
       await syncAndReload();
     } catch (e) {
-      console.error(e);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
   }
-
   async function saveReel() {
-    if (
-      !reelForm.maker.trim() ||
-      !reelForm.model.trim() ||
-      !reelForm.sizeLabel.trim()
-    ) {
+    if (!reel.maker.trim() || !reel.model.trim() || !reel.sizeLabel.trim()) {
       setError("メーカー・モデル名・番手は入れてね");
       return;
     }
-
     setSaving(true);
     setError("");
     try {
       const now = new Date().toISOString();
-      const existing =
-        editingId != null ? await db.tackleItems.get(editingId) : null;
-
+      const old =
+        editingId == null ? null : await db.tackleItems.get(editingId);
       const row: TackleItem = {
-        id: existing?.id,
-        uid: existing?.uid ?? makeUid(),
-        createdAt: existing?.createdAt ?? now,
+        id: old?.id,
+        uid: old?.uid ?? uid(),
+        createdAt: old?.createdAt ?? now,
         updatedAt: now,
         deletedAt: null,
         syncStatus: "pending",
         kind: "reel",
-        maker: reelForm.maker.trim(),
-        model: reelForm.model.trim(),
-        memo: reelForm.memo.trim() || null,
-        active: reelForm.active,
-        retiredAt: reelForm.active ? null : (existing?.retiredAt ?? now),
+        maker: reel.maker.trim(),
+        model: reel.model.trim(),
+        memo: reel.memo.trim() || null,
+        active: reel.active,
+        retiredAt: reel.active ? null : (old?.retiredAt ?? now),
         reel: {
-          reelType: reelForm.reelType,
-          sizeLabel: reelForm.sizeLabel.trim(),
-          weightG: parseOptionalNumber(reelForm.weightG),
+          reelType: reel.reelType,
+          sizeLabel: reel.sizeLabel.trim(),
+          weightG: num(reel.weightG),
           spoolDiameterMm:
-            reelForm.reelType === "bait"
-              ? parseOptionalNumber(reelForm.spoolDiameterMm)
-              : null,
+            reel.reelType === "bait" ? num(reel.spoolDiameterMm) : null,
           spoolWidthMm:
-            reelForm.reelType === "bait"
-              ? parseOptionalNumber(reelForm.spoolWidthMm)
-              : null,
-          retrieveCm: parseOptionalNumber(reelForm.retrieveCm),
+            reel.reelType === "bait" ? num(reel.spoolWidthMm) : null,
+          retrieveCm: num(reel.retrieveCm),
         },
         rod: null,
       };
-
-      if (editingId != null) {
-        await db.tackleItems.put(row);
-      } else {
-        await db.tackleItems.add(row);
-      }
-
+      if (editingId == null) await db.tackleItems.add(row);
+      else await db.tackleItems.put(row);
+      setOpen(false);
       setEditingId(null);
-      setReelForm(emptyReelForm());
       await syncAndReload();
     } catch (e) {
-      console.error(e);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
   }
-
-  async function toggleActive(item: TackleItem) {
+  async function toggle(item: TackleItem) {
     if (item.id == null) return;
     setSaving(true);
-    setError("");
     try {
       const now = new Date().toISOString();
       await db.tackleItems.update(item.id, {
@@ -532,890 +377,531 @@ export default function TackleManager({ back }: Props) {
         updatedAt: now,
         syncStatus: "pending",
       });
-      if (editingId === item.id) {
-        loadIntoForm({
-          ...item,
-          active: !item.active,
-          retiredAt: item.active ? now : null,
-        });
-      }
       await syncAndReload();
-    } catch (e) {
-      console.error(e);
-      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
   }
-
-  async function deleteItem(item: TackleItem) {
-    if (item.id == null) return;
-
-    const ok = window.confirm(
-      `${item.maker} / ${item.model} を削除する？\n\n間違えて登録したタックル用の削除だよ。過去の記録に使っているタックルは、削除より「過去所持にする」がおすすめ。`,
-    );
-
-    if (!ok) return;
-
+  async function remove() {
+    const item = items.find((v) => v.id === editingId);
+    if (!item?.id) return;
+    if (
+      !confirm(
+        `${titleOf(item)} を削除する？\n\n過去の記録で使ったものは「過去所持」がおすすめだよ。`,
+      )
+    )
+      return;
     setSaving(true);
-    setError("");
     try {
       const now = new Date().toISOString();
-
       await db.tackleItems.update(item.id, {
         deletedAt: now,
         updatedAt: now,
         syncStatus: "pending",
       });
-
-      if (editingId === item.id) {
-        setEditingId(null);
-        setRodForm(emptyRodForm());
-        setReelForm(emptyReelForm());
-      }
-
+      setOpen(false);
       await syncAndReload();
-    } catch (e) {
-      console.error(e);
-      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
   }
 
-  const sectionCard: CSSProperties = {
-    borderRadius: 16,
-    padding: 12,
-    display: "grid",
-    gap: 12,
-  };
-
-  const fieldWrap: CSSProperties = {
-    display: "grid",
-    gap: 6,
-    fontSize: 12,
-    color: "rgba(255,255,255,0.76)",
-  };
-
-  const fieldStyle: CSSProperties = {
-    width: "100%",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(0,0,0,0.22)",
-    color: "#fff",
-    padding: isMobileLayout ? "10px 12px" : "8px 10px",
-    outline: "none",
-    boxSizing: "border-box",
-  };
-
-  const btnStyle: CSSProperties = {
+  const button: CSSProperties = {
     borderRadius: 999,
-    padding: "10px 14px",
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(0,0,0,0.24)",
-    color: "rgba(255,255,255,0.86)",
+    padding: "10px 15px",
+    border: "1px solid rgba(255,255,255,.2)",
+    background: "rgba(2,19,31,.45)",
+    color: "#fff",
     cursor: "pointer",
-    lineHeight: 1,
+    whiteSpace: "nowrap",
   };
-
-  const dangerBtnStyle: CSSProperties = {
-    ...btnStyle,
-    border: "1px solid rgba(255,120,120,0.45)",
-    color: "#ffd0d0",
-  };
-
-  const activeBtnStyle = (on: boolean): CSSProperties => ({
-    ...btnStyle,
-    border: on
-      ? "2px solid rgba(255,77,109,0.9)"
-      : "1px solid rgba(255,255,255,0.18)",
-    background: on ? "rgba(255,77,109,0.18)" : "rgba(0,0,0,0.24)",
-    color: on ? "#fff" : "rgba(255,255,255,0.86)",
+  const selectedButton = (on: boolean): CSSProperties => ({
+    ...button,
+    border: on ? "2px solid rgba(255,91,132,.9)" : button.border,
+    background: on ? "rgba(255,77,109,.18)" : button.background,
   });
-
-  const formGridStyle: CSSProperties = {
-    display: "grid",
-    gap: isMobileLayout ? 12 : 8,
-    gridTemplateColumns: isMobileLayout ? "1fr" : "1fr 1fr",
-    minHeight: 0,
-  };
-
-  const fullFormRowStyle: CSSProperties = {
-    gridColumn: "1 / -1",
-  };
 
   return (
     <PageShell
       title={
-        <h1
-          style={{
-            margin: 0,
-            fontSize: "clamp(20px, 3.2vw, 32px)",
-            lineHeight: 1.15,
-          }}
-        >
-          🎣 タックル管理
+        <h1 style={{ margin: 0, fontSize: "clamp(21px,3.2vw,32px)" }}>
+          🎣 タックル一覧
         </h1>
       }
       titleLayout="left"
-      maxWidth={1320}
+      maxWidth={1500}
       showBack
       onBack={back}
-      scrollY={isMobileLayout ? "auto" : "hidden"}
+      scrollY="hidden"
     >
-      <div
-        style={{
-          display: "grid",
-          gap: 12,
-          gridTemplateRows: isMobileLayout ? "auto" : "auto minmax(0, 1fr)",
-          minHeight: 0,
-          height: isMobileLayout ? undefined : "100%",
-          overflow: isMobileLayout ? "visible" : "hidden",
-        }}
-      >
-        <div
-          className="glass glass-strong"
-          style={{
-            ...sectionCard,
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, max-content))",
-            alignItems: "center",
-          }}
-        >
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <style>{`
+      .tm-page{height:100%;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);gap:12px}.tm-toolbar{padding:12px 14px;border-radius:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.tm-buttons,.tm-card-buttons{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.tm-wrap{min-height:0;padding:14px;border-radius:20px;display:grid;grid-template-rows:auto minmax(0,1fr);gap:12px;overflow:hidden}.tm-rail{min-height:0;display:flex;gap:14px;overflow-x:auto;overflow-y:hidden;padding:2px 4px 12px 2px;scroll-snap-type:x proximity;overscroll-behavior-x:contain;scrollbar-color:rgba(126,230,255,.55) rgba(255,255,255,.08);scrollbar-width:thin}.tm-card{flex:0 0 clamp(290px,32vw,390px);scroll-snap-align:start;border-radius:20px;padding:17px;min-height:300px;display:grid;grid-template-rows:auto auto 1fr auto;gap:14px;background:linear-gradient(155deg,rgba(15,61,79,.55),rgba(4,22,38,.44));border:1px solid rgba(200,242,255,.18);box-shadow:0 16px 34px rgba(0,10,24,.16),inset 0 1px rgba(255,255,255,.08)}.tm-specs{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-content:start}.tm-spec{padding:9px 10px;border-radius:12px;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.08)}.tm-spec span{display:block;font-size:10px;color:rgba(255,255,255,.5);margin-bottom:4px}.tm-spec strong{font-size:13px;color:rgba(255,255,255,.9)}.tm-overlay{position:fixed;inset:0;z-index:1000;padding:clamp(10px,3vw,28px);display:grid;place-items:center;background:rgba(0,9,18,.62);backdrop-filter:blur(10px)}.tm-editor{width:min(900px,100%);max-height:min(88dvh,900px);overflow:auto;border-radius:22px;padding:clamp(14px,2.5vw,22px);background:linear-gradient(150deg,rgba(9,47,65,.97),rgba(5,23,39,.96));border:1px solid rgba(205,244,255,.25);box-shadow:0 24px 80px rgba(0,0,0,.55)}.tm-head{position:sticky;top:-1px;z-index:2;display:flex;justify-content:space-between;align-items:center;gap:12px;padding-bottom:12px;background:linear-gradient(180deg,rgba(8,42,59,.98) 72%,transparent)}.tm-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.tm-field{display:grid;gap:6px;font-size:12px;color:rgba(255,255,255,.72)}.tm-field input,.tm-field select,.tm-field textarea{width:100%;box-sizing:border-box;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.25);color:#fff;padding:10px 11px;outline:none}.tm-field textarea{min-height:76px;resize:vertical}.tm-wide{grid-column:1/-1}@media(max-width:720px){.tm-toolbar{align-items:stretch}.tm-toolbar>.tm-buttons:last-child{width:100%;justify-content:space-between}.tm-wrap{padding:12px 10px 8px}.tm-card{flex-basis:min(84vw,340px);min-height:280px}.tm-form{grid-template-columns:1fr}.tm-wide{grid-column:auto}.tm-overlay{padding:8px;place-items:end center}.tm-editor{max-height:92dvh;border-radius:22px 22px 12px 12px}}
+    `}</style>
+      <div className="tm-page">
+        <div className="glass glass-strong tm-toolbar">
+          <div className="tm-buttons">
             <button
-              type="button"
-              onClick={() => {
-                setTab("rod");
-                setEditingId(null);
-                setError("");
-              }}
-              style={activeBtnStyle(tab === "rod")}
+              style={selectedButton(tab === "rod")}
+              onClick={() => setTab("rod")}
             >
-              ロッド
+              ロッド {rodCount}
             </button>
             <button
-              type="button"
-              onClick={() => {
-                setTab("reel");
-                setEditingId(null);
-                setError("");
-              }}
-              style={activeBtnStyle(tab === "reel")}
+              style={selectedButton(tab === "reel")}
+              onClick={() => setTab("reel")}
             >
-              リール
+              リール {reelCount}
             </button>
           </div>
-
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="tm-buttons">
             <button
-              type="button"
-              onClick={() => startCreate(tab)}
-              style={btnStyle}
-            >
-              ＋ 新規登録
-            </button>
-            <button
-              type="button"
+              style={button}
               onClick={() => void syncAndReload()}
-              style={btnStyle}
               disabled={loading || syncing}
             >
-              {syncing ? "同期中…" : loading ? "読み込み中…" : "↻ 更新"}
+              {syncing ? "同期中…" : "↻ 更新"}
+            </button>
+            <button
+              style={{
+                ...button,
+                background: "rgba(255,77,109,.28)",
+                fontWeight: 800,
+              }}
+              onClick={() => create(tab)}
+            >
+              ＋ {tab === "rod" ? "ロッド" : "リール"}を登録
             </button>
           </div>
         </div>
-
-        {error && (
+        <div className="glass glass-strong tm-wrap">
           <div
-            className="glass glass-strong"
             style={{
-              ...sectionCard,
-              color: "#ffb3c1",
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              alignItems: "baseline",
+              flexWrap: "wrap",
             }}
           >
-            ⚠ {error}
-          </div>
-        )}
-
-        <div
-          style={{
-            display: "grid",
-            gap: 12,
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-            alignItems: isMobileLayout ? "start" : "stretch",
-            minHeight: 0,
-            height: isMobileLayout ? undefined : "100%",
-            overflow: isMobileLayout ? "visible" : "hidden",
-          }}
-        >
-          <div
-            className="glass glass-strong"
-            style={{
-              ...sectionCard,
-              position: "static",
-              minHeight: 0,
-              height: isMobileLayout ? undefined : "100%",
-              overflowY: isMobileLayout ? "visible" : "auto",
-              overflowX: "hidden",
-              overscrollBehavior: "contain",
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 900,
-                fontSize: 16,
-              }}
-            >
-              {tab === "rod"
-                ? editingId != null
-                  ? "🎣 ロッド編集"
-                  : "🎣 ロッド登録"
-                : editingId != null
-                  ? "⚙️ リール編集"
-                  : "⚙️ リール登録"}
+            <div>
+              <strong>
+                {tab === "rod" ? "ロッドコレクション" : "リールコレクション"}
+              </strong>
+              <span
+                style={{
+                  marginLeft: 10,
+                  fontSize: 12,
+                  color: "rgba(255,255,255,.58)",
+                }}
+              >
+                {list.length}台中 現役{list.filter((v) => v.active).length}台
+              </span>
             </div>
-
-            {tab === "rod" ? (
-              <div style={formGridStyle}>
-                <div style={fieldWrap}>
-                  メーカー
-                  <input
-                    value={rodForm.maker}
-                    onChange={(e) =>
-                      setRodForm((prev) => ({ ...prev, maker: e.target.value }))
-                    }
-                    style={fieldStyle}
-                    placeholder="例：シマノ"
-                  />
-                </div>
-
-                <div style={fieldWrap}>
-                  モデル名
-                  <input
-                    value={rodForm.model}
-                    onChange={(e) =>
-                      setRodForm((prev) => ({ ...prev, model: e.target.value }))
-                    }
-                    style={fieldStyle}
-                    placeholder="例：18ディアルーナ"
-                  />
-                </div>
-
-                <div style={fieldWrap}>
-                  種別
-                  <select
-                    value={rodForm.rodType}
-                    onChange={(e) =>
-                      setRodForm((prev) => ({
-                        ...prev,
-                        rodType: e.target.value as RodType,
-                      }))
-                    }
-                    style={fieldStyle}
-                  >
-                    <option value="spinning">スピニング</option>
-                    <option value="bait">ベイト</option>
-                  </select>
-                </div>
-
-                <div style={fieldWrap}>
-                  番手
-                  <input
-                    value={rodForm.sizeLabel}
-                    onChange={(e) =>
-                      setRodForm((prev) => ({
-                        ...prev,
-                        sizeLabel: e.target.value,
-                      }))
-                    }
-                    style={fieldStyle}
-                    placeholder="例：S86L-S"
-                  />
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gap: 10,
-                    gridTemplateColumns: "1fr 1fr",
-                    ...fullFormRowStyle,
-                  }}
-                >
-                  <div style={fieldWrap}>
-                    長さ ft
-                    <input
-                      value={rodForm.lengthFeet}
-                      onChange={(e) =>
-                        setRodForm((prev) => ({
-                          ...prev,
-                          lengthFeet: e.target.value,
-                        }))
-                      }
-                      style={fieldStyle}
-                      inputMode="numeric"
-                      placeholder="8"
-                    />
-                  </div>
-
-                  <div style={fieldWrap}>
-                    長さ in
-                    <input
-                      value={rodForm.lengthInches}
-                      onChange={(e) =>
-                        setRodForm((prev) => ({
-                          ...prev,
-                          lengthInches: e.target.value,
-                        }))
-                      }
-                      style={fieldStyle}
-                      inputMode="numeric"
-                      placeholder="6"
-                    />
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gap: 10,
-                    gridTemplateColumns: "1fr 1fr",
-                    ...fullFormRowStyle,
-                  }}
-                >
-                  <div style={fieldWrap}>
-                    先径(mm)
-                    <input
-                      value={rodForm.tipMm}
-                      onChange={(e) =>
-                        setRodForm((prev) => ({
-                          ...prev,
-                          tipMm: e.target.value,
-                        }))
-                      }
-                      style={fieldStyle}
-                      inputMode="decimal"
-                    />
-                  </div>
-
-                  <div style={fieldWrap}>
-                    元径(mm)
-                    <input
-                      value={rodForm.buttMm}
-                      onChange={(e) =>
-                        setRodForm((prev) => ({
-                          ...prev,
-                          buttMm: e.target.value,
-                        }))
-                      }
-                      style={fieldStyle}
-                      inputMode="decimal"
-                    />
-                  </div>
-                </div>
-
-                <div style={fieldWrap}>
-                  自重(g)
-                  <input
-                    value={rodForm.weightG}
-                    onChange={(e) =>
-                      setRodForm((prev) => ({
-                        ...prev,
-                        weightG: e.target.value,
-                      }))
-                    }
-                    style={fieldStyle}
-                    inputMode="decimal"
-                  />
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gap: 10,
-                    gridTemplateColumns: "1fr 1fr",
-                    ...fullFormRowStyle,
-                  }}
-                >
-                  <div style={fieldWrap}>
-                    キャストウェイト min(g)
-                    <input
-                      value={rodForm.castWeightMinG}
-                      onChange={(e) =>
-                        setRodForm((prev) => ({
-                          ...prev,
-                          castWeightMinG: e.target.value,
-                        }))
-                      }
-                      style={fieldStyle}
-                      inputMode="decimal"
-                    />
-                  </div>
-
-                  <div style={fieldWrap}>
-                    キャストウェイト max(g)
-                    <input
-                      value={rodForm.castWeightMaxG}
-                      onChange={(e) =>
-                        setRodForm((prev) => ({
-                          ...prev,
-                          castWeightMaxG: e.target.value,
-                        }))
-                      }
-                      style={fieldStyle}
-                      inputMode="decimal"
-                    />
-                  </div>
-                </div>
-
-                <div style={{ ...fieldWrap, ...fullFormRowStyle }}>
-                  メモ
-                  <textarea
-                    value={rodForm.memo}
-                    onChange={(e) =>
-                      setRodForm((prev) => ({ ...prev, memo: e.target.value }))
-                    }
-                    style={{
-                      ...fieldStyle,
-                      resize: "vertical",
-                      minHeight: isMobileLayout ? 88 : 54,
-                    }}
-                  />
-                </div>
-
-                <label
-                  style={{
-                    ...fullFormRowStyle,
-                    display: "flex",
-                    gap: 8,
-                    alignItems: "center",
-                    fontSize: 13,
-                    color: "rgba(255,255,255,0.82)",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={rodForm.active}
-                    onChange={(e) =>
-                      setRodForm((prev) => ({
-                        ...prev,
-                        active: e.target.checked,
-                      }))
-                    }
-                  />
-                  現役タックル
-                </label>
-
-                <div
-                  style={{
-                    ...fullFormRowStyle,
-                    display: "flex",
-                    gap: 8,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => void saveRod()}
-                    style={btnStyle}
-                    disabled={saving || syncing}
-                  >
-                    {saving
-                      ? "保存中…"
-                      : editingId != null
-                        ? "更新する"
-                        : "登録する"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingId(null);
-                      setRodForm(emptyRodForm());
-                      setError("");
-                    }}
-                    style={btnStyle}
-                  >
-                    クリア
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div style={formGridStyle}>
-                <div style={fieldWrap}>
-                  メーカー
-                  <input
-                    value={reelForm.maker}
-                    onChange={(e) =>
-                      setReelForm((prev) => ({
-                        ...prev,
-                        maker: e.target.value,
-                      }))
-                    }
-                    style={fieldStyle}
-                    placeholder="例：シマノ"
-                  />
-                </div>
-
-                <div style={fieldWrap}>
-                  モデル名
-                  <input
-                    value={reelForm.model}
-                    onChange={(e) =>
-                      setReelForm((prev) => ({
-                        ...prev,
-                        model: e.target.value,
-                      }))
-                    }
-                    style={fieldStyle}
-                    placeholder="例：24ヴァンフォード"
-                  />
-                </div>
-
-                <div style={fieldWrap}>
-                  種別
-                  <select
-                    value={reelForm.reelType}
-                    onChange={(e) =>
-                      setReelForm((prev) => ({
-                        ...prev,
-                        reelType: e.target.value as ReelType,
-                      }))
-                    }
-                    style={fieldStyle}
-                  >
-                    <option value="spinning">スピニング</option>
-                    <option value="bait">ベイト</option>
-                  </select>
-                </div>
-
-                <div style={fieldWrap}>
-                  番手
-                  <input
-                    value={reelForm.sizeLabel}
-                    onChange={(e) =>
-                      setReelForm((prev) => ({
-                        ...prev,
-                        sizeLabel: e.target.value,
-                      }))
-                    }
-                    style={fieldStyle}
-                    placeholder="例：C3000HG"
-                  />
-                </div>
-
-                <div style={fieldWrap}>
-                  自重(g)
-                  <input
-                    value={reelForm.weightG}
-                    onChange={(e) =>
-                      setReelForm((prev) => ({
-                        ...prev,
-                        weightG: e.target.value,
-                      }))
-                    }
-                    style={fieldStyle}
-                    inputMode="decimal"
-                  />
-                </div>
-
-                {reelForm.reelType === "bait" && (
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 10,
-                      gridTemplateColumns: "1fr 1fr",
-                      ...fullFormRowStyle,
-                    }}
-                  >
-                    <div style={fieldWrap}>
-                      スプール径(mm)
-                      <input
-                        value={reelForm.spoolDiameterMm}
-                        onChange={(e) =>
-                          setReelForm((prev) => ({
-                            ...prev,
-                            spoolDiameterMm: e.target.value,
-                          }))
-                        }
-                        style={fieldStyle}
-                        inputMode="decimal"
-                      />
-                    </div>
-
-                    <div style={fieldWrap}>
-                      スプール幅(mm)
-                      <input
-                        value={reelForm.spoolWidthMm}
-                        onChange={(e) =>
-                          setReelForm((prev) => ({
-                            ...prev,
-                            spoolWidthMm: e.target.value,
-                          }))
-                        }
-                        style={fieldStyle}
-                        inputMode="decimal"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <div style={fieldWrap}>
-                  1回転巻上げ長(cm)
-                  <input
-                    value={reelForm.retrieveCm}
-                    onChange={(e) =>
-                      setReelForm((prev) => ({
-                        ...prev,
-                        retrieveCm: e.target.value,
-                      }))
-                    }
-                    style={fieldStyle}
-                    inputMode="decimal"
-                  />
-                </div>
-
-                <div style={{ ...fieldWrap, ...fullFormRowStyle }}>
-                  メモ
-                  <textarea
-                    value={reelForm.memo}
-                    onChange={(e) =>
-                      setReelForm((prev) => ({ ...prev, memo: e.target.value }))
-                    }
-                    style={{
-                      ...fieldStyle,
-                      resize: "vertical",
-                      minHeight: isMobileLayout ? 88 : 54,
-                    }}
-                  />
-                </div>
-
-                <label
-                  style={{
-                    ...fullFormRowStyle,
-                    display: "flex",
-                    gap: 8,
-                    alignItems: "center",
-                    fontSize: 13,
-                    color: "rgba(255,255,255,0.82)",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={reelForm.active}
-                    onChange={(e) =>
-                      setReelForm((prev) => ({
-                        ...prev,
-                        active: e.target.checked,
-                      }))
-                    }
-                  />
-                  現役タックル
-                </label>
-
-                <div
-                  style={{
-                    ...fullFormRowStyle,
-                    display: "flex",
-                    gap: 8,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => void saveReel()}
-                    style={btnStyle}
-                    disabled={saving || syncing}
-                  >
-                    {saving
-                      ? "保存中…"
-                      : editingId != null
-                        ? "更新する"
-                        : "登録する"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingId(null);
-                      setReelForm(emptyReelForm());
-                      setError("");
-                    }}
-                    style={btnStyle}
-                  >
-                    クリア
-                  </button>
-                </div>
-              </div>
-            )}
+            <span style={{ fontSize: 11, color: "rgba(255,255,255,.52)" }}>
+              横にスクロールして閲覧
+            </span>
           </div>
-
-          <div
-            className="glass glass-strong"
-            style={{
-              ...sectionCard,
-              minHeight: 420,
-              height: isMobileLayout ? undefined : "100%",
-              minWidth: 0,
-              overflow: "hidden",
-              gridTemplateRows: isMobileLayout
-                ? undefined
-                : "auto minmax(0, 1fr)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 10,
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
+          {error && !open ? (
+            <div style={{ color: "#ffc0cc" }}>⚠ {error}</div>
+          ) : loading ? (
+            <div>読み込み中…</div>
+          ) : list.length === 0 ? (
+            <button
+              style={{ ...button, placeSelf: "center", padding: "14px 22px" }}
+              onClick={() => create(tab)}
             >
-              <div style={{ fontWeight: 900, fontSize: 16 }}>
-                {tab === "rod" ? "ロッド一覧" : "リール一覧"}
-              </div>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-                {syncing
-                  ? "同期中…"
-                  : tab === "rod"
-                    ? "現役順・種別順・短い順"
-                    : "現役順・種別順・軽い順"}
-              </div>
+              まだ登録がないよ ＋ 最初の1台を登録
+            </button>
+          ) : (
+            <div className="tm-rail">
+              {list.map((item) => (
+                <TackleCard
+                  key={item.uid}
+                  item={item}
+                  button={button}
+                  edit={() => edit(item)}
+                  toggle={() => void toggle(item)}
+                  disabled={saving || syncing}
+                />
+              ))}
             </div>
-
-            <div
-              style={{
-                minHeight: 0,
-                overflowY: isMobileLayout ? "visible" : "auto",
-                overflowX: "hidden",
-                paddingRight: isMobileLayout ? 0 : 4,
-                overscrollBehavior: "contain",
-              }}
-            >
-              {loading ? (
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-                  読み込み中…
-                </div>
-              ) : currentList.length === 0 ? (
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-                  まだ登録がないよ
-                </div>
-              ) : (
-                <div style={{ display: "grid", gap: 10 }}>
-                  {currentList.map((item) => {
-                    const selected = editingId === item.id;
-                    const title = buildCardTitle(item);
-                    const sub =
-                      item.kind === "rod"
-                        ? buildRodCardSub(item)
-                        : buildReelCardSub(item);
-
-                    return (
-                      <div
-                        key={item.id ?? item.uid}
-                        className="glass"
-                        style={{
-                          borderRadius: 14,
-                          padding: 12,
-                          display: "grid",
-                          gap: 10,
-                          border: selected
-                            ? "2px solid rgba(255,77,109,0.88)"
-                            : "1px solid rgba(255,255,255,0.10)",
-                          background: selected
-                            ? "rgba(255,77,109,0.10)"
-                            : "rgba(255,255,255,0.04)",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: 12,
-                            flexWrap: "wrap",
-                            alignItems: "baseline",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: 900,
-                              overflowWrap: "anywhere",
-                            }}
-                          >
-                            {title}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: item.active ? "#b8ffd0" : "#ffd3b8",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {item.active ? "現役" : "過去所持"}
-                          </div>
-                        </div>
-
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: "rgba(255,255,255,0.72)",
-                            overflowWrap: "anywhere",
-                          }}
-                        >
-                          {sub}
-                        </div>
-
-                        {item.memo ? (
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: "rgba(255,255,255,0.82)",
-                              overflowWrap: "anywhere",
-                            }}
-                          >
-                            📝 {item.memo}
-                          </div>
-                        ) : null}
-
-                        <div
-                          style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => loadIntoForm(item)}
-                            style={btnStyle}
-                            disabled={saving || syncing}
-                          >
-                            編集
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => void toggleActive(item)}
-                            style={btnStyle}
-                            disabled={saving || syncing}
-                          >
-                            {item.active ? "過去所持にする" : "現役に戻す"}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => void deleteItem(item)}
-                            style={dangerBtnStyle}
-                            disabled={saving || syncing}
-                          >
-                            削除
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
+          )}
         </div>
       </div>
+      {open ? (
+        <div
+          className="tm-overlay"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !saving) setOpen(false);
+          }}
+        >
+          <section className="tm-editor" role="dialog" aria-modal="true">
+            <div className="tm-head">
+              <div>
+                <small style={{ color: "rgba(155,230,255,.7)" }}>
+                  {editingId == null ? "NEW TACKLE" : "EDIT TACKLE"}
+                </small>
+                <div style={{ fontSize: 19, fontWeight: 900 }}>
+                  {tab === "rod" ? "🎣 ロッド" : "⚙️ リール"}
+                  {editingId == null ? "を登録" : "を編集"}
+                </div>
+              </div>
+              <button
+                style={button}
+                onClick={() => setOpen(false)}
+                disabled={saving}
+              >
+                ✕ 閉じる
+              </button>
+            </div>
+            {error ? (
+              <div style={{ color: "#ffc0cc", marginBottom: 12 }}>
+                ⚠ {error}
+              </div>
+            ) : null}
+            {tab === "rod" ? (
+              <RodEditor
+                value={rod}
+                set={setRod}
+                save={() => void saveRod()}
+                remove={editingId == null ? undefined : () => void remove()}
+                busy={saving || syncing}
+                button={button}
+              />
+            ) : (
+              <ReelEditor
+                value={reel}
+                set={setReel}
+                save={() => void saveReel()}
+                remove={editingId == null ? undefined : () => void remove()}
+                busy={saving || syncing}
+                button={button}
+              />
+            )}
+          </section>
+        </div>
+      ) : null}
     </PageShell>
+  );
+}
+
+function TackleCard({
+  item,
+  button,
+  edit,
+  toggle,
+  disabled,
+}: {
+  item: TackleItem;
+  button: CSSProperties;
+  edit: () => void;
+  toggle: () => void;
+  disabled: boolean;
+}) {
+  const r = item.rod,
+    q = item.reel;
+  return (
+    <article className="tm-card">
+      <div>
+        <div
+          style={{ display: "flex", justifyContent: "space-between", gap: 10 }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              letterSpacing: ".08em",
+              color: "rgba(160,232,255,.75)",
+            }}
+          >
+            {item.kind === "rod" ? "ROD" : "REEL"} ·{" "}
+            {(r?.rodType ?? q?.reelType) === "bait" ? "BAIT" : "SPINNING"}
+          </span>
+          <span
+            style={{ fontSize: 11, color: item.active ? "#aaffcb" : "#ffd0ae" }}
+          >
+            ● {item.active ? "現役" : "過去所持"}
+          </span>
+        </div>
+        <h2
+          style={{
+            margin: "10px 0 0",
+            fontSize: 19,
+            lineHeight: 1.35,
+            overflowWrap: "anywhere",
+          }}
+        >
+          {titleOf(item)}
+        </h2>
+      </div>
+      <div
+        style={{
+          height: 1,
+          background:
+            "linear-gradient(90deg,rgba(134,226,255,.35),transparent)",
+        }}
+      />
+      <div className="tm-specs">
+        {item.kind === "rod" ? (
+          <>
+            <Spec
+              label="長さ"
+              value={
+                r?.lengthFeet == null
+                  ? "—"
+                  : `${r.lengthFeet}'${r.lengthInches ?? 0}″`
+              }
+            />
+            <Spec label="自重" value={show(r?.weightG, "g")} />
+            <Spec
+              label="キャスト"
+              value={
+                r?.castWeightMinG == null && r?.castWeightMaxG == null
+                  ? "—"
+                  : `${r?.castWeightMinG ?? "—"}–${r?.castWeightMaxG ?? "—"}g`
+              }
+            />
+            <Spec
+              label="先径 / 元径"
+              value={`${show(r?.tipMm, "mm")} / ${show(r?.buttMm, "mm")}`}
+            />
+          </>
+        ) : (
+          <>
+            <Spec label="自重" value={show(q?.weightG, "g")} />
+            <Spec label="巻上長" value={show(q?.retrieveCm, "cm")} />
+            {q?.reelType === "bait" ? (
+              <>
+                <Spec
+                  label="スプール径"
+                  value={show(q.spoolDiameterMm, "mm")}
+                />
+                <Spec label="スプール幅" value={show(q.spoolWidthMm, "mm")} />
+              </>
+            ) : null}
+          </>
+        )}
+        {item.memo ? <Spec label="メモ" value={item.memo} wide /> : null}
+      </div>
+      <div className="tm-card-buttons">
+        <button style={button} onClick={edit}>
+          編集
+        </button>
+        <button style={button} onClick={toggle} disabled={disabled}>
+          {item.active ? "過去所持へ" : "現役に戻す"}
+        </button>
+      </div>
+    </article>
+  );
+}
+function Spec({
+  label,
+  value,
+  wide = false,
+}: {
+  label: string;
+  value: string;
+  wide?: boolean;
+}) {
+  return (
+    <div className={`tm-spec${wide ? " tm-wide" : ""}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+const input = (
+  value: string,
+  onChange: (v: string) => void,
+  extra: Record<string, unknown> = {},
+) => (
+  <input value={value} onChange={(e) => onChange(e.target.value)} {...extra} />
+);
+
+function RodEditor({
+  value: v,
+  set,
+  save,
+  remove,
+  busy,
+  button,
+}: {
+  value: RodForm;
+  set: (fn: (v: RodForm) => RodForm) => void;
+  save: () => void;
+  remove?: () => void;
+  busy: boolean;
+  button: CSSProperties;
+}) {
+  const f = (k: keyof RodForm) => (x: string) => set((p) => ({ ...p, [k]: x }));
+  return (
+    <div className="tm-form">
+      <Field label="メーカー">
+        {input(v.maker, f("maker"), { placeholder: "例：シマノ" })}
+      </Field>
+      <Field label="モデル名">
+        {input(v.model, f("model"), { placeholder: "例：ディアルーナ" })}
+      </Field>
+      <Field label="種別">
+        <select
+          value={v.rodType}
+          onChange={(e) =>
+            set((p) => ({ ...p, rodType: e.target.value as RodType }))
+          }
+        >
+          <option value="spinning">スピニング</option>
+          <option value="bait">ベイト</option>
+        </select>
+      </Field>
+      <Field label="番手">
+        {input(v.sizeLabel, f("sizeLabel"), { placeholder: "例：S106M" })}
+      </Field>
+      <Field label="長さ ft">
+        {input(v.lengthFeet, f("lengthFeet"), { inputMode: "numeric" })}
+      </Field>
+      <Field label="長さ in">
+        {input(v.lengthInches, f("lengthInches"), { inputMode: "numeric" })}
+      </Field>
+      <Field label="先径 (mm)">
+        {input(v.tipMm, f("tipMm"), { inputMode: "decimal" })}
+      </Field>
+      <Field label="元径 (mm)">
+        {input(v.buttMm, f("buttMm"), { inputMode: "decimal" })}
+      </Field>
+      <Field label="自重 (g)">
+        {input(v.weightG, f("weightG"), { inputMode: "decimal" })}
+      </Field>
+      <Field label="キャスト最小 (g)">
+        {input(v.castWeightMinG, f("castWeightMinG"), { inputMode: "decimal" })}
+      </Field>
+      <Field label="キャスト最大 (g)">
+        {input(v.castWeightMaxG, f("castWeightMaxG"), { inputMode: "decimal" })}
+      </Field>
+      <Field label="メモ" wide>
+        <textarea value={v.memo} onChange={(e) => f("memo")(e.target.value)} />
+      </Field>
+      <label className="tm-wide">
+        <input
+          type="checkbox"
+          checked={v.active}
+          onChange={(e) => set((p) => ({ ...p, active: e.target.checked }))}
+        />{" "}
+        現役タックル
+      </label>
+      <EditorActions button={button} busy={busy} save={save} remove={remove} />
+    </div>
+  );
+}
+function ReelEditor({
+  value: v,
+  set,
+  save,
+  remove,
+  busy,
+  button,
+}: {
+  value: ReelForm;
+  set: (fn: (v: ReelForm) => ReelForm) => void;
+  save: () => void;
+  remove?: () => void;
+  busy: boolean;
+  button: CSSProperties;
+}) {
+  const f = (k: keyof ReelForm) => (x: string) =>
+    set((p) => ({ ...p, [k]: x }));
+  return (
+    <div className="tm-form">
+      <Field label="メーカー">
+        {input(v.maker, f("maker"), { placeholder: "例：シマノ" })}
+      </Field>
+      <Field label="モデル名">
+        {input(v.model, f("model"), { placeholder: "例：ヴァンフォード" })}
+      </Field>
+      <Field label="種別">
+        <select
+          value={v.reelType}
+          onChange={(e) =>
+            set((p) => ({ ...p, reelType: e.target.value as ReelType }))
+          }
+        >
+          <option value="spinning">スピニング</option>
+          <option value="bait">ベイト</option>
+        </select>
+      </Field>
+      <Field label="番手">
+        {input(v.sizeLabel, f("sizeLabel"), { placeholder: "例：C3000HG" })}
+      </Field>
+      <Field label="自重 (g)">
+        {input(v.weightG, f("weightG"), { inputMode: "decimal" })}
+      </Field>
+      <Field label="1回転巻上げ長 (cm)">
+        {input(v.retrieveCm, f("retrieveCm"), { inputMode: "decimal" })}
+      </Field>
+      {v.reelType === "bait" ? (
+        <>
+          <Field label="スプール径 (mm)">
+            {input(v.spoolDiameterMm, f("spoolDiameterMm"), {
+              inputMode: "decimal",
+            })}
+          </Field>
+          <Field label="スプール幅 (mm)">
+            {input(v.spoolWidthMm, f("spoolWidthMm"), { inputMode: "decimal" })}
+          </Field>
+        </>
+      ) : null}
+      <Field label="メモ" wide>
+        <textarea value={v.memo} onChange={(e) => f("memo")(e.target.value)} />
+      </Field>
+      <label className="tm-wide">
+        <input
+          type="checkbox"
+          checked={v.active}
+          onChange={(e) => set((p) => ({ ...p, active: e.target.checked }))}
+        />{" "}
+        現役タックル
+      </label>
+      <EditorActions button={button} busy={busy} save={save} remove={remove} />
+    </div>
+  );
+}
+function EditorActions({
+  button,
+  busy,
+  save,
+  remove,
+}: {
+  button: CSSProperties;
+  busy: boolean;
+  save: () => void;
+  remove?: () => void;
+}) {
+  return (
+    <div
+      className="tm-wide tm-buttons"
+      style={{
+        justifyContent: remove ? "space-between" : "flex-end",
+        marginTop: 4,
+      }}
+    >
+      {remove ? (
+        <button
+          style={{
+            ...button,
+            color: "#ffd0d0",
+            borderColor: "rgba(255,120,120,.45)",
+          }}
+          onClick={remove}
+          disabled={busy}
+        >
+          削除
+        </button>
+      ) : null}
+      <button
+        style={{ ...button, background: "rgba(255,77,109,.28)" }}
+        onClick={save}
+        disabled={busy}
+      >
+        {busy ? "保存中…" : "保存する"}
+      </button>
+    </div>
   );
 }

@@ -58,6 +58,13 @@
       "thumb": "/assets/slides/tsuduri/hardcore/000.png",
       "characterId": "tsuduri",
       "tags": []
+    },
+    {
+      "id": "tsuduri/lingerie",
+      "title": "つづり：ランジェリー",
+      "thumb": "/assets/slides/tsuduri/lingerie/000.png",
+      "characterId": "tsuduri",
+      "tags": []
     }
   ]
 }

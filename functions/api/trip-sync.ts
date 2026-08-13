@@ -164,6 +164,16 @@ type TripSyncTackle = {
   reel?: TackleSyncReel | null;
 };
 
+type CharacterSettingsSyncPush = {
+  mode: "seed" | "update";
+  updatedAt: string;
+  characters: unknown[];
+  selectedId: string;
+  imageMap: Record<string, string>;
+};
+
+type CharacterSettingsSyncRemote = Omit<CharacterSettingsSyncPush, "mode">;
+
 type TripPushPayload = {
   deviceId: string;
   pushedAt: string;
@@ -172,6 +182,7 @@ type TripPushPayload = {
   photos: TripSyncPhoto[];
   tackles: TripSyncTackle[];
   tripTackles: TripSyncTripTackle[];
+  characterSettings?: CharacterSettingsSyncPush | null;
 };
 
 type TripPullResponse = {
@@ -181,6 +192,7 @@ type TripPullResponse = {
   photos: TripSyncPhoto[];
   tackles: TripSyncTackle[];
   tripTackles: TripSyncTripTackle[];
+  characterSettings?: CharacterSettingsSyncRemote | null;
 };
 
 type Env = {
@@ -201,7 +213,7 @@ function badRequest(message: string) {
   return json({ ok: false, error: message }, { status: 400 });
 }
 
-function serverError(_message: string) {
+function serverError() {
   return json(
     {
       ok: false,
@@ -335,6 +347,24 @@ function isTripSetup(value: unknown): value is TripSyncTripTackle {
     typeof v.updatedAt === "string" &&
     typeof v.order === "number" &&
     typeof v.lureType === "string"
+  );
+}
+
+function isCharacterSettings(
+  value: unknown,
+): value is CharacterSettingsSyncPush {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    (v.mode === "seed" || v.mode === "update") &&
+    typeof v.updatedAt === "string" &&
+    Number.isFinite(Date.parse(v.updatedAt)) &&
+    Array.isArray(v.characters) &&
+    v.characters.length > 0 &&
+    typeof v.selectedId === "string" &&
+    !!v.imageMap &&
+    typeof v.imageMap === "object" &&
+    !Array.isArray(v.imageMap)
   );
 }
 
@@ -478,7 +508,9 @@ async function upsertFish(db: D1Database, row: TripSyncFish) {
 }
 
 async function upsertTripTackle(db: D1Database, row: TripSyncTripTackle) {
-  await db.prepare(`
+  await db
+    .prepare(
+      `
     INSERT INTO sync_trip_tackles (
       uid, trip_uid, created_at, updated_at, deleted_at, sync_status,
       tackle_order, lure_type, rod_id, reel_id, rod_uid, reel_uid
@@ -491,13 +523,23 @@ async function upsertTripTackle(db: D1Database, row: TripSyncTripTackle) {
       reel_id=excluded.reel_id, rod_uid=excluded.rod_uid,
       reel_uid=excluded.reel_uid
     WHERE excluded.updated_at > sync_trip_tackles.updated_at
-  `).bind(
-    row.uid, row.tripUid, row.createdAt, row.updatedAt,
-    asIsoOrNull(row.deletedAt), row.syncStatus, row.order,
-    asStringOrNull(row.lureType), asNumberOrNull(row.rodId),
-    asNumberOrNull(row.reelId), asStringOrNull(row.rodUid),
-    asStringOrNull(row.reelUid),
-  ).run();
+  `,
+    )
+    .bind(
+      row.uid,
+      row.tripUid,
+      row.createdAt,
+      row.updatedAt,
+      asIsoOrNull(row.deletedAt),
+      row.syncStatus,
+      row.order,
+      asStringOrNull(row.lureType),
+      asNumberOrNull(row.rodId),
+      asNumberOrNull(row.reelId),
+      asStringOrNull(row.rodUid),
+      asStringOrNull(row.reelUid),
+    )
+    .run();
 }
 
 async function upsertPhoto(db: D1Database, row: TripSyncPhoto) {
@@ -585,6 +627,45 @@ async function upsertTackle(db: D1Database, row: TripSyncTackle) {
     .run();
 }
 
+async function upsertCharacterSettings(
+  db: D1Database,
+  row: CharacterSettingsSyncPush,
+) {
+  const payloadJson = JSON.stringify({
+    updatedAt: row.updatedAt,
+    characters: row.characters,
+    selectedId: row.selectedId,
+    imageMap: row.imageMap,
+  } satisfies CharacterSettingsSyncRemote);
+
+  if (row.mode === "seed") {
+    await db
+      .prepare(
+        `INSERT INTO sync_character_settings
+          (setting_key, updated_at, payload_json) VALUES ('characters', ?, ?)
+         ON CONFLICT(setting_key) DO UPDATE SET
+           updated_at = excluded.updated_at,
+           payload_json = excluded.payload_json
+         WHERE excluded.updated_at > sync_character_settings.updated_at`,
+      )
+      .bind(row.updatedAt, payloadJson)
+      .run();
+    return;
+  }
+
+  await db
+    .prepare(
+      `INSERT INTO sync_character_settings
+        (setting_key, updated_at, payload_json) VALUES ('characters', ?, ?)
+       ON CONFLICT(setting_key) DO UPDATE SET
+         updated_at = excluded.updated_at,
+         payload_json = excluded.payload_json
+       WHERE excluded.updated_at > sync_character_settings.updated_at`,
+    )
+    .bind(row.updatedAt, payloadJson)
+    .run();
+}
+
 async function handlePost(request: Request, env: Env) {
   let body: unknown;
   try {
@@ -610,6 +691,7 @@ async function handlePost(request: Request, env: Env) {
   const tripTackles = Array.isArray(payload.tripTackles)
     ? payload.tripTackles
     : [];
+  const characterSettings = payload.characterSettings ?? null;
 
   for (const row of payload.trips) {
     if (!isTripRecord(row)) {
@@ -633,6 +715,9 @@ async function handlePost(request: Request, env: Env) {
   }
   for (const row of tripTackles) {
     if (!isTripSetup(row)) return badRequest("invalid trip tackle row");
+  }
+  if (characterSettings && !isCharacterSettings(characterSettings)) {
+    return badRequest("invalid character settings");
   }
 
   try {
@@ -662,6 +747,9 @@ async function handlePost(request: Request, env: Env) {
     for (const row of tackles) {
       await upsertTackle(env.DB, row);
     }
+    if (characterSettings) {
+      await upsertCharacterSettings(env.DB, characterSettings);
+    }
 
     return json({
       ok: true,
@@ -680,7 +768,7 @@ async function handlePost(request: Request, env: Env) {
     });
   } catch (error) {
     console.error(error);
-    return serverError(error instanceof Error ? error.message : "post failed");
+    return serverError();
   }
 }
 
@@ -990,6 +1078,30 @@ async function fetchTacklesSince(db: D1Database, since: string | null) {
   });
 }
 
+async function fetchCharacterSettings(
+  db: D1Database,
+): Promise<CharacterSettingsSyncRemote | null> {
+  const row = await db
+    .prepare(
+      `SELECT payload_json as payloadJson
+       FROM sync_character_settings
+       WHERE setting_key = 'characters'
+       LIMIT 1`,
+    )
+    .first<{ payloadJson?: string | null }>();
+
+  if (!row?.payloadJson) return null;
+  try {
+    const parsed = JSON.parse(row.payloadJson) as CharacterSettingsSyncRemote;
+    if (!Array.isArray(parsed.characters) || !parsed.characters.length) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 async function handleGet(request: Request, env: Env) {
   try {
     const url = new URL(request.url);
@@ -1017,13 +1129,15 @@ async function handleGet(request: Request, env: Env) {
         .run();
     }
 
-    const [trips, fish, photos, tackles, tripTackles] = await Promise.all([
-      fetchTripsSince(env.DB, since),
-      fetchFishSince(env.DB, since),
-      fetchPhotosSince(env.DB, since),
-      fetchTacklesSince(env.DB, since),
-      fetchTripTacklesSince(env.DB, since),
-    ]);
+    const [trips, fish, photos, tackles, tripTackles, characterSettings] =
+      await Promise.all([
+        fetchTripsSince(env.DB, since),
+        fetchFishSince(env.DB, since),
+        fetchPhotosSince(env.DB, since),
+        fetchTacklesSince(env.DB, since),
+        fetchTripTacklesSince(env.DB, since),
+        fetchCharacterSettings(env.DB),
+      ]);
 
     const response: TripPullResponse = {
       serverTime,
@@ -1032,12 +1146,13 @@ async function handleGet(request: Request, env: Env) {
       photos,
       tackles,
       tripTackles,
+      characterSettings,
     };
 
     return json(response);
   } catch (error) {
     console.error(error);
-    return serverError(error instanceof Error ? error.message : "get failed");
+    return serverError();
   }
 }
 
