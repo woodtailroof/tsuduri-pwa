@@ -4,6 +4,7 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
+  type WheelEvent,
 } from "react";
 import PageShell from "../components/PageShell";
 import {
@@ -103,6 +104,25 @@ const titleOf = (v: TackleItem) =>
     .filter(Boolean)
     .join(" ");
 const show = (v?: number | null, s = "") => (v == null ? "—" : `${v}${s}`);
+
+function scrollRailWithWheel(event: WheelEvent<HTMLDivElement>) {
+  const rail = event.currentTarget;
+  const maxScrollLeft = rail.scrollWidth - rail.clientWidth;
+  if (maxScrollLeft <= 0) return;
+
+  const delta =
+    Math.abs(event.deltaX) > Math.abs(event.deltaY)
+      ? event.deltaX
+      : event.deltaY;
+  if (delta === 0) return;
+
+  const atStart = rail.scrollLeft <= 0;
+  const atEnd = rail.scrollLeft >= maxScrollLeft - 1;
+  if ((delta < 0 && atStart) || (delta > 0 && atEnd)) return;
+
+  event.preventDefault();
+  rail.scrollLeft = Math.max(0, Math.min(maxScrollLeft, rail.scrollLeft + delta));
+}
 
 function sorted(items: TackleItem[], kind: TabKind) {
   return items
@@ -498,7 +518,7 @@ export default function TackleManager({ back }: Props) {
               </span>
             </div>
             <span style={{ fontSize: 11, color: "rgba(255,255,255,.52)" }}>
-              横にスクロールして閲覧
+              マウスホイールでも横にスクロール
             </span>
           </div>
           {error && !open ? (
@@ -513,7 +533,7 @@ export default function TackleManager({ back }: Props) {
               まだ登録がないよ ＋ 最初の1台を登録
             </button>
           ) : (
-            <div className="tm-rail">
+            <div className="tm-rail" onWheel={scrollRailWithWheel}>
               {list.map((item) => (
                 <TackleCard
                   key={item.uid}
