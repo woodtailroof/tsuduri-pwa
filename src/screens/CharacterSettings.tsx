@@ -13,7 +13,7 @@ import {
   SELECTED_CHARACTER_ID_KEY,
   markCharacterSettingsDirty,
 } from "../lib/characterSync";
-import { syncTrips } from "../lib/tripSync";
+import { pullTripSync, syncTrips } from "../lib/tripSync";
 
 export {
   CHARACTERS_STORAGE_KEY,
@@ -450,6 +450,29 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     }
   }
 
+  async function pullCharactersNow() {
+    setSyncing(true);
+    setSyncMessage("クラウドから取得中…");
+
+    try {
+      // キャラ設定は更新日時に関係なくAPIから常に返される。
+      // pushを行わず取得だけにすることで、この端末の古い設定で上書きしない。
+      const result = await pullTripSync();
+      if (!result.ok) {
+        const message = result.errors?.join(" / ") || "取得に失敗したよ";
+        setSyncMessage(`同期失敗: ${message}`);
+        return;
+      }
+
+      setSyncMessage("クラウドのキャラ設定を取得したよ");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setSyncMessage(`同期失敗: ${message}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   async function saveOnly() {
     normalizeAndSave(false);
     const ok = await syncCharactersNow();
@@ -762,6 +785,17 @@ export default function CharacterSettings({ back }: { back: () => void }) {
                 className="full"
               >
                 🛟 直近バックアップから復元
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void pullCharactersNow()}
+                style={{ ...btn, opacity: syncing ? 0.6 : 1 }}
+                className="full"
+                disabled={syncing}
+                title="この端末の内容を送らず、クラウドのキャラ設定だけを取得"
+              >
+                {syncing ? "☁ 同期中…" : "☁ クラウドから再取得"}
               </button>
 
               <div className="full" style={smallHint}>

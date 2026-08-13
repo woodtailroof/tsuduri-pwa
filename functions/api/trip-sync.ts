@@ -641,12 +641,8 @@ async function upsertCharacterSettings(
   if (row.mode === "seed") {
     await db
       .prepare(
-        `INSERT INTO sync_character_settings
-          (setting_key, updated_at, payload_json) VALUES ('characters', ?, ?)
-         ON CONFLICT(setting_key) DO UPDATE SET
-           updated_at = excluded.updated_at,
-           payload_json = excluded.payload_json
-         WHERE excluded.updated_at > sync_character_settings.updated_at`,
+        `INSERT OR IGNORE INTO sync_character_settings
+          (setting_key, updated_at, payload_json) VALUES ('characters', ?, ?)`,
       )
       .bind(row.updatedAt, payloadJson)
       .run();
