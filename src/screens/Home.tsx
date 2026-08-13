@@ -90,16 +90,16 @@ type TonePalette = {
 function getTonePalette(tone: TimeTone): TonePalette {
   void tone;
   return {
-    shellTop: "rgba(10,35,62,0.80)",
-    shellBottom: "rgba(8,65,78,0.72)",
-    border: "rgba(185,235,255,0.36)",
-    textSub: "rgba(225,242,250,0.80)",
-    chevron: "rgba(230,247,255,0.88)",
-    iconTop: "rgba(190,235,255,0.25)",
-    iconBottom: "rgba(60,145,180,0.18)",
-    iconBorder: "rgba(210,245,255,0.38)",
-    glow: "rgba(100,220,235,0.16)",
-    sheen: "rgba(255,255,255,0.18)",
+    shellTop: "rgba(235,250,255,0.25)",
+    shellBottom: "rgba(151,224,244,0.15)",
+    border: "rgba(225,249,255,0.52)",
+    textSub: "rgba(239,250,255,0.88)",
+    chevron: "rgba(244,253,255,0.96)",
+    iconTop: "rgba(244,252,255,0.38)",
+    iconBottom: "rgba(151,222,244,0.18)",
+    iconBorder: "rgba(233,251,255,0.56)",
+    glow: "rgba(137,229,247,0.22)",
+    sheen: "rgba(255,255,255,0.34)",
   };
 }
 
@@ -203,9 +203,9 @@ function SmartButton({
     WebkitBackdropFilter: "blur(16px) saturate(125%)",
     border: `1px solid ${palette.border}`,
     boxShadow: `
-      0 10px 26px rgba(0,20,38,0.24),
-      0 0 0 1px rgba(255,255,255,0.04) inset,
-      0 1px 0 rgba(255,255,255,0.18) inset
+      0 10px 26px rgba(43,142,177,0.13),
+      0 0 0 1px rgba(255,255,255,0.10) inset,
+      0 1px 0 rgba(255,255,255,0.34) inset
     `,
   };
 
@@ -1027,6 +1027,7 @@ export default function Home({ go, goSecret }: Props) {
                       <SmartButton
                         src={btnRecord}
                         alt="記録する"
+                        forceText
                         onClick={() => go("record")}
                         style={{ width: "var(--btnw)" }}
                         fallbackLabel={isMobile ? "記録" : "記録する"}
@@ -1038,6 +1039,7 @@ export default function Home({ go, goSecret }: Props) {
                       <SmartButton
                         src={btnHistory}
                         alt="履歴をみる"
+                        forceText
                         onClick={() => go("recordHistory")}
                         style={{ width: "var(--btnw)" }}
                         fallbackLabel={isMobile ? "履歴" : "履歴をみる"}
@@ -1049,6 +1051,7 @@ export default function Home({ go, goSecret }: Props) {
                       <SmartButton
                         src={btnAnalysis}
                         alt="釣行分析"
+                        forceText
                         onClick={() => go("recordAnalysis")}
                         style={{ width: "var(--btnw)" }}
                         fallbackLabel={isMobile ? "分析" : "釣行分析"}
@@ -1072,6 +1075,7 @@ export default function Home({ go, goSecret }: Props) {
                       <SmartButton
                         src={btnWeather}
                         alt="天気・潮をみる"
+                        forceText
                         onClick={() => go("weather")}
                         style={{ width: "var(--btnw)" }}
                         fallbackLabel={isMobile ? "天気" : "天気・潮をみる"}
@@ -1083,6 +1087,7 @@ export default function Home({ go, goSecret }: Props) {
                       <SmartButton
                         src={btnChat}
                         alt="話す"
+                        forceText
                         onClick={() => go("chat")}
                         style={{ width: "var(--btnw)" }}
                         fallbackLabel="話す"
@@ -1096,6 +1101,7 @@ export default function Home({ go, goSecret }: Props) {
                       <SmartButton
                         src={btnSettings}
                         alt="設定"
+                        forceText
                         onClick={() => go("settings")}
                         style={{ width: "var(--btnw)" }}
                         fallbackLabel="設定"

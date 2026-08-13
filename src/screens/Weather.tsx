@@ -1440,7 +1440,17 @@ export default function Weather({ back, isActive = true }: Props) {
             </div>
           </div>
 
-          <div className="glass glass-strong" style={{ ...tileStyle, padding: 9, minHeight: 0 }}>
+          <div
+            className="glass glass-strong"
+            style={{
+              ...tileStyle,
+              padding: 9,
+              minHeight: 0,
+              display: "grid",
+              gridTemplateRows: "minmax(0, 1fr) auto",
+              gap: 7,
+            }}
+          >
             <TideGraph
               series={tideState.status === "ok" ? tideState.series : []}
               baseDate={targetDate}
@@ -1450,8 +1460,8 @@ export default function Weather({ back, isActive = true }: Props) {
             />
             <div
               style={{
-                marginTop: 5,
-                padding: "7px 9px",
+                minHeight: isDesktop ? 132 : 222,
+                padding: "8px 9px 9px",
                 borderRadius: 14,
                 background:
                   "linear-gradient(135deg, rgba(255,105,174,0.12), rgba(127,116,255,0.10) 48%, rgba(83,211,255,0.10))",
@@ -1483,11 +1493,12 @@ export default function Weather({ back, isActive = true }: Props) {
               <div
                 style={{
                   display: "grid",
+                  width: "100%",
                   gridTemplateColumns: isDesktop
-                    ? "repeat(8, minmax(66px, 1fr))"
-                    : "repeat(8, minmax(82px, 1fr))",
+                    ? "repeat(8, minmax(0, 1fr))"
+                    : "repeat(4, minmax(0, 1fr))",
                   gap: 5,
-                  overflowX: "auto",
+                  overflow: "hidden",
                   paddingBottom: 2,
                 }}
               >
@@ -1503,12 +1514,19 @@ export default function Weather({ back, isActive = true }: Props) {
                       onClick={() => setSelectedHour(hour)}
                       title="この時間を釣行判定に使う"
                       style={{
+                        width: "100%",
                         minWidth: 0,
-                        padding: "5px 3px",
+                        minHeight: isDesktop ? 100 : 96,
+                        padding: "7px 2px",
                         borderRadius: 10,
                         textAlign: "center",
                         color: "#fff",
                         cursor: "pointer",
+                        display: "grid",
+                        gridTemplateRows: "auto 22px auto auto auto",
+                        justifyItems: "center",
+                        alignContent: "center",
+                        gap: 1,
                         background: selected
                           ? "rgba(255,84,139,0.20)"
                           : "rgba(12,18,38,0.28)",
@@ -1519,25 +1537,25 @@ export default function Weather({ back, isActive = true }: Props) {
                     >
                       <div
                         style={{
-                          fontSize: 11,
+                          fontSize: "clamp(9px, .72vw, 11px)",
                           fontWeight: 950,
                           color: selected ? "#ffd4e6" : "#ffd4ed",
                         }}
                       >
                         {pad2(hour)}時
                       </div>
-                      <div style={{ fontSize: 17, lineHeight: 1.2 }}>
+                      <div style={{ fontSize: "clamp(15px, 1.15vw, 19px)", lineHeight: 1.2 }}>
                         {weather ? wmoToIcon(weather.weatherCode) : "・"}
                       </div>
-                      <div style={{ fontSize: 10, fontWeight: 850 }}>
+                      <div style={{ fontSize: "clamp(8px, .68vw, 10px)", fontWeight: 850 }}>
                         {weather ? `${weather.temp}℃` : "-℃"}
                       </div>
-                      <div style={{ fontSize: 9, color: "#82ddff", whiteSpace: "nowrap" }}>
+                      <div style={{ fontSize: "clamp(7px, .58vw, 9px)", color: "#82ddff", whiteSpace: "nowrap" }}>
                         ☔ {weather ? `${weather.precipitation.toFixed(1)}mm` : "-"}
                       </div>
                       <div
                         style={{
-                          fontSize: 9,
+                          fontSize: "clamp(7px, .58vw, 9px)",
                           color: "rgba(255,255,255,0.68)",
                           whiteSpace: "nowrap",
                         }}
@@ -1620,7 +1638,7 @@ export default function Weather({ back, isActive = true }: Props) {
               display: "grid",
               gridTemplateColumns: isWideLayout
                 ? "repeat(2, minmax(0, 1fr))"
-                : "repeat(8, minmax(82px, 1fr))",
+                : "repeat(8, minmax(88px, 1fr))",
               alignContent: "start",
               gap: 5,
               paddingRight: isWideLayout ? 2 : 0,
@@ -1639,12 +1657,18 @@ export default function Weather({ back, isActive = true }: Props) {
                   onClick={() => setSelectedHour(hour)}
                   title="この時間を釣行判定に使う"
                   style={{
-                    minWidth: 0,
-                    padding: "6px 3px",
+                    minWidth: isWideLayout ? 0 : 88,
+                    minHeight: 98,
+                    padding: "7px 5px",
                     borderRadius: 10,
                     textAlign: "center",
                     color: "#fff",
                     cursor: "pointer",
+                    display: "grid",
+                    gridTemplateRows: "auto 22px auto auto auto",
+                    justifyItems: "center",
+                    alignContent: "center",
+                    gap: 1,
                     background: selected
                       ? "rgba(255,84,139,0.20)"
                       : "rgba(12,18,38,0.28)",
