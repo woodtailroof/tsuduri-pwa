@@ -120,6 +120,7 @@ type SmartBtnProps = {
   fallbackIcon?: string;
   accent: string;
   disabled?: boolean;
+  forceText?: boolean;
 };
 
 function SmartButton({
@@ -132,6 +133,7 @@ function SmartButton({
   fallbackIcon,
   accent,
   disabled,
+  forceText = false,
 }: SmartBtnProps) {
   const [failed, setFailed] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -434,7 +436,7 @@ function SmartButton({
       style={{ ...btnBase, ...style }}
       className="home-smart-btn"
     >
-      {failed ? (
+      {failed || forceText ? (
         <div
           className={`glass home-fallback-btn home-fallback-btn--${tone}`}
           style={fallbackStyle}
@@ -1057,11 +1059,12 @@ export default function Home({ go, goSecret }: Props) {
 
                       <SmartButton
                         src={btnTackle}
-                        alt="タックル管理"
+                        alt="タックル一覧"
+                        forceText
                         onClick={() => go("tackleManager")}
                         style={{ width: "var(--btnw)" }}
-                        fallbackLabel={isMobile ? "タックル" : "タックル管理"}
-                        fallbackSub="ロッド/リールを管理"
+                        fallbackLabel="タックル一覧"
+                        fallbackSub="愛用タックルを眺める"
                         fallbackIcon="🎣"
                         accent="rgba(92,225,191,0.72)"
                       />
