@@ -20,6 +20,11 @@ import type {
   TripSyncTackle,
   TripSyncTripTackle,
 } from "./tripSyncTypes";
+import {
+  applyRemoteCharacterSettings,
+  collectPendingCharacterSettings,
+  markCharacterSettingsPushComplete,
+} from "./characterSync";
 
 const DEVICE_ID_STORAGE_KEY = "tsuduri_sync_device_id_v1";
 const LAST_SYNC_AT_STORAGE_KEY = "tsuduri_last_sync_at_v1";
@@ -85,13 +90,14 @@ export function getSyncConfig(endpoint = DEFAULT_SYNC_ENDPOINT): SyncConfig {
 }
 
 export async function collectPendingTripBundle(): Promise<PendingSyncBundle> {
-  const [tripsRaw, fishRaw, photosRaw, tacklesRaw, tripTacklesRaw] = await Promise.all([
-    db.trips.where("syncStatus").anyOf("pending", "error").toArray(),
-    db.tripFish.where("syncStatus").anyOf("pending", "error").toArray(),
-    db.tripPhotos.where("syncStatus").anyOf("pending", "error").toArray(),
-    db.tackleItems.where("syncStatus").anyOf("pending", "error").toArray(),
-    db.tripTackles.where("syncStatus").anyOf("pending", "error").toArray(),
-  ]);
+  const [tripsRaw, fishRaw, photosRaw, tacklesRaw, tripTacklesRaw] =
+    await Promise.all([
+      db.trips.where("syncStatus").anyOf("pending", "error").toArray(),
+      db.tripFish.where("syncStatus").anyOf("pending", "error").toArray(),
+      db.tripPhotos.where("syncStatus").anyOf("pending", "error").toArray(),
+      db.tackleItems.where("syncStatus").anyOf("pending", "error").toArray(),
+      db.tripTackles.where("syncStatus").anyOf("pending", "error").toArray(),
+    ]);
 
   const trips = tripsRaw.filter((x) => !!x.uid);
   const fish = fishRaw.filter((x) => !!x.uid && !!x.tripUid);
@@ -227,6 +233,7 @@ function serializeTackle(row: TackleItem): TripSyncTackle {
 
 export async function buildTripPushPayload(): Promise<TripPushPayload> {
   const bundle = await collectPendingTripBundle();
+  const characterSettings = collectPendingCharacterSettings();
 
   return {
     deviceId: getOrCreateSyncDeviceId(),
@@ -236,6 +243,7 @@ export async function buildTripPushPayload(): Promise<TripPushPayload> {
     photos: bundle.photos.map(serializePhoto),
     tackles: bundle.tackles.map(serializeTackle),
     tripTackles: bundle.tripTackles.map(serializeTripTackle),
+    characterSettings,
   };
 }
 
@@ -245,8 +253,9 @@ export async function hasPendingSyncData(): Promise<boolean> {
     bundle.trips.length > 0 ||
     bundle.fish.length > 0 ||
     bundle.photos.length > 0 ||
-    bundle.tackles.length > 0
-    || bundle.tripTackles.length > 0
+    bundle.tackles.length > 0 ||
+    bundle.tripTackles.length > 0 ||
+    collectPendingCharacterSettings() != null
   );
 }
 
@@ -470,7 +479,10 @@ async function upsertPulledTripTackles(
       if (!remote.uid || !remote.tripUid) continue;
       const parent = await db.trips.where("uid").equals(remote.tripUid).first();
       if (!parent?.id) continue;
-      const local = await db.tripTackles.where("uid").equals(remote.uid).first();
+      const local = await db.tripTackles
+        .where("uid")
+        .equals(remote.uid)
+        .first();
       const normalized: TripTackle = {
         ...(remote as TripTackle),
         tripId: parent.id,
@@ -480,7 +492,8 @@ async function upsertPulledTripTackles(
         await db.tripTackles.add(normalized);
         changed += 1;
       } else if (
-        Date.parse(remote.updatedAt) > Date.parse(local.updatedAt || local.createdAt)
+        Date.parse(remote.updatedAt) >
+        Date.parse(local.updatedAt || local.createdAt)
       ) {
         await db.tripTackles.update(local.id!, {
           ...normalized,
@@ -638,6 +651,7 @@ export async function applyPullResponse(
   const pulledFish = await upsertPulledFish(response.fish ?? []);
   const pulledPhotos = await upsertPulledPhotos(response.photos ?? []);
   const pulledTackles = await upsertPulledTackles(response.tackles ?? []);
+  applyRemoteCharacterSettings(response.characterSettings);
 
   return {
     pulledTrips,
@@ -651,13 +665,15 @@ export async function pushTripSync(
   endpoint = DEFAULT_SYNC_ENDPOINT,
 ): Promise<SyncResult> {
   const bundle = await collectPendingTripBundle();
+  const characterSettings = collectPendingCharacterSettings();
 
   if (
     bundle.trips.length === 0 &&
     bundle.fish.length === 0 &&
     bundle.photos.length === 0 &&
-    bundle.tackles.length === 0
-    && bundle.tripTackles.length === 0
+    bundle.tackles.length === 0 &&
+    bundle.tripTackles.length === 0 &&
+    characterSettings == null
   ) {
     return {
       ok: true,
@@ -834,6 +850,7 @@ export async function syncTrips(
 ): Promise<SyncResult> {
   const beforeSyncAt = getLastSyncAt();
   const pendingBundle = await collectPendingTripBundle();
+  const pendingCharacterSettings = collectPendingCharacterSettings();
 
   const pushResult = await pushTripSync(endpoint);
   if (!pushResult.ok) {
@@ -844,10 +861,13 @@ export async function syncTrips(
     pendingBundle.trips.length > 0 ||
     pendingBundle.fish.length > 0 ||
     pendingBundle.photos.length > 0 ||
-    pendingBundle.tackles.length > 0
-    || pendingBundle.tripTackles.length > 0
+    pendingBundle.tackles.length > 0 ||
+    pendingBundle.tripTackles.length > 0
   ) {
     await markBundleAsSynced(pendingBundle, nowIso());
+  }
+  if (pendingCharacterSettings) {
+    markCharacterSettingsPushComplete(pendingCharacterSettings.updatedAt);
   }
 
   const pullResult = await pullTripSync(endpoint, beforeSyncAt);

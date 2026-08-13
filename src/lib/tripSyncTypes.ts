@@ -148,6 +148,19 @@ export type TripSyncTackle = {
   reel?: TackleSyncReel | null;
 };
 
+export type CharacterSettingsSyncPush = {
+  mode: "seed" | "update";
+  updatedAt: string;
+  characters: unknown[];
+  selectedId: string;
+  imageMap: Record<string, string>;
+};
+
+export type CharacterSettingsSyncRemote = Omit<
+  CharacterSettingsSyncPush,
+  "mode"
+>;
+
 export type TripPushPayload = {
   deviceId: string;
   pushedAt: string;
@@ -157,6 +170,7 @@ export type TripPushPayload = {
   tripTackles: TripSyncTripTackle[];
   photos: TripSyncPhoto[];
   tackles: TripSyncTackle[];
+  characterSettings?: CharacterSettingsSyncPush | null;
 };
 
 export type TripPullResponse = {
@@ -169,6 +183,7 @@ export type TripPullResponse = {
   tripTackles: TripSyncTripTackle[];
   photos: TripSyncPhoto[];
   tackles: TripSyncTackle[];
+  characterSettings?: CharacterSettingsSyncRemote | null;
 };
 
 export type SyncApiResponse = {
