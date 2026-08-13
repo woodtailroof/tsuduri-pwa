@@ -63,10 +63,10 @@ body {
   --ui-radius-panel: 18px;
   --ui-radius-control: 12px;
   --ui-control-height: 40px;
-  --ui-control-bg: rgba(5, 29, 43, 0.62);
-  --ui-control-bg-hover: rgba(13, 55, 73, 0.76);
-  --ui-control-border: rgba(184, 232, 247, 0.22);
-  --ui-control-border-hover: rgba(191, 239, 255, 0.42);
+  --ui-control-bg: rgba(213, 244, 255, 0.14);
+  --ui-control-bg-hover: rgba(229, 249, 255, 0.24);
+  --ui-control-border: rgba(214, 246, 255, 0.34);
+  --ui-control-border-hover: rgba(235, 252, 255, 0.58);
   --ui-focus: rgba(255, 91, 132, 0.9);
 }
 
@@ -262,7 +262,7 @@ button {
   color: rgba(255, 255, 255, 0.9);
   background: linear-gradient(
     180deg,
-    rgba(30, 73, 91, 0.68),
+    rgba(235, 250, 255, 0.22),
     var(--ui-control-bg)
   );
   backdrop-filter: blur(var(--glass-blur-px, 0px));
@@ -279,8 +279,9 @@ button {
   cursor: pointer;
   user-select: none;
   box-shadow:
-    0 5px 14px rgba(0, 8, 18, 0.14),
-    inset 0 1px rgba(255, 255, 255, 0.07);
+    0 5px 16px rgba(33, 118, 151, 0.1),
+    inset 0 1px rgba(255, 255, 255, 0.22),
+    inset 0 -1px rgba(116, 213, 239, 0.08);
   transition:
     background-color 140ms ease,
     border-color 140ms ease,
@@ -293,12 +294,13 @@ button:hover:not(:disabled) {
   border-color: var(--ui-control-border-hover);
   background: linear-gradient(
     180deg,
-    rgba(42, 94, 113, 0.8),
+    rgba(246, 253, 255, 0.31),
     var(--ui-control-bg-hover)
   );
   box-shadow:
-    0 7px 18px rgba(0, 8, 18, 0.2),
-    inset 0 1px rgba(255, 255, 255, 0.1);
+    0 8px 20px rgba(49, 164, 202, 0.15),
+    0 0 0 1px rgba(199, 243, 255, 0.08),
+    inset 0 1px rgba(255, 255, 255, 0.3);
 }
 
 button:active:not(:disabled) {
@@ -362,7 +364,11 @@ select:hover:not(:disabled) {
   min-height: 38px;
   padding: 8px 14px;
   border-radius: 999px;
-  background: rgba(5, 22, 34, 0.58);
+  background: linear-gradient(
+    180deg,
+    rgba(239, 251, 255, 0.2),
+    rgba(155, 224, 244, 0.12)
+  );
   white-space: nowrap;
 }
 

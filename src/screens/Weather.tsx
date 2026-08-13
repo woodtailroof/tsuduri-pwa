@@ -840,6 +840,19 @@ export default function Weather({ back, isActive = true }: Props) {
     [isMobile],
   );
 
+  const handleExternalLink = useCallback(
+    (
+      event: React.MouseEvent<HTMLAnchorElement>,
+      url: string,
+      windowName: string,
+    ) => {
+      if (isMobile) return;
+      event.preventDefault();
+      openExternalInfo(url, windowName);
+    },
+    [isMobile, openExternalInfo],
+  );
+
   return (
     <PageShell
       title={
@@ -1150,10 +1163,16 @@ export default function Weather({ back, isActive = true }: Props) {
               overflowX: isMobile ? "auto" : "visible",
             }}
           >
-            <button
-              type="button"
-              onClick={() =>
-                openExternalInfo(SHIZUOKA_COAST_CAMERA_URL, "tsuduriCoastCamera")
+            <a
+              href={SHIZUOKA_COAST_CAMERA_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(event) =>
+                handleExternalLink(
+                  event,
+                  SHIZUOKA_COAST_CAMERA_URL,
+                  "tsuduriCoastCamera",
+                )
               }
               style={{
                 ...tabStyle(false),
@@ -1161,14 +1180,24 @@ export default function Weather({ back, isActive = true }: Props) {
                 borderRadius: 12,
                 background:
                   "linear-gradient(135deg, rgba(43,155,213,0.28), rgba(20,52,91,0.52))",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                textDecoration: "none",
               }}
             >
               📹 静岡海岸ライブカメラ ↗
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                openExternalInfo(SHIMIZU_NOWPHAS_URL, "tsuduriShimizuNowphas")
+            </a>
+            <a
+              href={SHIMIZU_NOWPHAS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(event) =>
+                handleExternalLink(
+                  event,
+                  SHIMIZU_NOWPHAS_URL,
+                  "tsuduriShimizuNowphas",
+                )
               }
               style={{
                 ...tabStyle(false),
@@ -1176,10 +1205,14 @@ export default function Weather({ back, isActive = true }: Props) {
                 borderRadius: 12,
                 background:
                   "linear-gradient(135deg, rgba(95,105,220,0.28), rgba(22,51,104,0.52))",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                textDecoration: "none",
               }}
             >
               🌊 清水港NOWPHAS ↗
-            </button>
+            </a>
           </div>
         </div>
 

@@ -465,7 +465,7 @@ export default function TackleManager({ back }: Props) {
       scrollY="hidden"
     >
       <style>{`
-      .tm-page{height:100%;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);gap:10px}.tm-toolbar{padding:10px 12px;border-radius:18px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.tm-buttons,.tm-card-buttons{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.tm-wrap{min-height:0;padding:12px;border-radius:18px;display:grid;grid-template-rows:auto minmax(0,1fr);gap:9px;overflow:hidden}.tm-rail{min-height:0;display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;padding:1px 3px 9px 1px;overscroll-behavior-x:contain;scrollbar-color:rgba(126,230,255,.55) rgba(255,255,255,.08);scrollbar-width:thin}.tm-card{flex:0 0 clamp(205px,17vw,235px);border-radius:18px;padding:11px;min-height:0;display:grid;grid-template-rows:auto auto 1fr auto;gap:8px;background:linear-gradient(155deg,rgba(15,61,79,.55),rgba(4,22,38,.44));border:1px solid rgba(200,242,255,.18);box-shadow:0 10px 24px rgba(0,10,24,.14),inset 0 1px rgba(255,255,255,.08)}.tm-card h2{font-size:14px!important;line-height:1.3!important;margin-top:6px!important}.tm-card-buttons{flex-wrap:nowrap}.tm-card-buttons button{padding:8px 10px!important;font-size:11px}.tm-specs{display:grid;grid-template-columns:1fr;gap:5px;align-content:start}.tm-spec{padding:6px 8px;border-radius:9px;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.08)}.tm-spec span{display:block;font-size:8px;color:rgba(255,255,255,.48);margin-bottom:2px}.tm-spec strong{display:block;font-size:10.5px;line-height:1.3;color:rgba(255,255,255,.9);overflow-wrap:anywhere}.tm-overlay{position:fixed;inset:0;z-index:1000;padding:clamp(10px,3vw,28px);display:grid;place-items:center;background:rgba(0,9,18,.62);backdrop-filter:blur(10px)}.tm-editor{width:min(900px,100%);max-height:min(88dvh,900px);overflow:auto;border-radius:22px;padding:clamp(14px,2.5vw,22px);background:linear-gradient(150deg,rgba(9,47,65,.97),rgba(5,23,39,.96));border:1px solid rgba(205,244,255,.25);box-shadow:0 24px 80px rgba(0,0,0,.55)}.tm-head{position:sticky;top:-1px;z-index:2;display:flex;justify-content:space-between;align-items:center;gap:12px;padding-bottom:12px;background:linear-gradient(180deg,rgba(8,42,59,.98) 72%,transparent)}.tm-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.tm-field{display:grid;gap:6px;font-size:12px;color:rgba(255,255,255,.72)}.tm-field input,.tm-field select,.tm-field textarea{width:100%;box-sizing:border-box;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.25);color:#fff;padding:10px 11px;outline:none}.tm-field textarea{min-height:76px;resize:vertical}.tm-wide{grid-column:1/-1}@media(max-width:720px){.tm-toolbar{align-items:stretch}.tm-toolbar>.tm-buttons:last-child{width:100%;justify-content:space-between}.tm-wrap{padding:10px 8px 7px}.tm-card{flex-basis:min(64vw,230px);padding:10px}.tm-form{grid-template-columns:1fr}.tm-wide{grid-column:auto}.tm-overlay{padding:8px;place-items:end center}.tm-editor{max-height:92dvh;border-radius:22px 22px 12px 12px}}
+      .tm-page{height:100%;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);gap:10px}.tm-toolbar{padding:10px 12px;border-radius:18px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.tm-buttons,.tm-card-buttons{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.tm-wrap{min-height:0;padding:12px;border-radius:18px;display:grid;grid-template-rows:auto minmax(0,1fr);gap:9px;overflow:hidden}.tm-rail{min-height:0;display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;padding:1px 3px 9px 1px;overscroll-behavior-x:contain;scrollbar-color:rgba(126,230,255,.55) rgba(255,255,255,.08);scrollbar-width:thin}.tm-card{--tm-accent:126,226,255;flex:0 0 clamp(205px,17vw,235px);border-radius:18px;padding:11px;min-height:0;display:grid;grid-template-rows:auto auto 1fr auto;gap:8px;background:linear-gradient(155deg,rgba(var(--tm-accent),.22),rgba(234,250,255,.08) 42%,rgba(8,31,44,.32));border:1px solid rgba(var(--tm-accent),.42);box-shadow:0 10px 26px rgba(var(--tm-accent),.08),inset 0 1px rgba(255,255,255,.2)}.tm-card--spinning{--tm-accent:100,224,244}.tm-card--bait{--tm-accent:229,151,255}.tm-card h2{font-size:14px!important;line-height:1.3!important;margin-top:6px!important}.tm-type-label{color:rgba(var(--tm-accent),.96)!important;text-shadow:0 0 12px rgba(var(--tm-accent),.4)}.tm-card-divider{height:1px;background:linear-gradient(90deg,rgba(var(--tm-accent),.65),transparent)}.tm-card-buttons{flex-wrap:nowrap}.tm-card-buttons button{padding:8px 10px!important;font-size:11px;background:linear-gradient(180deg,rgba(255,255,255,.19),rgba(var(--tm-accent),.11))!important;border-color:rgba(var(--tm-accent),.32)!important}.tm-specs{display:grid;grid-template-columns:1fr;gap:5px;align-content:start}.tm-spec{padding:6px 8px;border-radius:9px;background:rgba(238,250,255,.08);border:1px solid rgba(var(--tm-accent),.15)}.tm-spec span{display:block;font-size:8px;color:rgba(255,255,255,.52);margin-bottom:2px}.tm-spec strong{display:block;font-size:10.5px;line-height:1.3;color:rgba(255,255,255,.92);overflow-wrap:anywhere}.tm-overlay{position:fixed;inset:0;z-index:1000;padding:clamp(10px,3vw,28px);display:grid;place-items:center;background:rgba(0,9,18,.62);backdrop-filter:blur(10px)}.tm-editor{width:min(900px,100%);max-height:min(88dvh,900px);overflow:auto;border-radius:22px;padding:clamp(14px,2.5vw,22px);background:linear-gradient(150deg,rgba(9,47,65,.97),rgba(5,23,39,.96));border:1px solid rgba(205,244,255,.25);box-shadow:0 24px 80px rgba(0,0,0,.55)}.tm-head{position:sticky;top:-1px;z-index:2;display:flex;justify-content:space-between;align-items:center;gap:12px;padding-bottom:12px;background:linear-gradient(180deg,rgba(8,42,59,.98) 72%,transparent)}.tm-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.tm-field{display:grid;gap:6px;font-size:12px;color:rgba(255,255,255,.72)}.tm-field input,.tm-field select,.tm-field textarea{width:100%;box-sizing:border-box;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.25);color:#fff;padding:10px 11px;outline:none}.tm-field textarea{min-height:76px;resize:vertical}.tm-wide{grid-column:1/-1}@media(max-width:720px){.tm-toolbar{align-items:stretch}.tm-toolbar>.tm-buttons:last-child{width:100%;justify-content:space-between}.tm-wrap{padding:10px 8px 7px}.tm-card{flex-basis:min(64vw,230px);padding:10px}.tm-form{grid-template-columns:1fr}.tm-wide{grid-column:auto}.tm-overlay{padding:8px;place-items:end center}.tm-editor{max-height:92dvh;border-radius:22px 22px 12px 12px}}
     `}</style>
       <div className="tm-page">
         <div className="glass glass-strong tm-toolbar">
@@ -630,13 +630,15 @@ function TackleCard({
 }) {
   const r = item.rod,
     q = item.reel;
+  const tackleType = (r?.rodType ?? q?.reelType) === "bait" ? "bait" : "spinning";
   return (
-    <article className="tm-card">
+    <article className={`tm-card tm-card--${tackleType}`}>
       <div>
         <div
           style={{ display: "flex", justifyContent: "space-between", gap: 10 }}
         >
           <span
+            className="tm-type-label"
             style={{
               fontSize: 11,
               letterSpacing: ".08em",
@@ -663,13 +665,7 @@ function TackleCard({
           {titleOf(item)}
         </h2>
       </div>
-      <div
-        style={{
-          height: 1,
-          background:
-            "linear-gradient(90deg,rgba(134,226,255,.35),transparent)",
-        }}
-      />
+      <div className="tm-card-divider" />
       <div className="tm-specs">
         {item.kind === "rod" ? (
           <>
