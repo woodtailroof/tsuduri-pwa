@@ -1900,6 +1900,23 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
                         サーフ
                       </span>
                     </label>
+
+                    <label style={segLabelStyle}>
+                      <input
+                        type="radio"
+                        name="spotType"
+                        checked={spotType === "river"}
+                        onChange={() => setSpotType("river")}
+                        style={segInputHidden}
+                      />
+                      <span style={segPill(spotType === "river")}>
+                        <span
+                          style={segDot(spotType === "river")}
+                          aria-hidden="true"
+                        />
+                        河川
+                      </span>
+                    </label>
                   </div>
 
                   <div

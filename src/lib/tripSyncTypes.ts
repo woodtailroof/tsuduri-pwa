@@ -29,7 +29,7 @@ export type TripSyncRecord = {
   rodUid?: string | null;
   reelUid?: string | null;
 
-  spotType?: string | null;
+  spotType?: "port" | "surf" | "river" | null;
   waterClarity?: string | null;
 
   baitPresent?: boolean | null;

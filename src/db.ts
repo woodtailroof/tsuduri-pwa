@@ -7,7 +7,7 @@ export type TripTimeBand = "morning" | "day" | "evening" | "night" | "unknown";
 
 export type TideTrend = "up" | "down" | "flat" | "unknown";
 
-export type SpotType = "port" | "surf";
+export type SpotType = "port" | "surf" | "river";
 
 export type WaterClarity = "clear" | "normal" | "muddy";
 

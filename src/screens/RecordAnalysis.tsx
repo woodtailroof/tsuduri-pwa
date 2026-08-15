@@ -12,6 +12,7 @@ import {
   type LureType as DbLureType,
   type TripFish,
   type TripRecord,
+  type SpotType,
   type TackleItem,
   type TripTackle,
 } from "../db";
@@ -33,6 +34,7 @@ type JoinedTrip = {
   startedAt: string;
   timeBand: TripRecord["timeBand"];
   outcome: TripRecord["outcome"];
+  spotType: SpotType | null;
   tideName: string;
   tideTrend: string;
   windSpeedMs: number | null;
@@ -177,6 +179,12 @@ const TIMEBANDS: Array<TripRecord["timeBand"]> = [
   "evening",
   "night",
 ];
+
+const SPOT_TYPE_LABEL: Record<SpotType, string> = {
+  port: "漁港",
+  surf: "サーフ",
+  river: "河川",
+};
 
 const TIMEBAND_LABEL: Record<TripRecord["timeBand"], string> = {
   morning: "朝",
@@ -758,6 +766,7 @@ export default function RecordAnalysis({ back }: Props) {
         startedAt: trip.startedAt,
         timeBand: normalizeTimeBand(trip.timeBand, trip.startedAt),
         outcome: trip.outcome ?? "skunk",
+        spotType: trip.spotType ?? null,
         tideName: (trip.tideName ?? "").trim() || "不明",
         tideTrend: labelTrend(trip.tideTrend),
         windSpeedMs:
@@ -900,6 +909,23 @@ export default function RecordAnalysis({ back }: Props) {
       .sort((a, b) => b.score - a.score || b.total - a.total)
       .slice(0, limitTop);
   }, [joinedTrips, limitTop]);
+
+  const spotStats = useMemo<RateRow[]>(() => {
+    return (["port", "surf", "river"] as SpotType[])
+      .map((spotType) => {
+        const rows = joinedTrips.filter((trip) => trip.spotType === spotType);
+        const caught = rows.filter((trip) => trip.outcome === "caught").length;
+        return {
+          key: SPOT_TYPE_LABEL[spotType],
+          total: rows.length,
+          caught,
+          rate: safeRate(caught, rows.length),
+          score: wilsonLower(caught, rows.length),
+        };
+      })
+      .filter((row) => row.total > 0)
+      .sort((a, b) => b.score - a.score || b.total - a.total);
+  }, [joinedTrips]);
 
   const heatmap = useMemo(() => {
     const map = new Map<string, { total: number; caught: number }>();
@@ -1374,6 +1400,12 @@ export default function RecordAnalysis({ back }: Props) {
         caughtTrips: row.caught,
         catchRatePercent: Math.round(row.rate * 1000) / 10,
       })),
+      bestSpotTypes: spotStats.map((row) => ({
+        label: row.key,
+        trips: row.total,
+        caughtTrips: row.caught,
+        catchRatePercent: Math.round(row.rate * 1000) / 10,
+      })),
       bestPatterns: patterns.slice(0, 5).map((row) => ({
         condition: row.key,
         lure: row.bestLure,
@@ -1421,6 +1453,7 @@ export default function RecordAnalysis({ back }: Props) {
       styleAxes,
       timeStats,
       tideStats,
+      spotStats,
       patterns,
       speciesInsights,
       tackleInsights,
@@ -1620,6 +1653,7 @@ export default function RecordAnalysis({ back }: Props) {
         .analysis-metric small { display:block; color:rgba(255,255,255,.5); font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .analysis-radar { width:100%; max-width:310px; display:block; margin:auto; overflow:visible; }
         .analysis-trend { width:100%; display:block; min-height:210px; }
+        .analysis-section-label { margin:0 0 8px; color:rgba(255,255,255,.62); font-size:11px; font-weight:800; }
         .analysis-bar-list { display:grid; gap:10px; }
         .analysis-bar-row { display:grid; grid-template-columns:minmax(80px,130px) minmax(70px,1fr) auto; align-items:center; gap:9px; }
         .analysis-bar-label { font-size:12px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -2018,10 +2052,11 @@ export default function RecordAnalysis({ back }: Props) {
           <Panel
             title="条件別キャッチ率"
             icon="🕒"
-            note="回数も見ながら、得意な時間と潮を確認"
+            note="回数も見ながら、得意な時間・潮・釣り場を確認"
           >
             <div className="analysis-grid-2">
               <div>
+                <div className="analysis-section-label">時間帯</div>
                 <div className="analysis-bar-list">
                   {timeStats.map((row) => (
                     <BarRow
@@ -2036,6 +2071,7 @@ export default function RecordAnalysis({ back }: Props) {
                 </div>
               </div>
               <div>
+                <div className="analysis-section-label">潮</div>
                 <div className="analysis-bar-list">
                   {tideStats.map((row) => (
                     <BarRow
@@ -2045,6 +2081,21 @@ export default function RecordAnalysis({ back }: Props) {
                       max={1}
                       text={`${fmtPct(row.rate)} (${row.caught}/${row.total})`}
                       color="#72d7ff"
+                    />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="analysis-section-label">釣り場</div>
+                <div className="analysis-bar-list">
+                  {spotStats.map((row) => (
+                    <BarRow
+                      key={row.key}
+                      label={row.key}
+                      value={row.rate}
+                      max={1}
+                      text={`${fmtPct(row.rate)} (${row.caught}/${row.total})`}
+                      color="#8ee7c6"
                     />
                   ))}
                 </div>

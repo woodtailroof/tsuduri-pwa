@@ -39,7 +39,7 @@ type TripSyncRecord = {
   rodUid?: string | null;
   reelUid?: string | null;
 
-  spotType?: "port" | "surf" | null;
+  spotType?: "port" | "surf" | "river" | null;
   waterClarity?: "clear" | "normal" | "muddy" | null;
   baitPresent?: boolean | null;
 
@@ -283,6 +283,12 @@ function normalizeOutcome(value: unknown): "caught" | "skunk" {
   return value === "caught" ? "caught" : "skunk";
 }
 
+function isNullableSpotType(value: unknown): boolean {
+  return (
+    value == null || value === "port" || value === "surf" || value === "river"
+  );
+}
+
 function isTripRecord(value: unknown): value is TripSyncRecord {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
@@ -293,7 +299,8 @@ function isTripRecord(value: unknown): value is TripSyncRecord {
     typeof v.startedAt === "string" &&
     typeof v.pointId === "string" &&
     typeof v.memo === "string" &&
-    typeof v.timeBand === "string"
+    typeof v.timeBand === "string" &&
+    isNullableSpotType(v.spotType)
   );
 }
 

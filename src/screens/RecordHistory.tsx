@@ -466,6 +466,13 @@ function formatOutcomeLine(trip: TripRecord, fish: TripFish[]): string {
   return "❔ 結果未入力";
 }
 
+function formatSpotType(spotType: TripRecord["spotType"]): string {
+  if (spotType === "port") return "漁港";
+  if (spotType === "surf") return "サーフ";
+  if (spotType === "river") return "河川";
+  return "未設定";
+}
+
 function formatFishLine(row: TripFish): string {
   const sp = row.species?.trim()
     ? normalizeSpeciesLabel(row.species.trim())
@@ -1472,6 +1479,12 @@ export default function RecordHistory({ back, onEdit }: Props) {
               color: "rgba(255,255,255,0.80)",
             }}
           >
+            <div style={infoRowGridStyle}>
+              <div style={{ color: "rgba(255,255,255,0.62)" }}>釣り場</div>
+              <div style={{ overflowWrap: "anywhere", minWidth: 0 }}>
+                {formatSpotType(trip.spotType)}
+              </div>
+            </div>
             <div style={infoRowGridStyle}>
               <div style={{ color: "rgba(255,255,255,0.62)" }}>ロッド</div>
               <div style={{ overflowWrap: "anywhere", minWidth: 0 }}>
