@@ -1654,8 +1654,28 @@ export default function RecordAnalysis({ back }: Props) {
         .analysis-radar { width:100%; max-width:310px; display:block; margin:auto; overflow:visible; }
         .analysis-trend { width:100%; display:block; min-height:210px; }
         .analysis-section-label { margin:0 0 8px; color:rgba(255,255,255,.62); font-size:11px; font-weight:800; }
-        .analysis-bar-list { display:grid; gap:10px; }
-        .analysis-bar-row { display:grid; grid-template-columns:minmax(80px,130px) minmax(70px,1fr) auto; align-items:center; gap:9px; }
+        .analysis-bar-list {
+          display:grid;
+          grid-template-columns:minmax(80px,130px) minmax(70px,1fr) max-content;
+          gap:10px 9px;
+        }
+        .analysis-bar-row {
+          display:grid;
+          grid-column:1 / -1;
+          grid-template-columns:minmax(80px,130px) minmax(70px,1fr) auto;
+          align-items:center;
+          gap:9px;
+        }
+        @supports (grid-template-columns:subgrid) {
+          .analysis-bar-row {
+            grid-template-columns:subgrid;
+            column-gap:inherit;
+          }
+        }
+        .analysis-condition-grid .analysis-bar-list {
+          grid-template-columns:80px minmax(70px,1fr) 82px;
+        }
+        .analysis-condition-grid .analysis-bar-value { text-align:right; }
         .analysis-bar-label { font-size:12px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .analysis-bar-track { height:10px; border-radius:999px; overflow:hidden; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.08); }
         .analysis-bar-fill { height:100%; min-width:2px; border-radius:inherit; transition:width .35s ease; }
@@ -2054,7 +2074,7 @@ export default function RecordAnalysis({ back }: Props) {
             icon="🕒"
             note="回数も見ながら、得意な時間・潮・釣り場を確認"
           >
-            <div className="analysis-grid-2">
+            <div className="analysis-grid-2 analysis-condition-grid">
               <div>
                 <div className="analysis-section-label">時間帯</div>
                 <div className="analysis-bar-list">
