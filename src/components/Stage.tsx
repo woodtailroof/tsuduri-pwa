@@ -115,7 +115,6 @@ function appendAssetVersion(url: string, assetVersion: string) {
 }
 
 const STAGE_IMAGE_CACHE_LIMIT = 8;
-const STAGE_UPDATE_DELAY_MS = 220;
 const stageImageCache = new Map<string, HTMLImageElement>();
 const stageImagePromises = new Map<string, Promise<void>>();
 
@@ -168,6 +167,26 @@ function preloadImage(src: string): Promise<void> {
 
   stageImagePromises.set(src, promise);
   return promise;
+}
+
+function toMobileCharacterSrc(src: string): string {
+  const value = (src ?? "").trim();
+  if (!value) return "";
+
+  const queryIndex = value.indexOf("?");
+  const pathname = queryIndex >= 0 ? value.slice(0, queryIndex) : value;
+  const query = queryIndex >= 0 ? value.slice(queryIndex) : "";
+
+  if (
+    !pathname.startsWith("/assets/characters/") ||
+    !pathname.toLowerCase().endsWith(".png")
+  ) {
+    return "";
+  }
+
+  return `${pathname
+    .replace("/assets/characters/", "/assets/characters-mobile/")
+    .replace(/\.png$/i, ".webp")}${query}`;
 }
 
 function readAssetVersion(settings: unknown): string {
@@ -253,7 +272,7 @@ export default function Stage(props: Props) {
   }, []);
 
   // HOMEの固定表情、画面固有表情、共有感情の順で採用する。
-  const requestedExpression = normalizeExpression(
+  const effectiveExpression = normalizeExpression(
     props.forcedExpression ?? forcedExpressionFromShell ?? globalEmotion,
   );
 
@@ -263,35 +282,6 @@ export default function Stage(props: Props) {
     [],
   );
   const fadeMs = reducedMotion || lightweightTransitions ? 0 : 500;
-
-  const [effectiveExpression, setEffectiveExpression] =
-    useState<Emotion>(requestedExpression);
-  const expressionDelayTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (expressionDelayTimerRef.current != null) {
-      window.clearTimeout(expressionDelayTimerRef.current);
-      expressionDelayTimerRef.current = null;
-    }
-
-    if (!lightweightTransitions) {
-      setEffectiveExpression(requestedExpression);
-      return;
-    }
-
-    // スマホでは先に画面を表示し、立ち絵のデコードを遷移後へずらす。
-    expressionDelayTimerRef.current = window.setTimeout(() => {
-      setEffectiveExpression(requestedExpression);
-      expressionDelayTimerRef.current = null;
-    }, STAGE_UPDATE_DELAY_MS);
-
-    return () => {
-      if (expressionDelayTimerRef.current != null) {
-        window.clearTimeout(expressionDelayTimerRef.current);
-        expressionDelayTimerRef.current = null;
-      }
-    };
-  }, [requestedExpression, lightweightTransitions]);
 
   const [createdCharacters, setCreatedCharacters] = useState<
     { id: string; label: string }[]
@@ -351,7 +341,6 @@ export default function Stage(props: Props) {
 
   const routeModeEnabledRef = useRef<boolean>(false);
   const lastRouteKeyRef = useRef<string>("");
-  const routeDelayTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -372,39 +361,16 @@ export default function Stage(props: Props) {
         (props.displayCharacterId ?? "").trim() || forcedIdFromShellRef.current;
       if (forced) return;
 
-      const nextId = pickRandomId(createdCharacters);
-
-      if (!lightweightTransitions) {
-        setRandomPickedId(nextId);
-        return;
-      }
-
-      if (routeDelayTimerRef.current != null) {
-        window.clearTimeout(routeDelayTimerRef.current);
-      }
-      routeDelayTimerRef.current = window.setTimeout(() => {
-        setRandomPickedId(nextId);
-        routeDelayTimerRef.current = null;
-      }, STAGE_UPDATE_DELAY_MS);
+      setRandomPickedId(pickRandomId(createdCharacters));
     };
 
     window.addEventListener("tsuduri-stage-route", onRoute as EventListener);
-    return () => {
+    return () =>
       window.removeEventListener(
         "tsuduri-stage-route",
         onRoute as EventListener,
       );
-      if (routeDelayTimerRef.current != null) {
-        window.clearTimeout(routeDelayTimerRef.current);
-        routeDelayTimerRef.current = null;
-      }
-    };
-  }, [
-    characterMode,
-    props.displayCharacterId,
-    createdCharacters,
-    lightweightTransitions,
-  ]);
+  }, [characterMode, props.displayCharacterId, createdCharacters]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -480,7 +446,7 @@ export default function Stage(props: Props) {
       `/assets/characters/${effectiveCharacterId}.png`,
     );
 
-    const list = [
+    const sourceList = [
       appendAssetVersion(
         normalizePublicPath(characterOverrideSrc),
         assetVersion,
@@ -521,6 +487,13 @@ export default function Stage(props: Props) {
       .map((x) => (x ?? "").trim())
       .filter((x) => !!x);
 
+    const list = lightweightTransitions
+      ? sourceList.flatMap((src) => {
+          const mobileSrc = toMobileCharacterSrc(src);
+          return mobileSrc ? [mobileSrc, src] : [src];
+        })
+      : sourceList;
+
     const seen = new Set<string>();
     const uniq: string[] = [];
     for (const s of list) {
@@ -536,6 +509,7 @@ export default function Stage(props: Props) {
     effectiveExpression,
     characterOverrideSrc,
     assetVersion,
+    lightweightTransitions,
   ]);
 
   const candidatesKey = useMemo(
