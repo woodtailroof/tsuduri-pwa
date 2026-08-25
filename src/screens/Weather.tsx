@@ -1397,8 +1397,21 @@ export default function Weather({ back, isActive = true }: Props) {
                     </div>
                     <div style={{ gridColumn: "1 / -1", padding: "11px 10px", borderRadius: 11, background: "rgba(255,105,174,0.08)" }}>
                       <div style={{ fontSize: 12, color: "rgba(255,255,255,0.58)" }}>選択時刻の風 / 日最大風速</div>
-                      <strong style={{ fontSize: 18, color: "#ffd0e4" }}>
-                        🍃 {directionLabel(selectedWeather.windDirection)} {selectedWeather.windSpeed}m/s / 最大 {weatherState.summary.windMax}m/s
+                      <strong
+                        style={{
+                          display: "grid",
+                          gap: 2,
+                          fontSize: 18,
+                          color: "#ffd0e4",
+                        }}
+                      >
+                        <span style={{ whiteSpace: "nowrap" }}>
+                          🍃 {directionLabel(selectedWeather.windDirection)}{" "}
+                          {selectedWeather.windSpeed}m/s
+                        </span>
+                        <span style={{ whiteSpace: "nowrap" }}>
+                          最大 {weatherState.summary.windMax}m/s
+                        </span>
                       </strong>
                     </div>
                   </div>
