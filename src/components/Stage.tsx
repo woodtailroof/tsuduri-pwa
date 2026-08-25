@@ -114,14 +114,60 @@ function appendAssetVersion(url: string, assetVersion: string) {
   return u.includes("?") ? `${u}&av=${encoded}` : `${u}?av=${encoded}`;
 }
 
+const STAGE_IMAGE_CACHE_LIMIT = 8;
+const STAGE_UPDATE_DELAY_MS = 220;
+const stageImageCache = new Map<string, HTMLImageElement>();
+const stageImagePromises = new Map<string, Promise<void>>();
+
+function rememberStageImage(src: string, img: HTMLImageElement) {
+  stageImageCache.delete(src);
+  stageImageCache.set(src, img);
+
+  while (stageImageCache.size > STAGE_IMAGE_CACHE_LIMIT) {
+    const oldest = stageImageCache.keys().next().value;
+    if (typeof oldest !== "string") break;
+    stageImageCache.delete(oldest);
+  }
+}
+
 function preloadImage(src: string): Promise<void> {
-  return new Promise((resolve, reject) => {
+  const cached = stageImageCache.get(src);
+  if (cached) {
+    rememberStageImage(src, cached);
+    return Promise.resolve();
+  }
+
+  const pending = stageImagePromises.get(src);
+  if (pending) return pending;
+
+  const promise = new Promise<void>((resolve, reject) => {
     const img = new Image();
     img.decoding = "async";
-    img.onload = () => resolve();
-    img.onerror = () => reject(new Error("img_load_failed"));
+
+    img.onload = () => {
+      const finish = () => {
+        rememberStageImage(src, img);
+        stageImagePromises.delete(src);
+        resolve();
+      };
+
+      if (typeof img.decode === "function") {
+        void img.decode().catch(() => undefined).then(finish);
+      } else {
+        finish();
+      }
+    };
+
+    img.onerror = () => {
+      stageImagePromises.delete(src);
+      reject(new Error("img_load_failed"));
+    };
+
     img.src = src;
   });
+
+  stageImagePromises.set(src, promise);
+  return promise;
 }
 
 function readAssetVersion(settings: unknown): string {
@@ -207,7 +253,7 @@ export default function Stage(props: Props) {
   }, []);
 
   // HOMEの固定表情、画面固有表情、共有感情の順で採用する。
-  const effectiveExpression = normalizeExpression(
+  const requestedExpression = normalizeExpression(
     props.forcedExpression ?? forcedExpressionFromShell ?? globalEmotion,
   );
 
@@ -217,6 +263,35 @@ export default function Stage(props: Props) {
     [],
   );
   const fadeMs = reducedMotion || lightweightTransitions ? 0 : 500;
+
+  const [effectiveExpression, setEffectiveExpression] =
+    useState<Emotion>(requestedExpression);
+  const expressionDelayTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (expressionDelayTimerRef.current != null) {
+      window.clearTimeout(expressionDelayTimerRef.current);
+      expressionDelayTimerRef.current = null;
+    }
+
+    if (!lightweightTransitions) {
+      setEffectiveExpression(requestedExpression);
+      return;
+    }
+
+    // スマホでは先に画面を表示し、立ち絵のデコードを遷移後へずらす。
+    expressionDelayTimerRef.current = window.setTimeout(() => {
+      setEffectiveExpression(requestedExpression);
+      expressionDelayTimerRef.current = null;
+    }, STAGE_UPDATE_DELAY_MS);
+
+    return () => {
+      if (expressionDelayTimerRef.current != null) {
+        window.clearTimeout(expressionDelayTimerRef.current);
+        expressionDelayTimerRef.current = null;
+      }
+    };
+  }, [requestedExpression, lightweightTransitions]);
 
   const [createdCharacters, setCreatedCharacters] = useState<
     { id: string; label: string }[]
@@ -276,6 +351,7 @@ export default function Stage(props: Props) {
 
   const routeModeEnabledRef = useRef<boolean>(false);
   const lastRouteKeyRef = useRef<string>("");
+  const routeDelayTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -296,16 +372,39 @@ export default function Stage(props: Props) {
         (props.displayCharacterId ?? "").trim() || forcedIdFromShellRef.current;
       if (forced) return;
 
-      setRandomPickedId(pickRandomId(createdCharacters));
+      const nextId = pickRandomId(createdCharacters);
+
+      if (!lightweightTransitions) {
+        setRandomPickedId(nextId);
+        return;
+      }
+
+      if (routeDelayTimerRef.current != null) {
+        window.clearTimeout(routeDelayTimerRef.current);
+      }
+      routeDelayTimerRef.current = window.setTimeout(() => {
+        setRandomPickedId(nextId);
+        routeDelayTimerRef.current = null;
+      }, STAGE_UPDATE_DELAY_MS);
     };
 
     window.addEventListener("tsuduri-stage-route", onRoute as EventListener);
-    return () =>
+    return () => {
       window.removeEventListener(
         "tsuduri-stage-route",
         onRoute as EventListener,
       );
-  }, [characterMode, props.displayCharacterId, createdCharacters]);
+      if (routeDelayTimerRef.current != null) {
+        window.clearTimeout(routeDelayTimerRef.current);
+        routeDelayTimerRef.current = null;
+      }
+    };
+  }, [
+    characterMode,
+    props.displayCharacterId,
+    createdCharacters,
+    lightweightTransitions,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
