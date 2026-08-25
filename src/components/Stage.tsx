@@ -289,6 +289,10 @@ export default function Stage(props: Props) {
   const [charImageMap, setCharImageMap] = useState<CharacterImageMap>(() =>
     loadCharacterImageMap(),
   );
+  const mobileRoutePickedId = useMemo(
+    () => pickRandomId(createdCharacters),
+    [props.activeKey, createdCharacters],
+  );
 
   useEffect(() => {
     const reload = () => {
@@ -348,6 +352,10 @@ export default function Stage(props: Props) {
     const onRoute = (ev: Event) => {
       routeModeEnabledRef.current = true;
 
+      // スマホはactiveKeyから同じ描画内で抽選する。
+      // layoutEffect経由の再抽選は初回表示前の二重描画になるため行わない。
+      if (lightweightTransitions) return;
+
       const ce = ev as CustomEvent<{ key?: unknown }>;
       const rawKey = ce?.detail?.key;
       const key = typeof rawKey === "string" ? rawKey : "";
@@ -370,10 +378,16 @@ export default function Stage(props: Props) {
         "tsuduri-stage-route",
         onRoute as EventListener,
       );
-  }, [characterMode, props.displayCharacterId, createdCharacters]);
+  }, [
+    characterMode,
+    props.displayCharacterId,
+    createdCharacters,
+    lightweightTransitions,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (lightweightTransitions) return;
     if (routeModeEnabledRef.current) return;
     if (characterMode !== "random") return;
 
@@ -383,7 +397,7 @@ export default function Stage(props: Props) {
 
     setRandomPickedId(pickRandomId(createdCharacters));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.activeKey, characterMode]);
+  }, [props.activeKey, characterMode, lightweightTransitions]);
 
   const fixedCharacterId = settings.fixedCharacterId ?? "tsuduri";
 
@@ -391,7 +405,11 @@ export default function Stage(props: Props) {
     (props.displayCharacterId ?? "").trim() || (forcedIdFromShell ?? "").trim();
 
   const pickCharacterId =
-    characterMode === "fixed" ? fixedCharacterId : randomPickedId;
+    characterMode === "fixed"
+      ? fixedCharacterId
+      : lightweightTransitions
+        ? mobileRoutePickedId
+        : randomPickedId;
 
   const effectiveCharacterId =
     forcedId || (pickCharacterId ?? "").trim() || "tsuduri";
@@ -535,7 +553,7 @@ export default function Stage(props: Props) {
   }, [candidatesKey]);
 
   useEffect(() => {
-    if (!characterEnabled) return;
+    if (!characterEnabled || lightweightTransitions) return;
 
     const next = characterCandidates[tryIndex] ?? "";
     if (!next) return;
@@ -660,7 +678,12 @@ export default function Stage(props: Props) {
     frontSrc,
     backSrc,
     fadeMs,
+    lightweightTransitions,
   ]);
+
+  const directCharacterSrc = lightweightTransitions
+    ? (characterCandidates[tryIndex] ?? "")
+    : "";
 
   const charWrapStyle: CSSProperties = {
     position: "absolute",
@@ -700,7 +723,21 @@ export default function Stage(props: Props) {
       {characterEnabled ? (
         <div style={charWrapStyle}>
           <div className="tsuduri-character-breath" style={breathWrapStyle}>
-            {frontSrc ? (
+            {lightweightTransitions && directCharacterSrc ? (
+              <img
+                src={directCharacterSrc}
+                alt=""
+                decoding="async"
+                onError={() => {
+                  setTryIndex((i) =>
+                    i + 1 < characterCandidates.length ? i + 1 : i,
+                  );
+                }}
+                style={{ ...imgCommon, opacity: 1 }}
+              />
+            ) : null}
+
+            {!lightweightTransitions && frontSrc ? (
               <img
                 src={frontSrc}
                 alt=""
@@ -708,7 +745,7 @@ export default function Stage(props: Props) {
               />
             ) : null}
 
-            {backSrc ? (
+            {!lightweightTransitions && backSrc ? (
               <img
                 src={backSrc}
                 alt=""
