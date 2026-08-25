@@ -140,6 +140,15 @@ function prefersReducedMotion(): boolean {
   );
 }
 
+function prefersLightweightTransitions(): boolean {
+  if (typeof window === "undefined") return true;
+  return (
+    window.matchMedia?.("(max-width: 820px)")?.matches ||
+    window.matchMedia?.("(pointer: coarse)")?.matches ||
+    false
+  );
+}
+
 function pickRandomId(list: { id: string }[]): string {
   if (!list.length) return "tsuduri";
   const i = Math.floor(Math.random() * list.length);
@@ -203,7 +212,11 @@ export default function Stage(props: Props) {
   );
 
   const reducedMotion = useMemo(() => prefersReducedMotion(), []);
-  const fadeMs = reducedMotion ? 0 : 500;
+  const lightweightTransitions = useMemo(
+    () => prefersLightweightTransitions(),
+    [],
+  );
+  const fadeMs = reducedMotion || lightweightTransitions ? 0 : 500;
 
   const [createdCharacters, setCreatedCharacters] = useState<
     { id: string; label: string }[]
@@ -586,7 +599,9 @@ export default function Stage(props: Props) {
     transformOrigin: "bottom right",
     transform: `scale(${clamp(characterScale, 0.5, 2.0)})`,
     opacity: clamp(characterOpacity, 0, 1),
-    filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.45))",
+    filter: lightweightTransitions
+      ? "none"
+      : "drop-shadow(0 12px 24px rgba(0,0,0,0.45))",
   };
 
   const breathWrapStyle: CSSProperties = {
@@ -604,7 +619,7 @@ export default function Stage(props: Props) {
     height: "auto",
     display: "block",
     transition: fadeMs === 0 ? "none" : `opacity ${fadeMs}ms ease`,
-    willChange: "opacity",
+    willChange: fadeMs === 0 ? "auto" : "opacity",
   };
 
   return (
