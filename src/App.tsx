@@ -56,6 +56,16 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+function prefersDirectScreenSwitch() {
+  if (typeof window === "undefined") return true;
+
+  return (
+    window.matchMedia?.("(max-width: 820px)").matches ||
+    window.matchMedia?.("(pointer: coarse)").matches ||
+    false
+  );
+}
+
 function appendAssetVersion(url: string, assetVersion: string) {
   const u = (url ?? "").trim();
   const av = (assetVersion ?? "").trim();
@@ -94,6 +104,7 @@ function AppInner() {
   const [editingTripId, setEditingTripId] = useState<number | null>(null);
   const { settings } = useAppSettings();
   const minuteTick = useMinuteTick();
+  const directScreenSwitch = useMemo(() => prefersDirectScreenSwitch(), []);
 
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
   const [selectedAlbumTitle, setSelectedAlbumTitle] = useState<string>("");
@@ -475,7 +486,7 @@ function AppInner() {
           </div>
         )}
 
-        {skipFade ? (
+        {skipFade || directScreenSwitch ? (
           content
         ) : (
           <FadeSwitch
