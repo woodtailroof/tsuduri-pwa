@@ -725,6 +725,8 @@ export default function Stage(props: Props) {
           <div className="tsuduri-character-breath" style={breathWrapStyle}>
             {lightweightTransitions && directCharacterSrc ? (
               <img
+                key={directCharacterSrc}
+                className="tsuduri-character-enter"
                 src={directCharacterSrc}
                 alt=""
                 decoding="async"
