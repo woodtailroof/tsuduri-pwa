@@ -402,7 +402,8 @@ export default function Stage(props: Props) {
   const fixedCharacterId = settings.fixedCharacterId ?? "tsuduri";
 
   const forcedId =
-    (props.displayCharacterId ?? "").trim() || (forcedIdFromShell ?? "").trim();
+    (props.displayCharacterId ?? "").trim() ||
+    (props.activeKey === "home" ? "" : (forcedIdFromShell ?? "").trim());
 
   const pickCharacterId =
     characterMode === "fixed"
@@ -705,6 +706,12 @@ export default function Stage(props: Props) {
       setMobileCharacterVisible(true);
       return;
     }
+
+    // 画面自体は待たせず、フェードアウト中に次の軽量画像だけ先読みする。
+    // decode()待ちは行わず、Safariの描画スレッドを同期的に塞がない。
+    const nextImage = new Image();
+    nextImage.decoding = "async";
+    nextImage.src = directCharacterSrc;
 
     setMobileCharacterVisible(false);
 
