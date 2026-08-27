@@ -685,6 +685,46 @@ export default function Stage(props: Props) {
     ? (characterCandidates[tryIndex] ?? "")
     : "";
 
+  const [mobileDisplayedSrc, setMobileDisplayedSrc] = useState(
+    directCharacterSrc,
+  );
+  const mobileDisplayedSrcRef = useRef(mobileDisplayedSrc);
+  const [mobileVeilVisible, setMobileVeilVisible] = useState(false);
+  const [mobileVeilRun, setMobileVeilRun] = useState(0);
+
+  useEffect(() => {
+    mobileDisplayedSrcRef.current = mobileDisplayedSrc;
+  }, [mobileDisplayedSrc]);
+
+  useEffect(() => {
+    if (!lightweightTransitions || !directCharacterSrc) return;
+    if (directCharacterSrc === mobileDisplayedSrcRef.current) return;
+
+    if (reducedMotion || !mobileDisplayedSrcRef.current) {
+      mobileDisplayedSrcRef.current = directCharacterSrc;
+      setMobileDisplayedSrc(directCharacterSrc);
+      setMobileVeilVisible(false);
+      return;
+    }
+
+    setMobileVeilVisible(true);
+    setMobileVeilRun((run) => run + 1);
+
+    const swapTimer = window.setTimeout(() => {
+      mobileDisplayedSrcRef.current = directCharacterSrc;
+      setMobileDisplayedSrc(directCharacterSrc);
+    }, 55);
+
+    const veilTimer = window.setTimeout(() => {
+      setMobileVeilVisible(false);
+    }, 150);
+
+    return () => {
+      window.clearTimeout(swapTimer);
+      window.clearTimeout(veilTimer);
+    };
+  }, [directCharacterSrc, lightweightTransitions, reducedMotion]);
+
   const charWrapStyle: CSSProperties = {
     position: "absolute",
     right: "env(safe-area-inset-right)",
@@ -723,11 +763,9 @@ export default function Stage(props: Props) {
       {characterEnabled ? (
         <div style={charWrapStyle}>
           <div className="tsuduri-character-breath" style={breathWrapStyle}>
-            {lightweightTransitions && directCharacterSrc ? (
+            {lightweightTransitions && mobileDisplayedSrc ? (
               <img
-                key={directCharacterSrc}
-                className="tsuduri-character-enter"
-                src={directCharacterSrc}
+                src={mobileDisplayedSrc}
                 alt=""
                 decoding="async"
                 onError={() => {
@@ -736,6 +774,13 @@ export default function Stage(props: Props) {
                   );
                 }}
                 style={{ ...imgCommon, opacity: 1 }}
+              />
+            ) : null}
+
+            {lightweightTransitions && mobileVeilVisible ? (
+              <div
+                key={mobileVeilRun}
+                className="tsuduri-character-veil"
               />
             ) : null}
 
