@@ -689,8 +689,7 @@ export default function Stage(props: Props) {
     directCharacterSrc,
   );
   const mobileDisplayedSrcRef = useRef(mobileDisplayedSrc);
-  const [mobileVeilVisible, setMobileVeilVisible] = useState(false);
-  const [mobileVeilRun, setMobileVeilRun] = useState(0);
+  const [mobileCharacterVisible, setMobileCharacterVisible] = useState(true);
 
   useEffect(() => {
     mobileDisplayedSrcRef.current = mobileDisplayedSrc;
@@ -703,25 +702,22 @@ export default function Stage(props: Props) {
     if (reducedMotion || !mobileDisplayedSrcRef.current) {
       mobileDisplayedSrcRef.current = directCharacterSrc;
       setMobileDisplayedSrc(directCharacterSrc);
-      setMobileVeilVisible(false);
+      setMobileCharacterVisible(true);
       return;
     }
 
-    setMobileVeilVisible(true);
-    setMobileVeilRun((run) => run + 1);
+    setMobileCharacterVisible(false);
 
     const swapTimer = window.setTimeout(() => {
       mobileDisplayedSrcRef.current = directCharacterSrc;
       setMobileDisplayedSrc(directCharacterSrc);
-    }, 110);
-
-    const veilTimer = window.setTimeout(() => {
-      setMobileVeilVisible(false);
-    }, 300);
+      requestAnimationFrame(() => {
+        setMobileCharacterVisible(true);
+      });
+    }, 130);
 
     return () => {
       window.clearTimeout(swapTimer);
-      window.clearTimeout(veilTimer);
     };
   }, [directCharacterSrc, lightweightTransitions, reducedMotion]);
 
@@ -773,14 +769,14 @@ export default function Stage(props: Props) {
                     i + 1 < characterCandidates.length ? i + 1 : i,
                   );
                 }}
-                style={{ ...imgCommon, opacity: 1 }}
-              />
-            ) : null}
-
-            {lightweightTransitions && mobileVeilVisible ? (
-              <div
-                key={mobileVeilRun}
-                className="tsuduri-character-veil"
+                style={{
+                  ...imgCommon,
+                  opacity: mobileCharacterVisible ? 1 : 0,
+                  transition: reducedMotion
+                    ? "none"
+                    : "opacity 130ms ease-in-out",
+                  willChange: "auto",
+                }}
               />
             ) : null}
 

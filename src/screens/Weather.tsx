@@ -124,6 +124,21 @@ const SHIZUOKA_COAST_CAMERA_URL =
 const SHIMIZU_NOWPHAS_URL =
   "https://nowphas.mlit.go.jp/yugiha_graph/505/7/";
 
+function getShimizuNowphasGraphUrl(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+  const dateKey = `${values.year}${values.month}${values.day}`;
+
+  return `https://nowphas.mlit.go.jp/PROG/web_disp_data/20min/505/yugiha_7d/505_5_${dateKey}.png`;
+}
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
@@ -859,7 +874,7 @@ export default function Weather({ back, isActive = true }: Props) {
         // iOSのホーム画面PWAではtarget=_blankが空画面になることがあるため、
         // ユーザー操作のまま同一画面で公式ページへ遷移させる。
         event.preventDefault();
-        window.location.assign(SHIMIZU_NOWPHAS_URL);
+        window.location.assign(getShimizuNowphasGraphUrl());
         return;
       }
 
@@ -1208,7 +1223,11 @@ export default function Weather({ back, isActive = true }: Props) {
               📹 静岡海岸ライブカメラ ↗
             </a>
             <a
-              href={SHIMIZU_NOWPHAS_URL}
+              href={
+                isMobile
+                  ? getShimizuNowphasGraphUrl()
+                  : SHIMIZU_NOWPHAS_URL
+              }
               target={isMobile ? "_self" : "_blank"}
               rel="noopener noreferrer"
               onClick={handleNowphasLink}
