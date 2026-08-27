@@ -227,14 +227,21 @@ li {
     inset: 0;
     z-index: 1;
     pointer-events: none;
-    background: radial-gradient(
-      ellipse at 58% 48%,
-      rgba(255, 250, 253, 0.96) 0%,
-      rgba(255, 228, 241, 0.84) 42%,
-      rgba(255, 193, 220, 0.3) 66%,
-      rgba(255, 193, 220, 0) 80%
-    );
-    animation: tsuduri-character-veil 150ms ease-out both;
+    background:
+      radial-gradient(
+        circle at 58% 20%,
+        rgba(255, 252, 254, 0.98) 0%,
+        rgba(255, 228, 241, 0.9) 28%,
+        rgba(255, 193, 220, 0) 48%
+      ),
+      radial-gradient(
+        ellipse at 58% 61%,
+        rgba(255, 250, 253, 0.97) 0%,
+        rgba(255, 225, 240, 0.9) 42%,
+        rgba(255, 193, 220, 0.42) 66%,
+        rgba(255, 193, 220, 0) 84%
+      );
+    animation: tsuduri-character-veil 300ms ease-out both;
   }
 }
 
@@ -243,8 +250,8 @@ li {
     opacity: 0;
   }
 
-  37%,
-  45% {
+  30%,
+  52% {
     opacity: 1;
   }
 

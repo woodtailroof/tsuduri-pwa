@@ -713,11 +713,11 @@ export default function Stage(props: Props) {
     const swapTimer = window.setTimeout(() => {
       mobileDisplayedSrcRef.current = directCharacterSrc;
       setMobileDisplayedSrc(directCharacterSrc);
-    }, 55);
+    }, 110);
 
     const veilTimer = window.setTimeout(() => {
       setMobileVeilVisible(false);
-    }, 150);
+    }, 300);
 
     return () => {
       window.clearTimeout(swapTimer);

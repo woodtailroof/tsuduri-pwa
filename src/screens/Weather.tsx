@@ -853,6 +853,25 @@ export default function Weather({ back, isActive = true }: Props) {
     [isMobile, openExternalInfo],
   );
 
+  const handleNowphasLink = useCallback(
+    (event: React.MouseEvent<HTMLAnchorElement>) => {
+      if (isMobile) {
+        // iOSのホーム画面PWAではtarget=_blankが空画面になることがあるため、
+        // ユーザー操作のまま同一画面で公式ページへ遷移させる。
+        event.preventDefault();
+        window.location.assign(SHIMIZU_NOWPHAS_URL);
+        return;
+      }
+
+      handleExternalLink(
+        event,
+        SHIMIZU_NOWPHAS_URL,
+        "tsuduriShimizuNowphas",
+      );
+    },
+    [handleExternalLink, isMobile],
+  );
+
   return (
     <PageShell
       title={
@@ -1190,15 +1209,9 @@ export default function Weather({ back, isActive = true }: Props) {
             </a>
             <a
               href={SHIMIZU_NOWPHAS_URL}
-              target="_blank"
+              target={isMobile ? "_self" : "_blank"}
               rel="noopener noreferrer"
-              onClick={(event) =>
-                handleExternalLink(
-                  event,
-                  SHIMIZU_NOWPHAS_URL,
-                  "tsuduriShimizuNowphas",
-                )
-              }
+              onClick={handleNowphasLink}
               style={{
                 ...tabStyle(false),
                 minHeight: 48,
