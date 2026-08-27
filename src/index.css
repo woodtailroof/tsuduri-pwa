@@ -213,6 +213,17 @@ li {
   }
 }
 
+/* iOS Safariでは大きな透過画像の常時transformが画面切替時の
+   レイヤー再合成を重くするため、スマホでは静止表示にする。 */
+@media (max-width: 820px), (pointer: coarse) {
+  .tsuduri-character-breath {
+    animation: none;
+    transform: none;
+    will-change: auto;
+  }
+
+}
+
 @media (prefers-reduced-motion: reduce) {
   #layer-bg,
   .tsuduri-character-breath {

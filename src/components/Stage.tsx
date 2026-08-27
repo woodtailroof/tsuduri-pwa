@@ -114,14 +114,79 @@ function appendAssetVersion(url: string, assetVersion: string) {
   return u.includes("?") ? `${u}&av=${encoded}` : `${u}?av=${encoded}`;
 }
 
+const STAGE_IMAGE_CACHE_LIMIT = 8;
+const stageImageCache = new Map<string, HTMLImageElement>();
+const stageImagePromises = new Map<string, Promise<void>>();
+
+function rememberStageImage(src: string, img: HTMLImageElement) {
+  stageImageCache.delete(src);
+  stageImageCache.set(src, img);
+
+  while (stageImageCache.size > STAGE_IMAGE_CACHE_LIMIT) {
+    const oldest = stageImageCache.keys().next().value;
+    if (typeof oldest !== "string") break;
+    stageImageCache.delete(oldest);
+  }
+}
+
 function preloadImage(src: string): Promise<void> {
-  return new Promise((resolve, reject) => {
+  const cached = stageImageCache.get(src);
+  if (cached) {
+    rememberStageImage(src, cached);
+    return Promise.resolve();
+  }
+
+  const pending = stageImagePromises.get(src);
+  if (pending) return pending;
+
+  const promise = new Promise<void>((resolve, reject) => {
     const img = new Image();
     img.decoding = "async";
-    img.onload = () => resolve();
-    img.onerror = () => reject(new Error("img_load_failed"));
+
+    img.onload = () => {
+      const finish = () => {
+        rememberStageImage(src, img);
+        stageImagePromises.delete(src);
+        resolve();
+      };
+
+      if (typeof img.decode === "function") {
+        void img.decode().catch(() => undefined).then(finish);
+      } else {
+        finish();
+      }
+    };
+
+    img.onerror = () => {
+      stageImagePromises.delete(src);
+      reject(new Error("img_load_failed"));
+    };
+
     img.src = src;
   });
+
+  stageImagePromises.set(src, promise);
+  return promise;
+}
+
+function toMobileCharacterSrc(src: string): string {
+  const value = (src ?? "").trim();
+  if (!value) return "";
+
+  const queryIndex = value.indexOf("?");
+  const pathname = queryIndex >= 0 ? value.slice(0, queryIndex) : value;
+  const query = queryIndex >= 0 ? value.slice(queryIndex) : "";
+
+  if (
+    !pathname.startsWith("/assets/characters/") ||
+    !pathname.toLowerCase().endsWith(".png")
+  ) {
+    return "";
+  }
+
+  return `${pathname
+    .replace("/assets/characters/", "/assets/characters-mobile/")
+    .replace(/\.png$/i, ".webp")}${query}`;
 }
 
 function readAssetVersion(settings: unknown): string {
@@ -137,6 +202,15 @@ function prefersReducedMotion(): boolean {
   if (typeof window === "undefined") return false;
   return (
     window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false
+  );
+}
+
+function prefersLightweightTransitions(): boolean {
+  if (typeof window === "undefined") return true;
+  return (
+    window.matchMedia?.("(max-width: 820px)")?.matches ||
+    window.matchMedia?.("(pointer: coarse)")?.matches ||
+    false
   );
 }
 
@@ -203,13 +277,21 @@ export default function Stage(props: Props) {
   );
 
   const reducedMotion = useMemo(() => prefersReducedMotion(), []);
-  const fadeMs = reducedMotion ? 0 : 500;
+  const lightweightTransitions = useMemo(
+    () => prefersLightweightTransitions(),
+    [],
+  );
+  const fadeMs = reducedMotion || lightweightTransitions ? 0 : 500;
 
   const [createdCharacters, setCreatedCharacters] = useState<
     { id: string; label: string }[]
   >(() => loadCreatedCharacters());
   const [charImageMap, setCharImageMap] = useState<CharacterImageMap>(() =>
     loadCharacterImageMap(),
+  );
+  const mobileRoutePickedId = useMemo(
+    () => pickRandomId(createdCharacters),
+    [props.activeKey, createdCharacters],
   );
 
   useEffect(() => {
@@ -270,6 +352,10 @@ export default function Stage(props: Props) {
     const onRoute = (ev: Event) => {
       routeModeEnabledRef.current = true;
 
+      // スマホはactiveKeyから同じ描画内で抽選する。
+      // layoutEffect経由の再抽選は初回表示前の二重描画になるため行わない。
+      if (lightweightTransitions) return;
+
       const ce = ev as CustomEvent<{ key?: unknown }>;
       const rawKey = ce?.detail?.key;
       const key = typeof rawKey === "string" ? rawKey : "";
@@ -292,10 +378,16 @@ export default function Stage(props: Props) {
         "tsuduri-stage-route",
         onRoute as EventListener,
       );
-  }, [characterMode, props.displayCharacterId, createdCharacters]);
+  }, [
+    characterMode,
+    props.displayCharacterId,
+    createdCharacters,
+    lightweightTransitions,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (lightweightTransitions) return;
     if (routeModeEnabledRef.current) return;
     if (characterMode !== "random") return;
 
@@ -305,15 +397,20 @@ export default function Stage(props: Props) {
 
     setRandomPickedId(pickRandomId(createdCharacters));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.activeKey, characterMode]);
+  }, [props.activeKey, characterMode, lightweightTransitions]);
 
   const fixedCharacterId = settings.fixedCharacterId ?? "tsuduri";
 
   const forcedId =
-    (props.displayCharacterId ?? "").trim() || (forcedIdFromShell ?? "").trim();
+    (props.displayCharacterId ?? "").trim() ||
+    (props.activeKey === "home" ? "" : (forcedIdFromShell ?? "").trim());
 
   const pickCharacterId =
-    characterMode === "fixed" ? fixedCharacterId : randomPickedId;
+    characterMode === "fixed"
+      ? fixedCharacterId
+      : lightweightTransitions
+        ? mobileRoutePickedId
+        : randomPickedId;
 
   const effectiveCharacterId =
     forcedId || (pickCharacterId ?? "").trim() || "tsuduri";
@@ -368,7 +465,7 @@ export default function Stage(props: Props) {
       `/assets/characters/${effectiveCharacterId}.png`,
     );
 
-    const list = [
+    const sourceList = [
       appendAssetVersion(
         normalizePublicPath(characterOverrideSrc),
         assetVersion,
@@ -409,6 +506,13 @@ export default function Stage(props: Props) {
       .map((x) => (x ?? "").trim())
       .filter((x) => !!x);
 
+    const list = lightweightTransitions
+      ? sourceList.flatMap((src) => {
+          const mobileSrc = toMobileCharacterSrc(src);
+          return mobileSrc ? [mobileSrc, src] : [src];
+        })
+      : sourceList;
+
     const seen = new Set<string>();
     const uniq: string[] = [];
     for (const s of list) {
@@ -424,6 +528,7 @@ export default function Stage(props: Props) {
     effectiveExpression,
     characterOverrideSrc,
     assetVersion,
+    lightweightTransitions,
   ]);
 
   const candidatesKey = useMemo(
@@ -449,7 +554,7 @@ export default function Stage(props: Props) {
   }, [candidatesKey]);
 
   useEffect(() => {
-    if (!characterEnabled) return;
+    if (!characterEnabled || lightweightTransitions) return;
 
     const next = characterCandidates[tryIndex] ?? "";
     if (!next) return;
@@ -574,7 +679,54 @@ export default function Stage(props: Props) {
     frontSrc,
     backSrc,
     fadeMs,
+    lightweightTransitions,
   ]);
+
+  const directCharacterSrc = lightweightTransitions
+    ? (characterCandidates[tryIndex] ?? "")
+    : "";
+
+  const [mobileDisplayedSrc, setMobileDisplayedSrc] = useState(
+    directCharacterSrc,
+  );
+  const mobileDisplayedSrcRef = useRef(mobileDisplayedSrc);
+  const [mobileCharacterVisible, setMobileCharacterVisible] = useState(true);
+
+  useEffect(() => {
+    mobileDisplayedSrcRef.current = mobileDisplayedSrc;
+  }, [mobileDisplayedSrc]);
+
+  useEffect(() => {
+    if (!lightweightTransitions || !directCharacterSrc) return;
+    if (directCharacterSrc === mobileDisplayedSrcRef.current) return;
+
+    if (reducedMotion || !mobileDisplayedSrcRef.current) {
+      mobileDisplayedSrcRef.current = directCharacterSrc;
+      setMobileDisplayedSrc(directCharacterSrc);
+      setMobileCharacterVisible(true);
+      return;
+    }
+
+    // 画面自体は待たせず、フェードアウト中に次の軽量画像だけ先読みする。
+    // decode()待ちは行わず、Safariの描画スレッドを同期的に塞がない。
+    const nextImage = new Image();
+    nextImage.decoding = "async";
+    nextImage.src = directCharacterSrc;
+
+    setMobileCharacterVisible(false);
+
+    const swapTimer = window.setTimeout(() => {
+      mobileDisplayedSrcRef.current = directCharacterSrc;
+      setMobileDisplayedSrc(directCharacterSrc);
+      requestAnimationFrame(() => {
+        setMobileCharacterVisible(true);
+      });
+    }, 130);
+
+    return () => {
+      window.clearTimeout(swapTimer);
+    };
+  }, [directCharacterSrc, lightweightTransitions, reducedMotion]);
 
   const charWrapStyle: CSSProperties = {
     position: "absolute",
@@ -586,7 +738,9 @@ export default function Stage(props: Props) {
     transformOrigin: "bottom right",
     transform: `scale(${clamp(characterScale, 0.5, 2.0)})`,
     opacity: clamp(characterOpacity, 0, 1),
-    filter: "drop-shadow(0 12px 24px rgba(0,0,0,0.45))",
+    filter: lightweightTransitions
+      ? "none"
+      : "drop-shadow(0 12px 24px rgba(0,0,0,0.45))",
   };
 
   const breathWrapStyle: CSSProperties = {
@@ -604,7 +758,7 @@ export default function Stage(props: Props) {
     height: "auto",
     display: "block",
     transition: fadeMs === 0 ? "none" : `opacity ${fadeMs}ms ease`,
-    willChange: "opacity",
+    willChange: fadeMs === 0 ? "auto" : "opacity",
   };
 
   return (
@@ -612,7 +766,28 @@ export default function Stage(props: Props) {
       {characterEnabled ? (
         <div style={charWrapStyle}>
           <div className="tsuduri-character-breath" style={breathWrapStyle}>
-            {frontSrc ? (
+            {lightweightTransitions && mobileDisplayedSrc ? (
+              <img
+                src={mobileDisplayedSrc}
+                alt=""
+                decoding="async"
+                onError={() => {
+                  setTryIndex((i) =>
+                    i + 1 < characterCandidates.length ? i + 1 : i,
+                  );
+                }}
+                style={{
+                  ...imgCommon,
+                  opacity: mobileCharacterVisible ? 1 : 0,
+                  transition: reducedMotion
+                    ? "none"
+                    : "opacity 130ms ease-in-out",
+                  willChange: "auto",
+                }}
+              />
+            ) : null}
+
+            {!lightweightTransitions && frontSrc ? (
               <img
                 src={frontSrc}
                 alt=""
@@ -620,7 +795,7 @@ export default function Stage(props: Props) {
               />
             ) : null}
 
-            {backSrc ? (
+            {!lightweightTransitions && backSrc ? (
               <img
                 src={backSrc}
                 alt=""

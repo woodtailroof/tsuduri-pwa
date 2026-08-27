@@ -124,6 +124,21 @@ const SHIZUOKA_COAST_CAMERA_URL =
 const SHIMIZU_NOWPHAS_URL =
   "https://nowphas.mlit.go.jp/yugiha_graph/505/7/";
 
+function getShimizuNowphasGraphUrl(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+  const dateKey = `${values.year}${values.month}${values.day}`;
+
+  return `https://nowphas.mlit.go.jp/PROG/web_disp_data/20min/505/yugiha_7d/505_5_${dateKey}.png`;
+}
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
@@ -553,6 +568,12 @@ export default function Weather({ back, isActive = true }: Props) {
   });
   const [coastalWaveState, setCoastalWaveState] =
     useState<CoastalWaveLoadState>({ status: "idle" });
+  const [nowphasOpen, setNowphasOpen] = useState(false);
+  const [nowphasZoomed, setNowphasZoomed] = useState(false);
+  const [nowphasLoadFailed, setNowphasLoadFailed] = useState(false);
+  const [nowphasGraphUrl, setNowphasGraphUrl] = useState(() =>
+    getShimizuNowphasGraphUrl(),
+  );
 
   const targetDate = useMemo(() => {
     const now = new Date();
@@ -786,9 +807,13 @@ export default function Weather({ back, isActive = true }: Props) {
   );
 
   const onBack = useCallback(() => {
+    if (nowphasOpen) {
+      setNowphasOpen(false);
+      return;
+    }
     clearEmotion("weather");
     back();
-  }, [clearEmotion, back]);
+  }, [nowphasOpen, clearEmotion, back]);
 
   const tileStyle: CSSProperties = {
     borderRadius: 16,
@@ -851,6 +876,28 @@ export default function Weather({ back, isActive = true }: Props) {
       openExternalInfo(url, windowName);
     },
     [isMobile, openExternalInfo],
+  );
+
+  const handleNowphasLink = useCallback(
+    (event: React.MouseEvent<HTMLAnchorElement>) => {
+      if (isMobile) {
+        // iOSのホーム画面PWAでは外部遷移が白画面になることがあるため、
+        // 公式グラフ画像をアプリ内の専用ビューで表示する。
+        event.preventDefault();
+        setNowphasGraphUrl(getShimizuNowphasGraphUrl());
+        setNowphasLoadFailed(false);
+        setNowphasZoomed(false);
+        setNowphasOpen(true);
+        return;
+      }
+
+      handleExternalLink(
+        event,
+        SHIMIZU_NOWPHAS_URL,
+        "tsuduriShimizuNowphas",
+      );
+    },
+    [handleExternalLink, isMobile],
   );
 
   return (
@@ -1192,13 +1239,7 @@ export default function Weather({ back, isActive = true }: Props) {
               href={SHIMIZU_NOWPHAS_URL}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={(event) =>
-                handleExternalLink(
-                  event,
-                  SHIMIZU_NOWPHAS_URL,
-                  "tsuduriShimizuNowphas",
-                )
-              }
+              onClick={handleNowphasLink}
               style={{
                 ...tabStyle(false),
                 minHeight: 48,
@@ -1725,6 +1766,126 @@ export default function Weather({ back, isActive = true }: Props) {
           </div>
         </div>
       </div>
+
+      {isMobile && nowphasOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="清水港NOWPHAS 7日グラフ"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 5000,
+            display: "grid",
+            gridTemplateRows: "auto minmax(0, 1fr) auto",
+            background: "rgba(7,10,18,0.98)",
+            color: "#fff",
+          }}
+        >
+          <div
+            style={{
+              minHeight: 54,
+              padding: "8px 12px",
+              paddingTop: "max(8px, env(safe-area-inset-top))",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              borderBottom: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(18,24,42,0.98)",
+            }}
+          >
+            <strong style={{ fontSize: 14 }}>🌊 清水港NOWPHAS・7日グラフ</strong>
+            <div style={{ display: "flex", gap: 7 }}>
+              {!nowphasLoadFailed ? (
+                <button
+                  type="button"
+                  onClick={() => setNowphasZoomed((value) => !value)}
+                  style={{
+                    ...controlStyle,
+                    minHeight: 38,
+                    padding: "7px 11px",
+                    fontSize: 12,
+                  }}
+                >
+                  {nowphasZoomed ? "全体表示" : "拡大表示"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setNowphasOpen(false)}
+                style={{
+                  ...controlStyle,
+                  minHeight: 38,
+                  padding: "7px 11px",
+                  fontSize: 12,
+                  background: "rgba(255,92,143,0.28)",
+                }}
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+
+          <div
+            style={{
+              minHeight: 0,
+              overflow: "auto",
+              WebkitOverflowScrolling: "touch",
+              display: nowphasLoadFailed ? "grid" : "block",
+              placeItems: nowphasLoadFailed ? "center" : undefined,
+              padding: nowphasZoomed ? "14px 8px" : "14px 6px",
+            }}
+          >
+            {nowphasLoadFailed ? (
+              <div
+                style={{
+                  padding: 20,
+                  textAlign: "center",
+                  lineHeight: 1.7,
+                  color: "rgba(255,255,255,0.76)",
+                }}
+              >
+                NOWPHASのグラフ画像を取得できませんでした。
+                <br />
+                少し時間をおいて、もう一度開いてみてください。
+              </div>
+            ) : (
+              <img
+                src={nowphasGraphUrl}
+                alt="清水港NOWPHAS 有義波実況7日グラフ"
+                decoding="async"
+                referrerPolicy="no-referrer"
+                onError={() => setNowphasLoadFailed(true)}
+                onClick={() => setNowphasZoomed((value) => !value)}
+                style={{
+                  display: "block",
+                  width: nowphasZoomed ? 1183 : "100%",
+                  maxWidth: nowphasZoomed ? "none" : 1183,
+                  height: "auto",
+                  margin: nowphasZoomed ? 0 : "0 auto",
+                  cursor: "zoom-in",
+                  background: "#fff",
+                }}
+              />
+            )}
+          </div>
+
+          <div
+            style={{
+              padding: "8px 12px",
+              paddingBottom: "max(8px, env(safe-area-inset-bottom))",
+              borderTop: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(18,24,42,0.98)",
+              fontSize: 11,
+              color: "rgba(255,255,255,0.6)",
+              textAlign: "center",
+            }}
+          >
+            画像をタップすると全体表示／拡大表示を切り替えられます
+          </div>
+        </div>
+      ) : null}
 
     </PageShell>
   );
