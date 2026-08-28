@@ -124,19 +124,8 @@ const SHIZUOKA_COAST_CAMERA_URL =
 const SHIMIZU_NOWPHAS_URL =
   "https://nowphas.mlit.go.jp/yugiha_graph/505/7/";
 
-function getShimizuNowphasGraphUrl(date = new Date()) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  const values = Object.fromEntries(
-    parts.map((part) => [part.type, part.value]),
-  );
-  const dateKey = `${values.year}${values.month}${values.day}`;
-
-  return `https://nowphas.mlit.go.jp/PROG/web_disp_data/20min/505/yugiha_7d/505_5_${dateKey}.png`;
+function getShimizuNowphasGraphUrl() {
+  return "/api/nowphas-image";
 }
 
 function pad2(n: number) {
@@ -1849,6 +1838,24 @@ export default function Weather({ back, isActive = true }: Props) {
                 NOWPHASのグラフ画像を取得できませんでした。
                 <br />
                 少し時間をおいて、もう一度開いてみてください。
+                <div style={{ marginTop: 14 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNowphasLoadFailed(false);
+                      setNowphasGraphUrl(
+                        `/api/nowphas-image?refresh=${Date.now()}`,
+                      );
+                    }}
+                    style={{
+                      ...controlStyle,
+                      minHeight: 40,
+                      padding: "8px 14px",
+                    }}
+                  >
+                    もう一度読み込む
+                  </button>
+                </div>
               </div>
             ) : (
               <img
