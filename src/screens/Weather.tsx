@@ -1773,19 +1773,31 @@ export default function Weather({ back, isActive = true }: Props) {
         >
           <div
             style={{
-              minHeight: 54,
-              padding: "8px 12px",
+              padding: "8px 12px 10px",
               paddingTop: "max(8px, env(safe-area-inset-top))",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
+              display: "grid",
               gap: 8,
               borderBottom: "1px solid rgba(255,255,255,0.12)",
               background: "rgba(18,24,42,0.98)",
             }}
           >
-            <strong style={{ fontSize: 14 }}>🌊 清水港NOWPHAS・7日グラフ</strong>
-            <div style={{ display: "flex", gap: 7 }}>
+            <strong
+              style={{
+                minWidth: 0,
+                fontSize: 14,
+                lineHeight: 1.35,
+                textAlign: "center",
+              }}
+            >
+              🌊 清水港NOWPHAS・7日グラフ
+            </strong>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: nowphasLoadFailed ? "1fr" : "1fr 1fr",
+                gap: 8,
+              }}
+            >
               {!nowphasLoadFailed ? (
                 <button
                   type="button"
@@ -1795,6 +1807,7 @@ export default function Weather({ back, isActive = true }: Props) {
                     minHeight: 38,
                     padding: "7px 11px",
                     fontSize: 12,
+                    width: "100%",
                   }}
                 >
                   {nowphasZoomed ? "全体表示" : "拡大表示"}
@@ -1808,6 +1821,7 @@ export default function Weather({ back, isActive = true }: Props) {
                   minHeight: 38,
                   padding: "7px 11px",
                   fontSize: 12,
+                  width: "100%",
                   background: "rgba(255,92,143,0.28)",
                 }}
               >
@@ -1858,23 +1872,109 @@ export default function Weather({ back, isActive = true }: Props) {
                 </div>
               </div>
             ) : (
-              <img
-                src={nowphasGraphUrl}
-                alt="清水港NOWPHAS 有義波実況7日グラフ"
-                decoding="async"
-                referrerPolicy="no-referrer"
-                onError={() => setNowphasLoadFailed(true)}
-                onClick={() => setNowphasZoomed((value) => !value)}
+              <div
                 style={{
-                  display: "block",
-                  width: nowphasZoomed ? 1183 : "100%",
-                  maxWidth: nowphasZoomed ? "none" : 1183,
-                  height: "auto",
+                  width: nowphasZoomed ? 1255 : "100%",
+                  maxWidth: nowphasZoomed ? "none" : 1255,
                   margin: nowphasZoomed ? 0 : "0 auto",
-                  cursor: "zoom-in",
-                  background: "#fff",
                 }}
-              />
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    justifyContent: "center",
+                    gap: "3px 10px",
+                    padding: "0 4px 8px",
+                    fontSize: nowphasZoomed ? 12 : 10,
+                    lineHeight: 1.3,
+                    color: "rgba(255,255,255,0.82)",
+                  }}
+                >
+                  <span style={{ color: "#8aa9da" }}>■ 有義波高</span>
+                  <span style={{ color: "#16bfff" }}>● 波高（水圧変動推定値）</span>
+                  <span style={{ color: "#ff6796" }}>━ 有義波周期</span>
+                  <span style={{ color: "#2879dc" }}>● 周期（水圧変動推定値）</span>
+                  <span>⇦ 波向</span>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "36px minmax(0, 1fr) 36px",
+                    alignItems: "stretch",
+                    background: "#fff",
+                  }}
+                >
+                  <div
+                    aria-label="左軸 有義波高 メートル"
+                    style={{
+                      position: "relative",
+                      minWidth: 36,
+                      color: "#0b4b79",
+                      fontSize: nowphasZoomed ? 11 : 9,
+                      fontWeight: 750,
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: "2px 2px 25px 2px",
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      {["5m", "4", "3", "2", "1", "0"].map((tick) => (
+                        <span key={tick}>{tick}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <img
+                    src={nowphasGraphUrl}
+                    alt="清水港NOWPHAS 有義波実況7日グラフ"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                    onError={() => setNowphasLoadFailed(true)}
+                    onClick={() => setNowphasZoomed((value) => !value)}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      height: "auto",
+                      cursor: "zoom-in",
+                      background: "#fff",
+                    }}
+                  />
+
+                  <div
+                    aria-label="右軸 有義波周期 秒"
+                    style={{
+                      position: "relative",
+                      minWidth: 36,
+                      color: "#d83f73",
+                      fontSize: nowphasZoomed ? 11 : 9,
+                      fontWeight: 750,
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: "2px 2px 25px 2px",
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      {["15s", "12", "9", "6", "3", "0"].map((tick) => (
+                        <span key={tick}>{tick}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
 
