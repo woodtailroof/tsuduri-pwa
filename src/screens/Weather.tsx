@@ -6,6 +6,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { createPortal } from "react-dom";
 import PageShell from "../components/PageShell";
 import TideGraph from "../components/TideGraph";
 import type { TidePoint } from "../db";
@@ -1756,15 +1757,16 @@ export default function Weather({ back, isActive = true }: Props) {
         </div>
       </div>
 
-      {isMobile && nowphasOpen ? (
-        <div
+      {isMobile && nowphasOpen
+        ? createPortal(
+            <div
           role="dialog"
           aria-modal="true"
           aria-label="清水港NOWPHAS 7日グラフ"
           style={{
             position: "fixed",
             inset: 0,
-            zIndex: 5000,
+            zIndex: 2147483647,
             display: "grid",
             gridTemplateRows: "auto minmax(0, 1fr) auto",
             background: "rgba(7,10,18,0.98)",
@@ -1991,8 +1993,10 @@ export default function Weather({ back, isActive = true }: Props) {
           >
             画像をタップすると全体表示／拡大表示を切り替えられます
           </div>
-        </div>
-      ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
 
     </PageShell>
   );
