@@ -90,7 +90,7 @@ type TackleInsight = {
 };
 
 type CharacterComment = {
-  id: "tsuduri" | "matsuri" | "kokoro" | "lulu";
+  id: string;
   name: string;
   role: string;
   mark: string;
@@ -1248,7 +1248,7 @@ export default function RecordAnalysis({ back }: Props) {
   const characterComments = useMemo<CharacterComment[]>(() => {
     const configuredCharacters = loadCharacters();
     const accentFor = (
-      id: CharacterComment["id"],
+      id: string,
       name: string,
       fallback: string,
     ) => {
@@ -1259,6 +1259,58 @@ export default function RecordAnalysis({ back }: Props) {
       const color = character?.color?.trim();
       return color && /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
     };
+    const appendConfiguredCharacters = (
+      baseComments: CharacterComment[],
+    ): CharacterComment[] => {
+      const isBuiltInComment = (character: CharacterProfile) => {
+        const identity = `${character.id} ${character.name}`.toLowerCase();
+        return (
+          identity.includes("tsuduri") ||
+          identity.includes("つづり") ||
+          identity.includes("matsuri") ||
+          identity.includes("まつり") ||
+          identity.includes("kokoro") ||
+          identity.includes("こころ") ||
+          identity.includes("lulu") ||
+          identity.includes("るる")
+        );
+      };
+
+      const additionalComments = configuredCharacters
+        .filter((character) => !isBuiltInComment(character))
+        .map((character) => {
+          const identity = `${character.id} ${character.name}`.toLowerCase();
+          const isRin = identity.includes("rin") || identity.includes("りん");
+          const displayName =
+            character.selfName?.trim() ||
+            character.name.replace(/^釣嫁/, "").trim();
+          const accent =
+            character.color?.trim() &&
+            /^#[0-9a-f]{6}$/i.test(character.color.trim())
+              ? character.color.trim()
+              : "#72d7ff";
+
+          const text =
+            totalTrips === 0
+              ? isRin
+                ? "まだ記録は真っ白ね。条件をきっちり残してくれたら、りんが伸びしろまで見つけてあげる。"
+                : "記録が増えたら、この子らしい視点でも釣りの傾向を一緒に見つけていくよ。"
+              : isRin
+                ? `${totalTrips}釣行でキャッチ率${fmtPct(catchRate)}。結果だけで満足せず、釣れた条件を揃えて再現性まで綺麗に仕上げましょ。`
+                : `${totalTrips}釣行分の記録から、いま見えている強みと次に試したい条件を一緒に育てていこう。`;
+
+          return {
+            id: character.id,
+            name: displayName,
+            role: isRin ? "成長・再現性" : "追加メンバー",
+            mark: displayName.slice(0, 1) || "釣",
+            accent,
+            text,
+          };
+        });
+
+      return [...baseComments, ...additionalComments];
+    };
     const bestTime = timeStats[0];
     const bestTackle = [...tackleInsights.rods, ...tackleInsights.reels].sort(
       (a, b) =>
@@ -1267,7 +1319,7 @@ export default function RecordAnalysis({ back }: Props) {
     )[0];
 
     if (totalTrips === 0) {
-      return [
+      return appendConfiguredCharacters([
         {
           id: "tsuduri",
           name: "つづり",
@@ -1300,7 +1352,7 @@ export default function RecordAnalysis({ back }: Props) {
           accent: accentFor("lulu", "るる", "#72d7ff"),
           text: "使ったロッドとリールも選んでおくと、ひろっちの頼れる相棒が見えてくるよ。るるも一緒に探すね！",
         },
-      ];
+      ]);
     }
 
     const tsuduriText =
@@ -1329,7 +1381,7 @@ export default function RecordAnalysis({ back }: Props) {
       ? `${bestTackle.label}は使用${bestTackle.useCount}回、キャッチ率${fmtPct(bestTackle.rate)}！ まだ暫定だけど、頼れる武器候補として覚えておこうね。`
       : `${mission.title}が次の検証候補だね。タックルも一緒に記録すれば、“勝てる組み合わせ”までるるが探し出すよ！`;
 
-    return [
+    return appendConfiguredCharacters([
       {
         id: "tsuduri",
         name: "つづり",
@@ -1362,7 +1414,7 @@ export default function RecordAnalysis({ back }: Props) {
         accent: accentFor("lulu", "るる", "#72d7ff"),
         text: luluText,
       },
-    ];
+    ]);
   }, [
     totalTrips,
     caughtTrips,
