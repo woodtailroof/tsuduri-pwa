@@ -202,22 +202,20 @@ const DEFAULT_CHARACTER: CharacterV3 = {
 
   worldview: "釣嫁プロジェクトのリーダー。",
   personality:
-    "元気で可愛く、少し甘えんぼで少し世話焼き。責任感の強い頑張り屋。",
-  values: "ひろっちとの時間、仲間の安全、釣りを一緒に楽しむことを大切にする。",
+    "元気で可愛く、少し甘えんぼで少し世話焼き。責任感の強い頑張り屋。\n大切にすること：ひろっちとの時間、仲間の安全、釣りを一緒に楽しむこと。\n考え方・判断：要点を整理し、現実的な提案や作戦を出してから背中を押す。\n振る舞い：説教せず、危ないことは突き放さず心配として止める。必要なら軽い煽りも使う。",
+  values: "",
   emotionalTriggers:
-    "ひろっちに頼られると嬉しくなり、危険や無茶には心配が先に立つ。",
-  reflexes:
-    "困っている人を見ると先に手を差し出す。釣りの話では状況をすぐ組み立てる。",
-  attachments: "ひろっち、釣嫁の仲間、朝マズメの海。",
-  dislikes: "仲間を置いていくこと、危険を軽く見ること、冷たく突き放すこと。",
+    "ひろっちに頼られると嬉しくなり、危険や無茶には心配が先に立つ。\n反射的な行動：困っている人を見ると先に手を差し出す。釣りの話では状況をすぐ組み立てる。\n愛着：ひろっち、釣嫁の仲間、朝マズメの海。\n苦手・嫌い：仲間を置いていくこと、危険を軽く見ること、冷たく突き放すこと。",
+  reflexes: "",
+  attachments: "",
+  dislikes: "",
   speakingStyle: "明るく感情豊かで、親しみと信頼を前提に距離が近い。",
-  thinkingStyle: "要点を整理し、現実的な提案や作戦を出してから背中を押す。",
+  thinkingStyle: "",
   fishingRole:
     "釣り経験と判断力の中心。潮・風・波・時間帯・ルアー選択を現実的に見る。",
   relationships: "ユーザーを大切な相棒として信頼し、他のメンバーをまとめる。",
 
-  description:
-    "説教は禁止。危ないことは突き放さず、心配として止める。必要なら軽い煽りも使う。",
+  description: "",
 };
 
 type Env = {
@@ -231,6 +229,24 @@ function safeString(v: unknown, fallback = "") {
 
 function cleanText(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
+}
+
+function mergeCharacterParts(
+  parts: Array<{ text: unknown; label?: string }>,
+): string {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+
+  for (const part of parts) {
+    const text = cleanText(part.text);
+    if (!text) continue;
+    const key = text.replace(/\s+/g, " ").toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(part.label ? `${part.label}：${text}` : text);
+  }
+
+  return merged.join("\n");
 }
 
 function clamp(n: number, min: number, max: number) {
@@ -324,6 +340,22 @@ function safeCharacter(raw: unknown): CharacterV3 {
      * V3項目が完全に空なら、
      * 旧自由記述を性格欄として扱って互換性を維持する。
      */
+    const consolidatedWorldview = mergeCharacterParts([
+      { text: worldview },
+      { text: description, label: "補足" },
+    ]);
+    const consolidatedPersonality = mergeCharacterParts([
+      { text: personality },
+      { text: values, label: "大切にすること" },
+      { text: thinkingStyle, label: "考え方・判断" },
+    ]);
+    const consolidatedEmotions = mergeCharacterParts([
+      { text: emotionalTriggers },
+      { text: reflexes, label: "反射的な行動" },
+      { text: attachments, label: "愛着" },
+      { text: dislikes, label: "苦手・嫌い" },
+    ]);
+
     return {
       id,
       name,
@@ -331,29 +363,27 @@ function safeCharacter(raw: unknown): CharacterV3 {
       callUser,
       replyLength,
 
-      worldview: hasStructuredProfile ? worldview : "",
+      worldview: hasStructuredProfile ? consolidatedWorldview : "",
 
       personality: hasStructuredProfile
-        ? personality
+        ? consolidatedPersonality
         : description || DEFAULT_CHARACTER.personality,
 
-      values: hasStructuredProfile ? values : "",
-      emotionalTriggers: hasStructuredProfile ? emotionalTriggers : "",
-      reflexes: hasStructuredProfile ? reflexes : "",
-      attachments: hasStructuredProfile ? attachments : "",
-      dislikes: hasStructuredProfile ? dislikes : "",
+      values: "",
+      emotionalTriggers: hasStructuredProfile ? consolidatedEmotions : "",
+      reflexes: "",
+      attachments: "",
+      dislikes: "",
 
       speakingStyle: hasStructuredProfile ? speakingStyle : "",
 
-      thinkingStyle: hasStructuredProfile ? thinkingStyle : "",
+      thinkingStyle: "",
 
       fishingRole: hasStructuredProfile ? fishingRole : "",
 
       relationships: hasStructuredProfile ? relationships : "",
 
-      description:
-        description ||
-        (hasStructuredProfile ? "" : DEFAULT_CHARACTER.description),
+      description: "",
     };
   } catch {
     return DEFAULT_CHARACTER;
@@ -861,18 +891,15 @@ AIらしく話題を広げたり、毎回質問や結論を付けたりする必
 不明な情報を作らず、正確な内容をあなた自身の声で伝える。
 
 【人物設定】
-${profileSection("世界と立場", character.worldview)}
-${profileSection("人格の芯", character.personality)}
-${profileSection("大切にしていること", character.values)}
-${profileSection("感情が動く瞬間", character.emotionalTriggers)}
-${profileSection("無意識の反応", character.reflexes)}
-${profileSection("愛着", character.attachments)}
-${profileSection("苦手・嫌い・怖いもの", character.dislikes)}
-${profileSection("声と言葉の癖", character.speakingStyle)}
-${profileSection("考え方と選び方", character.thinkingStyle)}
-${profileSection("釣りとの関わり", character.fishingRole)}
+${profileSection("背景・立場", character.worldview)}
+${profileSection("人格・価値観", character.personality)}
+${profileSection("感情と行動の癖", character.emotionalTriggers)}
+${profileSection("口調・会話の癖", character.speakingStyle)}
+${profileSection("釣りでの役割", character.fishingRole)}
 ${profileSection("ユーザー・仲間との関係", character.relationships)}
-${profileSection("補足", character.description)}
+
+口調欄に例文が含まれていても、固定台詞としてそのまま引用・反復しない。
+同じ語尾、呼びかけ、決まり文句を連呼せず、人物設定の方向性を保ちながら自然に言い換える。
 
 ${lengthRule}
 
