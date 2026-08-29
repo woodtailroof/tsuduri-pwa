@@ -129,6 +129,22 @@ function getShimizuNowphasGraphUrl() {
   return "/api/nowphas-image";
 }
 
+function buildNowphasDateLabels(dateKey: string | null) {
+  if (!dateKey || !/^\d{8}$/.test(dateKey)) return [];
+  const year = Number(dateKey.slice(0, 4));
+  const month = Number(dateKey.slice(4, 6));
+  const day = Number(dateKey.slice(6, 8));
+  const endDate = new Date(Date.UTC(year, month - 1, day));
+  if (Number.isNaN(endDate.getTime())) return [];
+  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(endDate);
+    date.setUTCDate(endDate.getUTCDate() - (6 - index));
+    return `${date.getUTCMonth() + 1}/${date.getUTCDate()}(${weekdays[date.getUTCDay()]})`;
+  });
+}
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
@@ -564,6 +580,10 @@ export default function Weather({ back, isActive = true }: Props) {
   const [nowphasGraphUrl, setNowphasGraphUrl] = useState(() =>
     getShimizuNowphasGraphUrl(),
   );
+  const [nowphasGraphDateKey, setNowphasGraphDateKey] = useState<string | null>(
+    null,
+  );
+  const [nowphasRefreshKey, setNowphasRefreshKey] = useState(0);
 
   const targetDate = useMemo(() => {
     const now = new Date();
@@ -796,6 +816,42 @@ export default function Weather({ back, isActive = true }: Props) {
     [clearEmotion],
   );
 
+  useEffect(() => {
+    if (!nowphasOpen) return;
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    const loadNowphasGraph = async () => {
+      setNowphasLoadFailed(false);
+      setNowphasGraphDateKey(null);
+      try {
+        const response = await fetch(
+          `${getShimizuNowphasGraphUrl()}?refresh=${nowphasRefreshKey}`,
+          { cache: "no-store" },
+        );
+        if (!response.ok) throw new Error(`nowphas_http_${response.status}`);
+        const dateKey = response.headers.get("x-nowphas-date");
+        const blob = await response.blob();
+        if (!blob.type.startsWith("image/")) {
+          throw new Error("nowphas_invalid_content_type");
+        }
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setNowphasGraphUrl(objectUrl);
+        setNowphasGraphDateKey(dateKey);
+        setNowphasLoadFailed(false);
+      } catch {
+        if (!cancelled) setNowphasLoadFailed(true);
+      }
+    };
+
+    void loadNowphasGraph();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [nowphasOpen, nowphasRefreshKey]);
+
   const onBack = useCallback(() => {
     if (nowphasOpen) {
       setNowphasOpen(false);
@@ -874,9 +930,9 @@ export default function Weather({ back, isActive = true }: Props) {
         // iOSのホーム画面PWAでは外部遷移が白画面になることがあるため、
         // 公式グラフ画像をアプリ内の専用ビューで表示する。
         event.preventDefault();
-        setNowphasGraphUrl(getShimizuNowphasGraphUrl());
         setNowphasLoadFailed(false);
         setNowphasZoomed(false);
+        setNowphasRefreshKey((value) => value + 1);
         setNowphasOpen(true);
         return;
       }
@@ -1858,10 +1914,7 @@ export default function Weather({ back, isActive = true }: Props) {
                   <button
                     type="button"
                     onClick={() => {
-                      setNowphasLoadFailed(false);
-                      setNowphasGraphUrl(
-                        `/api/nowphas-image?refresh=${Date.now()}`,
-                      );
+                      setNowphasRefreshKey((value) => value + 1);
                     }}
                     style={{
                       ...controlStyle,
@@ -1976,6 +2029,28 @@ export default function Weather({ back, isActive = true }: Props) {
                     </div>
                   </div>
                 </div>
+
+                {buildNowphasDateLabels(nowphasGraphDateKey).length > 0 ? (
+                  <div
+                    aria-label="NOWPHASグラフの日付"
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+                      gap: 0,
+                      margin: "0 36px",
+                      padding: "5px 0 1px",
+                      color: "rgba(255,255,255,0.82)",
+                      fontSize: nowphasZoomed ? 11 : 8,
+                      fontWeight: 750,
+                      textAlign: "center",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {buildNowphasDateLabels(nowphasGraphDateKey).map((label) => (
+                      <span key={label}>{label}</span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             )}
           </div>
