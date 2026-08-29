@@ -415,8 +415,19 @@ export default function Stage(props: Props) {
   const effectiveCharacterId =
     forcedId || (pickCharacterId ?? "").trim() || "tsuduri";
 
+  const effectiveCharacterLabel =
+    createdCharacters.find((character) => character.id === effectiveCharacterId)
+      ?.label ?? "";
+
   const characterCandidates = useMemo(() => {
-    const mappedRaw = (charImageMap[effectiveCharacterId] ?? "").trim();
+    const normalizedLabel = effectiveCharacterLabel.replace(/\s+/g, "");
+    const inferredKnownFolder =
+      normalizedLabel === "海川りん" || normalizedLabel === "りん"
+        ? "/assets/characters/rin/"
+        : "";
+    const mappedRaw = (
+      charImageMap[effectiveCharacterId] ?? inferredKnownFolder
+    ).trim();
     const mappedNorm = normalizePublicPath(mappedRaw) || "";
     const mappedIsFile = mappedNorm
       ? looksLikeImageFilePath(mappedNorm)
@@ -524,6 +535,7 @@ export default function Stage(props: Props) {
   }, [
     charImageMap,
     effectiveCharacterId,
+    effectiveCharacterLabel,
     effectiveCostumeId,
     effectiveExpression,
     characterOverrideSrc,
