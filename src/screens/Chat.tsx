@@ -422,9 +422,24 @@ function buildFallbackGroupPlan(
     characters.filter((character) => character.id !== spotlight?.id),
   );
   const ordered = spotlight ? [spotlight, ...rest] : rest;
+  const normalizedText = String(text ?? "").normalize("NFKC");
+  const lively = /[!！?？ｗw笑]{2,}|盛り上|楽し|すご|やば|最高/.test(
+    normalizedText,
+  );
+  const briefMention =
+    !!spotlight && !lively && normalizedText.trim().length <= 20;
+  const normalChoices = lively ? [3, 4, 5] : [2, 3, 4];
+  const pickedCount = briefMention
+    ? Math.random() < 0.65
+      ? 1
+      : 2
+    : (normalChoices[Math.floor(Math.random() * normalChoices.length)] ?? 3);
+  const participantCount = spotlight
+    ? Math.min(pickedCount, Math.max(1, ordered.length))
+    : Math.min(pickedCount, ordered.length);
   const speakingOrder = wantsEveryoneToReply(text)
     ? ordered
-    : ordered.slice(0, Math.min(3, ordered.length));
+    : ordered.slice(0, participantCount);
   const functions = assignGroupConversationFunctions(speakingOrder);
   const lengths = assignGroupReplyLengths(
     speakingOrder,
@@ -1413,6 +1428,22 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           mode: "group_plan",
           text,
           isJudge,
+          recentParticipantCounts: (() => {
+            const counts: number[] = [];
+            let currentCount = 0;
+            for (let index = messages.length - 1; index >= 0; index--) {
+              if (messages[index].role === "assistant") {
+                currentCount++;
+                continue;
+              }
+              if (currentCount > 0) {
+                counts.push(currentCount);
+                currentCount = 0;
+                if (counts.length >= 3) break;
+              }
+            }
+            return counts;
+          })(),
           characters: characters.map((character) => ({
             id: character.id,
             name: character.name,
