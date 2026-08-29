@@ -13,6 +13,7 @@ import {
   useAppSettings,
 } from "../lib/appSettings";
 import { CHARACTERS_STORAGE_KEY } from "../screens/CharacterSettings";
+import { resolveCharacterFolderPath } from "../lib/characterSync";
 import { useEmotion, type Emotion } from "../lib/emotion";
 
 type Props = {
@@ -423,15 +424,18 @@ export default function Stage(props: Props) {
     const normalizedLabel = effectiveCharacterLabel.replace(/\s+/g, "");
     const inferredKnownFolder =
       normalizedLabel === "海川りん" || normalizedLabel === "りん"
-        ? "/assets/characters/rin/"
+        ? "rin"
         : "";
-    const mappedRaw = (
-      charImageMap[effectiveCharacterId] ?? inferredKnownFolder
-    ).trim();
-    const mappedNorm = normalizePublicPath(mappedRaw) || "";
-    const mappedIsFile = mappedNorm
-      ? looksLikeImageFilePath(mappedNorm)
+    const mappedValue =
+      (charImageMap[effectiveCharacterId] ?? "").trim() ||
+      inferredKnownFolder;
+    const mappedValueNorm = normalizePublicPath(mappedValue) || "";
+    const mappedIsFile = mappedValueNorm
+      ? looksLikeImageFilePath(mappedValueNorm)
       : false;
+    const mappedNorm = mappedIsFile
+      ? mappedValueNorm
+      : resolveCharacterFolderPath(mappedValue);
     const mappedDir =
       mappedNorm && !mappedIsFile ? ensureTrailingSlash(mappedNorm) : "";
 
@@ -442,6 +446,14 @@ export default function Stage(props: Props) {
       : "";
     const mappedCostumeNeutralSrc = mappedDir
       ? normalizePublicPath(`${mappedDir}${effectiveCostumeId}/neutral.png`)
+      : "";
+    const mappedCasualExpressionSrc = mappedDir
+      ? normalizePublicPath(
+          `${mappedDir}casual/${effectiveExpression}.png`,
+        )
+      : "";
+    const mappedCasualNeutralSrc = mappedDir
+      ? normalizePublicPath(`${mappedDir}casual/neutral.png`)
       : "";
 
     const mappedExpressionSrc = mappedDir
@@ -488,6 +500,12 @@ export default function Stage(props: Props) {
       mappedIsFile
         ? ""
         : appendAssetVersion(mappedCostumeNeutralSrc, assetVersion),
+      mappedIsFile
+        ? ""
+        : appendAssetVersion(mappedCasualExpressionSrc, assetVersion),
+      mappedIsFile
+        ? ""
+        : appendAssetVersion(mappedCasualNeutralSrc, assetVersion),
       mappedIsFile ? "" : appendAssetVersion(mappedExpressionSrc, assetVersion),
       mappedIsFile ? "" : appendAssetVersion(mappedNeutralSrc, assetVersion),
 
