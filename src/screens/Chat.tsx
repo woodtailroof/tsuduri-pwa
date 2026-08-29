@@ -404,8 +404,12 @@ function assignGroupReplyLengths(
 }
 
 function wantsEveryoneToReply(text: string): boolean {
-  return /(みんな|全員|みなさん|皆さん)/.test(
-    String(text ?? "").normalize("NFKC"),
+  const normalized = String(text ?? "").normalize("NFKC");
+  return (
+    /(みんな|全員|みなさん|皆さん|一人ずつ|ひとりずつ)/.test(normalized) ||
+    /(順に|順番に).{0,12}(自己紹介|話して|答えて|言って|どうぞ)/.test(
+      normalized,
+    )
   );
 }
 
