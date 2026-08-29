@@ -1035,6 +1035,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         relationships: item.relationships,
       }));
       const normalizedText = text.normalize("NFKC");
+      const recentParticipantCounts = Array.isArray(
+        body?.recentParticipantCounts,
+      )
+        ? body.recentParticipantCounts
+            .map((value: unknown) => Number(value))
+            .filter(
+              (value: number) =>
+                Number.isInteger(value) && value >= 1 && value <= 12,
+            )
+            .slice(0, 3)
+        : [];
       const wantsEveryone =
         /(みんな|全員|みなさん|皆さん|一人ずつ|ひとりずつ)/.test(
           normalizedText,
@@ -1052,12 +1063,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 【進行ルール】
 - キャラクターが名指しされたら本人を必ず最初にする
 - 名指しは正式名、自称、関係性に書かれた愛称から判断する
-- 通常の雑談は2〜3人。全員が同じ話題へ順番に回答しない
+- 人数を毎回3人へ固定しない。話題の熱量、名指し、直近の参加人数を見て自然に変える
+- 軽い相づち、個人的な呼びかけ、静かな話題は1〜2人でもよい
+- 普通の雑談は2〜4人を目安にする
+- 盛り上がる話題、冗談、勝負、驚き、ツッコミどころがある場面は3〜5人で賑やかにしてよい
+- 直近と同じ人数が続いている場合は、会話として不自然でない範囲で人数を変える
 - ユーザーが「みんな」「全員」「一人ずつ」「順に自己紹介」など、全員参加や順番のある発言を求めた場合は登録メンバー全員を一度ずつ含める
 - 個人的な呼びかけなら本人だけ、または本人と自然に関係する1人まででもよい
 - 釣行判断は判断力のあるメンバーを先頭にして、合計2〜3人を基本とする
 - directは先頭の1人だけ。他はreaction/add_one/question/personal/counterから話題と性格に合うものを選ぶ
 - longは詳しい説明が本当に必要な中心人物だけ。通常はmediumまたはshort
+- 4人以上が参加する場合、中心人物以外はshortを基本にして会話全体を長文化させない
 - characterIdは入力値と完全一致させ、同じ人物を重複させない
 - 必ずJSONだけを返す
 
@@ -1070,6 +1086,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             userText: text,
             isFishingJudge: isJudge,
             wantsEveryone,
+            recentParticipantCounts,
             characters: roster,
           }).slice(0, 16000),
         },
