@@ -205,6 +205,24 @@ function normalizeCharacterColor(color?: string) {
   return value || "#ff7aa2";
 }
 
+function characterIconPath(characterId: string, characterName: string): string {
+  const identity = `${characterId} ${characterName}`.toLowerCase();
+  const iconId =
+    identity.includes("tsuduri") || identity.includes("つづり")
+      ? "tsuduri"
+      : identity.includes("matsuri") || identity.includes("まつり")
+        ? "matsuri"
+        : identity.includes("kokoro") || identity.includes("こころ")
+          ? "kokoro"
+          : identity.includes("lulu") || identity.includes("るる")
+            ? "lulu"
+            : identity.includes("rin") || identity.includes("りん")
+              ? "rin"
+              : characterId;
+
+  return `/assets/character-icons/${encodeURIComponent(iconId)}.png`;
+}
+
 function hexToRgba(hex: string, alpha: number) {
   const cleaned = hex.trim().replace(/^#/, "");
 
@@ -250,6 +268,12 @@ type GroupConversationFunction =
   | "question"
   | "personal"
   | "counter";
+
+type GroupPlanItem = {
+  characterId: string;
+  conversationFunction: GroupConversationFunction;
+  replyLength: GroupReplyLength;
+};
 
 function assignGroupConversationFunctions(
   speakingOrder: CharacterProfileWithColor[],
@@ -377,6 +401,37 @@ function assignGroupReplyLengths(
   assignments.set(swapCharacter.id, "short");
 
   return assignments;
+}
+
+function wantsEveryoneToReply(text: string): boolean {
+  return /(みんな|全員|みなさん|皆さん)/.test(
+    String(text ?? "").normalize("NFKC"),
+  );
+}
+
+function buildFallbackGroupPlan(
+  text: string,
+  characters: CharacterProfileWithColor[],
+): GroupPlanItem[] {
+  const spotlight = detectMentionedCharacter(text, characters);
+  const rest = shuffleCharacters(
+    characters.filter((character) => character.id !== spotlight?.id),
+  );
+  const ordered = spotlight ? [spotlight, ...rest] : rest;
+  const speakingOrder = wantsEveryoneToReply(text)
+    ? ordered
+    : ordered.slice(0, Math.min(3, ordered.length));
+  const functions = assignGroupConversationFunctions(speakingOrder);
+  const lengths = assignGroupReplyLengths(
+    speakingOrder,
+    spotlight?.id ?? null,
+  );
+
+  return speakingOrder.map((character) => ({
+    characterId: character.id,
+    conversationFunction: functions.get(character.id) ?? "reaction",
+    replyLength: lengths.get(character.id) ?? "short",
+  }));
 }
 
 function buildReplyLengthHint(length: GroupReplyLength) {
@@ -1338,6 +1393,76 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     throw new Error(err ?? "unknown_error");
   }
 
+  async function requestGroupPlan(
+    text: string,
+    isJudge: boolean,
+  ): Promise<GroupPlanItem[]> {
+    const fallbackPlan = buildFallbackGroupPlan(text, characters);
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          mode: "group_plan",
+          text,
+          isJudge,
+          characters: characters.map((character) => ({
+            id: character.id,
+            name: character.name,
+            selfName: character.selfName,
+            personality: character.personality,
+            fishingRole: character.fishingRole,
+            relationships: character.relationships,
+          })),
+        }),
+      });
+
+      const json = (await response.json().catch(() => null)) as
+        | { ok?: boolean; plan?: GroupPlanItem[] }
+        | null;
+
+      if (!response.ok || !json?.ok || !Array.isArray(json.plan)) {
+        return fallbackPlan;
+      }
+
+      const knownIds = new Set(characters.map((character) => character.id));
+      const seen = new Set<string>();
+      const validFunctions = new Set<GroupConversationFunction>([
+        "direct",
+        "reaction",
+        "add_one",
+        "question",
+        "personal",
+        "counter",
+      ]);
+      const validLengths = new Set<GroupReplyLength>([
+        "long",
+        "medium",
+        "short",
+      ]);
+      const plan = json.plan.flatMap((item) => {
+        if (
+          !item ||
+          !knownIds.has(item.characterId) ||
+          seen.has(item.characterId) ||
+          !validFunctions.has(item.conversationFunction) ||
+          !validLengths.has(item.replyLength)
+        ) {
+          return [];
+        }
+        seen.add(item.characterId);
+        return [item];
+      });
+
+      return plan.length > 0 ? plan : fallbackPlan;
+    } catch {
+      return fallbackPlan;
+    }
+  }
+
   function applyChatEmotion(nextEmotion: Emotion) {
     emitEmotion({
       source: "chat",
@@ -1469,24 +1594,26 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       emotion?: Emotion;
     } | null = null;
 
-    const speakingOrder = shuffleCharacters(characters);
-
-    const conversationFunctions =
-      assignGroupConversationFunctions(speakingOrder);
-
-    const spotlightCharacter = detectMentionedCharacter(text, characters);
-
-    const replyLengths = assignGroupReplyLengths(
-      characters,
-      spotlightCharacter?.id ?? null,
+    setLoadingCharacterName("みんな");
+    const groupPlan = await requestGroupPlan(text, isJudge);
+    const charactersById = new Map(
+      characters.map((character) => [character.id, character]),
     );
+    const speakingPlan = groupPlan.flatMap((item) => {
+      const character = charactersById.get(item.characterId);
+      return character ? [{ character, ...item }] : [];
+    });
 
     for (
       let speakerIndex = 0;
-      speakerIndex < speakingOrder.length;
+      speakerIndex < speakingPlan.length;
       speakerIndex++
     ) {
-      const character = speakingOrder[speakerIndex];
+      const {
+        character,
+        conversationFunction,
+        replyLength,
+      } = speakingPlan[speakerIndex];
       const isJudgeLeader = isJudge && speakerIndex === 0;
       const isJudgeFollower = isJudge && speakerIndex > 0;
 
@@ -1505,11 +1632,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         character.id,
         characters,
       );
-
-      const replyLength = replyLengths.get(character.id) ?? "short";
-
-      const conversationFunction =
-        conversationFunctions.get(character.id) ?? "reaction";
 
       const groupHints = [
         ...(isJudgeLeader ? hints : []),
@@ -1736,6 +1858,16 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           line-height: 1.3;
         }
 
+        .chat-speaker-icon {
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          object-fit: cover;
+          flex: 0 0 auto;
+          border: 1px solid currentColor;
+          background: rgba(10, 16, 26, 0.72);
+        }
+
         .chat-speaker-dot {
           width: 8px;
           height: 8px;
@@ -1766,6 +1898,11 @@ export default function Chat({ back, goCharacterSettings }: Props) {
           .chat-speaker-label {
             margin-bottom: 3px;
             font-size: 11px;
+          }
+
+          .chat-speaker-icon {
+            width: 25px;
+            height: 25px;
           }
 
           .chat-quick {
@@ -1921,6 +2058,17 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                         color: speakerColor,
                       }}
                     >
+                      <img
+                        className="chat-speaker-icon"
+                        src={characterIconPath(
+                          m.characterId ?? "",
+                          speakerName,
+                        )}
+                        alt=""
+                        onError={(event) => {
+                          event.currentTarget.style.display = "none";
+                        }}
+                      />
                       <span
                         className="chat-speaker-dot"
                         aria-hidden="true"

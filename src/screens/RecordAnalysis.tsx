@@ -150,7 +150,9 @@ function iconPath(characterId: string, characterName: string): string {
           ? "kokoro"
           : identity.includes("lulu") || identity.includes("るる")
             ? "lulu"
-            : characterId;
+            : identity.includes("rin") || identity.includes("りん")
+              ? "rin"
+              : characterId;
 
   return `/assets/character-icons/${encodeURIComponent(knownIconId)}.png`;
 }
@@ -162,6 +164,7 @@ function characterOrder(characterId: string, characterName: string): number {
   if (identity.includes("matsuri") || identity.includes("まつり")) return 1;
   if (identity.includes("kokoro") || identity.includes("こころ")) return 2;
   if (identity.includes("lulu") || identity.includes("るる")) return 3;
+  if (identity.includes("rin") || identity.includes("りん")) return 4;
   return 99;
 }
 

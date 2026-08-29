@@ -1009,6 +1009,152 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       });
     }
 
+    if (body?.mode === "group_plan") {
+      const text = cleanText(body?.text).slice(0, 2000);
+      const isJudge = body?.isJudge === true;
+      const rawCharacters = Array.isArray(body?.characters)
+        ? body.characters.slice(0, 12)
+        : [];
+      const characters: CharacterV3[] = rawCharacters.map((item: unknown) =>
+        safeCharacter(item),
+      );
+
+      if (!text || characters.length === 0) {
+        return jsonResponse(400, {
+          ok: false,
+          error: "group_plan_text_and_characters_required",
+        });
+      }
+
+      const roster = characters.map((item) => ({
+        id: item.id,
+        name: item.name,
+        selfName: item.self,
+        personality: item.personality,
+        fishingRole: item.fishingRole,
+        relationships: item.relationships,
+      }));
+      const wantsEveryone = /(みんな|全員|みなさん|皆さん)/.test(
+        text.normalize("NFKC"),
+      );
+      const prompt: Msg[] = [
+        {
+          role: "system",
+          content: `
+あなたは複数キャラクター会話の進行係です。
+ユーザー発言と登録メンバーを読み、今回自然に話すメンバー、順番、会話機能、返答量だけを決めます。本文は書きません。
+
+【進行ルール】
+- キャラクターが名指しされたら本人を必ず最初にする
+- 名指しは正式名、自称、関係性に書かれた愛称から判断する
+- 通常の雑談は2〜3人。全員が同じ話題へ順番に回答しない
+- ユーザーが「みんな」「全員」など全員の返答を明示した場合だけ登録メンバー全員を一度ずつ含める
+- 個人的な呼びかけなら本人だけ、または本人と自然に関係する1人まででもよい
+- 釣行判断は判断力のあるメンバーを先頭にして、合計2〜3人を基本とする
+- directは先頭の1人だけ。他はreaction/add_one/question/personal/counterから話題と性格に合うものを選ぶ
+- longは詳しい説明が本当に必要な中心人物だけ。通常はmediumまたはshort
+- characterIdは入力値と完全一致させ、同じ人物を重複させない
+- 必ずJSONだけを返す
+
+{"plan":[{"characterId":"id","conversationFunction":"direct|reaction|add_one|question|personal|counter","replyLength":"long|medium|short"}]}
+`.trim(),
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            userText: text,
+            isFishingJudge: isJudge,
+            wantsEveryone,
+            characters: roster,
+          }).slice(0, 16000),
+        },
+      ];
+
+      const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+      const response = await openai.responses.create({
+        model: "gpt-5.5",
+        input: prompt,
+        max_output_tokens: 700,
+      });
+      const raw = String(response.output_text ?? "").trim();
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (!match) {
+        return jsonResponse(502, {
+          ok: false,
+          error: "group_plan_invalid_response",
+        });
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(match[0]);
+      } catch {
+        return jsonResponse(502, {
+          ok: false,
+          error: "group_plan_invalid_json",
+        });
+      }
+
+      const rawPlan =
+        parsed &&
+        typeof parsed === "object" &&
+        Array.isArray((parsed as { plan?: unknown }).plan)
+          ? (parsed as { plan: unknown[] }).plan
+          : [];
+      const allowedIds = new Set(characters.map((item) => item.id));
+      const allowedFunctions = new Set([
+        "direct",
+        "reaction",
+        "add_one",
+        "question",
+        "personal",
+        "counter",
+      ]);
+      const allowedLengths = new Set(["long", "medium", "short"]);
+      const seen = new Set<string>();
+      const plan = rawPlan.flatMap((item) => {
+        if (!item || typeof item !== "object") return [];
+        const value = item as Record<string, unknown>;
+        const characterId = cleanText(value.characterId);
+        const conversationFunction = cleanText(value.conversationFunction);
+        const replyLength = cleanText(value.replyLength);
+        if (
+          !allowedIds.has(characterId) ||
+          seen.has(characterId) ||
+          !allowedFunctions.has(conversationFunction) ||
+          !allowedLengths.has(replyLength)
+        ) {
+          return [];
+        }
+        seen.add(characterId);
+        return [{ characterId, conversationFunction, replyLength }];
+      });
+
+      if (wantsEveryone) {
+        for (const character of characters) {
+          if (seen.has(character.id)) continue;
+          plan.push({
+            characterId: character.id,
+            conversationFunction: plan.length === 0 ? "direct" : "personal",
+            replyLength: plan.length === 0 ? "medium" : "short",
+          });
+        }
+      }
+
+      if (plan.length === 0) {
+        return jsonResponse(502, {
+          ok: false,
+          error: "group_plan_empty",
+        });
+      }
+
+      return jsonResponse(200, {
+        ok: true,
+        plan,
+        usage: response.usage,
+      });
+    }
+
     if (body?.mode === "analysis_comments") {
       const rawCharacters = Array.isArray(body?.characters)
         ? body.characters.slice(0, 12)
@@ -1058,6 +1204,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
 【絶対ルール】
 - 各キャラクターの一人称、ユーザーの呼び方、性格、口調、価値観、釣りでの立ち位置を忠実に反映する
+- 入力された全キャラクターについて、設定のidを使ったコメントを必ず1件ずつ返す
+- 各コメントはそのcharacterId本人として書き、自分自身を別人として呼んだり歓迎したりしない
+- 他キャラクターの一人称、口調、ユーザー呼称を混ぜない
 - 全員が同じ数字を言い換えない。各自が性格に従って別の点へ自然に注目する
 - キャラクターへ担当分野を機械的に固定しない
 - 事実にない釣果、場所、ルアー、天候、感情を捏造しない
