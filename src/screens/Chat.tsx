@@ -200,6 +200,23 @@ function readCharacterProfile(
   return list.find((c) => c.id === id) ?? fallback;
 }
 
+function latestGroupCharacterId(
+  messages: Msg[],
+  characters: CharacterProfileWithColor[],
+  fallbackId: string,
+): string {
+  const validIds = new Set(characters.map((character) => character.id));
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const characterId = messages[index].characterId?.trim();
+    if (characterId && validIds.has(characterId)) {
+      return characterId;
+    }
+  }
+  return validIds.has(fallbackId)
+    ? fallbackId
+    : (characters[0]?.id ?? "tsuduri");
+}
+
 function normalizeCharacterColor(color?: string) {
   const value = String(color ?? "").trim();
   return value || "#ff7aa2";
@@ -1223,6 +1240,17 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     safeLoadHistory(roomId),
   );
 
+  const [groupDisplayCharacterId, setGroupDisplayCharacterId] =
+    useState<string>(() => {
+      const loadedCharacters = safeLoadCharacters();
+      const history = safeLoadHistory(GROUP_ROOM_ID);
+      return latestGroupCharacterId(
+        history,
+        loadedCharacters,
+        loadedCharacters[0]?.id ?? "tsuduri",
+      );
+    });
+
   const [input, setInput] = useState<string>("");
 
   const [loading, setLoading] = useState<boolean>(false);
@@ -1323,12 +1351,19 @@ export default function Chat({ back, goCharacterSettings }: Props) {
   }, []);
 
   useEffect(() => {
-    setMessages(safeLoadHistory(roomId));
+    const history = safeLoadHistory(roomId);
+    setMessages(history);
+
+    if (roomId === GROUP_ROOM_ID) {
+      setGroupDisplayCharacterId(
+        latestGroupCharacterId(history, characters, fallback.id),
+      );
+    }
 
     setLoadingCharacterName("");
     scrollToBottom("auto");
     focusInput();
-  }, [roomId]);
+  }, [roomId, characters, fallback.id]);
 
   useEffect(() => {
     safeSaveHistory(roomId, messages);
@@ -1652,6 +1687,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       const isJudgeLeader = isJudge && speakerIndex === 0;
       const isJudgeFollower = isJudge && speakerIndex > 0;
 
+      setGroupDisplayCharacterId(character.id);
       setLoadingCharacterName(character.name);
 
       /**
@@ -1804,7 +1840,9 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       titleLayout="left"
       scrollY="hidden"
       contentPadding="clamp(10px, 2vw, 18px)"
-      displayCharacterId={selectedId}
+      displayCharacterId={
+        isGroupMode ? groupDisplayCharacterId : selectedId
+      }
     >
       <style>{`
         @keyframes tsuduri-dot-bounce {
