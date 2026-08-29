@@ -152,9 +152,6 @@ export default function LockScreen({ onUnlocked }: Props) {
       <div style={card}>
         <div style={{ display: "grid", gap: 8 }}>
           <h1 style={title}>🔒 ロック解除</h1>
-          <div style={sub}>
-            このアプリは入口ロック中だよ。パスワードを知らない人は中に入れないようにしてある。
-          </div>
         </div>
 
         <div style={{ display: "grid", gap: 8 }}>
