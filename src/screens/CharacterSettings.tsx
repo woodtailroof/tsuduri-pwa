@@ -276,6 +276,15 @@ function safeSaveSelectedId(id: string) {
   }
 }
 
+function hasSameCharacterIds(
+  current: CharacterProfile[],
+  persisted: CharacterProfile[],
+) {
+  if (current.length !== persisted.length) return false;
+  const persistedIds = new Set(persisted.map((character) => character.id));
+  return current.every((character) => persistedIds.has(character.id));
+}
+
 function downloadText(filename: string, text: string) {
   const blob = new Blob([text], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -331,8 +340,20 @@ export default function CharacterSettings({ back }: { back: () => void }) {
   }, [list, selectedId]);
 
   useEffect(() => {
-    safeSaveSelectedId(selectedId);
-  }, [selectedId]);
+    const persisted = normalizeCharacterList(
+      safeJsonParse<unknown>(
+        localStorage.getItem(CHARACTERS_STORAGE_KEY),
+        [],
+      ),
+    );
+
+    // 新規・複製・削除の直後は、一覧より先に選択IDだけ保存すると
+    // tsuduri-charactersイベントで未保存の一覧が古い内容へ巻き戻る。
+    // 一覧構成が保存済みデータと一致するまでは選択IDの保存を保留する。
+    if (hasSameCharacterIds(list, persisted)) {
+      safeSaveSelectedId(selectedId);
+    }
+  }, [list, selectedId]);
 
   useEffect(() => {
     const reloadFromSync = () => {
@@ -415,7 +436,9 @@ export default function CharacterSettings({ back }: { back: () => void }) {
     setList(fixed);
     safeSaveCharacters(fixed);
 
-    if (!fixed.some((c) => c.id === selectedId)) {
+    if (fixed.some((c) => c.id === selectedId)) {
+      safeSaveSelectedId(selectedId);
+    } else {
       const nextId = fixed[0]?.id ?? "tsuduri";
       setSelectedId(nextId);
       safeSaveSelectedId(nextId);
