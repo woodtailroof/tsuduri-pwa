@@ -61,6 +61,21 @@ type CharacterExportV4 = {
 
 const BACKUP_KEY = "tsuduri_characters_backup_v1";
 
+const THEME_COLOR_PALETTE = [
+  { name: "桜", value: "#ff7aa2" },
+  { name: "ローズ", value: "#f0527f" },
+  { name: "珊瑚", value: "#ff756d" },
+  { name: "蜜柑", value: "#f59b45" },
+  { name: "琥珀", value: "#e5b83f" },
+  { name: "若葉", value: "#69bd76" },
+  { name: "翡翠", value: "#42b9a5" },
+  { name: "水色", value: "#4bbcdf" },
+  { name: "青", value: "#5689e8" },
+  { name: "藍", value: "#6464ca" },
+  { name: "菫", value: "#986bd4" },
+  { name: "藤", value: "#c17acb" },
+] as const;
+
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
   try {
     if (!raw) return fallback;
@@ -83,6 +98,11 @@ function uid() {
 function normalizeColor(s: string) {
   const t = String(s ?? "").trim();
   return t || "#ff7aa2";
+}
+
+function toColorInputValue(raw: string) {
+  const color = normalizeColor(raw);
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : "#ff7aa2";
 }
 
 function normalizeReplyLength(): ReplyLength {
@@ -324,6 +344,10 @@ export default function CharacterSettings({ back }: { back: () => void }) {
   const selected = useMemo(
     () => list.find((c) => c.id === selectedId) ?? list[0],
     [list, selectedId],
+  );
+  const selectedThemeColor = normalizeColor(selected?.color ?? "#ff7aa2");
+  const selectedPaletteColor = THEME_COLOR_PALETTE.some(
+    (color) => color.value.toLowerCase() === selectedThemeColor.toLowerCase(),
   );
 
   useEffect(() => {
@@ -1065,37 +1089,126 @@ export default function CharacterSettings({ back }: { back: () => void }) {
               <div style={{ minWidth: 0 }}>
                 <div style={sectionTitle}>テーマカラー</div>
 
-                <input
-                  value={selected?.color ?? ""}
-                  onChange={(e) =>
-                    updateSelected({
-                      color: e.target.value,
-                    })
-                  }
-                  style={inputStyle}
-                  placeholder="#ff7aa2"
-                />
-
                 <div
                   style={{
-                    marginTop: 6,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(42px, 1fr))",
+                    gap: 9,
+                    maxWidth: 620,
                   }}
                 >
-                  <span style={smallHint}>プレビュー</span>
+                  {THEME_COLOR_PALETTE.map((color) => {
+                    const isSelected =
+                      color.value.toLowerCase() ===
+                      selectedThemeColor.toLowerCase();
 
-                  <span
-                    aria-hidden="true"
+                    return (
+                      <button
+                        key={color.value}
+                        type="button"
+                        aria-label={`${color.name}を選択`}
+                        aria-pressed={isSelected}
+                        title={color.name}
+                        onClick={() => updateSelected({ color: color.value })}
+                        style={{
+                          position: "relative",
+                          width: 42,
+                          height: 42,
+                          justifySelf: "center",
+                          borderRadius: 999,
+                          border: isSelected
+                            ? "3px solid #fff"
+                            : "2px solid rgba(255,255,255,0.24)",
+                          background: color.value,
+                          boxShadow: isSelected
+                            ? `0 0 0 3px ${color.value}66, 0 5px 14px rgba(0,0,0,0.24)`
+                            : "0 4px 10px rgba(0,0,0,0.18)",
+                          color: "#fff",
+                          cursor: "pointer",
+                          padding: 0,
+                        }}
+                      >
+                        {isSelected ? (
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              display: "grid",
+                              placeItems: "center",
+                              width: "100%",
+                              height: "100%",
+                              fontSize: 19,
+                              fontWeight: 950,
+                              textShadow: "0 1px 4px rgba(0,0,0,0.55)",
+                            }}
+                          >
+                            ✓
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+
+                  <label
+                    title="自由な色を選ぶ"
                     style={{
-                      width: 18,
-                      height: 18,
+                      position: "relative",
+                      width: 42,
+                      height: 42,
+                      justifySelf: "center",
                       borderRadius: 999,
-                      background: normalizeColor(selected?.color ?? "#ff7aa2"),
-                      boxShadow: "0 0 0 4px rgba(255,255,255,0.06)",
+                      border: !selectedPaletteColor
+                        ? "3px solid #fff"
+                        : "2px solid rgba(255,255,255,0.32)",
+                      background:
+                        "conic-gradient(#ff5f75, #ffce55, #62cf84, #4fc8e8, #7772e8, #d86bca, #ff5f75)",
+                      boxShadow: !selectedPaletteColor
+                        ? "0 0 0 3px rgba(255,255,255,0.18), 0 5px 14px rgba(0,0,0,0.24)"
+                        : "0 4px 10px rgba(0,0,0,0.18)",
+                      cursor: "pointer",
+                      overflow: "hidden",
                     }}
-                  />
+                  >
+                    <input
+                      type="color"
+                      aria-label="自由なテーマカラーを選ぶ"
+                      value={toColorInputValue(selectedThemeColor)}
+                      onChange={(event) =>
+                        updateSelected({ color: event.target.value })
+                      }
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        width: "100%",
+                        height: "100%",
+                        opacity: 0,
+                        cursor: "pointer",
+                      }}
+                    />
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        position: "absolute",
+                        inset: 5,
+                        display: "grid",
+                        placeItems: "center",
+                        borderRadius: 999,
+                        background: !selectedPaletteColor
+                          ? selectedThemeColor
+                          : "rgba(9,14,30,0.76)",
+                        color: "#fff",
+                        fontSize: !selectedPaletteColor ? 17 : 20,
+                        fontWeight: 950,
+                        textShadow: "0 1px 4px rgba(0,0,0,0.65)",
+                        pointerEvents: "none",
+                      }}
+                    >
+                      {!selectedPaletteColor ? "✓" : "+"}
+                    </span>
+                  </label>
+                </div>
+
+                <div style={{ ...smallHint, marginTop: 8 }}>
+                  虹色の「＋」から好きな色も選べるよ。
                 </div>
               </div>
 
