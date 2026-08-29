@@ -986,15 +986,15 @@ function buildGroupThread(
       speakerProfile?.selfName?.trim() ||
       speakerName.replace(/^釣嫁/, "").trim();
 
-    const speakerMeta = JSON.stringify({
-      characterId: speakerId,
-      formalName: speakerName,
-      conversationName,
-    });
-
     out.push({
-      role: "assistant",
-      content: `<<GROUP_SPEAKER ${speakerMeta}>>\n${message.content}`,
+      role: "user",
+      content: [
+        "【直前の別キャラクターの発言記録】",
+        `発言者ID: ${speakerId}`,
+        `発言者名: ${conversationName}`,
+        message.content,
+        "【発言記録ここまで】",
+      ].join("\n"),
     });
   }
 
@@ -1080,9 +1080,10 @@ function buildGroupRelayHint(
 
   return `
 【全員集合チャットでの会話ルール】
-- あなたは「${character.name}」として返答してください。
-- 会話履歴内の「<<GROUP_SPEAKER ...>>」は、今回あなたより先に話した別キャラクターを識別するための内部ラベルです。
-- 内部ラベルは絶対に返答本文へ書かず、引用・復唱・言い換えもしないでください。
+- あなたは「${character.name}」本人として返答してください。一人称、口調、感情を別キャラクターへ切り替えないでください。
+- 「直前の別キャラクターの発言記録」は他人の発言です。内容を参考にしても、その発言者になりきったり、口調や一人称を引き継いだりしないでください。
+- ユーザーや仲間があなたの名前・愛称を呼んだ場合、それはあなたへの呼びかけです。自分自身を歓迎したり、自分へ挨拶したり、第三者として評したりしないでください。
+- 自分の名前を二人称として使わず、人物一覧の自分の行と他のメンバーを混同しないでください。
 - 仲間を呼ぶときは、下記の「会話での呼び名」または人物設定の関係性に沿った愛称を使用してください。
 - 正式名は内部識別専用です。会話本文ではフルネームを使わないでください。
 - 苗字や名前を推測、補完、改名しないでください。
