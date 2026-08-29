@@ -10,8 +10,10 @@ import PageShell from "../components/PageShell";
 import { useAppSettings } from "../lib/appSettings";
 import {
   CHARACTERS_STORAGE_KEY,
+  CHARACTER_IMAGE_MAP_KEY,
   SELECTED_CHARACTER_ID_KEY,
   markCharacterSettingsDirty,
+  type CharacterImageMap,
 } from "../lib/characterSync";
 import { pullTripSync, syncTrips } from "../lib/tripSync";
 
@@ -57,6 +59,7 @@ type CharacterExportV4 = {
   exportedAt: string;
   characters: CharacterProfile[];
   selectedId: string;
+  imageMap?: CharacterImageMap;
 };
 
 const BACKUP_KEY = "tsuduri_characters_backup_v1";
@@ -575,6 +578,10 @@ export default function CharacterSettings({ back }: { back: () => void }) {
 
   function exportJson() {
     const normalized = normalizeCharacterList(list);
+    const imageMap = safeJsonParse<CharacterImageMap>(
+      localStorage.getItem(CHARACTER_IMAGE_MAP_KEY),
+      {},
+    );
 
     const payload: CharacterExportV4 = {
       version: 4,
@@ -584,6 +591,7 @@ export default function CharacterSettings({ back }: { back: () => void }) {
       selectedId: normalized.some((c) => c.id === selectedId)
         ? selectedId
         : (normalized[0]?.id ?? "tsuduri"),
+      imageMap,
     };
 
     downloadText(
@@ -643,6 +651,29 @@ export default function CharacterSettings({ back }: { back: () => void }) {
 
     safeSaveCharacters(cleaned);
     safeSaveSelectedId(importedSelectedId);
+
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const rawImageMap = (parsed as Record<string, unknown>).imageMap;
+      if (
+        rawImageMap &&
+        typeof rawImageMap === "object" &&
+        !Array.isArray(rawImageMap)
+      ) {
+        const importedImageMap = Object.fromEntries(
+          Object.entries(rawImageMap).filter(
+            ([id, value]) =>
+              cleaned.some((character) => character.id === id) &&
+              typeof value === "string",
+          ),
+        ) as CharacterImageMap;
+        localStorage.setItem(
+          CHARACTER_IMAGE_MAP_KEY,
+          JSON.stringify(importedImageMap),
+        );
+        markCharacterSettingsDirty();
+        window.dispatchEvent(new Event("tsuduri-settings"));
+      }
+    }
 
     alert("インポート完了！");
   }
