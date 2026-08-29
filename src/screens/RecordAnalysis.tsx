@@ -1281,9 +1281,9 @@ export default function RecordAnalysis({ back }: Props) {
         .map((character) => {
           const identity = `${character.id} ${character.name}`.toLowerCase();
           const isRin = identity.includes("rin") || identity.includes("りん");
-          const displayName =
-            character.selfName?.trim() ||
-            character.name.replace(/^釣嫁/, "").trim();
+          const displayName = isRin
+            ? "りん"
+            : character.name.replace(/^釣嫁/, "").trim();
           const accent =
             character.color?.trim() &&
             /^#[0-9a-f]{6}$/i.test(character.color.trim())
