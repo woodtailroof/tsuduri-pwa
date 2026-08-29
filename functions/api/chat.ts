@@ -1034,9 +1034,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         fishingRole: item.fishingRole,
         relationships: item.relationships,
       }));
-      const wantsEveryone = /(みんな|全員|みなさん|皆さん)/.test(
-        text.normalize("NFKC"),
-      );
+      const normalizedText = text.normalize("NFKC");
+      const wantsEveryone =
+        /(みんな|全員|みなさん|皆さん|一人ずつ|ひとりずつ)/.test(
+          normalizedText,
+        ) ||
+        /(順に|順番に).{0,12}(自己紹介|話して|答えて|言って|どうぞ)/.test(
+          normalizedText,
+        );
       const prompt: Msg[] = [
         {
           role: "system",
@@ -1048,7 +1053,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 - キャラクターが名指しされたら本人を必ず最初にする
 - 名指しは正式名、自称、関係性に書かれた愛称から判断する
 - 通常の雑談は2〜3人。全員が同じ話題へ順番に回答しない
-- ユーザーが「みんな」「全員」など全員の返答を明示した場合だけ登録メンバー全員を一度ずつ含める
+- ユーザーが「みんな」「全員」「一人ずつ」「順に自己紹介」など、全員参加や順番のある発言を求めた場合は登録メンバー全員を一度ずつ含める
 - 個人的な呼びかけなら本人だけ、または本人と自然に関係する1人まででもよい
 - 釣行判断は判断力のあるメンバーを先頭にして、合計2〜3人を基本とする
 - directは先頭の1人だけ。他はreaction/add_one/question/personal/counterから話題と性格に合うものを選ぶ
