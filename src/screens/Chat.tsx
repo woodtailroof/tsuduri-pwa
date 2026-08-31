@@ -37,6 +37,7 @@ type ApiMessage = {
 const GROUP_ROOM_ID = "group";
 const CHAT_SELECTED_ROOM_KEY = "tsuduri_chat_selected_room_v1";
 const GROUP_SPEAKER_BAG_KEY = "tsuduri_group_speaker_bag_v1";
+const CHARACTER_ICON_VERSION = "20260831";
 
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
   try {
@@ -238,7 +239,7 @@ function characterIconPath(characterId: string, characterName: string): string {
               ? "rin"
               : characterId;
 
-  return `/assets/character-icons/${encodeURIComponent(iconId)}.png`;
+  return `/assets/character-icons/${encodeURIComponent(iconId)}.png?v=${CHARACTER_ICON_VERSION}`;
 }
 
 function hexToRgba(hex: string, alpha: number) {
@@ -2086,6 +2087,9 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                           speakerName,
                         )}
                         alt=""
+                        onLoad={(event) => {
+                          event.currentTarget.style.display = "block";
+                        }}
                         onError={(event) => {
                           event.currentTarget.style.display = "none";
                         }}
