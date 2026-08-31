@@ -36,6 +36,7 @@ type ApiMessage = {
 
 const GROUP_ROOM_ID = "group";
 const CHAT_SELECTED_ROOM_KEY = "tsuduri_chat_selected_room_v1";
+const GROUP_SPEAKER_BAG_KEY = "tsuduri_group_speaker_bag_v1";
 
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
   try {
@@ -364,62 +365,6 @@ function detectMentionedCharacter(
   return null;
 }
 
-function assignGroupReplyLengths(
-  characters: CharacterProfileWithColor[],
-  spotlightCharacterId: string | null,
-): Map<string, GroupReplyLength> {
-  const assignments = new Map<string, GroupReplyLength>();
-
-  if (!characters.length) {
-    return assignments;
-  }
-
-  const slots: GroupReplyLength[] = characters.map((_, index) => {
-    if (index === 0) return "long";
-    if (index === 1) return "medium";
-    return "short";
-  });
-
-  const shuffledSlots = shuffleCharacters(slots);
-
-  characters.forEach((character, index) => {
-    assignments.set(character.id, shuffledSlots[index] ?? "short");
-  });
-
-  if (!spotlightCharacterId) {
-    return assignments;
-  }
-
-  const spotlightLength = assignments.get(spotlightCharacterId);
-
-  if (!spotlightLength || spotlightLength !== "short") {
-    return assignments;
-  }
-
-  const swapCandidates = characters.filter((character) => {
-    if (character.id === spotlightCharacterId) {
-      return false;
-    }
-
-    const length = assignments.get(character.id);
-    return length === "long" || length === "medium";
-  });
-
-  if (!swapCandidates.length) {
-    assignments.set(spotlightCharacterId, "medium");
-    return assignments;
-  }
-
-  const swapCharacter =
-    swapCandidates[Math.floor(Math.random() * swapCandidates.length)];
-  const swapLength = assignments.get(swapCharacter.id) ?? "medium";
-
-  assignments.set(spotlightCharacterId, swapLength);
-  assignments.set(swapCharacter.id, "short");
-
-  return assignments;
-}
-
 function wantsEveryoneToReply(text: string): boolean {
   const normalized = String(text ?? "").normalize("NFKC");
   return (
@@ -430,43 +375,114 @@ function wantsEveryoneToReply(text: string): boolean {
   );
 }
 
-function buildFallbackGroupPlan(
+function loadSpeakerBag(validIds: string[]): string[] {
+  const validSet = new Set(validIds);
+  const stored = safeJsonParse<unknown>(
+    localStorage.getItem(GROUP_SPEAKER_BAG_KEY),
+    [],
+  );
+  if (!Array.isArray(stored)) return [];
+
+  const seen = new Set<string>();
+  return stored.flatMap((value) => {
+    if (typeof value !== "string" || !validSet.has(value) || seen.has(value)) {
+      return [];
+    }
+    seen.add(value);
+    return [value];
+  });
+}
+
+function saveSpeakerBag(ids: string[]) {
+  try {
+    localStorage.setItem(GROUP_SPEAKER_BAG_KEY, JSON.stringify(ids));
+  } catch {
+    // ignore
+  }
+}
+
+function drawSpeakerIds(
+  validIds: string[],
+  count: number,
+  fixedFirstId: string | null,
+): string[] {
+  const selected = fixedFirstId ? [fixedFirstId] : [];
+  let bag = loadSpeakerBag(validIds).filter((id) => id !== fixedFirstId);
+
+  while (selected.length < count) {
+    if (bag.length === 0) {
+      bag = shuffleCharacters(
+        validIds.filter((id) => !selected.includes(id)),
+      );
+    }
+    const nextId = bag.shift();
+    if (!nextId) break;
+    if (!selected.includes(nextId)) selected.push(nextId);
+  }
+
+  saveSpeakerBag(bag);
+  return selected;
+}
+
+function randomFrom<T>(values: readonly T[], fallback: T): T {
+  return values[Math.floor(Math.random() * values.length)] ?? fallback;
+}
+
+function buildRandomGroupPlan(
   text: string,
   characters: CharacterProfileWithColor[],
+  isJudge: boolean,
 ): GroupPlanItem[] {
   const spotlight = detectMentionedCharacter(text, characters);
-  const rest = shuffleCharacters(
-    characters.filter((character) => character.id !== spotlight?.id),
-  );
-  const ordered = spotlight ? [spotlight, ...rest] : rest;
-  const normalizedText = String(text ?? "").normalize("NFKC");
-  const lively = /[!！?？ｗw笑]{2,}|盛り上|楽し|すご|やば|最高/.test(
-    normalizedText,
-  );
-  const briefMention =
-    !!spotlight && !lively && normalizedText.trim().length <= 20;
-  const normalChoices = lively ? [3, 4, 5] : [2, 3, 4];
-  const pickedCount = briefMention
-    ? Math.random() < 0.65
-      ? 1
-      : 2
-    : (normalChoices[Math.floor(Math.random() * normalChoices.length)] ?? 3);
-  const participantCount = spotlight
-    ? Math.min(pickedCount, Math.max(1, ordered.length))
-    : Math.min(pickedCount, ordered.length);
-  const speakingOrder = wantsEveryoneToReply(text)
-    ? ordered
-    : ordered.slice(0, participantCount);
-  const functions = assignGroupConversationFunctions(speakingOrder);
-  const lengths = assignGroupReplyLengths(
-    speakingOrder,
-    spotlight?.id ?? null,
+  const validIds = characters.map((character) => character.id);
+  const wantsEveryone = wantsEveryoneToReply(text);
+  const requestedCount = wantsEveryone
+    ? characters.length
+    : spotlight
+      ? randomFrom([1, 2, 2, 3] as const, 2)
+      : isJudge
+        ? randomFrom([3, 3, 4] as const, 3)
+        : randomFrom([2, 3, 3, 4, 4, 5] as const, 3);
+  const participantCount = Math.min(
+    Math.max(1, requestedCount),
+    characters.length,
   );
 
-  return speakingOrder.map((character) => ({
+  let selectedIds: string[];
+  if (wantsEveryone) {
+    selectedIds = spotlight
+      ? [
+          spotlight.id,
+          ...validIds.filter((id) => id !== spotlight.id),
+        ]
+      : shuffleCharacters(validIds);
+    saveSpeakerBag([]);
+  } else {
+    selectedIds = drawSpeakerIds(
+      validIds,
+      participantCount,
+      spotlight?.id ?? null,
+    );
+  }
+
+  const charactersById = new Map(
+    characters.map((character) => [character.id, character]),
+  );
+  const speakingOrder = selectedIds.flatMap((id) => {
+    const character = charactersById.get(id);
+    return character ? [character] : [];
+  });
+  const functions = assignGroupConversationFunctions(speakingOrder);
+
+  return speakingOrder.map((character, index) => ({
     characterId: character.id,
     conversationFunction: functions.get(character.id) ?? "reaction",
-    replyLength: lengths.get(character.id) ?? "short",
+    replyLength:
+      index === 0
+        ? "medium"
+        : speakingOrder.length <= 3 && index === 1
+          ? "medium"
+          : "short",
   }));
 }
 
@@ -1447,92 +1463,6 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     throw new Error(err ?? "unknown_error");
   }
 
-  async function requestGroupPlan(
-    text: string,
-    isJudge: boolean,
-  ): Promise<GroupPlanItem[]> {
-    const fallbackPlan = buildFallbackGroupPlan(text, characters);
-
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          mode: "group_plan",
-          text,
-          isJudge,
-          recentParticipantCounts: (() => {
-            const counts: number[] = [];
-            let currentCount = 0;
-            for (let index = messages.length - 1; index >= 0; index--) {
-              if (messages[index].role === "assistant") {
-                currentCount++;
-                continue;
-              }
-              if (currentCount > 0) {
-                counts.push(currentCount);
-                currentCount = 0;
-                if (counts.length >= 3) break;
-              }
-            }
-            return counts;
-          })(),
-          characters: characters.map((character) => ({
-            id: character.id,
-            name: character.name,
-            selfName: character.selfName,
-            personality: character.personality,
-            fishingRole: character.fishingRole,
-            relationships: character.relationships,
-          })),
-        }),
-      });
-
-      const json = (await response.json().catch(() => null)) as
-        | { ok?: boolean; plan?: GroupPlanItem[] }
-        | null;
-
-      if (!response.ok || !json?.ok || !Array.isArray(json.plan)) {
-        return fallbackPlan;
-      }
-
-      const knownIds = new Set(characters.map((character) => character.id));
-      const seen = new Set<string>();
-      const validFunctions = new Set<GroupConversationFunction>([
-        "direct",
-        "reaction",
-        "add_one",
-        "question",
-        "personal",
-        "counter",
-      ]);
-      const validLengths = new Set<GroupReplyLength>([
-        "long",
-        "medium",
-        "short",
-      ]);
-      const plan = json.plan.flatMap((item) => {
-        if (
-          !item ||
-          !knownIds.has(item.characterId) ||
-          seen.has(item.characterId) ||
-          !validFunctions.has(item.conversationFunction) ||
-          !validLengths.has(item.replyLength)
-        ) {
-          return [];
-        }
-        seen.add(item.characterId);
-        return [item];
-      });
-
-      return plan.length > 0 ? plan : fallbackPlan;
-    } catch {
-      return fallbackPlan;
-    }
-  }
-
   function applyChatEmotion(nextEmotion: Emotion) {
     emitEmotion({
       source: "chat",
@@ -1664,8 +1594,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       emotion?: Emotion;
     } | null = null;
 
-    setLoadingCharacterName("みんな");
-    const groupPlan = await requestGroupPlan(text, isJudge);
+    const groupPlan = buildRandomGroupPlan(text, characters, isJudge);
     const charactersById = new Map(
       characters.map((character) => [character.id, character]),
     );
