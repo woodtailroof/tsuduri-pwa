@@ -37,6 +37,7 @@ type ApiMessage = {
 const GROUP_ROOM_ID = "group";
 const CHAT_SELECTED_ROOM_KEY = "tsuduri_chat_selected_room_v1";
 const GROUP_SPEAKER_BAG_KEY = "tsuduri_group_speaker_bag_v1";
+const CHARACTER_ICON_VERSION = "20260831";
 
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
   try {
@@ -238,7 +239,7 @@ function characterIconPath(characterId: string, characterName: string): string {
               ? "rin"
               : characterId;
 
-  return `/assets/character-icons/${encodeURIComponent(iconId)}.png`;
+  return `/assets/character-icons/${encodeURIComponent(iconId)}.png?v=${CHARACTER_ICON_VERSION}`;
 }
 
 function hexToRgba(hex: string, alpha: number) {
@@ -1287,6 +1288,25 @@ export default function Chat({ back, goCharacterSettings }: Props) {
     ? "みんなに話しかける…"
     : `${selectedCharacter.name}に話しかける…`;
 
+  function switchRoom(nextRoomId: string) {
+    if (!nextRoomId || nextRoomId === roomId) return;
+
+    // 部屋IDだけが先に切り替わると、直前の部屋のmessagesが
+    // 次の部屋へ保存されるため、現在履歴の保存と次履歴の読込を
+    // 同じイベント内で揃えてから画面を更新する。
+    safeSaveHistory(roomId, messages);
+    const nextHistory = safeLoadHistory(nextRoomId);
+    setSelectedId(nextRoomId);
+    setMessages(nextHistory);
+    setLoadingCharacterName("");
+
+    if (nextRoomId === GROUP_ROOM_ID) {
+      setGroupDisplayCharacterId(
+        latestGroupCharacterId(nextHistory, characters, fallback.id),
+      );
+    }
+  }
+
   function focusInput() {
     const el = inputRef.current;
 
@@ -1949,7 +1969,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
             <select
               ref={selectRef}
               value={selectedId}
-              onChange={(e) => setSelectedId(e.target.value)}
+              onChange={(e) => switchRoom(e.target.value)}
               title="キャラ切替（履歴も切り替わる）"
               style={selectStyle}
               className="glass chat-room-select"
@@ -2067,6 +2087,9 @@ export default function Chat({ back, goCharacterSettings }: Props) {
                           speakerName,
                         )}
                         alt=""
+                        onLoad={(event) => {
+                          event.currentTarget.style.display = "block";
+                        }}
                         onError={(event) => {
                           event.currentTarget.style.display = "none";
                         }}
