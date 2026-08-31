@@ -113,6 +113,7 @@ type AiCommentCache = {
 };
 
 const ANALYSIS_COMMENT_CACHE_KEY = "tsuduri_analysis_ai_comments_v1";
+const CHARACTER_ICON_VERSION = "20260831";
 
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
   try {
@@ -154,7 +155,7 @@ function iconPath(characterId: string, characterName: string): string {
               ? "rin"
               : characterId;
 
-  return `/assets/character-icons/${encodeURIComponent(knownIconId)}.png`;
+  return `/assets/character-icons/${encodeURIComponent(knownIconId)}.png?v=${CHARACTER_ICON_VERSION}`;
 }
 
 function characterOrder(characterId: string, characterName: string): number {
@@ -2003,6 +2004,9 @@ export default function RecordAnalysis({ back }: Props) {
                       comment.characterName,
                     )}
                     alt=""
+                    onLoad={(event) => {
+                      event.currentTarget.style.display = "block";
+                    }}
                     onError={(event) => {
                       event.currentTarget.style.display = "none";
                     }}
