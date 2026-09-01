@@ -13,6 +13,7 @@ import {
   type TripRecord,
   type TripPhoto,
   type TripFish,
+  type TripTackle,
   type TackleItem,
 } from "../db";
 import { getTimeBand } from "../lib/timeband";
@@ -332,7 +333,21 @@ function collectLureCandidatesFromValue(value: unknown, out: string[]): void {
   }
 }
 
-function extractLureLines(trip: TripRecord, fish: TripFish[]): string[] {
+function extractLureLines(
+  trip: TripRecord,
+  fish: TripFish[],
+  setups: TripTackle[],
+): string[] {
+  const setupLines: string[] = [];
+  for (const setup of setups) {
+    collectLureCandidatesFromValue(setup.lureType, setupLines);
+  }
+
+  // 複数タックル対応後の記録は、使用した全セットを正として表示する。
+  // 釣果の有無にかかわらず、ボウズ記録でも全ルアー・釣法が残る。
+  if (setupLines.length > 0) return setupLines;
+
+  // tripTackles を持たない旧形式の記録だけ、代表値と魚データから補完する。
   const lines: string[] = [];
 
   const scan = (obj: Record<string, unknown>) => {
@@ -991,6 +1006,7 @@ export default function RecordHistory({ back, onEdit }: Props) {
   >({});
   const [detailPhotos, setDetailPhotos] = useState<TripPhoto[]>([]);
   const [detailFish, setDetailFish] = useState<TripFish[]>([]);
+  const [detailTackles, setDetailTackles] = useState<TripTackle[]>([]);
   const [selectedPhotoId, setSelectedPhotoId] = useState<number | null>(null);
   const [lightboxPhotoId, setLightboxPhotoId] = useState<number | null>(null);
   const [tackleMap, setTackleMap] = useState<Map<number, TackleItem>>(
@@ -1334,6 +1350,7 @@ export default function RecordHistory({ back, onEdit }: Props) {
     setDetailPointMap({});
     setDetailPhotos([]);
     setDetailFish([]);
+    setDetailTackles([]);
     setSelectedPhotoId(null);
     setLightboxPhotoId(null);
     setDetailLoading(true);
@@ -1341,16 +1358,19 @@ export default function RecordHistory({ back, onEdit }: Props) {
     try {
       const tripId = t.id;
 
-      const [photosRaw, fishRaw] = await Promise.all([
+      const [photosRaw, fishRaw, tackleRows] = await Promise.all([
         db.tripPhotos.where("tripId").equals(tripId).sortBy("order"),
         db.tripFish.where("tripId").equals(tripId).toArray(),
+        db.tripTackles.where("tripId").equals(tripId).sortBy("order"),
       ]);
 
       const photos = photosRaw.filter((p) => !p.deletedAt);
       const fish = fishRaw.filter((f) => !f.deletedAt);
+      const tackles = tackleRows.filter((row) => !row.deletedAt);
 
       setDetailPhotos(photos);
       setDetailFish(fish);
+      setDetailTackles(tackles);
 
       const cover = photos.find((p) => p.isCover === 1) ?? photos[0] ?? null;
       if (cover?.id) setSelectedPhotoId(cover.id);
@@ -1661,7 +1681,7 @@ export default function RecordHistory({ back, onEdit }: Props) {
 
   function DetailRightContent({ trip }: { trip: TripRecord }) {
     const fishLines = detailFish.map(formatFishLine);
-    const lureLines = extractLureLines(trip, detailFish);
+    const lureLines = extractLureLines(trip, detailFish, detailTackles);
 
     return (
       <div style={{ display: "grid", gap: 12, minHeight: 0, height: "100%" }}>
