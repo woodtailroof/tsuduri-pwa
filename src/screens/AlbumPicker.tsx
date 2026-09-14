@@ -33,13 +33,20 @@ function appendAssetVersion(url: string, assetVersion: string) {
   return u.includes("?") ? `${u}&av=${encoded}` : `${u}?av=${encoded}`;
 }
 
-const CHARACTER_ORDER = ["tsuduri", "matsuri", "kokoro", "lulu"] as const;
+const CHARACTER_ORDER = [
+  "tsuduri",
+  "matsuri",
+  "kokoro",
+  "lulu",
+  "rin",
+] as const;
 
 const CHARACTER_LABEL: Record<string, string> = {
   tsuduri: "つづり",
   matsuri: "まつり",
   kokoro: "こころ",
   lulu: "るる",
+  rin: "りん",
   other: "その他",
 };
 
@@ -59,6 +66,19 @@ export default function AlbumPicker(props: Props) {
 
   const [activeKey, setActiveKey] = useState<string>("all");
   const [page, setPage] = useState(0);
+  const [mobile, setMobile] = useState(() =>
+    typeof window !== "undefined"
+      ? window.matchMedia("(max-width: 820px)").matches
+      : false,
+  );
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 820px)");
+    const onChange = () => setMobile(media.matches);
+    onChange();
+    media.addEventListener?.("change", onChange);
+    return () => media.removeEventListener?.("change", onChange);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,7 +194,7 @@ export default function AlbumPicker(props: Props) {
     return g?.albums ?? [];
   }, [activeKey, allAlbums, grouped]);
 
-  const PAGE_SIZE = 9;
+  const PAGE_SIZE = mobile ? 4 : 9;
 
   const pageCount = Math.max(1, Math.ceil(visibleAlbums.length / PAGE_SIZE));
   const safePage = Math.min(Math.max(0, page), pageCount - 1);
@@ -350,7 +370,9 @@ export default function AlbumPicker(props: Props) {
             marginTop: 10,
             overflow: "hidden",
             display: "grid",
-            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gridTemplateColumns: mobile
+              ? "repeat(2, minmax(0, 1fr))"
+              : "repeat(3, minmax(0, 1fr))",
             gap: 10,
           }}
         >
