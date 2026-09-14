@@ -551,8 +551,8 @@ export default function AlbumViewer(props: Props) {
                   title={`${i + 1} / ${files.length}`}
                   style={{
                     flex: "0 0 auto",
-                    width: mobile ? 58 : "clamp(54px, 8vw, 86px)",
-                    height: mobile ? 58 : "clamp(54px, 8vw, 86px)",
+                    width: mobile ? 76 : "clamp(54px, 8vw, 86px)",
+                    height: mobile ? 76 : "clamp(54px, 8vw, 86px)",
                     borderRadius: 12,
                     border: selected
                       ? "2px solid rgba(255,255,255,0.95)"
