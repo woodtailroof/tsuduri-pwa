@@ -10,7 +10,7 @@
     {
       "id": "kokoro/hardcore",
       "title": "こころ：ハードコア",
-      "thumb": "/assets/slides/kokoro/hardcore/000.png",
+      "thumb": "/assets/slides/kokoro/hardcore/.thumbs/000.webp",
       "characterId": "kokoro",
       "tags": []
     },
@@ -40,6 +40,20 @@
       "title": "まつり：水着",
       "thumb": "/assets/slides/matsuri/swimsuit/000.png",
       "characterId": "matsuri",
+      "tags": []
+    },
+    {
+      "id": "rin/tights",
+      "title": "りん：タイツ",
+      "thumb": "/assets/slides/rin/tights/000.png",
+      "characterId": "rin",
+      "tags": []
+    },
+    {
+      "id": "rin/bikini",
+      "title": "りん：ビキニ",
+      "thumb": "/assets/slides/rin/bikini/000.png",
+      "characterId": "rin",
       "tags": []
     },
     {
