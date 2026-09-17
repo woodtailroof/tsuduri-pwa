@@ -21,6 +21,10 @@ import {
   getJmaCoastalWave,
   type JmaCoastalWave,
 } from "../lib/jmaCoastalWave";
+import {
+  getMarineWaveForecast,
+  type MarineWaveForecast,
+} from "../lib/marineWave";
 import { useAppSettings } from "../lib/appSettings";
 import {
   dayKey as dayKeyFromDate,
@@ -92,6 +96,16 @@ type CoastalWaveLoadState =
   | {
       status: "ok";
       forecast: JmaCoastalWave;
+      source: "fetch" | "cache";
+      isStale: boolean;
+    }
+  | { status: "error"; message: string };
+
+type MarineWaveLoadState =
+  | { status: "idle" | "loading" }
+  | {
+      status: "ok";
+      forecast: MarineWaveForecast;
       source: "fetch" | "cache";
       isStale: boolean;
     }
@@ -628,6 +642,8 @@ export default function Weather({ back, isActive = true }: Props) {
   });
   const [coastalWaveState, setCoastalWaveState] =
     useState<CoastalWaveLoadState>({ status: "idle" });
+  const [marineWaveState, setMarineWaveState] =
+    useState<MarineWaveLoadState>({ status: "idle" });
   const [nowphasOpen, setNowphasOpen] = useState(false);
   const [nowphasZoomed, setNowphasZoomed] = useState(false);
   const [nowphasLoadFailed, setNowphasLoadFailed] = useState(false);
@@ -778,6 +794,43 @@ export default function Weather({ back, isActive = true }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    const day = dayKeyLocal(targetDate);
+
+    if (selectedPoint.waveExposure === "none") {
+      setMarineWaveState({ status: "idle" });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setMarineWaveState({ status: "loading" });
+    getMarineWaveForecast(
+      selectedPoint.id,
+      selectedPoint.weatherLat,
+      selectedPoint.weatherLon,
+      day,
+      { online },
+    )
+      .then((result) => {
+        if (cancelled) return;
+        const { source, isStale, ...forecast } = result;
+        setMarineWaveState({ status: "ok", forecast, source, isStale });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setMarineWaveState({
+          status: "error",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [targetDate, online, selectedPoint]);
+
+  useEffect(() => {
+    let cancelled = false;
     setTideState({ status: "loading" });
     getTide736DayCached(FIXED_PORT.pc, FIXED_PORT.hc, targetDate, {
       ttlDays: 30,
@@ -830,6 +883,10 @@ export default function Weather({ back, isActive = true }: Props) {
         coastalWaveState.status === "ok"
           ? coastalWaveState.forecast
           : null,
+      marineWaveHours:
+        marineWaveState.status === "ok"
+          ? marineWaveState.forecast.hours
+          : [],
     });
   }, [
     selectedHour,
@@ -837,6 +894,7 @@ export default function Weather({ back, isActive = true }: Props) {
     selectedPoint,
     tideState,
     coastalWaveState,
+    marineWaveState,
   ]);
 
   const weatherEmotion = useMemo(
@@ -1226,21 +1284,23 @@ export default function Weather({ back, isActive = true }: Props) {
               <div
                 style={{
                   fontSize: 10,
-                  color: coastalWaveState.status === "error" ? "#ff93a9" : "rgba(255,255,255,0.56)",
+                  color: marineWaveState.status === "error" ? "#ff93a9" : "rgba(255,255,255,0.56)",
                   whiteSpace: "nowrap",
                 }}
               >
-                {coastalWaveState.status === "loading"
-                  ? "沿岸波浪 取得中…"
-                  : coastalWaveState.status === "error"
-                    ? "沿岸波浪 取得不可"
-                    : coastalWaveState.status !== "ok"
-                      ? "沿岸波浪 準備中…"
-                      : coastalWaveState.source === "fetch"
-                        ? "沿岸波浪 取得"
-                        : coastalWaveState.isStale
-                          ? "沿岸波浪 期限切れキャッシュ"
-                          : "沿岸波浪 キャッシュ"}
+                {selectedPoint.waveExposure === "none"
+                  ? "沿岸波浪 判定対象外"
+                  : marineWaveState.status === "loading"
+                    ? "地点別波浪 取得中…"
+                    : marineWaveState.status === "error"
+                      ? "地点別波浪 取得不可"
+                      : marineWaveState.status !== "ok"
+                        ? "地点別波浪 準備中…"
+                        : marineWaveState.source === "fetch"
+                          ? "地点別波浪 取得"
+                          : marineWaveState.isStale
+                            ? "地点別波浪 期限切れキャッシュ"
+                            : "地点別波浪 キャッシュ"}
               </div>
             </div>
             <div
@@ -1288,21 +1348,42 @@ export default function Weather({ back, isActive = true }: Props) {
             >
               {forecast.waveSummary.coastalWave && (
                 <span style={{ color: "#ffe18a", fontWeight: 850 }}>
-                  気象庁沿岸 {forecast.waveSummary.coastalWave.text}
+                  気象庁広域 {forecast.waveSummary.coastalWave.text}
                 </span>
               )}
               {coastalWaveState.status === "loading" && (
                 <span style={{ color: "rgba(255,255,255,0.56)" }}>
-                  気象庁沿岸 取得中…
+                  気象庁広域 取得中…
                 </span>
               )}
               {coastalWaveState.status === "error" && (
                 <span style={{ color: "#ff93a9", fontWeight: 850 }}>
-                  気象庁沿岸 未取得（波を含む判定は注意扱い）
+                  気象庁広域 未取得
+                </span>
+              )}
+              {marineWaveState.status === "loading" && (
+                <span style={{ color: "rgba(255,255,255,0.56)" }}>
+                  地点別波浪 取得中…
+                </span>
+              )}
+              {marineWaveState.status === "error" && selectedPoint.waveExposure !== "none" && (
+                <span style={{ color: "#ff93a9", fontWeight: 850 }}>
+                  地点別波浪 未取得（広域予報で参考判定）
                 </span>
               )}
               {forecast.waveSummary.waveHeight != null && (
-                <span>日内最大 {forecast.waveSummary.waveHeight.toFixed(1)}m</span>
+                <span style={{ color: "#8ee9ff", fontWeight: 850 }}>
+                  地点別 {pad2(selectedHour)}時 {forecast.waveSummary.selectedWaveHeight?.toFixed(1)}m
+                  （前後3時間最大 {forecast.waveSummary.waveHeight.toFixed(1)}m）
+                </span>
+              )}
+              {forecast.waveSummary.wavePeriod != null && (
+                <span>周期 {forecast.waveSummary.wavePeriod.toFixed(1)}秒</span>
+              )}
+              {forecast.waveSummary.regionalDifference && (
+                <span style={{ color: "#ffe18a", fontWeight: 900 }}>
+                  ⚠️ 地点別と広域で予報差あり
+                </span>
               )}
               {forecast.waveSummary.coastalWave?.hasSwell && (
                 <span style={{ color: "#ffe18a", fontWeight: 850 }}>うねりを伴う</span>
@@ -1313,7 +1394,7 @@ export default function Weather({ back, isActive = true }: Props) {
             </div>
             <div style={{ marginTop: 4, fontSize: 10, color: "rgba(255,255,255,0.48)" }}>
               {forecast.waveSummary.impactDetail}。{selectedPoint.note}。
-              気象庁沿岸予報は日単位のため、安全度と釣りやすさでは日内最大を使用します。
+              安全度と釣りやすさは地点別の選択時刻前後3時間を主判定にし、気象庁の広域・日単位予報は沖合や後刻の悪化警戒として使います。地点別波浪：Open-Meteo。
             </div>
           </div>
 
