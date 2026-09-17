@@ -89,7 +89,7 @@ export const FISHING_POINTS: readonly FishingPoint[] = [
     waveExposure: "open",
     tideInfluence: "normal",
     waveImpactLabel: "強（開放サーフ）",
-    note: "沿岸波浪が直接入りやすい開放サーフ。気象庁の波高とうねりを強く反映",
+    note: "沿岸波浪が直接入りやすい開放サーフ。地点別の時間波高を主判定にし、気象庁広域予報は悪化警戒として参照",
     camera: {
       ...HAMAKAWA_EAST_CAMERA,
       sameLocation: false,
@@ -106,7 +106,7 @@ export const FISHING_POINTS: readonly FishingPoint[] = [
     waveExposure: "sheltered",
     tideInfluence: "normal",
     waveImpactLabel: "小（港内）",
-    note: "港内想定。気象庁の沿岸波浪は港外の荒れ具合として弱く反映",
+    note: "港内想定。地点別波浪は港外寄りのモデル値として弱く反映し、現地の港内状況を優先",
     camera: {
       ...OOHAMA_CAMERA,
       sameLocation: false,
@@ -123,7 +123,7 @@ export const FISHING_POINTS: readonly FishingPoint[] = [
     waveExposure: "sheltered",
     tideInfluence: "normal",
     waveImpactLabel: "小（港内）",
-    note: "焼津港内の親水広場周辺。気象庁の沿岸波浪は港外の参考として弱く反映",
+    note: "焼津港内の親水広場周辺。地点別波浪は港外寄りのモデル値として弱く反映し、現地の港内状況を優先",
   },
 ] as const;
 
