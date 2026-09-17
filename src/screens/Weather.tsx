@@ -537,6 +537,18 @@ function ForecastCard(props: {
       </div>
       <div style={{ fontSize: 19, fontWeight: 950, color: tone.color }}>
         {props.badge.label}
+        {typeof props.badge.score === "number" && (
+          <span
+            style={{
+              marginLeft: 8,
+              fontSize: 12,
+              color: "rgba(255,255,255,0.72)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {props.badge.score}/100
+          </span>
+        )}
       </div>
       <div
         style={{
@@ -548,6 +560,48 @@ function ForecastCard(props: {
       >
         {props.badge.detail}
       </div>
+      {props.badge.basis && props.badge.basis.length > 0 && (
+        <div
+          style={{
+            marginTop: 5,
+            paddingTop: 6,
+            borderTop: "1px solid rgba(255,255,255,0.10)",
+            display: "grid",
+            gap: 3,
+            minWidth: 0,
+          }}
+        >
+          <div style={{ fontSize: 10, fontWeight: 900, color: tone.color }}>
+            判定根拠
+          </div>
+          {props.badge.basis.map((item, index) => (
+            <div
+              key={`${item}-${index}`}
+              style={{
+                fontSize: 10,
+                lineHeight: 1.4,
+                color: "rgba(255,255,255,0.76)",
+                overflowWrap: "anywhere",
+              }}
+            >
+              ・{item}
+            </div>
+          ))}
+          {props.badge.method && (
+            <div
+              style={{
+                marginTop: 2,
+                fontSize: 9,
+                lineHeight: 1.4,
+                color: "rgba(255,255,255,0.52)",
+                overflowWrap: "anywhere",
+              }}
+            >
+              算出：{props.badge.method}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1160,7 +1214,8 @@ export default function Weather({ back, isActive = true }: Props) {
               style={{
                 display: "flex",
                 justifyContent: "space-between",
-                alignItems: "center",
+                alignItems: isMobile ? "flex-start" : "center",
+                flexWrap: isMobile ? "wrap" : "nowrap",
                 gap: 8,
                 marginBottom: 7,
               }}
@@ -1191,15 +1246,35 @@ export default function Weather({ back, isActive = true }: Props) {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: isMobile ? "repeat(3, minmax(128px, 1fr))" : "repeat(3, minmax(0, 1fr))",
+                gridTemplateColumns: isMobile
+                  ? "minmax(0, 1fr)"
+                  : "repeat(3, minmax(0, 1fr))",
                 gap: 7,
-                overflowX: isMobile ? "auto" : "visible",
-                paddingBottom: isMobile ? 3 : 0,
+                overflowX: "visible",
+                paddingBottom: 0,
               }}
             >
               <ForecastCard icon="🛟" title="安全度" badge={forecast.safety} />
               <ForecastCard icon="🎣" title="釣りやすさ" badge={forecast.comfort} />
               <ForecastCard icon="🐟" title="釣れそう度" badge={forecast.bite} />
+            </div>
+            <div
+              style={{
+                marginTop: 7,
+                padding: "7px 9px",
+                borderRadius: 10,
+                background: "rgba(0,0,0,0.14)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                display: "grid",
+                gap: 2,
+                fontSize: 9,
+                lineHeight: 1.45,
+                color: "rgba(255,255,255,0.56)",
+              }}
+            >
+              <div>安全度：波・風・雨のうち最も厳しい判定</div>
+              <div>釣りやすさ：75点以上＝快適／50～74点＝やや釣りづらい／49点以下＝釣りづらい</div>
+              <div>釣れそう度：70点以上＝狙い目／45～69点＝ふつう／44点以下＝期待薄（釣果を保証するものではありません）</div>
             </div>
             <div
               style={{
@@ -1249,11 +1324,11 @@ export default function Weather({ back, isActive = true }: Props) {
               padding: 9,
               display: "grid",
               gridTemplateColumns: isMobile
-                ? "repeat(2, minmax(145px, 1fr))"
+                ? "repeat(2, minmax(0, 1fr))"
                 : "1fr",
               alignContent: "center",
               gap: 7,
-              overflowX: isMobile ? "auto" : "visible",
+              overflowX: "visible",
             }}
           >
             <a
