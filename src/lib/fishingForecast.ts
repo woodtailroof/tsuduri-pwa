@@ -9,6 +9,8 @@ export type ForecastBadge = {
   detail: string;
   tone: ForecastTone;
   score?: number;
+  method?: string;
+  basis?: string[];
 };
 
 export type FishingForecast = {
@@ -113,15 +115,22 @@ export function buildFishingForecast(input: {
     : null;
 
   const safetyReasons: { level: number; text: string }[] = [];
+  const safetyBasis: string[] = [];
   let safetyLevel = 0;
 
   if (point.waveExposure === "none") {
     safetyReasons.push({ level: 0, text: "沿岸波浪は判定対象外" });
+    safetyBasis.push("波：河川のため判定対象外");
   } else if (waveHeight == null) {
     safetyLevel = 1;
     safetyReasons.push({ level: 1, text: "気象庁の沿岸波浪が未取得のため注意" });
+    safetyBasis.push("波：データ未取得 → 注意扱い");
   } else {
     safetyLevel = safetyLevelForHeight(point, waveHeight);
+    const waveResult = safetyBadge(safetyLevel, "").label;
+    safetyBasis.push(
+      `波：沿岸最大${waveHeight.toFixed(1)}m・影響${point.waveImpactLabel} → ${waveResult}`,
+    );
     if (safetyLevel > 0) {
       safetyReasons.push({
         level: safetyLevel,
@@ -156,6 +165,11 @@ export function buildFishingForecast(input: {
     safetyLevel = Math.max(safetyLevel, 1);
     safetyReasons.push({ level: 1, text: `風${windMax.toFixed(1)}m/sに注意` });
   }
+  safetyBasis.push(
+    windMax == null
+      ? "風：データなし"
+      : `風：前後3時間の最大${windMax.toFixed(1)}m/s`,
+  );
 
   if (precipitationMax != null && precipitationMax >= 10) {
     safetyLevel = Math.max(safetyLevel, point.waterKind === "river" ? 3 : 2);
@@ -173,6 +187,11 @@ export function buildFishingForecast(input: {
     safetyLevel = Math.max(safetyLevel, 1);
     safetyReasons.push({ level: 1, text: `雨${precipitationMax.toFixed(1)}mm/h` });
   }
+  safetyBasis.push(
+    precipitationMax == null
+      ? "雨：データなし"
+      : `雨：前後3時間の最大${precipitationMax.toFixed(1)}mm/h`,
+  );
 
   safetyLevel = clamp(safetyLevel, 0, 4);
   const safetyFallback =
@@ -183,12 +202,18 @@ export function buildFishingForecast(input: {
     safetyLevel,
     strongestReason(safetyReasons, safetyFallback),
   );
+  safety.method = "波・風・雨を個別評価し、最も厳しい結果を採用";
+  safety.basis = safetyBasis;
 
   let comfortScore = 100;
   const comfortReasons: { penalty: number; text: string }[] = [];
+  const comfortBasis: string[] = [];
   if (windMax != null) {
     const penalty = Math.max(0, windMax - 3) * 8;
     comfortScore -= penalty;
+    comfortBasis.push(
+      `風 ${windMax.toFixed(1)}m/s：${penalty > 0 ? `−${Math.round(penalty)}点` : "減点なし"}`,
+    );
     if (penalty >= 8) {
       comfortReasons.push({ penalty, text: `風${windMax.toFixed(1)}m/s` });
     }
@@ -196,6 +221,9 @@ export function buildFishingForecast(input: {
   if (precipitationMax != null) {
     const penalty = Math.min(38, precipitationMax * 8);
     comfortScore -= penalty;
+    comfortBasis.push(
+      `雨 ${precipitationMax.toFixed(1)}mm/h：${penalty > 0 ? `−${Math.round(penalty)}点` : "減点なし"}`,
+    );
     if (penalty >= 4) {
       comfortReasons.push({
         penalty,
@@ -207,6 +235,9 @@ export function buildFishingForecast(input: {
     const exposureWeight = point.waveExposure === "open" ? 34 : 9;
     const penalty = Math.max(0, waveHeight - 0.35) * exposureWeight;
     comfortScore -= penalty;
+    comfortBasis.push(
+      `波 ${waveHeight.toFixed(1)}m・影響${point.waveImpactLabel}：${penalty > 0 ? `−${Math.round(penalty)}点` : "減点なし"}`,
+    );
     if (penalty >= 6) {
       comfortReasons.push({
         penalty,
@@ -239,6 +270,8 @@ export function buildFishingForecast(input: {
             tone: "hard",
             score: comfortScore,
           };
+  comfort.method = "100点から、前後3時間の風・雨と当日最大波高の負担を減点";
+  comfort.basis = comfortBasis.length > 0 ? comfortBasis : ["判定材料なし"];
 
   let biteScore = 50;
   const biteGood: { points: number; text: string }[] = [];
@@ -337,6 +370,12 @@ export function buildFishingForecast(input: {
             tone: "hard",
             score: biteScore,
           };
+  bite.method = "50点を基準に、潮・時間帯・風・雨・潮回りを加減点";
+  bite.basis = [
+    ...biteGood.map((item) => `${item.text}：＋${item.points}点`),
+    ...biteBad.map((item) => `${item.text}：−${item.points}点`),
+  ];
+  if (bite.basis.length === 0) bite.basis = ["加減点なし"];
 
   const impactDetail =
     point.waveExposure === "none"
