@@ -1,6 +1,7 @@
 import type { TidePoint } from "../db";
 import type { FishingPoint } from "../points";
 import type { JmaCoastalWave } from "./jmaCoastalWave";
+import type { MarineWaveHour } from "./marineWave";
 
 export type ForecastTone = "good" | "caution" | "hard" | "danger" | "stop";
 
@@ -19,6 +20,9 @@ export type FishingForecast = {
   bite: ForecastBadge;
   waveSummary: {
     waveHeight: number | null;
+    selectedWaveHeight: number | null;
+    wavePeriod: number | null;
+    regionalDifference: boolean;
     coastalWave: JmaCoastalWave | null;
     impactLabel: string;
     impactDetail: string;
@@ -95,6 +99,7 @@ export function buildFishingForecast(input: {
   tideSeries: TidePoint[];
   tideName: string | null;
   coastalWave?: JmaCoastalWave | null;
+  marineWaveHours?: MarineWaveHour[];
 }): FishingForecast {
   const {
     point,
@@ -103,10 +108,28 @@ export function buildFishingForecast(input: {
     tideSeries,
     tideName,
     coastalWave = null,
+    marineWaveHours = [],
   } = input;
 
+  const selectedMarineWave = [...marineWaveHours].sort(
+    (a, b) => Math.abs(a.hour - selectedHour) - Math.abs(b.hour - selectedHour),
+  )[0];
+  const nearbyMarineWaves = marineWaveHours.filter(
+    (row) => Math.abs(row.hour - selectedHour) <= 3,
+  );
+  const selectedWaveHeight =
+    point.waveExposure === "none"
+      ? null
+      : selectedMarineWave?.waveHeight ?? null;
   const waveHeight =
-    point.waveExposure === "none" ? null : coastalWave?.maxHeight ?? null;
+    point.waveExposure === "none" || nearbyMarineWaves.length === 0
+      ? null
+      : Math.max(...nearbyMarineWaves.map((row) => row.waveHeight));
+  const regionalDifference =
+    waveHeight != null &&
+    coastalWave != null &&
+    coastalWave.maxHeight >= 2 &&
+    coastalWave.maxHeight - waveHeight >= 1.2;
   const windMax = weather.length
     ? Math.max(...weather.map((row) => row.windSpeed))
     : null;
@@ -122,33 +145,51 @@ export function buildFishingForecast(input: {
     safetyReasons.push({ level: 0, text: "沿岸波浪は判定対象外" });
     safetyBasis.push("波：河川のため判定対象外");
   } else if (waveHeight == null) {
-    safetyLevel = 1;
-    safetyReasons.push({ level: 1, text: "気象庁の沿岸波浪が未取得のため注意" });
-    safetyBasis.push("波：データ未取得 → 注意扱い");
+    const regionalHeight = coastalWave?.maxHeight ?? null;
+    safetyLevel =
+      regionalHeight == null
+        ? 1
+        : regionalHeight >= 4
+          ? 3
+          : regionalHeight >= 3
+            ? 2
+            : regionalHeight >= 2
+              ? 1
+              : 1;
+    safetyReasons.push({
+      level: Math.max(1, safetyLevel),
+      text:
+        regionalHeight == null
+          ? "地点別の波浪データが未取得のため現地確認"
+          : `地点波未取得・広域沿岸は最大${regionalHeight.toFixed(1)}m`,
+    });
+    safetyBasis.push(
+      regionalHeight == null
+        ? "波：地点別・広域とも未取得 → 現地確認"
+        : `波：地点別未取得／気象庁広域最大${regionalHeight.toFixed(1)}m → 参考判定`,
+    );
   } else {
     safetyLevel = safetyLevelForHeight(point, waveHeight);
     const waveResult = safetyBadge(safetyLevel, "").label;
     safetyBasis.push(
-      `波：沿岸最大${waveHeight.toFixed(1)}m・影響${point.waveImpactLabel} → ${waveResult}`,
+      `波：地点別・前後3時間最大${waveHeight.toFixed(1)}m・影響${point.waveImpactLabel} → ${waveResult}`,
     );
     if (safetyLevel > 0) {
       safetyReasons.push({
         level: safetyLevel,
-        text: `気象庁沿岸予報 最大${waveHeight.toFixed(1)}m${coastalWave?.hasSwell ? "・うねりあり" : ""}`,
+        text: `地点別波浪 前後3時間最大${waveHeight.toFixed(1)}m`,
       });
     }
 
-    if (
-      point.waveExposure === "open" &&
-      coastalWave?.hasSwell &&
-      waveHeight >= 1.5 &&
-      safetyLevel < 4
-    ) {
-      safetyLevel += 1;
+    if (regionalDifference) {
+      safetyLevel = Math.max(safetyLevel, 1);
       safetyReasons.push({
-        level: safetyLevel,
-        text: `気象庁沿岸予報 最大${waveHeight.toFixed(1)}m・うねりあり`,
+        level: 1,
+        text: `地点${waveHeight.toFixed(1)}mに対し広域最大${coastalWave.maxHeight.toFixed(1)}m・予報差あり`,
       });
+      safetyBasis.push(
+        `広域警戒：気象庁最大${coastalWave.maxHeight.toFixed(1)}m → 沖合・後刻の悪化を現地確認`,
+      );
     }
   }
 
@@ -241,7 +282,7 @@ export function buildFishingForecast(input: {
     if (penalty >= 6) {
       comfortReasons.push({
         penalty,
-        text: `気象庁沿岸最大${waveHeight.toFixed(1)}m・影響${point.waveImpactLabel}`,
+        text: `地点別波浪${waveHeight.toFixed(1)}m・影響${point.waveImpactLabel}`,
       });
     }
   }
@@ -270,7 +311,7 @@ export function buildFishingForecast(input: {
             tone: "hard",
             score: comfortScore,
           };
-  comfort.method = "100点から、前後3時間の風・雨と当日最大波高の負担を減点";
+  comfort.method = "100点から、前後3時間の風・雨・地点別波高の負担を減点";
   comfort.basis = comfortBasis.length > 0 ? comfortBasis : ["判定材料なし"];
 
   let biteScore = 50;
@@ -381,8 +422,8 @@ export function buildFishingForecast(input: {
     point.waveExposure === "none"
       ? "河川のため沿岸波浪を判定に使用しません"
       : waveHeight == null
-        ? `${point.waveImpactLabel}・気象庁沿岸波浪データなし`
-        : `${point.waveImpactLabel}・気象庁沿岸予報の日内最大${waveHeight.toFixed(1)}mを地点特性に合わせて評価`;
+        ? `${point.waveImpactLabel}・地点別波浪データなし（気象庁広域予報を参考表示）`
+        : `${point.waveImpactLabel}・選択時刻を中心とする地点別波浪${waveHeight.toFixed(1)}mを評価${regionalDifference ? "。広域予報との開きが大きいため現地確認を推奨" : ""}`;
 
   return {
     safety,
@@ -390,6 +431,9 @@ export function buildFishingForecast(input: {
     bite,
     waveSummary: {
       waveHeight,
+      selectedWaveHeight,
+      wavePeriod: selectedMarineWave?.wavePeriod ?? null,
+      regionalDifference,
       coastalWave,
       impactLabel: point.waveImpactLabel,
       impactDetail,
