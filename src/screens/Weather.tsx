@@ -551,7 +551,7 @@ function ForecastCard(props: {
       style={{
         minWidth: 0,
         borderRadius: 12,
-        padding: "7px 9px",
+        padding: "8px 10px",
         background: tone.bg,
         border: `1px solid ${tone.border}`,
         display: "grid",
@@ -567,23 +567,23 @@ function ForecastCard(props: {
           minWidth: 0,
         }}
       >
-        <span style={{ fontSize: 10, color: "rgba(255,255,255,0.64)" }}>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.64)" }}>
           {props.icon} {props.title}
         </span>
         {typeof props.badge.score === "number" && (
-          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.72)", whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.72)", whiteSpace: "nowrap" }}>
             {props.badge.score}/100
           </span>
         )}
       </div>
-      <div style={{ fontSize: 18, lineHeight: 1.15, fontWeight: 950, color: tone.color }}>
+      <div style={{ fontSize: 19, lineHeight: 1.15, fontWeight: 950, color: tone.color }}>
         {props.badge.label}
       </div>
       <div
         style={{
-          fontSize: 9,
-          color: "rgba(255,255,255,0.66)",
-          lineHeight: 1.3,
+          fontSize: 11,
+          color: "rgba(255,255,255,0.72)",
+          lineHeight: 1.35,
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -597,9 +597,9 @@ function ForecastCard(props: {
             marginTop: 4,
             paddingTop: 4,
             borderTop: "1px solid rgba(255,255,255,0.10)",
-            fontSize: 9,
-            lineHeight: 1.3,
-            color: "rgba(255,255,255,0.76)",
+            fontSize: 11,
+            lineHeight: 1.35,
+            color: "rgba(255,255,255,0.82)",
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -1314,27 +1314,10 @@ export default function Weather({ back, isActive = true }: Props) {
             <div
               style={{
                 marginTop: 5,
-                padding: "4px 7px",
-                borderRadius: 10,
-                background: "rgba(0,0,0,0.14)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                fontSize: 8,
-                lineHeight: 1.3,
-                color: "rgba(255,255,255,0.56)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              安全＝波・風・雨の最悪条件 ／ 釣りやすさ＝75以上快適・50以上やや難 ／ 釣れそう度＝70以上狙い目・45以上ふつう
-            </div>
-            <div
-              style={{
-                marginTop: 5,
                 display: "flex",
                 flexWrap: "wrap",
                 gap: "2px 10px",
-                fontSize: 10,
+                fontSize: 12,
                 color: "rgba(255,255,255,0.69)",
               }}
             >
@@ -1388,8 +1371,8 @@ export default function Weather({ back, isActive = true }: Props) {
               title={`${forecast.waveSummary.impactDetail}。${selectedPoint.note}`}
               style={{
                 marginTop: 2,
-                fontSize: 8,
-                color: "rgba(255,255,255,0.48)",
+                fontSize: 10,
+                color: "rgba(255,255,255,0.58)",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
