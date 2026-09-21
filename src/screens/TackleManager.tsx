@@ -898,3 +898,38 @@ function EditorActions({
   remove,
 }: {
   button: CSSProperties;
+  busy: boolean;
+  save: () => void;
+  remove?: () => void;
+}) {
+  return (
+    <div
+      className="tm-wide tm-buttons"
+      style={{
+        justifyContent: remove ? "space-between" : "flex-end",
+        marginTop: 4,
+      }}
+    >
+      {remove ? (
+        <button
+          style={{
+            ...button,
+            color: "#ffd0d0",
+            borderColor: "rgba(255,120,120,.45)",
+          }}
+          onClick={remove}
+          disabled={busy}
+        >
+          削除
+        </button>
+      ) : null}
+      <button
+        style={{ ...button, background: "rgba(255,77,109,.28)" }}
+        onClick={save}
+        disabled={busy}
+      >
+        {busy ? "保存中…" : "保存する"}
+      </button>
+    </div>
+  );
+}
