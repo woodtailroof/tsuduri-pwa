@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "npm run albums:prepare",
     "dev": "vite",
     "albums:optimize": "node scripts/optimize-albums.mjs",
     "albums:optimize:check": "node scripts/optimize-albums.mjs --dry-run --delete-source",
