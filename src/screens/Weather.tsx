@@ -534,86 +534,79 @@ function ForecastCard(props: {
   badge: ForecastBadge;
 }) {
   const tone = toneStyle[props.badge.tone];
+  const compactBasis = props.badge.basis?.slice(0, 3) ?? [];
+  const hiddenBasisCount = Math.max(
+    0,
+    (props.badge.basis?.length ?? 0) - compactBasis.length,
+  );
   return (
     <div
+      title={[
+        props.badge.detail,
+        ...(props.badge.basis ?? []),
+        props.badge.method ?? "",
+      ]
+        .filter(Boolean)
+        .join("\n")}
       style={{
         minWidth: 0,
-        borderRadius: 14,
-        padding: "9px 11px",
+        borderRadius: 12,
+        padding: "7px 9px",
         background: tone.bg,
         border: `1px solid ${tone.border}`,
         display: "grid",
-        gap: 2,
+        gap: 1,
       }}
     >
-      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.64)" }}>
-        {props.icon} {props.title}
-      </div>
-      <div style={{ fontSize: 19, fontWeight: 950, color: tone.color }}>
-        {props.badge.label}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 8,
+          minWidth: 0,
+        }}
+      >
+        <span style={{ fontSize: 10, color: "rgba(255,255,255,0.64)" }}>
+          {props.icon} {props.title}
+        </span>
         {typeof props.badge.score === "number" && (
-          <span
-            style={{
-              marginLeft: 8,
-              fontSize: 12,
-              color: "rgba(255,255,255,0.72)",
-              whiteSpace: "nowrap",
-            }}
-          >
+          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.72)", whiteSpace: "nowrap" }}>
             {props.badge.score}/100
           </span>
         )}
       </div>
+      <div style={{ fontSize: 18, lineHeight: 1.15, fontWeight: 950, color: tone.color }}>
+        {props.badge.label}
+      </div>
       <div
         style={{
-          fontSize: 10,
+          fontSize: 9,
           color: "rgba(255,255,255,0.66)",
-          lineHeight: 1.35,
-          minHeight: "2.7em",
+          lineHeight: 1.3,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
         }}
       >
         {props.badge.detail}
       </div>
-      {props.badge.basis && props.badge.basis.length > 0 && (
+      {compactBasis.length > 0 && (
         <div
           style={{
-            marginTop: 5,
-            paddingTop: 6,
+            marginTop: 4,
+            paddingTop: 4,
             borderTop: "1px solid rgba(255,255,255,0.10)",
-            display: "grid",
-            gap: 3,
-            minWidth: 0,
+            fontSize: 9,
+            lineHeight: 1.3,
+            color: "rgba(255,255,255,0.76)",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
           }}
         >
-          <div style={{ fontSize: 10, fontWeight: 900, color: tone.color }}>
-            判定根拠
-          </div>
-          {props.badge.basis.map((item, index) => (
-            <div
-              key={`${item}-${index}`}
-              style={{
-                fontSize: 10,
-                lineHeight: 1.4,
-                color: "rgba(255,255,255,0.76)",
-                overflowWrap: "anywhere",
-              }}
-            >
-              ・{item}
-            </div>
-          ))}
-          {props.badge.method && (
-            <div
-              style={{
-                marginTop: 2,
-                fontSize: 9,
-                lineHeight: 1.4,
-                color: "rgba(255,255,255,0.52)",
-                overflowWrap: "anywhere",
-              }}
-            >
-              算出：{props.badge.method}
-            </div>
-          )}
+          {compactBasis.join(" ／ ")}
+          {hiddenBasisCount > 0 ? ` ／ ほか${hiddenBasisCount}` : ""}
         </div>
       )}
     </div>
@@ -1073,7 +1066,7 @@ export default function Weather({ back, isActive = true }: Props) {
       }
       subtitle={
         <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>
-          📍 天気・風・雨：気象庁数値予報 / 潮：焼津港 / 🌊 波浪：静岡地方気象台
+          📍 天気・風・雨：気象庁数値予報 / 潮：焼津港 / 🌊 波：近海モデル＋気象庁広域
           {!online && <span style={{ marginLeft: 10, color: "#f6c" }}>📴 オフライン</span>}
         </div>
       }
@@ -1267,7 +1260,7 @@ export default function Weather({ back, isActive = true }: Props) {
             gridRow: isWideLayout ? 1 : undefined,
           }}
         >
-          <div className="glass glass-strong" style={{ ...tileStyle, padding: isDesktop ? 9 : 11 }}>
+          <div className="glass glass-strong" style={{ ...tileStyle, padding: isDesktop ? 7 : 11 }}>
             <div
               style={{
                 display: "flex",
@@ -1275,7 +1268,7 @@ export default function Weather({ back, isActive = true }: Props) {
                 alignItems: isMobile ? "flex-start" : "center",
                 flexWrap: isMobile ? "wrap" : "nowrap",
                 gap: 8,
-                marginBottom: 7,
+                marginBottom: 5,
               }}
             >
               <div style={{ fontWeight: 950, fontSize: 14 }}>
@@ -1309,7 +1302,7 @@ export default function Weather({ back, isActive = true }: Props) {
                 gridTemplateColumns: isMobile
                   ? "minmax(0, 1fr)"
                   : "repeat(3, minmax(0, 1fr))",
-                gap: 7,
+                gap: 6,
                 overflowX: "visible",
                 paddingBottom: 0,
               }}
@@ -1320,61 +1313,60 @@ export default function Weather({ back, isActive = true }: Props) {
             </div>
             <div
               style={{
-                marginTop: 7,
-                padding: "7px 9px",
+                marginTop: 5,
+                padding: "4px 7px",
                 borderRadius: 10,
                 background: "rgba(0,0,0,0.14)",
                 border: "1px solid rgba(255,255,255,0.08)",
-                display: "grid",
-                gap: 2,
-                fontSize: 9,
-                lineHeight: 1.45,
+                fontSize: 8,
+                lineHeight: 1.3,
                 color: "rgba(255,255,255,0.56)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
               }}
             >
-              <div>安全度：波・風・雨のうち最も厳しい判定</div>
-              <div>釣りやすさ：75点以上＝快適／50～74点＝やや釣りづらい／49点以下＝釣りづらい</div>
-              <div>釣れそう度：70点以上＝狙い目／45～69点＝ふつう／44点以下＝期待薄（釣果を保証するものではありません）</div>
+              安全＝波・風・雨の最悪条件 ／ 釣りやすさ＝75以上快適・50以上やや難 ／ 釣れそう度＝70以上狙い目・45以上ふつう
             </div>
             <div
               style={{
-                marginTop: 7,
+                marginTop: 5,
                 display: "flex",
                 flexWrap: "wrap",
-                gap: "4px 12px",
-                fontSize: 11,
+                gap: "2px 10px",
+                fontSize: 10,
                 color: "rgba(255,255,255,0.69)",
               }}
             >
               {forecast.waveSummary.coastalWave && (
                 <span style={{ color: "#ffe18a", fontWeight: 850 }}>
-                  気象庁広域 {forecast.waveSummary.coastalWave.text}
+                  広域 {forecast.waveSummary.coastalWave.text}
                 </span>
               )}
               {coastalWaveState.status === "loading" && (
                 <span style={{ color: "rgba(255,255,255,0.56)" }}>
-                  気象庁広域 取得中…
+                  広域 取得中…
                 </span>
               )}
               {coastalWaveState.status === "error" && (
                 <span style={{ color: "#ff93a9", fontWeight: 850 }}>
-                  気象庁広域 未取得
+                  広域 未取得
                 </span>
               )}
               {marineWaveState.status === "loading" && (
                 <span style={{ color: "rgba(255,255,255,0.56)" }}>
-                  地点別波浪 取得中…
+                  近海波 取得中…
                 </span>
               )}
               {marineWaveState.status === "error" && selectedPoint.waveExposure !== "none" && (
                 <span style={{ color: "#ff93a9", fontWeight: 850 }}>
-                  地点別波浪 未取得（広域予報で参考判定）
+                  近海波 未取得（広域で参考判定）
                 </span>
               )}
               {forecast.waveSummary.waveHeight != null && (
                 <span style={{ color: "#8ee9ff", fontWeight: 850 }}>
-                  地点別 {pad2(selectedHour)}時 {forecast.waveSummary.selectedWaveHeight?.toFixed(1)}m
-                  （前後3時間最大 {forecast.waveSummary.waveHeight.toFixed(1)}m）
+                  近海 {pad2(selectedHour)}時 {forecast.waveSummary.selectedWaveHeight?.toFixed(1)}m
+                  （±3h最大 {forecast.waveSummary.waveHeight.toFixed(1)}m）
                 </span>
               )}
               {forecast.waveSummary.wavePeriod != null && (
@@ -1382,19 +1374,28 @@ export default function Weather({ back, isActive = true }: Props) {
               )}
               {forecast.waveSummary.regionalDifference && (
                 <span style={{ color: "#ffe18a", fontWeight: 900 }}>
-                  ⚠️ 地点別と広域で予報差あり
+                  ⚠️ 近海と広域で予報差
                 </span>
               )}
               {forecast.waveSummary.coastalWave?.hasSwell && (
                 <span style={{ color: "#ffe18a", fontWeight: 850 }}>うねりを伴う</span>
               )}
               <span style={{ color: "#ffd0e4" }}>
-                地点への影響 {forecast.waveSummary.impactLabel}
+                影響 {forecast.waveSummary.impactLabel}
               </span>
             </div>
-            <div style={{ marginTop: 4, fontSize: 10, color: "rgba(255,255,255,0.48)" }}>
-              {forecast.waveSummary.impactDetail}。{selectedPoint.note}。
-              安全度と釣りやすさは地点別の選択時刻前後3時間を主判定にし、気象庁の広域・日単位予報は沖合や後刻の悪化警戒として使います。地点別波浪：Open-Meteo。
+            <div
+              title={`${forecast.waveSummary.impactDetail}。${selectedPoint.note}`}
+              style={{
+                marginTop: 2,
+                fontSize: 8,
+                color: "rgba(255,255,255,0.48)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              主判定：近海の選択時刻±3時間 ／ 広域予報：沖合・後刻の悪化警戒 ／ 波浪：Open-Meteo
             </div>
           </div>
 
