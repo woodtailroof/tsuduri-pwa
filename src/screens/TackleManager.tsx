@@ -465,7 +465,7 @@ export default function TackleManager({ back }: Props) {
       scrollY="hidden"
     >
       <style>{`
-      .tm-page{height:100%;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);gap:10px}.tm-toolbar{padding:10px 12px;border-radius:18px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.tm-buttons,.tm-card-buttons{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.tm-wrap{min-height:0;padding:12px;border-radius:18px;display:grid;grid-template-rows:auto minmax(0,1fr);gap:9px;overflow:hidden}.tm-rail{min-height:0;display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;padding:1px 3px 9px 1px;overscroll-behavior-x:contain;scrollbar-color:rgba(126,230,255,.55) rgba(255,255,255,.08);scrollbar-width:thin}.tm-card{--tm-accent:126,226,255;flex:0 0 clamp(205px,17vw,235px);border-radius:18px;padding:11px;min-height:0;display:grid;grid-template-rows:auto auto 1fr auto;gap:8px;background:linear-gradient(155deg,rgba(var(--tm-accent),.22),rgba(234,250,255,.08) 42%,rgba(8,31,44,.32));border:1px solid rgba(var(--tm-accent),.42);box-shadow:0 10px 26px rgba(var(--tm-accent),.08),inset 0 1px rgba(255,255,255,.2)}.tm-card--spinning{--tm-accent:100,224,244}.tm-card--bait{--tm-accent:229,151,255}.tm-card h2{font-size:14px!important;line-height:1.3!important;margin-top:6px!important}.tm-type-label{color:rgba(var(--tm-accent),.96)!important;text-shadow:0 0 12px rgba(var(--tm-accent),.4)}.tm-card-divider{height:1px;background:linear-gradient(90deg,rgba(var(--tm-accent),.65),transparent)}.tm-card-buttons{flex-wrap:nowrap}.tm-card-buttons button{padding:8px 10px!important;font-size:11px;background:linear-gradient(180deg,rgba(255,255,255,.19),rgba(var(--tm-accent),.11))!important;border-color:rgba(var(--tm-accent),.32)!important}.tm-specs{display:grid;grid-template-columns:1fr;gap:5px;align-content:start}.tm-spec{padding:6px 8px;border-radius:9px;background:rgba(238,250,255,.08);border:1px solid rgba(var(--tm-accent),.15)}.tm-spec span{display:block;font-size:8px;color:rgba(255,255,255,.52);margin-bottom:2px}.tm-spec strong{display:block;font-size:10.5px;line-height:1.3;color:rgba(255,255,255,.92);overflow-wrap:anywhere}.tm-overlay{position:fixed;inset:0;z-index:1000;padding:clamp(10px,3vw,28px);display:grid;place-items:center;background:rgba(0,9,18,.62);backdrop-filter:blur(10px)}.tm-editor{width:min(900px,100%);max-height:min(88dvh,900px);overflow:auto;border-radius:22px;padding:clamp(14px,2.5vw,22px);background:linear-gradient(150deg,rgba(9,47,65,.97),rgba(5,23,39,.96));border:1px solid rgba(205,244,255,.25);box-shadow:0 24px 80px rgba(0,0,0,.55)}.tm-head{position:sticky;top:-1px;z-index:2;display:flex;justify-content:space-between;align-items:center;gap:12px;padding-bottom:12px;background:linear-gradient(180deg,rgba(8,42,59,.98) 72%,transparent)}.tm-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.tm-field{display:grid;gap:6px;font-size:12px;color:rgba(255,255,255,.72)}.tm-field input,.tm-field select,.tm-field textarea{width:100%;box-sizing:border-box;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.25);color:#fff;padding:10px 11px;outline:none}.tm-field textarea{min-height:76px;resize:vertical}.tm-wide{grid-column:1/-1}@media(max-width:720px){.tm-toolbar{align-items:stretch}.tm-toolbar>.tm-buttons:last-child{width:100%;justify-content:space-between}.tm-wrap{padding:10px 8px 7px}.tm-card{flex-basis:min(64vw,230px);padding:10px}.tm-form{grid-template-columns:1fr}.tm-wide{grid-column:auto}.tm-overlay{padding:8px;place-items:end center}.tm-editor{max-height:92dvh;border-radius:22px 22px 12px 12px}}
+      .tm-page{height:100%;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);gap:10px}.tm-toolbar{padding:10px 12px;border-radius:18px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.tm-buttons,.tm-card-buttons{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.tm-wrap{min-height:0;padding:12px;border-radius:18px;display:grid;grid-template-rows:auto minmax(0,1fr);gap:9px;overflow:hidden}.tm-rail{min-height:0;display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;padding:1px 3px 9px 1px;overscroll-behavior-x:contain;scrollbar-color:rgba(126,230,255,.55) rgba(255,255,255,.08);scrollbar-width:thin}.tm-card{--tm-accent:126,226,255;flex:0 0 clamp(230px,18.5vw,260px);border-radius:18px;padding:12px;min-height:0;display:grid;grid-template-rows:auto auto 1fr auto;gap:9px;background:linear-gradient(155deg,rgba(var(--tm-accent),.22),rgba(234,250,255,.08) 42%,rgba(8,31,44,.32));border:1px solid rgba(var(--tm-accent),.42);box-shadow:0 10px 26px rgba(var(--tm-accent),.08),inset 0 1px rgba(255,255,255,.2)}.tm-card--spinning{--tm-accent:100,224,244}.tm-card--bait{--tm-accent:229,151,255}.tm-card h2{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;height:2.7em;overflow:hidden;font-size:15.5px!important;line-height:1.35!important;margin-top:7px!important}.tm-type-label{font-size:12px!important;color:rgba(var(--tm-accent),.96)!important;text-shadow:0 0 12px rgba(var(--tm-accent),.4)}.tm-card-status{font-size:12px!important}.tm-card-divider{height:1px;background:linear-gradient(90deg,rgba(var(--tm-accent),.65),transparent)}.tm-card-buttons{flex-wrap:nowrap}.tm-card-buttons button{padding:9px 11px!important;font-size:12px;background:linear-gradient(180deg,rgba(255,255,255,.19),rgba(var(--tm-accent),.11))!important;border-color:rgba(var(--tm-accent),.32)!important}.tm-specs{display:grid;grid-template-columns:1fr;gap:6px;align-content:start}.tm-spec{padding:7px 9px;border-radius:9px;background:rgba(238,250,255,.08);border:1px solid rgba(var(--tm-accent),.15)}.tm-spec span{display:block;font-size:9.5px;color:rgba(255,255,255,.57);margin-bottom:2px}.tm-spec strong{display:block;font-size:12px;line-height:1.35;color:rgba(255,255,255,.94);overflow-wrap:anywhere}.tm-overlay{position:fixed;inset:0;z-index:1000;padding:clamp(10px,3vw,28px);display:grid;place-items:center;background:rgba(0,9,18,.62);backdrop-filter:blur(10px)}.tm-editor{width:min(900px,100%);max-height:min(88dvh,900px);overflow:auto;border-radius:22px;padding:clamp(14px,2.5vw,22px);background:linear-gradient(150deg,rgba(9,47,65,.97),rgba(5,23,39,.96));border:1px solid rgba(205,244,255,.25);box-shadow:0 24px 80px rgba(0,0,0,.55)}.tm-head{position:sticky;top:-1px;z-index:2;display:flex;justify-content:space-between;align-items:center;gap:12px;padding-bottom:12px;background:linear-gradient(180deg,rgba(8,42,59,.98) 72%,transparent)}.tm-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.tm-field{display:grid;gap:6px;font-size:12px;color:rgba(255,255,255,.72)}.tm-field input,.tm-field select,.tm-field textarea{width:100%;box-sizing:border-box;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.25);color:#fff;padding:10px 11px;outline:none}.tm-field textarea{min-height:76px;resize:vertical}.tm-wide{grid-column:1/-1}@media(max-width:720px){.tm-toolbar{align-items:stretch}.tm-toolbar>.tm-buttons:last-child{width:100%;justify-content:space-between}.tm-wrap{padding:10px 8px 7px}.tm-card{flex-basis:min(68vw,240px);padding:10px}.tm-card h2{font-size:14.5px!important}.tm-form{grid-template-columns:1fr}.tm-wide{grid-column:auto}.tm-overlay{padding:8px;place-items:end center}.tm-editor{max-height:92dvh;border-radius:22px 22px 12px 12px}}
     `}</style>
       <div className="tm-page">
         <div className="glass glass-strong tm-toolbar">
@@ -649,12 +649,14 @@ function TackleCard({
             {(r?.rodType ?? q?.reelType) === "bait" ? "BAIT" : "SPINNING"}
           </span>
           <span
+            className="tm-card-status"
             style={{ fontSize: 11, color: item.active ? "#aaffcb" : "#ffd0ae" }}
           >
             ● {item.active ? "現役" : "過去所持"}
           </span>
         </div>
         <h2
+          title={titleOf(item)}
           style={{
             margin: "10px 0 0",
             fontSize: 19,
@@ -896,38 +898,3 @@ function EditorActions({
   remove,
 }: {
   button: CSSProperties;
-  busy: boolean;
-  save: () => void;
-  remove?: () => void;
-}) {
-  return (
-    <div
-      className="tm-wide tm-buttons"
-      style={{
-        justifyContent: remove ? "space-between" : "flex-end",
-        marginTop: 4,
-      }}
-    >
-      {remove ? (
-        <button
-          style={{
-            ...button,
-            color: "#ffd0d0",
-            borderColor: "rgba(255,120,120,.45)",
-          }}
-          onClick={remove}
-          disabled={busy}
-        >
-          削除
-        </button>
-      ) : null}
-      <button
-        style={{ ...button, background: "rgba(255,77,109,.28)" }}
-        onClick={save}
-        disabled={busy}
-      >
-        {busy ? "保存中…" : "保存する"}
-      </button>
-    </div>
-  );
-}
