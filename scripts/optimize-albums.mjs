@@ -13,6 +13,7 @@ const THUMB_HEIGHT = 270;
 const args = new Set(process.argv.slice(2));
 const force = args.has("--force");
 const dryRun = args.has("--dry-run");
+const deleteSource = args.has("--delete-source");
 const limitArg = process.argv.find((value) => value.startsWith("--limit="));
 const parsedLimit = limitArg ? Number(limitArg.slice("--limit=".length)) : Infinity;
 const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : Infinity;
@@ -53,6 +54,32 @@ function isCurrent(source, output) {
   return outputStat.size > 0 && outputStat.mtimeMs >= sourceStat.mtimeMs;
 }
 
+async function isValidWebp(file) {
+  if (!fs.existsSync(file) || fs.statSync(file).size <= 0) return false;
+  try {
+    const metadata = await sharp(file).metadata();
+    return (
+      metadata.format === "webp" &&
+      Number(metadata.width) > 0 &&
+      Number(metadata.height) > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+function assertSafeSource(source) {
+  const relative = path.relative(SLIDES_DIR, source);
+  if (
+    path.isAbsolute(relative) ||
+    relative === "" ||
+    relative.startsWith(`..${path.sep}`) ||
+    !/\.png$/i.test(source)
+  ) {
+    throw new Error(`refusing to delete unexpected source: ${source}`);
+  }
+}
+
 async function writeAtomic(builder, target) {
   fs.mkdirSync(path.dirname(target), { recursive: true });
   const temporary = `${target}.tmp-${process.pid}`;
@@ -66,11 +93,20 @@ async function writeAtomic(builder, target) {
 
 async function optimizeOne(source) {
   const outputs = outputPaths(source);
-  const displayCurrent = isCurrent(source, outputs.display);
-  const thumbCurrent = isCurrent(source, outputs.thumb);
+  let displayCurrent = isCurrent(source, outputs.display);
+  let thumbCurrent = isCurrent(source, outputs.thumb);
 
-  if (displayCurrent && thumbCurrent) return "skipped";
-  if (dryRun) return "planned";
+  // 更新日時だけでなく、実際に読めるWebPかも確認する。
+  if (displayCurrent && !(await isValidWebp(outputs.display))) displayCurrent = false;
+  if (thumbCurrent && !(await isValidWebp(outputs.thumb))) thumbCurrent = false;
+
+  if (dryRun) {
+    return {
+      converted: !displayCurrent || !thumbCurrent,
+      deleted: deleteSource,
+      planned: true,
+    };
+  }
 
   if (!displayCurrent) {
     await writeAtomic(
@@ -103,7 +139,22 @@ async function optimizeOne(source) {
     );
   }
 
-  return "converted";
+  const displayValid = await isValidWebp(outputs.display);
+  const thumbValid = await isValidWebp(outputs.thumb);
+  if (!displayValid || !thumbValid) {
+    throw new Error("generated WebP validation failed; original PNG was kept");
+  }
+
+  if (deleteSource) {
+    assertSafeSource(source);
+    fs.unlinkSync(source);
+  }
+
+  return {
+    converted: !displayCurrent || !thumbCurrent,
+    deleted: deleteSource,
+    planned: false,
+  };
 }
 
 async function main() {
@@ -112,7 +163,7 @@ async function main() {
   }
 
   const sources = walk(SLIDES_DIR).slice(0, limit);
-  const counts = { converted: 0, skipped: 0, planned: 0, failed: 0 };
+  const counts = { converted: 0, deleted: 0, skipped: 0, planned: 0, failed: 0 };
 
   console.log(
     `[albums:optimize] ${dryRun ? "dry-run" : "start"}: ${sources.length} PNG files`,
@@ -127,7 +178,10 @@ async function main() {
       const relative = path.relative(ROOT, source);
       try {
         const result = await optimizeOne(source);
-        counts[result] += 1;
+        if (result.converted) counts.converted += 1;
+        if (result.deleted) counts.deleted += 1;
+        if (result.planned) counts.planned += 1;
+        if (!result.converted && !result.deleted && !result.planned) counts.skipped += 1;
       } catch (error) {
         counts.failed += 1;
         console.error(`[albums:optimize] failed: ${relative}`, error);
@@ -143,7 +197,7 @@ async function main() {
   await Promise.all(Array.from({ length: 4 }, () => worker()));
 
   console.log(
-    `[albums:optimize] done: converted=${counts.converted}, skipped=${counts.skipped}, planned=${counts.planned}, failed=${counts.failed}`,
+    `[albums:optimize] done: converted=${counts.converted}, deleted=${counts.deleted}, skipped=${counts.skipped}, planned=${counts.planned}, failed=${counts.failed}`,
   );
 
   if (counts.failed > 0) process.exitCode = 1;
