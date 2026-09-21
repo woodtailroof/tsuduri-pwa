@@ -4,10 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "npm run albums:prepare",
     "dev": "vite",
     "albums:optimize": "node scripts/optimize-albums.mjs",
-    "albums:optimize:check": "node scripts/optimize-albums.mjs --dry-run",
+    "albums:optimize:check": "node scripts/optimize-albums.mjs --dry-run --delete-source",
     "albums:sync": "node scripts/sync-albums.mjs",
+    "albums:prepare": "node scripts/optimize-albums.mjs --delete-source && npm run albums:sync",
     "build": "npm run albums:sync && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
