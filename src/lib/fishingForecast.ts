@@ -143,7 +143,7 @@ export function buildFishingForecast(input: {
 
   if (point.waveExposure === "none") {
     safetyReasons.push({ level: 0, text: "沿岸波浪は判定対象外" });
-    safetyBasis.push("波：河川のため判定対象外");
+    safetyBasis.push("波 対象外");
   } else if (waveHeight == null) {
     const regionalHeight = coastalWave?.maxHeight ?? null;
     safetyLevel =
@@ -165,14 +165,14 @@ export function buildFishingForecast(input: {
     });
     safetyBasis.push(
       regionalHeight == null
-        ? "波：地点別・広域とも未取得 → 現地確認"
-        : `波：地点別未取得／気象庁広域最大${regionalHeight.toFixed(1)}m → 参考判定`,
+        ? "波 未取得・現地確認"
+        : `波 未取得／広域${regionalHeight.toFixed(1)}m`,
     );
   } else {
     safetyLevel = safetyLevelForHeight(point, waveHeight);
     const waveResult = safetyBadge(safetyLevel, "").label;
     safetyBasis.push(
-      `波：地点別・前後3時間最大${waveHeight.toFixed(1)}m・影響${point.waveImpactLabel} → ${waveResult}`,
+      `波 ${waveHeight.toFixed(1)}m → ${waveResult}`,
     );
     if (safetyLevel > 0) {
       safetyReasons.push({
@@ -188,7 +188,7 @@ export function buildFishingForecast(input: {
         text: `地点${waveHeight.toFixed(1)}mに対し広域最大${coastalWave.maxHeight.toFixed(1)}m・予報差あり`,
       });
       safetyBasis.push(
-        `広域警戒：気象庁最大${coastalWave.maxHeight.toFixed(1)}m → 沖合・後刻の悪化を現地確認`,
+        `広域 ${coastalWave.maxHeight.toFixed(1)}m・予報差`,
       );
     }
   }
@@ -208,8 +208,8 @@ export function buildFishingForecast(input: {
   }
   safetyBasis.push(
     windMax == null
-      ? "風：データなし"
-      : `風：前後3時間の最大${windMax.toFixed(1)}m/s`,
+      ? "風 データなし"
+      : `風 ${windMax.toFixed(1)}m/s`,
   );
 
   if (precipitationMax != null && precipitationMax >= 10) {
@@ -230,8 +230,8 @@ export function buildFishingForecast(input: {
   }
   safetyBasis.push(
     precipitationMax == null
-      ? "雨：データなし"
-      : `雨：前後3時間の最大${precipitationMax.toFixed(1)}mm/h`,
+      ? "雨 データなし"
+      : `雨 ${precipitationMax.toFixed(1)}mm/h`,
   );
 
   safetyLevel = clamp(safetyLevel, 0, 4);
@@ -253,7 +253,7 @@ export function buildFishingForecast(input: {
     const penalty = Math.max(0, windMax - 3) * 8;
     comfortScore -= penalty;
     comfortBasis.push(
-      `風 ${windMax.toFixed(1)}m/s：${penalty > 0 ? `−${Math.round(penalty)}点` : "減点なし"}`,
+      `風 ${windMax.toFixed(1)}m/s ${penalty > 0 ? `−${Math.round(penalty)}点` : "±0点"}`,
     );
     if (penalty >= 8) {
       comfortReasons.push({ penalty, text: `風${windMax.toFixed(1)}m/s` });
@@ -263,7 +263,7 @@ export function buildFishingForecast(input: {
     const penalty = Math.min(38, precipitationMax * 8);
     comfortScore -= penalty;
     comfortBasis.push(
-      `雨 ${precipitationMax.toFixed(1)}mm/h：${penalty > 0 ? `−${Math.round(penalty)}点` : "減点なし"}`,
+      `雨 ${precipitationMax.toFixed(1)}mm/h ${penalty > 0 ? `−${Math.round(penalty)}点` : "±0点"}`,
     );
     if (penalty >= 4) {
       comfortReasons.push({
@@ -277,7 +277,7 @@ export function buildFishingForecast(input: {
     const penalty = Math.max(0, waveHeight - 0.35) * exposureWeight;
     comfortScore -= penalty;
     comfortBasis.push(
-      `波 ${waveHeight.toFixed(1)}m・影響${point.waveImpactLabel}：${penalty > 0 ? `−${Math.round(penalty)}点` : "減点なし"}`,
+      `波 ${waveHeight.toFixed(1)}m ${penalty > 0 ? `−${Math.round(penalty)}点` : "±0点"}`,
     );
     if (penalty >= 6) {
       comfortReasons.push({
