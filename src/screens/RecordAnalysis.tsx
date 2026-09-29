@@ -874,6 +874,9 @@ export default function RecordAnalysis({ back }: Props) {
     measuredFish.length > 0
       ? Math.max(...measuredFish.map((row) => row.sizeCm ?? 0))
       : null;
+  const sizeRecordRate = joinedFish.length > 0
+    ? measuredFish.length / joinedFish.length
+    : 0;
 
   const timeStats = useMemo<RateRow[]>(() => {
     return [...TIMEBANDS, "unknown" as const]
@@ -1199,12 +1202,8 @@ export default function RecordAnalysis({ back }: Props) {
       value: clamp((totalFish / Math.max(1, caughtTrips)) * 28, 0, 100),
     },
     {
-      label: "サイズ記録",
-      value: clamp(
-        (measuredFish.length / Math.max(1, joinedFish.length)) * 100,
-        0,
-        100,
-      ),
+      label: "サイズ記録率",
+      value: clamp(sizeRecordRate * 100, 0, 100),
     },
     { label: "魚種幅", value: clamp((uniqueSpecies / 5) * 100, 0, 100) },
     { label: "再現度", value: patternStrength },
@@ -1900,9 +1899,9 @@ export default function RecordAnalysis({ back }: Props) {
                       : "いまは攻略データを鍛える時期"}
                 </h3>
                 <p>
-                  成功率だけでなく、釣果の安定度・数・サイズ記録・魚種幅・
-                  再現できそうな条件を合わせて評価。記録が増えるほど、
-                  ひろっち専用の通信簿へ育っていくよ。
+                  成功率だけでなく、釣果の安定度・数・サイズ記録率・魚種幅・
+                  再現できそうな条件を合わせて評価。サイズの大きさは
+                  平均・最大サイズで確認できるよ。
                 </p>
               </div>
             </div>
@@ -1932,7 +1931,7 @@ export default function RecordAnalysis({ back }: Props) {
                 icon="📏"
                 label="最大サイズ"
                 value={fmtSize(maxSize)}
-                sub={`平均 ${fmtSize(avgSize)}`}
+                sub={`平均 ${fmtSize(avgSize)} ・ サイズ記録 ${measuredFish.length}/${joinedFish.length}件`}
                 color="#ffd166"
               />
             </div>
@@ -1941,7 +1940,7 @@ export default function RecordAnalysis({ back }: Props) {
           <Panel
             title="釣りスタイル"
             icon="🧭"
-            note="100点満点ではなく、現在の記録の形を可視化"
+            note="サイズ記録率は魚データのサイズ入力割合。大きさの評価ではありません"
           >
             <RadarChart axes={styleAxes} />
           </Panel>
