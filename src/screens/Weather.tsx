@@ -1272,7 +1272,7 @@ export default function Weather({ back, isActive = true }: Props) {
               }}
             >
               <div style={{ fontWeight: 950, fontSize: 14 }}>
-                🎣 {selectedPoint.shortName}・{pad2(selectedHour)}時の釣行予測
+                🎣 {selectedPoint.shortName}・{pad2(selectedHour)}時の釣行条件
               </div>
               <div
                 style={{
@@ -1307,9 +1307,9 @@ export default function Weather({ back, isActive = true }: Props) {
                 paddingBottom: 0,
               }}
             >
-              <ForecastCard icon="🛟" title="安全度" badge={forecast.safety} />
-              <ForecastCard icon="🎣" title="釣りやすさ" badge={forecast.comfort} />
-              <ForecastCard icon="🐟" title="釣れそう度" badge={forecast.bite} />
+              <ForecastCard icon="🌤️" title="天気" badge={forecast.conditions.weather} />
+              <ForecastCard icon="🍃" title="風" badge={forecast.conditions.wind} />
+              <ForecastCard icon="🌊" title="波" badge={forecast.conditions.wave} />
             </div>
             <div
               style={{

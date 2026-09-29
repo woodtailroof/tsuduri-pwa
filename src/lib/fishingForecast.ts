@@ -18,6 +18,11 @@ export type FishingForecast = {
   safety: ForecastBadge;
   comfort: ForecastBadge;
   bite: ForecastBadge;
+  conditions: {
+    weather: ForecastBadge;
+    wind: ForecastBadge;
+    wave: ForecastBadge;
+  };
   waveSummary: {
     waveHeight: number | null;
     selectedWaveHeight: number | null;
@@ -86,6 +91,177 @@ function safetyBadge(level: number, detail: string): ForecastBadge {
   if (level === 2) return { label: "厳しい", detail, tone: "hard" };
   if (level === 1) return { label: "注意", detail, tone: "caution" };
   return { label: "良好", detail, tone: "good" };
+}
+
+function toneForLevel(level: number): ForecastTone {
+  if (level >= 4) return "stop";
+  if (level === 3) return "danger";
+  if (level === 2) return "hard";
+  if (level === 1) return "caution";
+  return "good";
+}
+
+function windDirectionLabel(degrees: number) {
+  if (!Number.isFinite(degrees)) return "風向不明";
+  const labels = ["北", "北東", "東", "南東", "南", "南西", "西", "北西"];
+  return labels[Math.round((((degrees % 360) + 360) % 360) / 45) % labels.length];
+}
+
+function directWeatherBadge(
+  weather: WeatherLike[],
+  precipitationMax: number | null,
+): ForecastBadge {
+  if (weather.length === 0 || precipitationMax == null) {
+    return {
+      label: "未取得",
+      detail: "天気データなし",
+      tone: "caution",
+      basis: ["現地の空模様を確認"],
+    };
+  }
+
+  const codes = weather.map((row) => row.weatherCode).filter(Number.isFinite);
+  const has = (min: number, max = min) =>
+    codes.some((code) => code >= min && code <= max);
+
+  let label = "晴れ";
+  let tone: ForecastTone = "good";
+  if (has(95, 99)) {
+    label = "雷雨";
+    tone = "danger";
+  } else if (has(71, 77) || has(85, 86)) {
+    label = "雪・みぞれ";
+    tone = "hard";
+  } else if (precipitationMax >= 10 || has(65) || has(82)) {
+    label = "強い雨";
+    tone = "hard";
+  } else if (precipitationMax >= 2 || has(61, 67) || has(80, 81)) {
+    label = "雨";
+    tone = "caution";
+  } else if (precipitationMax > 0 || has(51, 57)) {
+    label = "小雨";
+    tone = "caution";
+  } else if (has(45, 48)) {
+    label = "霧";
+    tone = "caution";
+  } else if (has(3)) {
+    label = "くもり";
+  } else if (has(1, 2)) {
+    label = "晴れ時々くもり";
+  }
+
+  return {
+    label,
+    detail: `前後3時間 最大${precipitationMax.toFixed(1)}mm/h`,
+    tone,
+    basis: [precipitationMax === 0 ? "降水なし" : `時間雨量 ${precipitationMax.toFixed(1)}mm`],
+  };
+}
+
+function directWindBadge(weather: WeatherLike[]): ForecastBadge {
+  if (weather.length === 0) {
+    return {
+      label: "未取得",
+      detail: "風データなし",
+      tone: "caution",
+      basis: ["現地の風を確認"],
+    };
+  }
+
+  const peak = [...weather].sort((a, b) => b.windSpeed - a.windSpeed)[0];
+  const speed = peak.windSpeed;
+  const level = speed >= 12 ? 4 : speed >= 10 ? 3 : speed >= 8 ? 2 : speed >= 6 ? 1 : 0;
+  const label =
+    level === 4
+      ? "危険な強風"
+      : level === 3
+        ? "かなり強い"
+        : level === 2
+          ? "強風"
+          : level === 1
+            ? "やや強い"
+            : speed >= 3
+              ? "風あり"
+              : "穏やか";
+
+  return {
+    label,
+    detail: `${windDirectionLabel(peak.windDirection)} 最大${speed.toFixed(1)}m/s`,
+    tone: toneForLevel(level),
+    basis: [
+      level >= 2
+        ? "キャストと足元に影響"
+        : level === 1
+          ? "軽いルアーは扱いづらい"
+          : "釣りへの影響は小さめ",
+    ],
+  };
+}
+
+function directWaveBadge(input: {
+  point: FishingPoint;
+  waveHeight: number | null;
+  selectedWaveHeight: number | null;
+  wavePeriod: number | null;
+  coastalWave: JmaCoastalWave | null;
+  regionalDifference: boolean;
+}): ForecastBadge {
+  const {
+    point,
+    waveHeight,
+    selectedWaveHeight,
+    wavePeriod,
+    coastalWave,
+    regionalDifference,
+  } = input;
+  if (point.waveExposure === "none") {
+    return {
+      label: "対象外",
+      detail: "河川のため沿岸波浪なし",
+      tone: "good",
+      basis: ["増水・流速は現地確認"],
+    };
+  }
+  if (waveHeight == null) {
+    return {
+      label: "未取得",
+      detail:
+        coastalWave == null
+          ? "近海・広域ともデータなし"
+          : `近海未取得／広域最大${coastalWave.maxHeight.toFixed(1)}m`,
+      tone: "caution",
+      basis: ["ライブカメラと現地で確認"],
+    };
+  }
+
+  const level = safetyLevelForHeight(point, waveHeight);
+  const label =
+    level === 4
+      ? "危険な高波"
+      : level === 3
+        ? "高波"
+        : level === 2
+          ? "波高め"
+          : level === 1
+            ? "波あり"
+            : "穏やか";
+  const basis = [
+    selectedWaveHeight == null
+      ? `前後3時間最大 ${waveHeight.toFixed(1)}m`
+      : `選択時 ${selectedWaveHeight.toFixed(1)}m／最大 ${waveHeight.toFixed(1)}m`,
+    wavePeriod == null ? "周期未取得" : `周期 ${wavePeriod.toFixed(1)}秒`,
+    `地点影響 ${point.waveImpactLabel}`,
+  ];
+  if (regionalDifference && coastalWave) {
+    basis.push(`広域最大 ${coastalWave.maxHeight.toFixed(1)}m・予報差あり`);
+  }
+
+  return {
+    label,
+    detail: `近海 前後3時間最大${waveHeight.toFixed(1)}m`,
+    tone: toneForLevel(Math.max(level, regionalDifference ? 1 : 0)),
+    basis,
+  };
 }
 
 function strongestReason(reasons: { level: number; text: string }[], fallback: string) {
@@ -425,10 +601,24 @@ export function buildFishingForecast(input: {
         ? `${point.waveImpactLabel}・地点別波浪データなし（気象庁広域予報を参考表示）`
         : `${point.waveImpactLabel}・選択時刻を中心とする地点別波浪${waveHeight.toFixed(1)}mを評価${regionalDifference ? "。広域予報との開きが大きいため現地確認を推奨" : ""}`;
 
+  const conditions = {
+    weather: directWeatherBadge(weather, precipitationMax),
+    wind: directWindBadge(weather),
+    wave: directWaveBadge({
+      point,
+      waveHeight,
+      selectedWaveHeight,
+      wavePeriod: selectedMarineWave?.wavePeriod ?? null,
+      coastalWave,
+      regionalDifference,
+    }),
+  };
+
   return {
     safety,
     comfort,
     bite,
+    conditions,
     waveSummary: {
       waveHeight,
       selectedWaveHeight,
