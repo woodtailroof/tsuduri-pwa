@@ -27,6 +27,7 @@ import { getTidePhaseFromSeries } from "../lib/tidePhase736";
 import { getTimeBand } from "../lib/timeband";
 import { useAppSettings } from "../lib/appSettings";
 import { uploadPhoto } from "../lib/photoUpload";
+import { WEATHER_OPTIONS, WIND_DIRECTIONS, weatherLabel, windDirectionLabel, optionalEnvironmentNumber } from "../lib/tripEnvironment";
 import {
   sortRods,
   sortReels,
@@ -389,6 +390,11 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
 
   const [outcome, setOutcome] = useState<TripOutcome>("skunk");
   const [memo, setMemo] = useState("");
+  const [weatherCode, setWeatherCode] = useState("");
+  const [windSpeed, setWindSpeed] = useState("");
+  const [windDirection, setWindDirection] = useState("");
+  const [waveHeight, setWaveHeight] = useState("");
+  const [airTemperature, setAirTemperature] = useState("");
 
   const [spotType, setSpotType] = useState<SpotType>("port");
   const [waterClarity, setWaterClarity] = useState<WaterClarity>("normal");
@@ -526,6 +532,11 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
         setFishDrafts(loadedFish);
         setOutcome(trip.outcome);
         setMemo(trip.memo ?? "");
+        setWeatherCode(trip.weatherCode == null ? "" : String(trip.weatherCode));
+        setWindSpeed(trip.windSpeedMs == null ? "" : String(trip.windSpeedMs));
+        setWindDirection(trip.windDirDeg == null ? "" : String(trip.windDirDeg));
+        setWaveHeight(trip.waveHeightM == null ? "" : String(trip.waveHeightM));
+        setAirTemperature(trip.airTempC == null ? "" : String(trip.airTempC));
         setSpotType(trip.spotType ?? "port");
         setWaterClarity(trip.waterClarity ?? "normal");
         setBaitPresent(trip.baitPresent ?? false);
@@ -954,6 +965,17 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
   }
 
   async function onSave() {
+    for (const [label, raw, min, max] of [
+      ["風速", windSpeed, 0, 200],
+      ["波高", waveHeight, 0, 100],
+      ["気温", airTemperature, -100, 100],
+    ] as const) {
+      const value = optionalEnvironmentNumber(raw);
+      if (raw.trim() && (value == null || value < min || value > max)) {
+        alert(`${label}は${min}〜${max}の数値で入力してね。分からない場合は空欄で保存できます。`);
+        return;
+      }
+    }
     setSaving(true);
     try {
       const nowIso = new Date().toISOString();
@@ -1020,11 +1042,11 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
                 : "unknown",
         tideCm: typeof tideAtShot?.cm === "number" ? tideAtShot.cm : null,
 
-        weatherCode: editingTrip?.weatherCode ?? null,
-        windSpeedMs: editingTrip?.windSpeedMs ?? null,
-        windDirDeg: editingTrip?.windDirDeg ?? null,
-        waveHeightM: editingTrip?.waveHeightM ?? null,
-        airTempC: editingTrip?.airTempC ?? null,
+        weatherCode: optionalEnvironmentNumber(weatherCode),
+        windSpeedMs: optionalEnvironmentNumber(windSpeed),
+        windDirDeg: optionalEnvironmentNumber(windDirection),
+        waveHeightM: optionalEnvironmentNumber(waveHeight),
+        airTempC: optionalEnvironmentNumber(airTemperature),
         envFetchedAt: editingTrip?.envFetchedAt ?? null,
       };
 
@@ -1856,6 +1878,42 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
             </div>
 
             <div className="record-right">
+              <div className="glass glass-strong" style={glassBoxStyle}>
+                <div style={{ fontWeight: 700 }}>🌤 釣行時の天気・風・波</div>
+                <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>
+                  現地で確認した値や、釣行日時の情報を入力。分からない項目は空欄でOK。
+                  ボウズでも保存して、条件別の釣果分析に使います。潮は基準日時から取得します。
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                  <label>天気
+                    <select value={weatherCode} onChange={(e) => setWeatherCode(e.target.value)} style={selectStyle}>
+                      <option value="">未記録</option>
+                      {weatherCode && !WEATHER_OPTIONS.some((item) => String(item.code) === weatherCode) && (
+                        <option value={weatherCode}>{weatherLabel(Number(weatherCode))}</option>
+                      )}
+                      {WEATHER_OPTIONS.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+                    </select>
+                  </label>
+                  <label>風向（吹いてくる方向）
+                    <select value={windDirection} onChange={(e) => setWindDirection(e.target.value)} style={selectStyle}>
+                      <option value="">未記録</option>
+                      {windDirection && !WIND_DIRECTIONS.some((_, i) => String(i * 22.5) === windDirection) && (
+                        <option value={windDirection}>{windDirectionLabel(Number(windDirection))}</option>
+                      )}
+                      {WIND_DIRECTIONS.map((label, i) => <option key={label} value={i * 22.5}>{label}</option>)}
+                    </select>
+                  </label>
+                  <label>風速（m/s）
+                    <input type="number" min="0" max="200" step="any" inputMode="decimal" value={windSpeed} onChange={(e) => setWindSpeed(e.target.value)} placeholder="未記録" style={selectStyle} />
+                  </label>
+                  <label>波高（m）
+                    <input type="number" min="0" max="100" step="any" inputMode="decimal" value={waveHeight} onChange={(e) => setWaveHeight(e.target.value)} placeholder="例：0.8" style={selectStyle} />
+                  </label>
+                  <label>気温（℃）
+                    <input type="number" min="-100" max="100" step="any" value={airTemperature} onChange={(e) => setAirTemperature(e.target.value)} placeholder="未記録" style={selectStyle} />
+                  </label>
+                </div>
+              </div>
               {/* 分析用条件 */}
               <div className="glass glass-strong" style={glassBoxStyle}>
                 <div style={{ fontWeight: 700 }}>🧭 分析用の条件</div>

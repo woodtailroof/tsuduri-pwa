@@ -17,6 +17,7 @@ import {
   type TripTackle,
 } from "../db";
 import { getTimeBand } from "../lib/timeband";
+import { weatherLabel } from "../lib/tripEnvironment";
 import {
   CHARACTERS_STORAGE_KEY,
   type CharacterProfile,
@@ -39,6 +40,7 @@ type JoinedTrip = {
   tideTrend: string;
   windSpeedMs: number | null;
   waveHeightM: number | null;
+  weatherCode: number | null;
   rodId: number | null;
   reelId: number | null;
   rodUid: string | null;
@@ -710,6 +712,7 @@ export default function RecordAnalysis({ back }: Props) {
   >([]);
   const [error, setError] = useState("");
   const [limitTop, setLimitTop] = useState(5);
+  const [envSpotType, setEnvSpotType] = useState<SpotType | "all">("all");
   const [aiComments, setAiComments] = useState<AiCharacterComment[]>([]);
   const [aiGeneratedAt, setAiGeneratedAt] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
@@ -775,6 +778,8 @@ export default function RecordAnalysis({ back }: Props) {
         tideTrend: labelTrend(trip.tideTrend),
         windSpeedMs:
           typeof trip.windSpeedMs === "number" ? trip.windSpeedMs : null,
+        weatherCode:
+          typeof trip.weatherCode === "number" ? trip.weatherCode : null,
         waveHeightM:
           typeof trip.waveHeightM === "number" ? trip.waveHeightM : null,
         rodId: typeof trip.rodId === "number" ? trip.rodId : null,
@@ -1147,12 +1152,18 @@ export default function RecordAnalysis({ back }: Props) {
   }, [tackles, tripTackles, fish, joinedFish, limitTop]);
 
   const envStats = useMemo(() => {
+    const environmentTrips = joinedTrips.filter((trip) => envSpotType === "all" || trip.spotType === envSpotType);
+    const weather = Array.from(new Set(environmentTrips.filter((trip) => trip.weatherCode != null).map((trip) => weatherLabel(trip.weatherCode)))).map((label) => {
+      const rows = environmentTrips.filter((trip) => trip.weatherCode != null && weatherLabel(trip.weatherCode) === label);
+      const caught = rows.filter((trip) => trip.outcome === "caught").length;
+      return { label, total: rows.length, caught, rate: safeRate(caught, rows.length) };
+    });
     const wind = [
       { label: "0〜2.9m/s", min: 0, max: 3 },
       { label: "3〜4.9m/s", min: 3, max: 5 },
       { label: "5m/s以上", min: 5, max: Infinity },
     ].map((bucket) => {
-      const rows = joinedTrips.filter(
+      const rows = environmentTrips.filter(
         (trip) =>
           trip.windSpeedMs != null &&
           trip.windSpeedMs >= bucket.min &&
@@ -1167,11 +1178,12 @@ export default function RecordAnalysis({ back }: Props) {
       };
     });
     const wave = [
-      { label: "0〜0.4m", min: 0, max: 0.5 },
-      { label: "0.5〜0.9m", min: 0.5, max: 1 },
-      { label: "1m以上", min: 1, max: Infinity },
+      { label: "0.5m未満", min: 0, max: 0.5 },
+      { label: "0.5〜1m未満", min: 0.5, max: 1 },
+      { label: "1〜2m未満", min: 1, max: 2 },
+      { label: "2m以上", min: 2, max: Infinity },
     ].map((bucket) => {
-      const rows = joinedTrips.filter(
+      const rows = environmentTrips.filter(
         (trip) =>
           trip.waveHeightM != null &&
           trip.waveHeightM >= bucket.min &&
@@ -1185,8 +1197,8 @@ export default function RecordAnalysis({ back }: Props) {
         rate: safeRate(caught, rows.length),
       };
     });
-    return { wind, wave };
-  }, [joinedTrips]);
+    return { wind, wave, weather, total: environmentTrips.length };
+  }, [joinedTrips, envSpotType]);
 
   const strongestPattern = patterns[0];
   const patternStrength = strongestPattern
@@ -2330,21 +2342,39 @@ export default function RecordAnalysis({ back }: Props) {
           ))}
         </div>
 
-        {(envStats.wind.some((row) => row.total > 0) ||
-          envStats.wave.some((row) => row.total > 0)) && (
+        {joinedTrips.length > 0 && (
           <Panel
-            title="風・波との相性"
+            title="天気・風・波との相性"
             icon="🌦"
-            note="保存済みの環境値がある釣行だけで集計"
+            note="ボウズを含むキャッチ成功釣行／全釣行。未記録は除外、少数データは暫定"
           >
+            <label style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 14 }}>
+              比較する釣り場
+              <select value={envSpotType} onChange={(e) => setEnvSpotType(e.target.value as SpotType | "all")}>
+                <option value="all">すべて</option>
+                <option value="port">漁港</option>
+                <option value="surf">サーフ</option>
+                <option value="river">河川</option>
+              </select>
+              <span>{envStats.total}釣行</span>
+            </label>
             <div className="analysis-grid-2">
               <div className="analysis-bar-list">
+                <strong>天気</strong>
+                {envStats.weather.length === 0 && <p>天気の記録なし</p>}
+                {envStats.weather.map((row) => (
+                  <BarRow key={row.label} label={`${row.label}・${confidence(row.total).label}`} value={row.rate} max={1} text={`${fmtPct(row.rate)} (${row.caught}/${row.total})`} color="#ffd166" />
+                ))}
+              </div>
+              <div className="analysis-bar-list">
+                <strong>風速</strong>
+                {!envStats.wind.some((row) => row.total > 0) && <p>風速の記録なし</p>}
                 {envStats.wind
                   .filter((row) => row.total > 0)
                   .map((row) => (
                     <BarRow
                       key={row.label}
-                      label={`風 ${row.label}`}
+                      label={`${row.label}・${confidence(row.total).label}`}
                       value={row.rate}
                       max={1}
                       text={`${fmtPct(row.rate)} (${row.caught}/${row.total})`}
@@ -2353,12 +2383,14 @@ export default function RecordAnalysis({ back }: Props) {
                   ))}
               </div>
               <div className="analysis-bar-list">
+                <strong>波高</strong>
+                {!envStats.wave.some((row) => row.total > 0) && <p>波高の記録なし</p>}
                 {envStats.wave
                   .filter((row) => row.total > 0)
                   .map((row) => (
                     <BarRow
                       key={row.label}
-                      label={`波 ${row.label}`}
+                      label={`${row.label}・${confidence(row.total).label}`}
                       value={row.rate}
                       max={1}
                       text={`${fmtPct(row.rate)} (${row.caught}/${row.total})`}
@@ -2367,6 +2399,10 @@ export default function RecordAnalysis({ back }: Props) {
                   ))}
               </div>
             </div>
+            <p style={{ fontSize: 13, lineHeight: 1.6 }}>
+              波高は保存した地点・時刻の登録値です。予報と現地の状況は異なることがあります。
+              釣り場タイプをそろえて比較し、季節・釣法・潮の影響も含めて傾向を見てね。
+            </p>
           </Panel>
         )}
 

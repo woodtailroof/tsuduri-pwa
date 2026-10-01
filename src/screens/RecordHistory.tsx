@@ -17,6 +17,7 @@ import {
   type TackleItem,
 } from "../db";
 import { getTimeBand } from "../lib/timeband";
+import { weatherLabel, windDirectionLabel } from "../lib/tripEnvironment";
 import { FIXED_PORT } from "../points";
 import { getTideAtTime } from "../lib/tide736";
 import { getTide736DayCached, type TideCacheSource } from "../lib/tide736Cache";
@@ -403,8 +404,10 @@ function extractWeatherLines(
   const tripObj = asObj(trip);
   const rows: Array<{ label: string; value: string }> = [];
 
-  const weather = pickText(tripObj, ["weather", "weatherText", "sky"]);
-  const windDir = pickText(tripObj, ["windDir", "windDirection"]);
+  const weather = trip.weatherCode != null
+    ? weatherLabel(trip.weatherCode)
+    : pickText(tripObj, ["weather", "weatherText", "sky"]) || "未記録";
+  const windDir = windDirectionLabel(trip.windDirDeg) || pickText(tripObj, ["windDir", "windDirection"]);
   const windSpeed = pickText(tripObj, [
     "windSpeed",
     "windSpeedMs",
@@ -414,7 +417,10 @@ function extractWeatherLines(
   const airTemp = pickNumber(tripObj, ["airTemp", "airTempC", "tempC", "temp"]);
   const waterTemp = pickNumber(tripObj, ["waterTemp", "waterTempC"]);
   const pressure = pickNumber(tripObj, ["pressure", "pressureHpa"]);
-  const wave = pickNumber(tripObj, ["waveHeight", "waveHeightCm"]);
+  const wave = typeof trip.waveHeightM === "number" && Number.isFinite(trip.waveHeightM)
+    ? trip.waveHeightM
+    : null;
+  const legacyWaveCm = pickNumber(tripObj, ["waveHeight", "waveHeightCm"]);
 
   if (weather) rows.push({ label: "天気", value: weather });
   if (Number.isFinite(airTemp ?? NaN))
@@ -435,22 +441,21 @@ function extractWeatherLines(
           .filter(Boolean)
           .join(" / ") || "（なし）",
     });
+  } else {
+    rows.push({ label: "風", value: "未記録" });
   }
 
   if (Number.isFinite(pressure ?? NaN))
     rows.push({ label: "気圧", value: `${pressure}hPa` });
 
-  if (Number.isFinite(wave ?? NaN))
-    rows.push({ label: "波", value: `${wave}cm` });
+  rows.push({ label: "波", value: wave != null ? `${wave}m` : legacyWaveCm != null ? `${legacyWaveCm}cm` : "未記録" });
 
   rows.push({
     label: "時間帯",
     value: Number.isFinite(base.getTime()) ? getTimeBand(base) : "（不明）",
   });
 
-  if (detailTide?.tideName) {
-    rows.push({ label: "潮", value: detailTide.tideName });
-  }
+  rows.push({ label: "潮", value: trip.tideName || detailTide?.tideName || "未記録" });
 
   if (phase) {
     rows.push({ label: "潮の局面", value: phase });
@@ -458,7 +463,9 @@ function extractWeatherLines(
 
   rows.push({
     label: "潮位",
-    value: tide ? `${tide.cm}cm / ${tide.trend}` : "（なし）",
+    value: trip.tideCm != null
+      ? `${trip.tideCm}cm / ${trip.tideTrend === "up" ? "上げ" : trip.tideTrend === "down" ? "下げ" : trip.tideTrend === "flat" ? "止まり" : "動き不明"}`
+      : tide ? `${tide.cm}cm / ${tide.trend}` : "未記録",
   });
 
   return rows;
