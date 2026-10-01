@@ -2,6 +2,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type DragEvent,
@@ -20,7 +21,8 @@ import {
   type TripTackle,
 } from "../db";
 import PageShell from "../components/PageShell";
-import { FIXED_PORT } from "../points";
+import { FIXED_PORT, FISHING_POINTS } from "../points";
+import { fetchTripEnvironment } from "../lib/tripEnvironmentApi";
 import { getTideAtTime } from "../lib/tide736";
 import { getTide736DayCached, type TideCacheSource } from "../lib/tide736Cache";
 import { getTidePhaseFromSeries } from "../lib/tidePhase736";
@@ -395,6 +397,13 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
   const [windDirection, setWindDirection] = useState("");
   const [waveHeight, setWaveHeight] = useState("");
   const [airTemperature, setAirTemperature] = useState("");
+  const [weatherPointId, setWeatherPointId] = useState("");
+  const [envLoading, setEnvLoading] = useState(false);
+  const [envNote, setEnvNote] = useState("");
+  const [envFetchedAt, setEnvFetchedAt] = useState<string | null>(null);
+  const [envRetry, setEnvRetry] = useState(0);
+  const envPreviousKey = useRef("");
+  const envManualFields = useRef(new Set<string>());
 
   const [spotType, setSpotType] = useState<SpotType>("port");
   const [waterClarity, setWaterClarity] = useState<WaterClarity>("normal");
@@ -537,6 +546,8 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
         setWindDirection(trip.windDirDeg == null ? "" : String(trip.windDirDeg));
         setWaveHeight(trip.waveHeightM == null ? "" : String(trip.waveHeightM));
         setAirTemperature(trip.airTempC == null ? "" : String(trip.airTempC));
+        setWeatherPointId(FISHING_POINTS.some((p) => p.id === trip.pointId) ? trip.pointId : "");
+        setEnvFetchedAt(trip.envFetchedAt ?? null);
         setSpotType(trip.spotType ?? "port");
         setWaterClarity(trip.waterClarity ?? "normal");
         setBaitPresent(trip.baitPresent ?? false);
@@ -663,6 +674,54 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
   }, [photos]);
 
   const rodOptions = useMemo(() => sortRods(tackles), [tackles]);
+  const selectedWeatherPoint = FISHING_POINTS.find((p) => p.id === weatherPointId);
+  const environmentLat = selectedWeatherPoint?.weatherLat ?? autoBaseLatLon.lat ?? editingTrip?.lat ?? null;
+  const environmentLon = selectedWeatherPoint?.weatherLon ?? autoBaseLatLon.lon ?? editingTrip?.lon ?? null;
+  const environmentTime = baseCapturedAt?.getTime() ?? null;
+  const environmentMarine = (selectedWeatherPoint?.waterKind ?? spotType) !== "river";
+
+  useEffect(() => {
+    if (editLoading) return;
+    const key = `${environmentTime}:${environmentLat}:${environmentLon}:${environmentMarine}`;
+    const changed = envPreviousKey.current !== "" && envPreviousKey.current !== key;
+    envPreviousKey.current = key;
+    if (changed) {
+      envManualFields.current.clear();
+      setWeatherCode(""); setWindSpeed(""); setWindDirection(""); setWaveHeight(""); setAirTemperature("");
+      setEnvFetchedAt(null);
+    }
+    if (environmentTime == null || environmentLat == null || environmentLon == null) {
+      setEnvLoading(false);
+      setEnvNote("自動取得には基準日時と写真GPS、または釣り場の選択が必要です。");
+      return;
+    }
+    if (!online) {
+      setEnvLoading(false); setEnvNote("オフラインのため自動取得できません。再接続すると取得します。"); return;
+    }
+    const controller = new AbortController();
+    let active = true;
+    const timer = window.setTimeout(() => controller.abort(), 15000);
+    setEnvLoading(true);
+    setEnvNote("釣行日時の環境情報を取得中…");
+    fetchTripEnvironment(environmentLat, environmentLon, new Date(environmentTime), controller.signal, environmentMarine)
+      .then((env) => {
+        if (!active) return;
+        const fill = (field: string, value: number | null, setter: (update: (previous: string) => string) => void) => {
+          if (value != null && !envManualFields.current.has(field)) setter((previous) => previous || String(value));
+        };
+        fill("weather", env.weatherCode, setWeatherCode);
+        fill("wind", env.windSpeedMs, setWindSpeed);
+        fill("direction", env.windDirDeg, setWindDirection);
+        fill("wave", env.waveHeightM, setWaveHeight);
+        fill("temperature", env.airTempC, setAirTemperature);
+        setEnvFetchedAt(env.fetchedAt); setEnvNote(env.note);
+      })
+      .catch((error: unknown) => {
+        if (active) setEnvNote(controller.signal.aborted ? "取得がタイムアウトしました。再取得できます。" : error instanceof Error ? error.message : "環境情報を取得できませんでした。");
+      })
+      .finally(() => { window.clearTimeout(timer); if (active) setEnvLoading(false); });
+    return () => { active = false; controller.abort(); window.clearTimeout(timer); };
+  }, [environmentTime, environmentLat, environmentLon, environmentMarine, online, editLoading, envRetry]);
   const reelOptions = useMemo(() => sortReels(tackles), [tackles]);
 
   const tackleMap = useMemo(() => {
@@ -697,6 +756,8 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
 
     setOutcome("skunk");
     setMemo("");
+    setWeatherCode(""); setWindSpeed(""); setWindDirection(""); setWaveHeight(""); setAirTemperature("");
+    setEnvFetchedAt(null); setWeatherPointId(""); envPreviousKey.current = ""; envManualFields.current.clear();
 
     setSpotType("port");
     setWaterClarity("normal");
@@ -784,6 +845,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
 
   const canSave =
     !saving &&
+    !envLoading &&
     !editLoading &&
     fishRowsOk &&
     tripTackleDrafts.length > 0 &&
@@ -1008,7 +1070,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
         syncStatus: "pending",
 
         startedAt,
-        pointId: FIXED_PORT.id,
+        pointId: selectedWeatherPoint?.id ?? editingTrip?.pointId ?? (environmentLat != null ? "gps" : FIXED_PORT.id),
         memo,
         outcome,
         timeBand: band,
@@ -1024,8 +1086,8 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
         spotType,
         waterClarity,
         baitPresent,
-        lat: autoBaseLatLon.lat ?? editingTrip?.lat ?? null,
-        lon: autoBaseLatLon.lon ?? editingTrip?.lon ?? null,
+        lat: environmentLat,
+        lon: environmentLon,
 
         tideDayKey: baseCapturedAt
           ? `${baseCapturedAt.getFullYear()}-${pad2(baseCapturedAt.getMonth() + 1)}-${pad2(baseCapturedAt.getDate())}`
@@ -1047,7 +1109,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
         windDirDeg: optionalEnvironmentNumber(windDirection),
         waveHeightM: optionalEnvironmentNumber(waveHeight),
         airTempC: optionalEnvironmentNumber(airTemperature),
-        envFetchedAt: editingTrip?.envFetchedAt ?? null,
+        envFetchedAt,
       };
 
       const savedPhotoTargets: SavedPhotoUploadTarget[] = [];
@@ -1881,12 +1943,20 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
               <div className="glass glass-strong" style={glassBoxStyle}>
                 <div style={{ fontWeight: 700 }}>🌤 釣行時の天気・風・波</div>
                 <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>
-                  現地で確認した値や、釣行日時の情報を入力。分からない項目は空欄でOK。
-                  ボウズでも保存して、条件別の釣果分析に使います。潮は基準日時から取得します。
+                  基準日時の天気・風・波をAPIから自動入力します。写真GPSがなければ釣り場を選んでね。
+                  モデル値なので現地に合わせて補正もできます。潮は焼津基準で取得します。
                 </p>
+                <label>環境情報の取得地点
+                  <select value={weatherPointId} onChange={(e) => { setWeatherPointId(e.target.value); const point = FISHING_POINTS.find((p) => p.id === e.target.value); if (point) setSpotType(point.waterKind); }} style={selectStyle}>
+                    <option value="">{autoBaseLatLon.lat != null || editingTrip?.lat != null ? "写真GPS／保存済み座標" : "釣り場を選択"}</option>
+                    {FISHING_POINTS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </label>
+                <div role="status" style={{ fontSize: 13, lineHeight: 1.6 }}>{envNote}</div>
+                <button type="button" disabled={envLoading} onClick={() => setEnvRetry((n) => n + 1)}>環境情報を再取得（空欄を補完）</button>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                   <label>天気
-                    <select value={weatherCode} onChange={(e) => setWeatherCode(e.target.value)} style={selectStyle}>
+                    <select value={weatherCode} onChange={(e) => { envManualFields.current.add("weather"); setWeatherCode(e.target.value); }} style={selectStyle}>
                       <option value="">未記録</option>
                       {weatherCode && !WEATHER_OPTIONS.some((item) => String(item.code) === weatherCode) && (
                         <option value={weatherCode}>{weatherLabel(Number(weatherCode))}</option>
@@ -1895,7 +1965,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
                     </select>
                   </label>
                   <label>風向（吹いてくる方向）
-                    <select value={windDirection} onChange={(e) => setWindDirection(e.target.value)} style={selectStyle}>
+                    <select value={windDirection} onChange={(e) => { envManualFields.current.add("direction"); setWindDirection(e.target.value); }} style={selectStyle}>
                       <option value="">未記録</option>
                       {windDirection && !WIND_DIRECTIONS.some((_, i) => String(i * 22.5) === windDirection) && (
                         <option value={windDirection}>{windDirectionLabel(Number(windDirection))}</option>
@@ -1904,13 +1974,13 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
                     </select>
                   </label>
                   <label>風速（m/s）
-                    <input type="number" min="0" max="200" step="any" inputMode="decimal" value={windSpeed} onChange={(e) => setWindSpeed(e.target.value)} placeholder="未記録" style={selectStyle} />
+                    <input type="number" min="0" max="200" step="any" inputMode="decimal" value={windSpeed} onChange={(e) => { envManualFields.current.add("wind"); setWindSpeed(e.target.value); }} placeholder="未記録" style={selectStyle} />
                   </label>
                   <label>波高（m）
-                    <input type="number" min="0" max="100" step="any" inputMode="decimal" value={waveHeight} onChange={(e) => setWaveHeight(e.target.value)} placeholder="例：0.8" style={selectStyle} />
+                    <input type="number" min="0" max="100" step="any" inputMode="decimal" value={waveHeight} onChange={(e) => { envManualFields.current.add("wave"); setWaveHeight(e.target.value); }} placeholder="例：0.8" style={selectStyle} />
                   </label>
                   <label>気温（℃）
-                    <input type="number" min="-100" max="100" step="any" value={airTemperature} onChange={(e) => setAirTemperature(e.target.value)} placeholder="未記録" style={selectStyle} />
+                    <input type="number" min="-100" max="100" step="any" value={airTemperature} onChange={(e) => { envManualFields.current.add("temperature"); setAirTemperature(e.target.value); }} placeholder="未記録" style={selectStyle} />
                   </label>
                 </div>
               </div>
