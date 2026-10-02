@@ -2,6 +2,7 @@ import type { TidePoint } from "../db";
 import type { FishingPoint } from "../points";
 import type { JmaCoastalWave } from "./jmaCoastalWave";
 import type { MarineWaveHour } from "./marineWave";
+import { assessWave, type WaveAssessment } from "./waveAssessment";
 
 export type ForecastTone = "good" | "caution" | "hard" | "danger" | "stop";
 
@@ -66,23 +67,6 @@ function tideMovement(series: TidePoint[], selectedHour: number) {
   const hours = (after.minutes - before.minutes) / 60;
   if (hours <= 0) return null;
   return Math.abs(after.cm - before.cm) / hours;
-}
-
-function safetyLevelForHeight(point: FishingPoint, waveHeight: number) {
-  if (point.waveExposure === "open") {
-    if (waveHeight >= 2.5) return 4;
-    if (waveHeight >= 2.0) return 3;
-    if (waveHeight >= 1.6) return 2;
-    if (waveHeight >= 0.9) return 1;
-    return 0;
-  }
-  if (point.waveExposure === "sheltered") {
-    if (waveHeight >= 4.0) return 4;
-    if (waveHeight >= 3.2) return 3;
-    if (waveHeight >= 2.5) return 2;
-    if (waveHeight >= 1.8) return 1;
-  }
-  return 0;
 }
 
 function safetyBadge(level: number, detail: string): ForecastBadge {
@@ -202,7 +186,7 @@ function directWaveBadge(input: {
   point: FishingPoint;
   waveHeight: number | null;
   selectedWaveHeight: number | null;
-  wavePeriod: number | null;
+  assessment: WaveAssessment | null;
   coastalWave: JmaCoastalWave | null;
   regionalDifference: boolean;
 }): ForecastBadge {
@@ -210,7 +194,7 @@ function directWaveBadge(input: {
     point,
     waveHeight,
     selectedWaveHeight,
-    wavePeriod,
+    assessment,
     coastalWave,
     regionalDifference,
   } = input;
@@ -234,33 +218,26 @@ function directWaveBadge(input: {
     };
   }
 
-  const level = safetyLevelForHeight(point, waveHeight);
-  const label =
-    level === 4
-      ? "危険な高波"
-      : level === 3
-        ? "高波"
-        : level === 2
-          ? "波高め"
-          : level === 1
-            ? "波あり"
-            : "穏やか";
+  const level = assessment?.level ?? 0;
   const basis = [
     selectedWaveHeight == null
       ? `前後3時間最大 ${waveHeight.toFixed(1)}m`
       : `選択時 ${selectedWaveHeight.toFixed(1)}m／最大 ${waveHeight.toFixed(1)}m`,
-    wavePeriod == null ? "周期未取得" : `周期 ${wavePeriod.toFixed(1)}秒`,
-    `地点影響 ${point.waveImpactLabel}`,
+    assessment
+      ? `評価 ${String(assessment.hour).padStart(2, "0")}時 ${assessment.height.toFixed(1)}m・${assessment.period == null ? "周期不明" : `${assessment.period.toFixed(1)}秒`}`
+      : "周期未取得",
+    assessment?.reason ?? "波高のみの評価",
+    "波の負担を評価するアプリ目安・釣果の良否は別",
   ];
   if (regionalDifference && coastalWave) {
     basis.push(`広域最大 ${coastalWave.maxHeight.toFixed(1)}m・予報差あり`);
   }
 
   return {
-    label,
+    label: assessment?.label ?? "波データ不足",
     detail: `近海 前後3時間最大${waveHeight.toFixed(1)}m`,
-    // 広域予報との差は注記し、表示色は近海の波評価に揃える。
-    tone: toneForLevel(level),
+    tone: toneForLevel(point.waveExposure === "open" && assessment?.period == null ? Math.max(1, level) : level),
+    method: "同時刻の波高×周期・地点別のアプリ目安（釣果予測ではありません）",
     basis,
   };
 }
@@ -288,10 +265,15 @@ export function buildFishingForecast(input: {
     marineWaveHours = [],
   } = input;
 
-  const selectedMarineWave = [...marineWaveHours].sort(
+  const validMarineWaves = marineWaveHours.filter(
+    (row) => Number.isFinite(row.hour) && Number.isFinite(row.waveHeight) && row.waveHeight >= 0,
+  );
+  const selectedMarineWave = validMarineWaves.filter(
+    (row) => Math.abs(row.hour - selectedHour) <= 3,
+  ).sort(
     (a, b) => Math.abs(a.hour - selectedHour) - Math.abs(b.hour - selectedHour),
   )[0];
-  const nearbyMarineWaves = marineWaveHours.filter(
+  const nearbyMarineWaves = validMarineWaves.filter(
     (row) => Math.abs(row.hour - selectedHour) <= 3,
   );
   const selectedWaveHeight =
@@ -302,6 +284,11 @@ export function buildFishingForecast(input: {
     point.waveExposure === "none" || nearbyMarineWaves.length === 0
       ? null
       : Math.max(...nearbyMarineWaves.map((row) => row.waveHeight));
+  // 波高の最大値と別時刻の周期を合成せず、各時刻の組み合わせを評価する。
+  const waveAssessment = point.waveExposure === "none" ? null
+    : nearbyMarineWaves.map((row) => assessWave(point, row)).sort(
+      (a, b) => b.level - a.level || b.height - a.height || (b.period ?? 0) - (a.period ?? 0),
+    )[0] ?? null;
   const regionalDifference =
     waveHeight != null &&
     coastalWave != null &&
@@ -346,7 +333,7 @@ export function buildFishingForecast(input: {
         : `波 未取得／広域${regionalHeight.toFixed(1)}m`,
     );
   } else {
-    safetyLevel = safetyLevelForHeight(point, waveHeight);
+    safetyLevel = waveAssessment?.level ?? 0;
     const waveResult = safetyBadge(safetyLevel, "").label;
     safetyBasis.push(
       `波 ${waveHeight.toFixed(1)}m → ${waveResult}`,
@@ -354,7 +341,9 @@ export function buildFishingForecast(input: {
     if (safetyLevel > 0) {
       safetyReasons.push({
         level: safetyLevel,
-        text: `地点別波浪 前後3時間最大${waveHeight.toFixed(1)}m`,
+        text: waveAssessment
+          ? `地点波 ${waveAssessment.height.toFixed(1)}m・${waveAssessment.period == null ? "周期不明" : `${waveAssessment.period.toFixed(1)}秒`}／${waveAssessment.reason}`
+          : `地点別波浪 前後3時間最大${waveHeight.toFixed(1)}m`,
       });
     }
 
@@ -463,6 +452,12 @@ export function buildFishingForecast(input: {
       });
     }
   }
+  if (waveAssessment && waveAssessment.periodLevel > 0) {
+    const penalty = waveAssessment.periodLevel === 2 ? 15 : 8;
+    comfortScore -= penalty;
+    comfortBasis.push(`長周期の波 ${waveAssessment.height.toFixed(1)}m・${waveAssessment.period?.toFixed(1)}秒 −${penalty}点`);
+    comfortReasons.push({ penalty, text: waveAssessment.reason });
+  }
   comfortScore = clamp(Math.round(comfortScore), 0, 100);
   const comfortDetail =
     [...comfortReasons].sort((a, b) => b.penalty - a.penalty)[0]?.text ??
@@ -488,7 +483,7 @@ export function buildFishingForecast(input: {
             tone: "hard",
             score: comfortScore,
           };
-  comfort.method = "100点から、前後3時間の風・雨・地点別波高の負担を減点";
+  comfort.method = "100点から、前後3時間の風・雨・地点別波高と周期の負担を減点";
   comfort.basis = comfortBasis.length > 0 ? comfortBasis : ["判定材料なし"];
 
   let biteScore = 50;
@@ -609,7 +604,7 @@ export function buildFishingForecast(input: {
       point,
       waveHeight,
       selectedWaveHeight,
-      wavePeriod: selectedMarineWave?.wavePeriod ?? null,
+      assessment: waveAssessment,
       coastalWave,
       regionalDifference,
     }),
@@ -631,3 +626,4 @@ export function buildFishingForecast(input: {
     },
   };
 }
+

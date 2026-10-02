@@ -1343,7 +1343,7 @@ export default function Weather({ back, isActive = true }: Props) {
                 </span>
               )}
               {forecast.waveSummary.wavePeriod != null && (
-                <span>周期 {forecast.waveSummary.wavePeriod.toFixed(1)}秒</span>
+                <span>選択時周期 {forecast.waveSummary.wavePeriod.toFixed(1)}秒</span>
               )}
               {forecast.waveSummary.regionalDifference && (
                 <span style={{ color: "#ffe18a", fontWeight: 900 }}>
@@ -1368,7 +1368,7 @@ export default function Weather({ back, isActive = true }: Props) {
                 lineHeight: 1.4,
               }}
             >
-              主判定：近海の選択時刻±3時間 ／ 広域予報：沖合・後刻の悪化警戒 ／ 波浪：Open-Meteo
+              波評価：±3時間の波高×周期・釣り場別の目安 ／ 広域予報：沖合・後刻の参考 ／ 波浪：Open-Meteo
             </div>
           </div>
 
@@ -2236,3 +2236,4 @@ export default function Weather({ back, isActive = true }: Props) {
     </PageShell>
   );
 }
+
