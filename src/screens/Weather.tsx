@@ -534,11 +534,7 @@ function ForecastCard(props: {
   badge: ForecastBadge;
 }) {
   const tone = toneStyle[props.badge.tone];
-  const compactBasis = props.badge.basis?.slice(0, 3) ?? [];
-  const hiddenBasisCount = Math.max(
-    0,
-    (props.badge.basis?.length ?? 0) - compactBasis.length,
-  );
+  const basis = props.badge.basis ?? [];
   return (
     <div
       title={[
@@ -584,14 +580,13 @@ function ForecastCard(props: {
           fontSize: 11,
           color: "rgba(255,255,255,0.72)",
           lineHeight: 1.35,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
+          whiteSpace: "normal",
+          overflowWrap: "anywhere",
         }}
       >
         {props.badge.detail}
       </div>
-      {compactBasis.length > 0 && (
+      {basis.length > 0 && (
         <div
           style={{
             marginTop: 4,
@@ -600,13 +595,11 @@ function ForecastCard(props: {
             fontSize: 11,
             lineHeight: 1.35,
             color: "rgba(255,255,255,0.82)",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
+            whiteSpace: "normal",
+            overflowWrap: "anywhere",
           }}
         >
-          {compactBasis.join(" ／ ")}
-          {hiddenBasisCount > 0 ? ` ／ ほか${hiddenBasisCount}` : ""}
+          {basis.join(" ／ ")}
         </div>
       )}
     </div>
@@ -1252,7 +1245,7 @@ export default function Weather({ back, isActive = true }: Props) {
           style={{
             display: "grid",
             gridTemplateColumns: isDesktop
-              ? "minmax(0, 1.75fr) minmax(270px, 0.65fr)"
+              ? "minmax(0, 1fr) minmax(160px, 190px)"
               : "1fr",
             gap: isDesktop ? 8 : 12,
             minWidth: 0,
@@ -1373,9 +1366,9 @@ export default function Weather({ back, isActive = true }: Props) {
                 marginTop: 2,
                 fontSize: 10,
                 color: "rgba(255,255,255,0.58)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
+                whiteSpace: "normal",
+                overflowWrap: "anywhere",
+                lineHeight: 1.4,
               }}
             >
               主判定：近海の選択時刻±3時間 ／ 広域予報：沖合・後刻の悪化警戒 ／ 波浪：Open-Meteo
@@ -1410,6 +1403,13 @@ export default function Weather({ back, isActive = true }: Props) {
               style={{
                 ...tabStyle(false),
                 minHeight: 48,
+                minWidth: 0,
+                padding: "8px 10px",
+                fontSize: 13,
+                whiteSpace: "normal",
+                overflowWrap: "anywhere",
+                textAlign: "center",
+                lineHeight: 1.4,
                 borderRadius: 12,
                 background:
                   "linear-gradient(135deg, rgba(43,155,213,0.28), rgba(20,52,91,0.52))",
@@ -1429,6 +1429,13 @@ export default function Weather({ back, isActive = true }: Props) {
               style={{
                 ...tabStyle(false),
                 minHeight: 48,
+                minWidth: 0,
+                padding: "8px 10px",
+                fontSize: 13,
+                whiteSpace: "normal",
+                overflowWrap: "anywhere",
+                textAlign: "center",
+                lineHeight: 1.4,
                 borderRadius: 12,
                 background:
                   "linear-gradient(135deg, rgba(95,105,220,0.28), rgba(22,51,104,0.52))",
