@@ -886,12 +886,9 @@ export default function Weather({ back, isActive = true }: Props) {
   const weatherEmotion = useMemo(
     () =>
       decideWeatherEmotion({
-        safetyTone: forecast.safety.tone,
-        comfortTone: forecast.comfort.tone,
-        biteTone: forecast.bite.tone,
-        tideName: tideState.status === "ok" ? tideState.tideName : null,
+        conditions: forecast.conditions,
       }),
-    [forecast, tideState],
+    [forecast],
   );
 
   useEffect(() => {

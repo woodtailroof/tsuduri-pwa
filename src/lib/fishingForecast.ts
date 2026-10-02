@@ -259,7 +259,8 @@ function directWaveBadge(input: {
   return {
     label,
     detail: `近海 前後3時間最大${waveHeight.toFixed(1)}m`,
-    tone: toneForLevel(Math.max(level, regionalDifference ? 1 : 0)),
+    // 広域予報との差は注記し、表示色は近海の波評価に揃える。
+    tone: toneForLevel(level),
     basis,
   };
 }

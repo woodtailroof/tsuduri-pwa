@@ -1,4 +1,4 @@
-// src/lib/emotionDeciders/weatherEmotion.ts
+import type { FishingForecast } from "../fishingForecast";
 
 export type WeatherEmotionKey =
   | "neutral"
@@ -8,49 +8,23 @@ export type WeatherEmotionKey =
   | "surprise"
   | "love";
 
-import type { ForecastTone } from "../fishingForecast";
-
 export type WeatherEmotionInput = {
-  safetyTone: ForecastTone;
-  comfortTone: ForecastTone;
-  biteTone: ForecastTone;
-  tideName?: string | null;
+  conditions: FishingForecast["conditions"];
 };
 
-/**
- * Weather用感情判定。
- * 画面に表示する「安全度・釣りやすさ・釣れそう度」と同じ、
- * 選択時刻の前後3時間の総合予測を根拠にする。
- */
+/** 画面に表示する天気・風・波の評価に感情を揃える。 */
 export function decideWeatherEmotion(
   input: WeatherEmotionInput,
 ): WeatherEmotionKey {
-  const tideName = String(input.tideName ?? "").trim();
+  const badges = Object.values(input.conditions);
+  const tones = badges.map((badge) => badge.tone);
 
-  if (input.safetyTone === "stop") return "surprise";
-  if (input.safetyTone === "danger") return "sad";
-  if (input.safetyTone === "hard") return "think";
-
-  if (input.comfortTone === "hard" && input.biteTone === "hard") {
-    return "sad";
-  }
-  if (
-    input.safetyTone === "caution" ||
-    input.comfortTone === "hard" ||
-    input.biteTone === "hard"
-  ) {
-    return "think";
-  }
-
-  if (input.safetyTone === "good" && input.comfortTone === "good") {
-    if (
-      input.biteTone === "good" &&
-      (tideName.includes("大潮") || tideName.includes("中潮"))
-    ) {
-      return "love";
-    }
-    return "happy";
-  }
-
+  if (tones.includes("stop")) return "surprise";
+  if (tones.includes("danger")) return "sad";
+  // 既知の悪条件を優先し、未取得だけの場合は判断を保留する。
+  if (badges.some((badge) => badge.label !== "未取得" &&
+      (badge.tone === "hard" || badge.tone === "caution"))) return "think";
+  if (badges.some((badge) => badge.label === "未取得")) return "neutral";
+  if (tones.every((tone) => tone === "good")) return "happy";
   return "neutral";
 }
