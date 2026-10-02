@@ -227,7 +227,6 @@ function directWaveBadge(input: {
       ? `評価 ${String(assessment.hour).padStart(2, "0")}時 ${assessment.height.toFixed(1)}m・${assessment.period == null ? "周期不明" : `${assessment.period.toFixed(1)}秒`}`
       : "周期未取得",
     assessment?.reason ?? "波高のみの評価",
-    "波の負担を評価するアプリ目安・釣果の良否は別",
   ];
   if (regionalDifference && coastalWave) {
     basis.push(`広域最大 ${coastalWave.maxHeight.toFixed(1)}m・予報差あり`);
