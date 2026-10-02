@@ -224,7 +224,7 @@ function directWaveBadge(input: {
       ? `前後3時間最大 ${waveHeight.toFixed(1)}m`
       : `選択時 ${selectedWaveHeight.toFixed(1)}m／最大 ${waveHeight.toFixed(1)}m`,
     assessment
-      ? `評価 ${String(assessment.hour).padStart(2, "0")}時 ${assessment.height.toFixed(1)}m・${assessment.period == null ? "周期不明" : `${assessment.period.toFixed(1)}秒`}`
+      ? `評価 ${String(assessment.hour).padStart(2, "0")}時 ${assessment.height.toFixed(1)}m・${assessment.period == null ? "周期不明" : `${assessment.period.toFixed(1)}秒（${assessment.periodLabel}）`}`
       : "周期未取得",
     assessment?.reason ?? "波高のみの評価",
   ];
@@ -286,7 +286,7 @@ export function buildFishingForecast(input: {
   // 波高の最大値と別時刻の周期を合成せず、各時刻の組み合わせを評価する。
   const waveAssessment = point.waveExposure === "none" ? null
     : nearbyMarineWaves.map((row) => assessWave(point, row)).sort(
-      (a, b) => b.level - a.level || b.periodLevel - a.periodLevel || b.height - a.height || (b.period ?? 0) - (a.period ?? 0),
+      (a, b) => b.level - a.level || b.periodPenalty - a.periodPenalty || b.height - a.height || (b.period ?? 0) - (a.period ?? 0),
     )[0] ?? null;
   const regionalDifference =
     waveHeight != null &&
@@ -451,10 +451,10 @@ export function buildFishingForecast(input: {
       });
     }
   }
-  if (waveAssessment && waveAssessment.periodLevel > 0) {
-    const penalty = waveAssessment.periodLevel === 2 ? 15 : 8;
+  if (waveAssessment && waveAssessment.periodPenalty > 0) {
+    const penalty = waveAssessment.periodPenalty;
     comfortScore -= penalty;
-    comfortBasis.push(`長周期の波 ${waveAssessment.height.toFixed(1)}m・${waveAssessment.period?.toFixed(1)}秒 −${penalty}点`);
+    comfortBasis.push(`${waveAssessment.periodLabel} ${waveAssessment.height.toFixed(1)}m・${waveAssessment.period?.toFixed(1)}秒 −${penalty}点`);
     comfortReasons.push({ penalty, text: waveAssessment.reason });
   }
   comfortScore = clamp(Math.round(comfortScore), 0, 100);

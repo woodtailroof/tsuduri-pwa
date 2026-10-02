@@ -34,22 +34,30 @@ function forecast(rows, point = open, coastalWave = null) {
   });
 }
 const cases = [
-  [0.5, 6, "good", "快適"],
-  [0.7, 9, "good", "快適"],
+  [0.5, 5.99, "good", "快適"],
+  [0.7, 6, "good", "快適"],
+  [0.7, 8, "good", "快適"],
+  [0.7, 10, "good", "快適"],
   [0.7, 12, "good", "快適"],
-  [0.7, 20, "good", "快適"],
-  [0.99, 8, "good", "快適"],
-  [0.99, 12, "good", "快適"],
-  [1, 8.99, "caution", "波あり・注意"],
-  [1, 9, "caution", "うねりに注意"],
-  [1, 11.99, "caution", "うねりに注意"],
-  [1, 12, "hard", "うねり強め"],
-  [1.49, 8, "caution", "波あり・注意"],
-  [1.5, 8, "hard", "波高め・釣りづらい"],
-  [1.5, 12, "hard", "波高め・釣りづらい"],
+  [0.99, 20, "good", "快適"],
+  [1, 5.99, "caution", "波あり・注意"],
+  [1, 6, "caution", "波あり・注意"],
+  [1, 7.99, "caution", "波あり・注意"],
+  [1, 8, "caution", "うねりに注意"],
+  [1, 9.99, "caution", "うねりに注意"],
+  [1, 10, "hard", "押し引き強めの可能性"],
+  [1, 11.99, "hard", "押し引き強めの可能性"],
+  [1, 12, "hard", "うねりの負担大"],
+  [1.49, 6, "caution", "波あり・注意"],
+  [1.5, 6, "hard", "波高め・釣りづらい"],
+  [1.5, 8, "hard", "波高＋うねり"],
+  [1.5, 10, "hard", "波高＋長周期"],
+  [1.5, 12, "danger", "強いうねりに警戒"],
   [1.99, 6, "hard", "波高め・釣りづらい"],
   [2, 6, "danger", "高波・厳しい"],
-  [2.5, 6, "danger", "高波・厳しい"],
+  [2, 8, "danger", "高波＋うねり"],
+  [2, 10, "danger", "高波＋長周期"],
+  [2, 12, "danger", "高波＋強い長周期"],
   [3, 6, "danger", "高波・厳しい"],
   [0.5, null, "caution", "波低め・周期不明"],
   [0.5, 0, "caution", "波低め・周期不明"],
@@ -72,8 +80,8 @@ assert.equal(forecast([row(0.5, 6, 20)]).conditions.wave.label, "未取得");
 assert.equal(forecast([row(NaN, 6), row(-1, 6)]).conditions.wave.label, "未取得");
 const regional = { maxHeight: 2, minHeight: 1.5, hasSwell: false };
 assert.equal(forecast([row(0.5, 6)], open, regional).conditions.wave.tone, "good");
-const calm = forecast([row(1, 8.99)]);
-const long = forecast([row(1, 9)]);
+const calm = forecast([row(1, 5.99)]);
+const long = forecast([row(1, 6)]);
 assert.ok(long.comfort.score < calm.comfort.score);
 assert.equal(long.safety.tone, "caution");
 assert.equal(decideWeatherEmotion({ conditions: forecast([row(0.99, 20)]).conditions }), "happy");
@@ -85,4 +93,17 @@ assert.ok(forecast([row(1, 12)]).comfort.score < long.comfort.score);
 const mixed = forecast([row(1.8, 6), row(1, 12, 12)]);
 assert.ok(mixed.conditions.wave.basis.some((s) => s.includes("12時 1.0m・12.0秒")));
 assert.equal(forecast([row(1, 9)], port).comfort.score, forecast([row(1, 6)], port).comfort.score);
+const expectedPeriods = [[5.99, "短周期"], [6, "周期やや長め"], [7.99, "周期やや長め"], [8, "うねりあり"], [9.99, "うねりあり"], [10, "長周期"], [11.99, "長周期"], [12, "かなり長周期"]];
+for (const [period, label] of expectedPeriods) {
+  assert.ok(forecast([row(0.7, period)]).conditions.wave.basis.some((s) => s.includes(label)));
+}
+// Increasing period progressively reduces comfort only when surf height is >=1m.
+const scores = [5, 7, 9, 11, 13].map((period) => forecast([row(1, period)]).comfort.score);
+assert.ok(scores.every((score, index) => index === 0 || score < scores[index - 1]));
+for (const point of [port, river]) {
+  const scores = [5, 7, 9, 11, 13].map((period) => forecast([row(1.5, period)], point).comfort.score);
+  assert.ok(scores.every((score) => score === scores[0]));
+}
+assert.equal(decideWeatherEmotion({ conditions: forecast([row(1, 10)]).conditions }), "think");
+assert.equal(decideWeatherEmotion({ conditions: forecast([row(1.5, 12)]).conditions }), "sad");
 console.log("PASS: wave/period boundaries, paired time windows, port/river, missing data, regional differences, comfort and emotions");
