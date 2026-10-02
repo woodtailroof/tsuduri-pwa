@@ -286,7 +286,7 @@ export function buildFishingForecast(input: {
   // 波高の最大値と別時刻の周期を合成せず、各時刻の組み合わせを評価する。
   const waveAssessment = point.waveExposure === "none" ? null
     : nearbyMarineWaves.map((row) => assessWave(point, row)).sort(
-      (a, b) => b.level - a.level || b.height - a.height || (b.period ?? 0) - (a.period ?? 0),
+      (a, b) => b.level - a.level || b.periodLevel - a.periodLevel || b.height - a.height || (b.period ?? 0) - (a.period ?? 0),
     )[0] ?? null;
   const regionalDifference =
     waveHeight != null &&

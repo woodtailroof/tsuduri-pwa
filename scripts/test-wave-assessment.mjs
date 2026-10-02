@@ -35,19 +35,22 @@ function forecast(rows, point = open, coastalWave = null) {
 }
 const cases = [
   [0.5, 6, "good", "快適"],
-  [0.5, 10, "good", "低波高・長周期"],
-  [0.49, 12, "good", "低波高・長周期"],
-  [0.5, 12, "caution", "うねりに注意"],
-  [0.69, 10, "good", "低波高・長周期"],
-  [0.7, 10, "caution", "うねりに注意"],
-  [0.8, 10, "caution", "うねりに注意"],
-  [0.9, 6, "caution", "波あり・注意"],
-  [1.19, 12, "caution", "うねりに注意"],
-  [1.2, 12, "hard", "うねり強め"],
-  [1.6, 6, "hard", "波高め"],
-  [2, 6, "danger", "高波"],
-  [2.5, 6, "stop", "危険な高波"],
-  [3, 6, "stop", "危険な高波"],
+  [0.7, 9, "good", "快適"],
+  [0.7, 12, "good", "快適"],
+  [0.7, 20, "good", "快適"],
+  [0.99, 8, "good", "快適"],
+  [0.99, 12, "good", "快適"],
+  [1, 8.99, "caution", "波あり・注意"],
+  [1, 9, "caution", "うねりに注意"],
+  [1, 11.99, "caution", "うねりに注意"],
+  [1, 12, "hard", "うねり強め"],
+  [1.49, 8, "caution", "波あり・注意"],
+  [1.5, 8, "hard", "波高め・釣りづらい"],
+  [1.5, 12, "hard", "波高め・釣りづらい"],
+  [1.99, 6, "hard", "波高め・釣りづらい"],
+  [2, 6, "danger", "高波・厳しい"],
+  [2.5, 6, "danger", "高波・厳しい"],
+  [3, 6, "danger", "高波・厳しい"],
   [0.5, null, "caution", "波低め・周期不明"],
   [0.5, 0, "caution", "波低め・周期不明"],
 ];
@@ -61,19 +64,25 @@ assert.equal(forecast([row(4, 6)], port).conditions.wave.tone, "stop");
 assert.equal(forecast([row(3, 20)], river).conditions.wave.label, "対象外");
 // Separate maxima must not fabricate a 1.2m/12s combination.
 assert.equal(forecast([row(1.2, 6), row(0.2, 12, 12)]).conditions.wave.tone, "caution");
-const nearby = forecast([row(1.2, 12, 6), row(0.5, 6)]);
+const nearby = forecast([row(1, 12, 6), row(0.5, 6)]);
 assert.equal(nearby.conditions.wave.tone, "hard");
-assert.ok(nearby.conditions.wave.basis.some((s) => s.includes("06時 1.2m・12.0秒")));
+assert.ok(nearby.conditions.wave.basis.some((s) => s.includes("06時 1.0m・12.0秒")));
 assert.equal(forecast([row(0.5, 6), row(3, 20, 13)]).conditions.wave.tone, "good");
 assert.equal(forecast([row(0.5, 6, 20)]).conditions.wave.label, "未取得");
 assert.equal(forecast([row(NaN, 6), row(-1, 6)]).conditions.wave.label, "未取得");
 const regional = { maxHeight: 2, minHeight: 1.5, hasSwell: false };
 assert.equal(forecast([row(0.5, 6)], open, regional).conditions.wave.tone, "good");
-const calm = forecast([row(0.8, 6)]);
-const long = forecast([row(0.8, 10)]);
+const calm = forecast([row(1, 8.99)]);
+const long = forecast([row(1, 9)]);
 assert.ok(long.comfort.score < calm.comfort.score);
 assert.equal(long.safety.tone, "caution");
-assert.equal(decideWeatherEmotion({ conditions: calm.conditions }), "happy");
+assert.equal(decideWeatherEmotion({ conditions: forecast([row(0.99, 20)]).conditions }), "happy");
 assert.equal(decideWeatherEmotion({ conditions: long.conditions }), "think");
-assert.equal(decideWeatherEmotion({ conditions: forecast([row(3, 6)]).conditions }), "surprise");
+assert.equal(decideWeatherEmotion({ conditions: forecast([row(3, 6)]).conditions }), "sad");
+// Low waves never get an additional period penalty; higher waves do.
+assert.equal(forecast([row(0.7, 20)]).comfort.score, forecast([row(0.7, 6)]).comfort.score);
+assert.ok(forecast([row(1, 12)]).comfort.score < long.comfort.score);
+const mixed = forecast([row(1.8, 6), row(1, 12, 12)]);
+assert.ok(mixed.conditions.wave.basis.some((s) => s.includes("12時 1.0m・12.0秒")));
+assert.equal(forecast([row(1, 9)], port).comfort.score, forecast([row(1, 6)], port).comfort.score);
 console.log("PASS: wave/period boundaries, paired time windows, port/river, missing data, regional differences, comfort and emotions");
