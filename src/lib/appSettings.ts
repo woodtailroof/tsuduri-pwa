@@ -64,6 +64,7 @@ export const AUTO_BG_SETS: Array<{ id: string; label: string }> = [
   { id: "port", label: "港" },
   { id: "estuary", label: "安倍川河口" },
   { id: "pond", label: "遊水池" },
+  { id: "home", label: "自宅前" },
   { id: "base", label: "釣嫁ベース" },
   { id: "dorm", label: "釣嫁相部屋" },
 ] as const;
