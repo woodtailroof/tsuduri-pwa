@@ -2,10 +2,14 @@
 
 // functions/api/chat.ts
 import OpenAI from "openai";
+import { buildConversationContext, isCompanionMessage, validMessageTime } from "../lib/conversationContext";
 
 type Msg = {
   role: "system" | "user" | "assistant";
   content: string;
+  createdAt?: number;
+  source?: "companion";
+  previousExchangeAt?: number | null;
 };
 
 type ReplyLength = "short" | "standard" | "long" | "verylong";
@@ -1326,16 +1330,22 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       });
     }
 
-    const trimmed: Msg[] = messages
+    const now = Date.now();
+    const normalized: Msg[] = messages
       .filter((m) => m && (m.role === "user" || m.role === "assistant"))
-      .slice(-32)
       .map((m) => ({
         role: m.role,
         content: safeString(m.content).slice(0, 4000),
+        createdAt: validMessageTime(m.createdAt, now),
+        previousExchangeAt: m.previousExchangeAt === null
+          ? null
+          : validMessageTime(m.previousExchangeAt, now),
+        source: isCompanionMessage(m) ? "companion" as const : undefined,
       }));
 
-    const lastUser =
-      [...trimmed].reverse().find((m) => m.role === "user")?.content ?? "";
+    const conversation = buildConversationContext(normalized, now);
+    const trimmed = normalized.slice(-32);
+    const lastUser = conversation.latestUser;
 
     const detectedJudge = isFishingJudgeText(lastUser);
 
@@ -1509,7 +1519,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       ...(judgeFollowerHint ? [judgeFollowerHint] : []),
       ...(judgeDataMemo ? [judgeDataMemo] : []),
       ...hintMessages,
-      ...trimmed,
+      { role: "system", content: conversation.hint },
+      ...trimmed.map(({ role, content, createdAt, source }) => ({
+        role,
+        content: createdAt === undefined || source === "companion"
+          ? content
+          : `【発言日時：${new Date(createdAt).toISOString()}】\n${content}`,
+      })),
     ];
 
     const outputTokenLimit = clamp(maxOutputTokens(isJudge), 350, 2600);
