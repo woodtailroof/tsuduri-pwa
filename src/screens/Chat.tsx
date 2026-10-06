@@ -27,11 +27,15 @@ type Msg = {
   characterId?: string;
   characterName?: string;
   characterColor?: string;
+  createdAt?: number;
 };
 
 type ApiMessage = {
   role: "user" | "assistant";
   content: string;
+  createdAt?: number;
+  source?: "companion";
+  previousExchangeAt?: number | null;
 };
 
 const GROUP_ROOM_ID = "group";
@@ -180,6 +184,9 @@ function safeLoadHistory(roomId: string): Msg[] {
       characterId,
       characterName,
       characterColor,
+      createdAt: typeof item.createdAt === "number" && Number.isFinite(item.createdAt)
+        ? item.createdAt
+        : undefined,
     });
   }
 
@@ -1018,6 +1025,7 @@ function buildSingleThread(messages: Msg[]): ApiMessage[] {
   return messages.map((message) => ({
     role: message.role,
     content: message.content,
+    createdAt: message.createdAt,
   }));
 }
 
@@ -1064,6 +1072,10 @@ function buildGroupThread(
       out.push({
         role: "user",
         content: message.content,
+        createdAt: message.createdAt,
+        previousExchangeAt: index === lastUserIndex
+          ? messages[index - 1]?.createdAt ?? null
+          : undefined,
       });
 
       continue;
@@ -1075,6 +1087,7 @@ function buildGroupThread(
       out.push({
         role: "assistant",
         content: message.content,
+        createdAt: message.createdAt,
       });
 
       continue;
@@ -1096,6 +1109,8 @@ function buildGroupThread(
 
     out.push({
       role: "user",
+      source: "companion",
+      createdAt: message.createdAt,
       content: [
         "【直前の別キャラクターの発言記録】",
         `発言者ID: ${speakerId}`,
@@ -1578,6 +1593,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       const replyMessage: Msg = {
         role: "assistant",
         content: reply.text,
+        createdAt: Date.now(),
         characterId: currentCharacter.id,
         characterName: currentCharacter.name,
         characterColor: normalizeCharacterColor(currentCharacter.color),
@@ -1594,6 +1610,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         {
           role: "assistant",
           content: `ごめん…🥺\n` + `理由：${msg}`,
+          createdAt: Date.now(),
           characterId: selectedCharacter.id,
           characterName: selectedCharacter.name,
           characterColor: normalizeCharacterColor(selectedCharacter.color),
@@ -1678,6 +1695,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         const replyMessage: Msg = {
           role: "assistant",
           content: reply.text,
+          createdAt: Date.now(),
           characterId: character.id,
           characterName: character.name,
           characterColor: normalizeCharacterColor(character.color),
@@ -1694,6 +1712,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
         const errorMessage: Msg = {
           role: "assistant",
           content: `ごめん…🥺\n` + `理由：${msg}`,
+          createdAt: Date.now(),
           characterId: character.id,
           characterName: character.name,
           characterColor: normalizeCharacterColor(character.color),
@@ -1735,6 +1754,7 @@ export default function Chat({ back, goCharacterSettings }: Props) {
       {
         role: "user",
         content: text,
+        createdAt: Date.now(),
       },
     ];
 
