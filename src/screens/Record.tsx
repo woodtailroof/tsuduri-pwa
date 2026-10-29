@@ -102,6 +102,8 @@ const SPECIES_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "seabass", label: "シーバス" },
   { value: "flounder", label: "ヒラメ" },
   { value: "flathead", label: "マゴチ" },
+  { value: "nibe", label: "ニベ" },
+  { value: "oonibe", label: "オオニベ" },
   { value: "black_seabream", label: "クロダイ" },
   { value: "trevally", label: "メッキ" },
   { value: "spanish_mackerel", label: "サワラ（サゴシ）" },
