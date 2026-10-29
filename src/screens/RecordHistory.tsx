@@ -190,6 +190,8 @@ function normalizeSpeciesLabel(raw: string): string {
     olive_flounder: "ヒラメ",
     halibut: "ヒラメ",
     flathead: "マゴチ",
+    nibe: "ニベ",
+    oonibe: "オオニベ",
     goby: "ハゼ",
     mullet: "ボラ",
     catfish: "ナマズ",
