@@ -652,6 +652,20 @@ export default function Weather({ back, isActive = true }: Props) {
     return startOfDay(parseDateInputValue(picked) ?? now);
   }, [tab, picked]);
 
+  function selectDate(date: Date) {
+    const today = startOfDay(new Date());
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setPicked(toDateInputValue(date));
+    setTab(sameDay(date, today) ? "today" : sameDay(date, tomorrow) ? "tomorrow" : "pick");
+  }
+
+  function stepDate(offset: number) {
+    const next = new Date(targetDate);
+    next.setDate(next.getDate() + offset);
+    selectDate(next);
+  }
+
   const selectedPoint = useMemo(
     () => getFishingPoint(selectedPointId),
     [selectedPointId],
@@ -1125,18 +1139,56 @@ export default function Weather({ back, isActive = true }: Props) {
             日付指定
           </button>
           </div>
-          {tab === "pick" && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "stretch",
+              gap: 6,
+              width: isWideLayout ? "100%" : undefined,
+              minWidth: 0,
+              maxWidth: "100%",
+            }}
+          >
             <input
               type="date"
-              value={picked}
-              onChange={(event) => setPicked(event.target.value)}
+              aria-label="表示する日付"
+              value={toDateInputValue(targetDate)}
+              onChange={(event) => {
+                const date = parseDateInputValue(event.target.value);
+                if (date) selectDate(date);
+              }}
               style={{
                 ...controlStyle,
                 borderRadius: 10,
-                width: isWideLayout ? "100%" : undefined,
+                flex: "1 1 auto",
+                minWidth: 0,
+                width: isWideLayout ? 0 : undefined,
               }}
             />
-          )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: "0 0 36px" }}>
+              {([-1, 1] as const).map((offset) => (
+                <button
+                  key={offset}
+                  type="button"
+                  aria-label={offset < 0 ? "前日へ" : "翌日へ"}
+                  title={offset < 0 ? "前日へ" : "翌日へ"}
+                  onClick={() => stepDate(offset)}
+                  style={{
+                    ...controlStyle,
+                    flex: 1,
+                    minHeight: 24,
+                    padding: "2px 6px",
+                    borderRadius: 6,
+                    lineHeight: 1,
+                    cursor: "pointer",
+                    touchAction: "manipulation",
+                  }}
+                >
+                  {offset < 0 ? "▲" : "▼"}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <span
             style={{

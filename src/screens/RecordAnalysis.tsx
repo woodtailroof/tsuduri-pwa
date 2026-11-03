@@ -227,6 +227,8 @@ const SPECIES_LABEL: Record<string, string> = {
   seabass: "シーバス",
   flounder: "ヒラメ",
   flathead: "マゴチ",
+  nibe: "ニベ",
+  oonibe: "オオニベ",
   black_seabream: "クロダイ",
   trevally: "メッキ",
   spanish_mackerel: "サワラ（サゴシ）",
