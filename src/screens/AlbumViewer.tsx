@@ -17,6 +17,7 @@ type Props = {
 type AlbumManifest = {
   title?: string;
   files?: string[];
+  thumbnails?: Record<string, string>;
 };
 
 function safeText(e: unknown): string {
@@ -120,6 +121,7 @@ export default function AlbumViewer(props: Props) {
 
   const [title, setTitle] = useState(props.albumTitleHint ?? "");
   const [files, setFiles] = useState<string[]>([]);
+  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [idx, setIdx] = useState(0);
 
   const [fs, setFs] = useState(false);
@@ -153,6 +155,8 @@ export default function AlbumViewer(props: Props) {
       setLoading(true);
       setErr(null);
       setIdx(0);
+      setFiles([]);
+      setShownSrc("");
       setControlsVisible(false);
 
       try {
@@ -177,21 +181,9 @@ export default function AlbumViewer(props: Props) {
         if (cancelled) return;
 
         setTitle(nextTitle);
+        setThumbnails(json?.thumbnails ?? {});
         setFiles(nextFiles);
-
-        if (nextFiles.length === 0) {
-          setShownSrc("");
-          setLoading(false);
-          return;
-        }
-
-        const firstSrc = buildSlideSrc(nextFiles[0]);
-        await preloadImage(firstSrc);
-
-        if (cancelled) return;
-
-        setShownSrc(firstSrc);
-        setLoading(false);
+        if (nextFiles.length === 0) setLoading(false);
       } catch (e) {
         if (!cancelled) {
           setErr(safeText(e));
@@ -204,7 +196,7 @@ export default function AlbumViewer(props: Props) {
     return () => {
       cancelled = true;
     };
-  }, [manifestUrl, buildSlideSrc, props.albumTitleHint]);
+  }, [manifestUrl, props.albumTitleHint]);
 
   useEffect(() => {
     let cancelled = false;
@@ -228,6 +220,8 @@ export default function AlbumViewer(props: Props) {
         if (!cancelled) {
           setErr("画像を読み込めなかったよ");
         }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -241,14 +235,14 @@ export default function AlbumViewer(props: Props) {
     if (!controlsVisible) return;
 
     const el = thumbRefs.current[idx];
-    if (!el) return;
+    const strip = stripRef.current;
+    if (!el || !strip) return;
 
-    el.scrollIntoView({
-      behavior: "smooth",
-      block: "nearest",
-      inline: "center",
-    });
-  }, [idx, controlsVisible]);
+    const thumb = el.getBoundingClientRect();
+    const viewport = strip.getBoundingClientRect();
+    if (mobile) strip.scrollTop += thumb.top - viewport.top;
+    else strip.scrollLeft += thumb.left - viewport.left - (strip.clientWidth - thumb.width) / 2;
+  }, [idx, controlsVisible, mobile]);
 
   useEffect(() => {
     const onFsChange = () => {
@@ -510,10 +504,19 @@ export default function AlbumViewer(props: Props) {
         </div>
       </div>
 
-      {files.length > 0 && (
+      <style>{`
+        .album-viewer-mobile-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          align-content: start;
+        }
+        @media (orientation: landscape) and (max-height: 520px) {
+          .album-viewer-mobile-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        }
+      `}</style>
+      {files.length > 0 && controlsVisible && (
         <div
           id="album-thumbnails"
-          inert={!controlsVisible}
           onClick={stopOverlayEvent}
           onPointerDown={stopOverlayEvent}
           onTouchStart={stopOverlayEvent}
@@ -525,23 +528,18 @@ export default function AlbumViewer(props: Props) {
             borderRadius: 18,
             border: "1px solid rgba(255,255,255,0.18)",
             background: "rgba(0,0,0,0.42)",
-            backdropFilter: "blur(14px)",
-            WebkitBackdropFilter: "blur(14px)",
             padding: mobile ? "10px 10px 12px" : "10px 12px 12px",
             display: "grid",
             gridTemplateRows: "minmax(0, 1fr) auto",
             gridTemplateColumns: "minmax(0, 1fr)",
-            maxHeight: mobile ? "min(65dvh, calc(100dvh - 90px))" : undefined,
+            maxHeight: mobile ? "min(68dvh, calc(100dvh - 84px))" : undefined,
             boxSizing: "border-box",
             gap: 10,
-            pointerEvents: controlsVisible ? "auto" : "none",
-            opacity: controlsVisible ? 1 : 0,
-            transform: controlsVisible ? "translateY(0)" : "translateY(18px)",
-            transition: "opacity 180ms ease, transform 180ms ease",
           }}
         >
           <div
             ref={stripRef}
+            className={mobile ? "album-viewer-mobile-grid" : undefined}
             onWheel={(e) => {
               const el = stripRef.current;
               if (!el || mobile) return;
@@ -550,8 +548,8 @@ export default function AlbumViewer(props: Props) {
               }
             }}
             style={{
-              display: mobile ? "grid" : "flex",
-              gridTemplateColumns: mobile ? "repeat(2, minmax(0, 1fr))" : undefined,
+              display: mobile ? undefined : "flex",
+              minHeight: 0,
               gap: 8,
               overflowX: mobile ? "hidden" : "auto",
               overflowY: mobile ? "auto" : undefined,
@@ -563,7 +561,7 @@ export default function AlbumViewer(props: Props) {
           >
             {files.map((file, i) => {
               const selected = i === idx;
-              const src = buildSlideSrc(file);
+              const src = buildSlideSrc(thumbnails[file] ?? file);
 
               return (
                 <button
@@ -592,6 +590,8 @@ export default function AlbumViewer(props: Props) {
                     border: selected
                       ? "2px solid rgba(255,255,255,0.95)"
                       : "1px solid rgba(255,255,255,0.20)",
+                    backdropFilter: "none",
+                    WebkitBackdropFilter: "none",
                     background: selected
                       ? "rgba(255,255,255,0.18)"
                       : "rgba(0,0,0,0.28)",
@@ -606,6 +606,7 @@ export default function AlbumViewer(props: Props) {
                     src={src}
                     alt=""
                     loading="lazy"
+                    decoding="async"
                     draggable={false}
                     style={{
                       position: mobile ? "absolute" : undefined,

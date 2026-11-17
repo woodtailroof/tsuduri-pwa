@@ -409,7 +409,7 @@ function AppInner() {
         }}
       />
 
-      {screen !== "albumViewer" && (
+      {!skipFade && (
         <div
           id="layer-stage"
           style={{

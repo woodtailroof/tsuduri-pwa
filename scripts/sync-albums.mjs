@@ -60,7 +60,13 @@ function ensureManifestWithFiles(albumDir) {
 
   const manifest = readJson(manifestPath);
   const files = listDisplayFiles(albumDir);
-  const next = { ...manifest, files };
+  const thumbnails = {};
+  for (const file of files) {
+    const stem = path.basename(file, path.extname(file));
+    const relative = `.thumbs/${stem}.webp`;
+    if (fs.existsSync(path.join(albumDir, relative))) thumbnails[file] = relative;
+  }
+  const next = { ...manifest, files, thumbnails };
 
   if (JSON.stringify(manifest) !== JSON.stringify(next)) {
     writeJson(manifestPath, next);

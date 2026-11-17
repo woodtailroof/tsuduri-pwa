@@ -203,6 +203,11 @@ export default function AlbumPicker(props: Props) {
           .album-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
           .album-card-image { aspect-ratio: 4 / 5; }
         }
+        @media (orientation: landscape) and (max-height: 520px) and (pointer: coarse) {
+          .album-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+          .album-card-image { aspect-ratio: 4 / 3; }
+          .album-card { backdrop-filter: none; }
+        }
         @media (max-width: 350px) {
           .album-grid { grid-template-columns: minmax(0, 1fr); }
         }
