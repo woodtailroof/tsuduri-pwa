@@ -284,7 +284,7 @@ export default function AlbumViewer(props: Props) {
       } else if (e.key === "End") {
         e.preventDefault();
         jumpTo(files.length - 1);
-      } else if (e.key === " ") {
+      } else if (e.key === " " && !(e.target instanceof HTMLButtonElement)) {
         e.preventDefault();
         setControlsVisible((v) => !v);
       } else if (e.key.toLowerCase() === "f" && showFullscreenButton) {
@@ -440,7 +440,7 @@ export default function AlbumViewer(props: Props) {
           display: "flex",
           justifyContent: "space-between",
           pointerEvents: "none",
-          opacity: controlsVisible || !shownSrc ? 1 : 0.25,
+          opacity: mobile || controlsVisible || !shownSrc ? 1 : 0.25,
           transition: "opacity 180ms ease",
         }}
       >
@@ -449,6 +449,25 @@ export default function AlbumViewer(props: Props) {
         </div>
 
         <div style={{ display: "flex", gap: 8, pointerEvents: "auto" }}>
+          {mobile && files.length > 0 && (
+            <button
+              type="button"
+              aria-expanded={controlsVisible}
+              aria-controls="album-thumbnails"
+              onClick={() => setControlsVisible((visible) => !visible)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,0.25)",
+                background: "rgba(0,0,0,0.55)",
+                color: "#fff",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {controlsVisible ? "一覧を閉じる" : "画像一覧"}
+            </button>
+          )}
           {showFullscreenButton && (
             <button
               type="button"
@@ -493,6 +512,8 @@ export default function AlbumViewer(props: Props) {
 
       {files.length > 0 && (
         <div
+          id="album-thumbnails"
+          inert={!controlsVisible}
           onClick={stopOverlayEvent}
           onPointerDown={stopOverlayEvent}
           onTouchStart={stopOverlayEvent}
@@ -508,6 +529,10 @@ export default function AlbumViewer(props: Props) {
             WebkitBackdropFilter: "blur(14px)",
             padding: mobile ? "10px 10px 12px" : "10px 12px 12px",
             display: "grid",
+            gridTemplateRows: "minmax(0, 1fr) auto",
+            gridTemplateColumns: "minmax(0, 1fr)",
+            maxHeight: mobile ? "min(65dvh, calc(100dvh - 90px))" : undefined,
+            boxSizing: "border-box",
             gap: 10,
             pointerEvents: controlsVisible ? "auto" : "none",
             opacity: controlsVisible ? 1 : 0,
@@ -519,15 +544,18 @@ export default function AlbumViewer(props: Props) {
             ref={stripRef}
             onWheel={(e) => {
               const el = stripRef.current;
-              if (!el) return;
+              if (!el || mobile) return;
               if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
                 el.scrollLeft += e.deltaY;
               }
             }}
             style={{
-              display: "flex",
+              display: mobile ? "grid" : "flex",
+              gridTemplateColumns: mobile ? "repeat(2, minmax(0, 1fr))" : undefined,
               gap: 8,
-              overflowX: "auto",
+              overflowX: mobile ? "hidden" : "auto",
+              overflowY: mobile ? "auto" : undefined,
+              overscrollBehaviorY: mobile ? "contain" : undefined,
               overscrollBehaviorX: "contain",
               paddingBottom: 2,
               scrollbarWidth: "thin",
@@ -547,12 +575,19 @@ export default function AlbumViewer(props: Props) {
                   onClick={(e) => {
                     e.stopPropagation();
                     jumpTo(i);
+                    if (mobile) setControlsVisible(false);
                   }}
                   title={`${i + 1} / ${files.length}`}
+                  aria-label={`画像 ${i + 1} / ${files.length}`}
+                  aria-current={selected ? "true" : undefined}
                   style={{
                     flex: "0 0 auto",
-                    width: mobile ? 76 : "clamp(54px, 8vw, 86px)",
-                    height: mobile ? 76 : "clamp(54px, 8vw, 86px)",
+                    position: "relative",
+                    boxSizing: "border-box",
+                    aspectRatio: mobile ? "4 / 5" : undefined,
+                    minWidth: 0,
+                    width: mobile ? "100%" : "clamp(54px, 8vw, 86px)",
+                    height: mobile ? "auto" : "clamp(54px, 8vw, 86px)",
                     borderRadius: 12,
                     border: selected
                       ? "2px solid rgba(255,255,255,0.95)"
@@ -560,7 +595,7 @@ export default function AlbumViewer(props: Props) {
                     background: selected
                       ? "rgba(255,255,255,0.18)"
                       : "rgba(0,0,0,0.28)",
-                    padding: 3,
+                    padding: mobile ? 0 : 3,
                     cursor: "pointer",
                     boxShadow: selected
                       ? "0 0 0 3px rgba(255,122,162,0.35)"
@@ -573,8 +608,10 @@ export default function AlbumViewer(props: Props) {
                     loading="lazy"
                     draggable={false}
                     style={{
-                      width: "100%",
-                      height: "100%",
+                      position: mobile ? "absolute" : undefined,
+                      inset: mobile ? 2 : undefined,
+                      width: mobile ? "calc(100% - 4px)" : "100%",
+                      height: mobile ? "calc(100% - 4px)" : "100%",
                       objectFit: "cover",
                       borderRadius: 9,
                       display: "block",

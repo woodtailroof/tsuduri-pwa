@@ -65,21 +65,6 @@ export default function AlbumPicker(props: Props) {
   const [items, setItems] = useState<AlbumItem[]>([]);
 
   const [activeKey, setActiveKey] = useState<string>("all");
-  const [page, setPage] = useState(0);
-  const [mobile, setMobile] = useState(() =>
-    typeof window !== "undefined"
-      ? window.matchMedia("(max-width: 820px)").matches
-      : false,
-  );
-
-  useEffect(() => {
-    const media = window.matchMedia("(max-width: 820px)");
-    const onChange = () => setMobile(media.matches);
-    onChange();
-    media.addEventListener?.("change", onChange);
-    return () => media.removeEventListener?.("change", onChange);
-  }, []);
-
   useEffect(() => {
     let cancelled = false;
 
@@ -181,304 +166,78 @@ export default function AlbumPicker(props: Props) {
     return list;
   }, [grouped, allAlbums.length]);
 
-  useEffect(() => {
-    const valid = new Set(tabs.map((t) => t.key));
-    if (!valid.has(activeKey)) setActiveKey("all");
-    setPage(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabs.length]);
-
-  const visibleAlbums = useMemo(() => {
-    if (activeKey === "all") return allAlbums;
-    const g = grouped.find((x) => x.key === activeKey);
-    return g?.albums ?? [];
-  }, [activeKey, allAlbums, grouped]);
-
-  const PAGE_SIZE = mobile ? 4 : 9;
-
-  const pageCount = Math.max(1, Math.ceil(visibleAlbums.length / PAGE_SIZE));
-  const safePage = Math.min(Math.max(0, page), pageCount - 1);
-
-  useEffect(() => {
-    if (safePage !== page) setPage(safePage);
-  }, [page, safePage]);
-
-  const pageItems = useMemo(() => {
-    const start = safePage * PAGE_SIZE;
-    return visibleAlbums.slice(start, start + PAGE_SIZE);
-  }, [visibleAlbums, safePage]);
+  const selectedKey = tabs.some((t) => t.key === activeKey) ? activeKey : "all";
+  const visibleAlbums =
+    selectedKey === "all"
+      ? allAlbums
+      : (grouped.find((g) => g.key === selectedKey)?.albums ?? []);
 
   const hasAnyAlbum = allAlbums.length > 0;
 
   return (
-    <PageShell
-      title="秘密アルバム"
-      subtitle={null}
-      showBack
-      onBack={props.back}
-      maxWidth={1400}
-      scrollY="hidden"
-    >
-      <div
-        style={{
-          position: "relative",
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {loading && (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              zIndex: 5,
-              pointerEvents: "none",
-              display: "grid",
-              placeItems: "start",
-            }}
-          >
-            <div
-              className="glass"
-              style={{
-                marginTop: 2,
-                padding: "6px 10px",
-                borderRadius: 999,
-                fontSize: 12,
-                opacity: 0.9,
-              }}
-            >
-              読み込み中…
-            </div>
+    <PageShell title="秘密アルバム" showBack onBack={props.back} maxWidth={1200}>
+      <style>{`
+        .album-picker { display: grid; gap: 16px; padding-bottom: env(safe-area-inset-bottom); }
+        .album-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+        .album-filter, .album-card {
+          border: 1px solid rgba(255,255,255,.2);
+          background: rgba(255,255,255,.08);
+          color: inherit;
+          cursor: pointer;
+        }
+        .album-filter { border-radius: 999px; min-height: 36px; padding: 6px 12px; font-weight: 700; }
+        .album-filter[aria-pressed="true"] { background: rgba(255,255,255,.22); }
+        .album-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+        .album-card { display: block; width: 100%; min-width: 0; border-radius: 16px; overflow: hidden; padding: 0; text-align: left; }
+        .album-card-image {
+          display: block;
+          width: 100%;
+          position: relative;
+          aspect-ratio: 4 / 3;
+          overflow: hidden;
+          background: rgba(0,0,0,.22);
+        }
+        .album-card-image img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; min-height: 0; object-fit: cover; object-position: center 35%; }
+        .album-card-title { display: block; padding: 10px 12px; font-size: 15px; font-weight: 800; overflow-wrap: anywhere; }
+        @media (max-width: 820px) {
+          .album-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+          .album-card-image { aspect-ratio: 4 / 5; }
+        }
+        @media (max-width: 350px) {
+          .album-grid { grid-template-columns: minmax(0, 1fr); }
+        }
+      `}</style>
+      <div className="album-picker">
+        {loading && <div role="status">読み込み中…</div>}
+        {err && <div role="alert">index.json を読めなかったよ: {err}</div>}
+        {!loading && !err && !hasAnyAlbum && <div>アルバムがまだないよ</div>}
+        {hasAnyAlbum && (
+          <div className="album-filters" role="group" aria-label="キャラクターで絞り込み">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                className="album-filter"
+                aria-pressed={t.key === selectedKey}
+                onClick={() => setActiveKey(t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
         )}
-
-        <div style={{ display: "grid", gap: 10 }}>
-          {err && (
-            <div
-              className="glass"
-              style={{
-                padding: 12,
-                borderRadius: 14,
-                border: "1px solid rgba(255,100,100,0.45)",
-                background: "rgba(255,80,80,0.12)",
-              }}
-            >
-              index.json を読めなかったよ: {err}
-            </div>
-          )}
-
-          {!loading && !err && !hasAnyAlbum && (
-            <div style={{ opacity: 0.8, padding: "4px 2px" }}>
-              アルバムがまだないよ（index.json を確認してね）
-            </div>
-          )}
-
-          {hasAnyAlbum && (
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
-            >
-              {tabs.map((t) => {
-                const active = t.key === activeKey;
-                return (
-                  <button
-                    key={t.key}
-                    type="button"
-                    onClick={() => setActiveKey(t.key)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: 999,
-                      border: active
-                        ? "1px solid rgba(255,255,255,0.30)"
-                        : "1px solid rgba(255,255,255,0.14)",
-                      background: active
-                        ? "rgba(255,255,255,0.14)"
-                        : "rgba(255,255,255,0.06)",
-                      color: "inherit",
-                      cursor: "pointer",
-                      fontSize: 12,
-                      fontWeight: 800,
-                      opacity: active ? 1 : 0.9,
-                    }}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
-
-              <div
-                style={{
-                  marginLeft: "auto",
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  disabled={safePage <= 0}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 999,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(0,0,0,0.18)",
-                    color: "inherit",
-                    cursor: safePage <= 0 ? "default" : "pointer",
-                    fontSize: 12,
-                    opacity: safePage <= 0 ? 0.45 : 0.9,
-                  }}
-                >
-                  ←
-                </button>
-
-                <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 800 }}>
-                  {safePage + 1} / {pageCount}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-                  disabled={safePage >= pageCount - 1}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 999,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(0,0,0,0.18)",
-                    color: "inherit",
-                    cursor: safePage >= pageCount - 1 ? "default" : "pointer",
-                    fontSize: 12,
-                    opacity: safePage >= pageCount - 1 ? 0.45 : 0.9,
-                  }}
-                >
-                  →
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            marginTop: 10,
-            overflow: "hidden",
-            display: "grid",
-            gridTemplateColumns: mobile
-              ? "repeat(2, minmax(0, 1fr))"
-              : "repeat(3, minmax(0, 1fr))",
-            gap: 10,
-          }}
-        >
-          {pageItems.map((a) => (
+        <div className="album-grid">
+          {visibleAlbums.map((a) => (
             <button
               key={a.id}
+              type="button"
+              className="album-card"
               onClick={() => props.openAlbum(a.id, a.title)}
-              style={{
-                textAlign: "left",
-                padding: 10,
-                borderRadius: 16,
-                border: "1px solid rgba(255,255,255,0.14)",
-                background: "rgba(255,255,255,0.06)",
-                color: "inherit",
-                cursor: "pointer",
-                overflow: "hidden",
-              }}
             >
-              <div
-                style={{
-                  position: "relative",
-                  width: "100%",
-                  borderRadius: 14,
-                  overflow: "hidden",
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  background: "rgba(0,0,0,0.18)",
-                  aspectRatio: "16 / 9",
-                }}
-              >
-                {a.thumb ? (
-                  <>
-                    <img
-                      src={a.thumb}
-                      alt={a.title}
-                      loading="lazy"
-                      draggable={false}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        display: "block",
-                        filter: "contrast(1.06) saturate(1.02)",
-                        transform: "translateZ(0)",
-                      }}
-                    />
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        height: "55%",
-                        background:
-                          "linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0))",
-                        pointerEvents: "none",
-                      }}
-                    />
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: 10,
-                        right: 10,
-                        bottom: 8,
-                        fontSize: 12,
-                        fontWeight: 900,
-                        letterSpacing: 0.2,
-                        textShadow: "0 1px 10px rgba(0,0,0,0.55)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                      title={a.title}
-                    >
-                      {a.title}
-                    </div>
-                  </>
-                ) : (
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      display: "grid",
-                      placeItems: "center",
-                      opacity: 0.7,
-                      fontSize: 11,
-                      fontWeight: 800,
-                    }}
-                  >
-                    no thumb
-                  </div>
-                )}
-              </div>
-
-              <div
-                style={{
-                  marginTop: 8,
-                  opacity: 0.65,
-                  fontSize: 10,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                title={a.id}
-              >
-                {a.id}
-              </div>
+              <span className="album-card-image">
+                {a.thumb && <img src={a.thumb} alt="" loading="lazy" draggable={false} />}
+              </span>
+              <span className="album-card-title">{a.title || a.id}</span>
             </button>
           ))}
         </div>
