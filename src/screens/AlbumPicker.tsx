@@ -188,9 +188,10 @@ export default function AlbumPicker(props: Props) {
         .album-filter { border-radius: 999px; min-height: 36px; padding: 6px 12px; font-weight: 700; }
         .album-filter[aria-pressed="true"] { background: rgba(255,255,255,.22); }
         .album-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-        .album-card { min-width: 0; border-radius: 16px; overflow: hidden; padding: 0; text-align: left; }
+        .album-card { display: block; width: 100%; min-width: 0; border-radius: 16px; overflow: hidden; padding: 0; text-align: left; }
         .album-card-image {
           display: block;
+          width: 100%;
           position: relative;
           aspect-ratio: 4 / 3;
           overflow: hidden;
