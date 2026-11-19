@@ -29,6 +29,13 @@
       "tags": []
     },
     {
+      "id": "matsuri/sailor",
+      "title": "まつり：セーラー",
+      "thumb": "/assets/slides/matsuri/sailor/.thumbs/000.webp",
+      "characterId": "matsuri",
+      "tags": []
+    },
+    {
       "id": "matsuri/hardcore",
       "title": "まつり：ハードコア",
       "thumb": "/assets/slides/matsuri/hardcore/.thumbs/000.webp",
