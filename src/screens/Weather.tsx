@@ -1497,7 +1497,7 @@ export default function Weather({ back, isActive = true }: Props) {
             >
               🌊 清水港NOWPHAS ↗
             </a>
-            <AnglersLinks pointId={selectedPoint.id} isMobile={isMobile} />
+            <AnglersLinks pointId={selectedPoint.id} />
           </div>
         </div>
 
