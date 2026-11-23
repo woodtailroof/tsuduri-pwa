@@ -564,7 +564,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
           setBaseCapturedAt(started);
           setManualMode(true);
           setManualValue(toDateTimeLocalValue(started));
-          setAllowUnknown(trip.timeBand === "unknown");
+          setAllowUnknown(false);
         } else {
           setBaseCapturedAt(null);
           setManualMode(true);
