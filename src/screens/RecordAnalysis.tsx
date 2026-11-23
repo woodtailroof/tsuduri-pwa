@@ -881,9 +881,6 @@ export default function RecordAnalysis({ back }: Props) {
     measuredFish.length > 0
       ? Math.max(...measuredFish.map((row) => row.sizeCm ?? 0))
       : null;
-  const sizeRecordRate = joinedFish.length > 0
-    ? measuredFish.length / joinedFish.length
-    : 0;
 
   const timeStats = useMemo<RateRow[]>(() => {
     return [...TIMEBANDS, "unknown" as const]
@@ -1206,6 +1203,15 @@ export default function RecordAnalysis({ back }: Props) {
   const patternStrength = strongestPattern
     ? clamp(strongestPattern.score * 180, 0, 100)
     : 0;
+  // 少数の偶然の釣果を推奨しないよう、3釣行以上ある条件を比較する。
+  const bestTime = timeStats
+    .filter((row) => row.key !== TIMEBAND_LABEL.unknown && row.total >= 3)
+    .sort((a, b) => b.score - a.score || b.total - a.total)[0];
+  const bestSpot = spotStats.filter((row) => row.total >= 3)[0];
+  const decisionConditions = [
+    { label: "時間帯実績", best: bestTime },
+    { label: "釣り場実績", best: bestSpot },
+  ];
   const styleAxes = [
     {
       label: "安定度",
@@ -1215,11 +1221,10 @@ export default function RecordAnalysis({ back }: Props) {
       label: "数釣り",
       value: clamp((totalFish / Math.max(1, caughtTrips)) * 28, 0, 100),
     },
-    {
-      label: "サイズ記録率",
-      value: clamp(sizeRecordRate * 100, 0, 100),
-    },
-    { label: "魚種幅", value: clamp((uniqueSpecies / 5) * 100, 0, 100) },
+    ...decisionConditions.map(({ label, best }) => ({
+      label,
+      value: best ? clamp(best.score * 180, 0, 100) : 0,
+    })),
     { label: "再現度", value: patternStrength },
   ];
   const overallScore = Math.round(
@@ -1913,9 +1918,9 @@ export default function RecordAnalysis({ back }: Props) {
                       : "いまは攻略データを鍛える時期"}
                 </h3>
                 <p>
-                  成功率だけでなく、釣果の安定度・数・サイズ記録率・魚種幅・
-                  再現できそうな条件を合わせて評価。サイズの大きさは
-                  平均・最大サイズで確認できるよ。
+                  釣果の安定度・数に加え、実績のある時間帯・釣り場・
+                  再現できそうな条件を合わせて評価。次の釣行では、
+                  下の候補と天気・風・波を合わせて判断しよう。
                 </p>
               </div>
             </div>
@@ -1952,11 +1957,23 @@ export default function RecordAnalysis({ back }: Props) {
           </Panel>
 
           <Panel
-            title="釣りスタイル"
+            title="次の釣行に活かす実績"
             icon="🧭"
-            note="サイズ記録率は魚データのサイズ入力割合。大きさの評価ではありません"
+            note="時間帯・釣り場は3釣行以上の条件を、キャッチ率と件数から比較。記録不足は0表示"
           >
             <RadarChart axes={styleAxes} />
+            <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+              {decisionConditions.map(({ label, best }) => (
+                <div key={label} style={{ padding: 10, borderRadius: 12, background: "rgba(255,255,255,.06)" }}>
+                  <strong>{label}　{best && best.caught > 0 ? best.key : "記録を蓄積中"}</strong>
+                  <div style={{ fontSize: 12, marginTop: 4, opacity: 0.8 }}>
+                    {best
+                      ? `${best.total}釣行・${best.caught}回キャッチ（${fmtPct(best.rate)}）。${best.caught > 0 ? "次の候補として、今回の風・波も確認しよう。" : "まだ釣果のある候補を絞れません。"}`
+                      : "同じ条件で3釣行以上の記録が集まると候補を表示します。"}
+                  </div>
+                </div>
+              ))}
+            </div>
           </Panel>
         </div>
 

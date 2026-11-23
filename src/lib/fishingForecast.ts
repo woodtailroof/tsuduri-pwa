@@ -154,7 +154,7 @@ function directWindBadge(weather: WeatherLike[]): ForecastBadge {
 
   const peak = [...weather].sort((a, b) => b.windSpeed - a.windSpeed)[0];
   const speed = peak.windSpeed;
-  const level = speed >= 12 ? 4 : speed >= 10 ? 3 : speed >= 8 ? 2 : speed >= 6 ? 1 : 0;
+  const level = speed >= 12 ? 4 : speed >= 10 ? 3 : speed >= 8 ? 2 : speed >= 5 ? 1 : 0;
   const label =
     level === 4
       ? "危険な強風"
@@ -163,7 +163,7 @@ function directWindBadge(weather: WeatherLike[]): ForecastBadge {
         : level === 2
           ? "強風"
           : level === 1
-            ? "やや強い"
+            ? "釣りづらい風"
             : speed >= 3
               ? "風あり"
               : "穏やか";
@@ -176,7 +176,7 @@ function directWindBadge(weather: WeatherLike[]): ForecastBadge {
       level >= 2
         ? "キャストと足元に影響"
         : level === 1
-          ? "軽いルアーは扱いづらい"
+          ? "風表・横風はキャストと糸の操作が厳しい。風裏を検討"
           : "釣りへの影響は小さめ",
     ],
   };
@@ -367,7 +367,7 @@ export function buildFishingForecast(input: {
   } else if (windMax != null && windMax >= 8) {
     safetyLevel = Math.max(safetyLevel, 2);
     safetyReasons.push({ level: 2, text: `やや強風${windMax.toFixed(1)}m/s` });
-  } else if (windMax != null && windMax >= 6) {
+  } else if (windMax != null && windMax >= 5) {
     safetyLevel = Math.max(safetyLevel, 1);
     safetyReasons.push({ level: 1, text: `風${windMax.toFixed(1)}m/sに注意` });
   }
@@ -415,13 +415,15 @@ export function buildFishingForecast(input: {
   const comfortReasons: { penalty: number; text: string }[] = [];
   const comfortBasis: string[] = [];
   if (windMax != null) {
-    const penalty = Math.max(0, windMax - 3) * 8;
+    const penalty = Math.min(100, Math.max(0, windMax - 3) * 16 + Math.max(0, windMax - 4) * 8);
     comfortScore -= penalty;
     comfortBasis.push(
       `風 ${windMax.toFixed(1)}m/s ${penalty > 0 ? `−${Math.round(penalty)}点` : "±0点"}`,
     );
     if (penalty >= 8) {
-      comfortReasons.push({ penalty, text: `風${windMax.toFixed(1)}m/s` });
+      comfortReasons.push({ penalty, text: windMax >= 5
+        ? `風${windMax.toFixed(1)}m/s・風表や横風は厳しい／風裏を検討`
+        : `風${windMax.toFixed(1)}m/s` });
     }
   }
   if (precipitationMax != null) {
@@ -523,10 +525,10 @@ export function buildFishingForecast(input: {
     if (windMax >= 8) {
       biteScore -= 18;
       biteBad.push({ points: 18, text: "強風" });
-    } else if (windMax >= 6) {
+    } else if (windMax >= 5) {
       biteScore -= 8;
       biteBad.push({ points: 8, text: "風強め" });
-    } else if (windMax >= 1.5 && windMax <= 5) {
+    } else if (windMax >= 1.5 && windMax < 4) {
       biteScore += 6;
       biteGood.push({ points: 6, text: "適度な風" });
     }

@@ -107,3 +107,31 @@ for (const point of [port, river]) {
 assert.equal(decideWeatherEmotion({ conditions: forecast([row(1, 10)]).conditions }), "think");
 assert.equal(decideWeatherEmotion({ conditions: forecast([row(1.5, 12)]).conditions }), "sad");
 console.log("PASS: wave/period boundaries, paired time windows, port/river, missing data, regional differences, comfort and emotions");
+
+function windForecast(speed, point = port) {
+  return buildFishingForecast({
+    point, selectedHour: 9,
+    weather: [{ windSpeed: speed, windDirection: 90, precipitation: 0, weatherCode: 2 }],
+    tideSeries: [], tideName: "若潮",
+    marineWaveHours: [row(0.2, 5)], coastalWave: null,
+  });
+}
+// 5m/s must no longer be comfortable or count as a favorable wind.
+for (const point of [open, port, river]) {
+  const five = windForecast(5, point);
+  assert.equal(five.conditions.wind.label, "釣りづらい風");
+  assert.equal(five.comfort.score, 60);
+  assert.equal(five.comfort.label, "やや釣りづらい");
+  assert.ok(five.conditions.wind.basis.some((text) => text.includes("風表")));
+  assert.ok(five.comfort.detail.includes("風裏"));
+  assert.ok(five.bite.score < windForecast(4.9, point).bite.score);
+}
+assert.equal(windForecast(4.9).conditions.wind.label, "風あり");
+assert.equal(windForecast(6).comfort.label, "釣りづらい");
+assert.equal(windForecast(8).conditions.wind.label, "強風");
+assert.equal(windForecast(10).conditions.wind.label, "かなり強い");
+assert.equal(windForecast(12).conditions.wind.label, "危険な強風");
+assert.ok(windForecast(4).bite.score < windForecast(3.9).bite.score);
+const windScores = [3, 4, 4.9, 5, 6, 8, 10, 12].map((speed) => windForecast(speed).comfort.score);
+assert.ok(windScores.every((score, i) => i === 0 || score <= windScores[i - 1]));
+console.log("PASS: wind thresholds, 5m/s penalty, exposure guidance and monotonic comfort");
