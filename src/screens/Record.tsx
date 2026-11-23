@@ -1181,7 +1181,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
           const date = parseDateTimeLocalValue(fish.caughtValue);
           if (!date) return;
           const unchanged = fish.sourceId != null ? await db.tripFish.get(fish.sourceId) : null;
-          if (unchanged?.caughtAt === date.toISOString() && unchanged.caughtTideTrend) {
+          if (unchanged?.caughtAt === date.toISOString() && unchanged.caughtTideTrend && unchanged.caughtTideTrend !== "unknown") {
             catchTrends.set(fish.id, unchanged.caughtTideTrend);
             return;
           }

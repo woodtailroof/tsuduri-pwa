@@ -1,4 +1,5 @@
 // src/components/TideGraph.tsx
+import { useId } from "react";
 
 type TidePoint = { unix?: number; cm: number; time?: string };
 
@@ -7,6 +8,8 @@ type Props = {
   baseDate: Date;
   highlightAt?: Date | null;
   height?: number;
+  markers?: { at: Date; label: string; color: string }[];
+  fishingRange?: { start: Date; end: Date } | null;
   // ✅ 追加：Y軸レンジ固定（cm）
   yDomain?: { min: number; max: number } | null;
 };
@@ -144,7 +147,10 @@ export default function TideGraph({
   highlightAt = null,
   height = 140,
   yDomain = null,
+  markers = [],
+  fishingRange = null,
 }: Props) {
+  const graphId = useId().replace(/:/g, "");
   // ✅ viewBox用の論理サイズ（ここは固定でOK）
   const vbW = 360;
   const vbH = height;
@@ -262,6 +268,22 @@ export default function TideGraph({
     }
   }
 
+  const dayStart = new Date(baseDate);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+  const sameDay = (date: Date) => date.getTime() >= dayStart.getTime() && date.getTime() < dayEnd.getTime();
+  const eventPoints = useIndex ? [] : markers.filter(marker => sameDay(marker.at)).map(marker => {
+    const min = marker.at.getHours() * 60 + marker.at.getMinutes() + marker.at.getSeconds() / 60;
+    const right = ptsUniq.find(p => p.min >= min) ?? ptsUniq[ptsUniq.length-1];
+    const left = [...ptsUniq].reverse().find(p => p.min <= min) ?? ptsUniq[0];
+    const cm = left.cm + (right.cm-left.cm) * (right.min === left.min ? 0 : (min-left.min)/(right.min-left.min));
+    return { ...marker, min, cm };
+  });
+  const rangeStart = fishingRange ? Math.max(dayStart.getTime(), fishingRange.start.getTime()) : NaN;
+  const rangeEnd = fishingRange ? Math.min(dayEnd.getTime(), fishingRange.end.getTime()) : NaN;
+  const minuteOnDay = (ms: number) => ms >= dayEnd.getTime() ? 1440 : new Date(ms).getHours()*60 + new Date(ms).getMinutes();
+
   const hiX = hi ? xToPx(hi.min) : null;
   const hiY = hi ? yToPx(hi.cm) : null;
 
@@ -322,7 +344,7 @@ export default function TideGraph({
       >
         <defs>
           <linearGradient
-            id="tideLineGradient"
+            id={`${graphId}-tideLineGradient`}
             x1="0%"
             y1="0%"
             x2="100%"
@@ -333,7 +355,7 @@ export default function TideGraph({
             <stop offset="100%" stopColor="#61d8ff" />
           </linearGradient>
           <linearGradient
-            id="tideAreaGradient"
+            id={`${graphId}-tideAreaGradient`}
             x1="0%"
             y1="0%"
             x2="0%"
@@ -343,7 +365,7 @@ export default function TideGraph({
             <stop offset="55%" stopColor="#a987ff" stopOpacity="0.14" />
             <stop offset="100%" stopColor="#63dfff" stopOpacity="0.02" />
           </linearGradient>
-          <filter id="tideGlow" x="-20%" y="-30%" width="140%" height="160%">
+          <filter id={`${graphId}-tideGlow`} x="-20%" y="-30%" width="140%" height="160%">
             <feGaussianBlur stdDeviation="2.2" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
@@ -353,6 +375,9 @@ export default function TideGraph({
         </defs>
         <rect x="0" y="0" width={vbW} height={vbH} fill="transparent" />
 
+        {!useIndex && rangeEnd > rangeStart && <rect x={xToPx(minuteOnDay(rangeStart))} y={padTop}
+          width={xToPx(minuteOnDay(rangeEnd))-xToPx(minuteOnDay(rangeStart))} height={innerH}
+          fill="rgba(112,220,255,.12)" />}
         {/* Y軸：水平グリッド + 目盛り */}
         {yTicks.map((v) => {
           const y = yToPx(v);
@@ -417,18 +442,18 @@ export default function TideGraph({
           points={`${xToPx(ptsUniq[0].min)},${vbH - padBottom} ${polyPoints} ${xToPx(
             ptsUniq[ptsUniq.length - 1].min,
           )},${vbH - padBottom}`}
-          fill="url(#tideAreaGradient)"
+          fill={`url(#${graphId}-tideAreaGradient)`}
         />
 
         {/* 波（ピンク → 紫 → 水色） */}
         <polyline
           points={polyPoints}
           fill="none"
-          stroke="url(#tideLineGradient)"
+          stroke={`url(#${graphId}-tideLineGradient)`}
           strokeWidth="3"
           strokeLinejoin="round"
           strokeLinecap="round"
-          filter="url(#tideGlow)"
+          filter={`url(#${graphId}-tideGlow)`}
         />
 
         {/* 満潮/干潮マーカー + ラベル */}
@@ -534,6 +559,11 @@ export default function TideGraph({
           </>
         )}
 
+        {eventPoints.map((event, index) => <g key={`${event.label}-${event.at.getTime()}-${index}`}>
+          <title>{`${event.label} ${formatHMFromMinutes(event.min)} / ${Math.round(event.cm)}cm`}</title>
+          <line x1={xToPx(event.min)} x2={xToPx(event.min)} y1={padTop} y2={vbH-padBottom} stroke={event.color} strokeDasharray="3 4" opacity={.8} />
+          <circle cx={xToPx(event.min)} cy={yToPx(event.cm)} r={6} fill={event.color} stroke="#20202e" strokeWidth={2} />
+        </g>)}
         {/* max/min表示 */}
         <text
           x={padLeft}

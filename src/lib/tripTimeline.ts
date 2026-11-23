@@ -1,4 +1,4 @@
-import type { TripTimeBand } from "../db";
+import type { TideTrend, TripTimeBand } from "../db";
 import { getTimeBand } from "./timeband";
 
 export type PhotoRole = "start" | "catch" | "end" | "other";
@@ -64,4 +64,12 @@ export function catchTimeResults(
     }
   }
   return results;
+}
+
+/** 釣果条件は魚自身の時刻・潮のみ。釣行開始時点へはフォールバックしない。 */
+export function actualCatchConditions(fish: { caughtAt?: string | null; caughtTideTrend?: TideTrend | null }) {
+  const timeBand = catchTimeBand(fish.caughtAt);
+  const value = fish.caughtTideTrend;
+  const tideTrend: TideTrend = timeBand !== "unknown" && (value === "up" || value === "down" || value === "flat") ? value : "unknown";
+  return { timeBand, tideTrend };
 }

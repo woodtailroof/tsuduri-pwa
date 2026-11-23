@@ -17,7 +17,7 @@ import {
   type TripTackle,
 } from "../db";
 import { getTimeBand } from "../lib/timeband";
-import { catchTimeBand, catchTimeResults } from "../lib/tripTimeline";
+import { actualCatchConditions, catchTimeResults } from "../lib/tripTimeline";
 import { tripLifetimeStats } from "../lib/tripLifetimeStats";
 import { weatherLabel } from "../lib/tripEnvironment";
 import {
@@ -724,8 +724,8 @@ export default function RecordAnalysis({ back }: Props) {
           tripId: row.tripId,
           tripStartedAt: trip.startedAt,
           caughtAt: row.caughtAt ?? null,
-          timeBand: catchTimeBand(row.caughtAt),
-          tideTrend: row.caughtAt ? labelTrend(row.caughtTideTrend) : "不明",
+          timeBand: actualCatchConditions(row).timeBand,
+          tideTrend: labelTrend(actualCatchConditions(row).tideTrend),
           lureType:
             (row.tripTackleUid
               ? normalizeLureType(setupMap.get(row.tripTackleUid)?.lureType)
@@ -922,9 +922,9 @@ export default function RecordAnalysis({ back }: Props) {
         current.sizeWeight += row.count;
         current.maxSize = Math.max(current.maxSize ?? 0, row.sizeCm);
       }
-      addCount(current.time, TIMEBAND_LABEL[row.timeBand], row.count);
+      if (row.timeBand !== "unknown") addCount(current.time, TIMEBAND_LABEL[row.timeBand], row.count);
       addCount(current.lure, LURE_LABEL[row.lureType], row.count);
-      addCount(current.trend, row.tideTrend, row.count);
+      if (row.tideTrend !== "不明") addCount(current.trend, row.tideTrend, row.count);
       map.set(row.species, current);
     });
 
@@ -1906,7 +1906,7 @@ export default function RecordAnalysis({ back }: Props) {
           <Panel
             title="釣れた時間帯 × 潮の動き"
             icon="🌊"
-            note="釣果の日時・潮が分かる記録の匹数。時刻不明の記録は除外"
+            note="魚ごとの釣果時刻の潮で集計。開始時点の潮は使いません。時刻・潮が不明の釣果は除外"
           >
             <div className="analysis-heatmap">
               <div />

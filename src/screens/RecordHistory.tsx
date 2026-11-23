@@ -22,7 +22,8 @@ import { FIXED_PORT } from "../points";
 import { getTideAtTime } from "../lib/tide736";
 import { getTide736DayCached, type TideCacheSource } from "../lib/tide736Cache";
 import { getTidePhaseFromSeries } from "../lib/tidePhase736";
-import TideGraph from "../components/TideGraph";
+import TripHistoryTimeline from "../components/TripHistoryTimeline";
+import { historyTimeline, durationLabel, validDate } from "../lib/tripHistoryTimeline";
 import PageShell from "../components/PageShell";
 import { useAppSettings } from "../lib/appSettings";
 import { formatRodLabel, formatReelLabel } from "../lib/tackle";
@@ -45,18 +46,6 @@ type CachedUrl = {
   url: string;
   revoke: boolean;
 };
-
-function pad2(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-function dayKeyFromISO(iso: string): { d: Date; key: string } {
-  const d = new Date(iso);
-  const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(
-    d.getDate(),
-  )}`;
-  return { d, key };
-}
 
 function displayPhaseForHeader(phase: string): string {
   const hide = new Set(["上げ", "下げ", "上げ始め", "下げ始め", "止まり"]);
@@ -879,7 +868,6 @@ export default function RecordHistory({ back, onEdit }: Props) {
   const { settings } = useAppSettings();
 
   const isMobile = useIsMobile();
-  const isDesktop = !isMobile;
 
   const pillBtnStyle: CSSProperties = {
     borderRadius: 999,
@@ -1389,7 +1377,7 @@ export default function RecordHistory({ back, onEdit }: Props) {
       if (cover?.id) setSelectedPhotoId(cover.id);
 
       const shotIso = t.startedAt ?? t.createdAt;
-      const shot = new Date(shotIso);
+      const shot = t.timeBand === "unknown" ? new Date(NaN) : new Date(shotIso);
       if (!Number.isFinite(shot.getTime())) {
         setDetailLoading(false);
         return;
@@ -1428,7 +1416,7 @@ export default function RecordHistory({ back, onEdit }: Props) {
 
   function DetailCenterContent({ trip }: { trip: TripRecord }) {
     const baseIso = trip.startedAt ?? trip.createdAt;
-    const base = new Date(baseIso);
+    const base = trip.timeBand === "unknown" ? new Date(NaN) : new Date(baseIso);
     const created = new Date(trip.createdAt);
 
     const tide = trip.id != null ? detailPointMap[trip.id] : undefined;
@@ -1455,6 +1443,8 @@ export default function RecordHistory({ back, onEdit }: Props) {
 
     return (
       <div style={{ display: "grid", gap: 12 }}>
+        <TripHistoryTimeline trip={trip} fish={detailFish} photos={detailPhotos}
+          photoUrl={getPhotoUrlByPhotoId} onPhoto={setLightboxPhotoId} fishLabel={formatFishLine} />
         <div className="glass glass-strong" style={detailCardStyle}>
           <div
             style={{
@@ -1489,7 +1479,7 @@ export default function RecordHistory({ back, onEdit }: Props) {
           <div
             style={{ fontSize: 12, color: "#6cf", overflowWrap: "anywhere" }}
           >
-            🕒 基準：
+            🕒 開始：
             {Number.isFinite(base.getTime())
               ? base.toLocaleString()
               : "（不明）"}
@@ -1584,7 +1574,7 @@ export default function RecordHistory({ back, onEdit }: Props) {
         </div>
 
         <div className="glass glass-strong" style={detailCardStyle}>
-          <div style={{ fontWeight: 900 }}>🌤 天気・潮の概況</div>
+          <div style={{ fontWeight: 900 }}>🌤 開始時点の天気・潮</div>
 
           {detailLoading ? (
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
@@ -1624,70 +1614,7 @@ export default function RecordHistory({ back, onEdit }: Props) {
           )}
         </div>
 
-        <div style={{ display: "grid", gap: 10 }}>
-          <div style={{ fontWeight: 900 }}>📈 タイドグラフ</div>
 
-          {!Number.isFinite(base.getTime()) ? (
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-              基準時刻が無いから、この記録はタイドを紐づけられないよ
-            </div>
-          ) : (
-            <div
-              className="glass glass-strong"
-              style={{
-                borderRadius: 16,
-                padding: 10,
-                minHeight: isDesktop ? 300 : 320,
-                display: "grid",
-                alignItems: "center",
-                overflow: "hidden",
-              }}
-            >
-              {detailTide && detailTide.series.length > 0 ? (
-                <div
-                  style={{
-                    opacity: detailLoading ? 0.65 : 1,
-                    transform: detailLoading
-                      ? "translateY(4px)"
-                      : "translateY(0px)",
-                    transition: "opacity 220ms ease, transform 220ms ease",
-                    willChange: "opacity, transform",
-                  }}
-                >
-                  <TideGraph
-                    series={detailTide.series}
-                    baseDate={base}
-                    highlightAt={base}
-                    yDomain={{ min: -50, max: 200 }}
-                  />
-                </div>
-              ) : detailLoading ? (
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)" }}>
-                  準備中…
-                </div>
-              ) : detailError ? (
-                <div style={{ fontSize: 12, color: "#ff7a7a" }}>
-                  グラフの準備に失敗… → {detailError}
-                </div>
-              ) : (
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-                  この日のタイドデータがまだ無いよ（取得待ち/なし）
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div
-          style={{
-            fontSize: 11,
-            color: "rgba(255,255,255,0.55)",
-            paddingInline: 2,
-          }}
-        >
-          key: {FIXED_PORT.pc}:{FIXED_PORT.hc}:
-          {Number.isFinite(base.getTime()) ? dayKeyFromISO(baseIso).key : "—"}
-        </div>
       </div>
     );
   }
@@ -1805,6 +1732,7 @@ export default function RecordHistory({ back, onEdit }: Props) {
                           : "1px solid rgba(255,255,255,0.12)",
                         background: "rgba(0,0,0,0.18)",
                         aspectRatio: "1 / 1",
+                        position: "relative",
                         padding: 0,
                         cursor: "pointer",
                         display: "flex",
@@ -1817,6 +1745,9 @@ export default function RecordHistory({ back, onEdit }: Props) {
                           : "日時なし"
                       }
                     >
+                      <span style={{ position: "absolute", left: 0, bottom: 0, right: 0, background: "rgba(0,0,0,.7)", color: "#fff", fontSize: 10, padding: "3px 1px" }}>
+                        {{start:"開始",catch:"釣果",end:"終了",other:"写真"}[p.role ?? "other"]} {validDate(p.capturedAt)?.toLocaleTimeString("ja-JP", {hour:"2-digit",minute:"2-digit"}) ?? "時刻不明"}
+                      </span>
                       {url ? (
                         <img
                           src={url}
@@ -2128,7 +2059,7 @@ export default function RecordHistory({ back, onEdit }: Props) {
     <div style={{ display: "grid", gap: 10 }}>
       {archiveList.map((t) => {
         const created = new Date(t.createdAt);
-        const base = new Date(t.startedAt ?? t.createdAt);
+        const base = t.timeBand === "unknown" ? new Date(NaN) : new Date(t.startedAt ?? t.createdAt);
         const tripId = t.id ?? 0;
 
         const finalThumb = tripId
@@ -2199,13 +2130,18 @@ export default function RecordHistory({ back, onEdit }: Props) {
                   overflowWrap: "anywhere",
                 }}
               >
-                🕒 基準：
+                🕒 開始：
                 {Number.isFinite(base.getTime())
                   ? base.toLocaleString()
                   : "（不明）"}
                 {Number.isFinite(base.getTime())
                   ? ` / 🕒 ${getTimeBand(base)}`
                   : ""}
+              </div>
+
+              <div style={{ fontSize: 12, color: "#d5bcff", overflowWrap: "anywhere" }}>
+                🏁 終了：{validDate(t.endedAt)?.toLocaleString("ja-JP") ?? "未記録"}
+                {" ／ "}{durationLabel(historyTimeline(t, [], []).duration)}
               </div>
 
               <div style={{ fontSize: 12, color: "#ffd166" }}>
@@ -2234,7 +2170,7 @@ export default function RecordHistory({ back, onEdit }: Props) {
                 リール：{reelLabel}
               </div>
 
-              <div style={{ color: "#eee", overflowWrap: "anywhere" }}>
+              <div style={{ color: "#eee", overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden", fontSize: 12, lineHeight: 1.5 }}>
                 {t.memo || "（メモなし）"}
               </div>
             </div>
@@ -2331,7 +2267,7 @@ export default function RecordHistory({ back, onEdit }: Props) {
             style={{
               display: "grid",
               gridTemplateColumns:
-                "minmax(240px, 0.82fr) minmax(0, 0.94fr) minmax(0, 1.06fr)",
+                "minmax(230px, 0.75fr) minmax(0, 1.2fr) minmax(0, 1fr)",
               gridTemplateRows: "minmax(0, 1fr)",
               gap: 14,
               alignItems: "stretch",
