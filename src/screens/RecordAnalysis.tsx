@@ -17,6 +17,7 @@ import {
   type TripTackle,
 } from "../db";
 import { getTimeBand } from "../lib/timeband";
+import { tripLifetimeStats } from "../lib/tripLifetimeStats";
 import { weatherLabel } from "../lib/tripEnvironment";
 import {
   CHARACTERS_STORAGE_KEY,
@@ -259,7 +260,7 @@ const panelStyle: CSSProperties = {
   padding: "clamp(14px, 2vw, 20px)",
   border: "1px solid rgba(255,255,255,0.14)",
   background:
-    "linear-gradient(145deg, rgba(17,28,46,0.76), rgba(26,15,43,0.66))",
+    "linear-gradient(145deg, rgba(17,28,46,0.88), rgba(26,15,43,0.80))",
   boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
   minWidth: 0,
 };
@@ -407,23 +408,36 @@ function Panel({
   icon,
   note,
   className = "",
+  collapsible = false,
   children,
 }: {
   title: string;
   icon: string;
   note?: string;
   className?: string;
+  collapsible?: boolean;
   children: ReactNode;
 }) {
+  const heading = (
+    <div className="analysis-heading">
+      <span className="analysis-heading-icon">{icon}</span>
+      <div>
+        <h2>{title}</h2>
+        {note && <p>{note}</p>}
+      </div>
+    </div>
+  );
+  if (collapsible) {
+    return (
+      <details className={`analysis-panel analysis-disclosure ${className}`} style={panelStyle}>
+        <summary>{heading}<span className="analysis-disclosure-arrow" aria-hidden="true">⌄</span></summary>
+        <div className="analysis-disclosure-content">{children}</div>
+      </details>
+    );
+  }
   return (
     <section className={`analysis-panel ${className}`} style={panelStyle}>
-      <div className="analysis-heading">
-        <span className="analysis-heading-icon">{icon}</span>
-        <div>
-          <h2>{title}</h2>
-          {note && <p>{note}</p>}
-        </div>
-      </div>
+      {heading}
       {children}
     </section>
   );
@@ -433,12 +447,14 @@ function Metric({
   icon,
   label,
   value,
+  unit,
   sub,
   color,
 }: {
   icon: string;
   label: string;
   value: string;
+  unit: string;
   sub: string;
   color: string;
 }) {
@@ -454,7 +470,7 @@ function Metric({
         <span>{icon}</span>
         {label}
       </div>
-      <strong style={{ color }}>{value}</strong>
+      <strong style={{ color }}>{value}<span>{unit}</span></strong>
       <small>{sub}</small>
     </div>
   );
@@ -490,110 +506,6 @@ function BarRow({
       </div>
       <div className="analysis-bar-value">{text}</div>
     </div>
-  );
-}
-
-function RadarChart({
-  axes,
-}: {
-  axes: Array<{ label: string; value: number }>;
-}) {
-  const size = 290;
-  const center = size / 2;
-  const radius = 92;
-  const pointAt = (index: number, ratio: number) => {
-    const angle = -Math.PI / 2 + (Math.PI * 2 * index) / axes.length;
-    return {
-      x: center + Math.cos(angle) * radius * ratio,
-      y: center + Math.sin(angle) * radius * ratio,
-    };
-  };
-  const polygon = (ratio: number) =>
-    axes
-      .map((_, index) => {
-        const point = pointAt(index, ratio);
-        return `${point.x},${point.y}`;
-      })
-      .join(" ");
-  const values = axes
-    .map((axis, index) => {
-      const point = pointAt(index, clamp(axis.value / 100, 0, 1));
-      return `${point.x},${point.y}`;
-    })
-    .join(" ");
-
-  return (
-    <svg
-      className="analysis-radar"
-      viewBox={`0 0 ${size} ${size}`}
-      role="img"
-      aria-label="釣りスタイルのレーダーチャート"
-    >
-      <defs>
-        <linearGradient id="radarFill" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#ff6fa6" stopOpacity="0.66" />
-          <stop offset="100%" stopColor="#72d7ff" stopOpacity="0.44" />
-        </linearGradient>
-      </defs>
-      {[0.25, 0.5, 0.75, 1].map((ratio) => (
-        <polygon
-          key={ratio}
-          points={polygon(ratio)}
-          fill="none"
-          stroke="rgba(255,255,255,0.14)"
-          strokeWidth="1"
-        />
-      ))}
-      {axes.map((_, index) => {
-        const point = pointAt(index, 1);
-        return (
-          <line
-            key={index}
-            x1={center}
-            y1={center}
-            x2={point.x}
-            y2={point.y}
-            stroke="rgba(255,255,255,0.12)"
-          />
-        );
-      })}
-      <polygon
-        points={values}
-        fill="url(#radarFill)"
-        stroke="#ff9fc5"
-        strokeWidth="2.5"
-      />
-      {axes.map((axis, index) => {
-        const dot = pointAt(index, clamp(axis.value / 100, 0, 1));
-        const label = pointAt(index, 1.28);
-        return (
-          <g key={axis.label}>
-            <circle cx={dot.x} cy={dot.y} r="4" fill="#fff" />
-            <text
-              x={label.x}
-              y={label.y}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill="rgba(255,255,255,0.86)"
-              fontSize="11"
-              fontWeight="700"
-            >
-              {axis.label}
-            </text>
-            <text
-              x={label.x}
-              y={label.y + 14}
-              textAnchor="middle"
-              fill="#ffb2cf"
-              fontSize="10"
-              fontWeight="800"
-            >
-              {Math.round(axis.value)}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
   );
 }
 
@@ -837,6 +749,10 @@ export default function RecordAnalysis({ back }: Props) {
   ).length;
   const totalFish = joinedFish.reduce((sum, row) => sum + row.count, 0);
   const catchRate = safeRate(caughtTrips, totalTrips);
+  const lifetime = tripLifetimeStats(trips);
+  const totalHours = Math.floor(lifetime.totalMinutes / 60);
+  const remainingMinutes = lifetime.totalMinutes % 60;
+  const numberText = (value: number) => value.toLocaleString("ja-JP");
 
   const lureInsights = useMemo(() => {
     const map = new Map<
@@ -1200,49 +1116,6 @@ export default function RecordAnalysis({ back }: Props) {
   }, [joinedTrips, envSpotType]);
 
   const strongestPattern = patterns[0];
-  const patternStrength = strongestPattern
-    ? clamp(strongestPattern.score * 180, 0, 100)
-    : 0;
-  // 少数の偶然の釣果を推奨しないよう、3釣行以上ある条件を比較する。
-  const bestTime = timeStats
-    .filter((row) => row.key !== TIMEBAND_LABEL.unknown && row.total >= 3)
-    .sort((a, b) => b.score - a.score || b.total - a.total)[0];
-  const bestSpot = spotStats.filter((row) => row.total >= 3)[0];
-  const decisionConditions = [
-    { label: "時間帯実績", best: bestTime },
-    { label: "釣り場実績", best: bestSpot },
-  ];
-  const styleAxes = [
-    {
-      label: "安定度",
-      value: clamp(wilsonLower(caughtTrips, totalTrips) * 180, 0, 100),
-    },
-    {
-      label: "数釣り",
-      value: clamp((totalFish / Math.max(1, caughtTrips)) * 28, 0, 100),
-    },
-    ...decisionConditions.map(({ label, best }) => ({
-      label,
-      value: best ? clamp(best.score * 180, 0, 100) : 0,
-    })),
-    { label: "再現度", value: patternStrength },
-  ];
-  const overallScore = Math.round(
-    styleAxes.reduce((sum, axis) => sum + axis.value, 0) / styleAxes.length,
-  );
-  const grade =
-    totalTrips < 3
-      ? "未解析"
-      : overallScore >= 80
-        ? "S"
-        : overallScore >= 65
-          ? "A"
-          : overallScore >= 50
-            ? "B"
-            : overallScore >= 35
-              ? "C"
-              : "D";
-
   const mission = useMemo(() => {
     const candidates = patterns
       .filter((row) => row.total < 5 && row.caught > 0)
@@ -1342,7 +1215,7 @@ export default function RecordAnalysis({ back }: Props) {
         {
           id: "tsuduri",
           name: "つづり",
-          role: "総合成績",
+          role: "釣行・釣果",
           mark: "つ",
           accent: accentFor("tsuduri", "つづり", "#ff87b6"),
           text: "最初の一投は、まだ真っ白な海の向こう。記録が入ったら一緒に勝ち筋を見つけようね、ひろっち。",
@@ -1376,7 +1249,7 @@ export default function RecordAnalysis({ back }: Props) {
 
     const tsuduriText =
       totalTrips < 3
-        ? `いまは${totalTrips}釣行分。まだランクよりも、ひろっちの釣りを知るための大事な助走期間だよ。`
+        ? `いまは${totalTrips}釣行分。ひろっちの釣りを知るための大事な助走期間だよ。`
         : catchRate >= 0.6
           ? `${totalTrips}釣行でキャッチ率${fmtPct(catchRate)}！ 勝ち筋がちゃんと形になってきたね。さすが、つづりの相棒♡`
           : catchRate >= 0.3
@@ -1404,7 +1277,7 @@ export default function RecordAnalysis({ back }: Props) {
       {
         id: "tsuduri",
         name: "つづり",
-        role: "総合成績",
+        role: "釣行・釣果",
         mark: "つ",
         accent: accentFor("tsuduri", "つづり", "#ff87b6"),
         text: tsuduriText,
@@ -1456,12 +1329,11 @@ export default function RecordAnalysis({ back }: Props) {
       uniqueSpecies,
       averageSizeCm: avgSize == null ? null : Math.round(avgSize * 10) / 10,
       maxSizeCm: maxSize == null ? null : Math.round(maxSize * 10) / 10,
-      grade,
-      overallScore,
-      styleAxes: styleAxes.map((axis) => ({
-        label: axis.label,
-        value: Math.round(axis.value),
-      })),
+      firstTripDate: lifetime.firstDate,
+      elapsedDays: lifetime.elapsedDays,
+      frequencyDays: lifetime.frequencyDays,
+      totalFishingMinutes: lifetime.totalMinutes,
+      timedTrips: lifetime.timedTrips,
       bestTimes: timeStats.slice(0, 3).map((row) => ({
         label: row.key,
         trips: row.total,
@@ -1522,9 +1394,11 @@ export default function RecordAnalysis({ back }: Props) {
       uniqueSpecies,
       avgSize,
       maxSize,
-      grade,
-      overallScore,
-      styleAxes,
+      lifetime.firstDate,
+      lifetime.elapsedDays,
+      lifetime.frequencyDays,
+      lifetime.totalMinutes,
+      lifetime.timedTrips,
       timeStats,
       tideStats,
       spotStats,
@@ -1649,7 +1523,7 @@ export default function RecordAnalysis({ back }: Props) {
     <PageShell
       title={
         <h1 className="analysis-page-title">
-          <span>🎣</span> 釣行通信簿
+          <span>🎣</span> 釣行ダッシュボード
         </h1>
       }
       titleLayout="left"
@@ -1659,7 +1533,7 @@ export default function RecordAnalysis({ back }: Props) {
       scrollY="auto"
     >
       <style>{`
-        .analysis-root { display:grid; gap:14px; padding-bottom:32px; color:#fff; }
+        .analysis-root { display:grid; gap:20px; padding-bottom:32px; color:#fff; }
         .analysis-page-title { margin:0; font-size:clamp(22px,3vw,34px); line-height:1.1; letter-spacing:.04em; }
         .analysis-toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
         .analysis-toolbar button, .analysis-toolbar select {
@@ -1669,7 +1543,7 @@ export default function RecordAnalysis({ back }: Props) {
         .analysis-toolbar button { cursor:pointer; }
         .analysis-toolbar button:disabled { opacity:.5; cursor:not-allowed; }
         .analysis-stage { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; align-items:start; }
-        .analysis-main { display:grid; gap:14px; min-width:0; }
+        .analysis-main { display:grid; gap:20px; min-width:0; }
         .analysis-ai-sidebar {
           position:relative; top:auto; align-self:start; display:grid;
           grid-template-columns:auto minmax(0,1fr); gap:14px 18px;
@@ -1703,29 +1577,31 @@ export default function RecordAnalysis({ back }: Props) {
         .analysis-ai-bubble p { margin:0; color:rgba(255,255,255,.88); font-size:14px; line-height:1.8; white-space:pre-wrap; }
         .analysis-ai-time { grid-column:1/-1; color:rgba(255,255,255,.42); font-size:10px; }
         .analysis-ai-error { color:#ff9dad; font-size:10px; line-height:1.5; }
-        .analysis-dashboard { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr); gap:14px; }
-        .analysis-grid-2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
-        .analysis-grid-3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
-        .analysis-panel { overflow:hidden; }
-        .analysis-heading { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
-        .analysis-heading-icon { display:grid; place-items:center; width:38px; height:38px; border-radius:13px;
-          background:linear-gradient(145deg,rgba(255,111,166,.28),rgba(114,215,255,.22)); font-size:20px; flex:0 0 auto; }
-        .analysis-heading h2 { margin:0; font-size:16px; }
-        .analysis-heading p { margin:3px 0 0; color:rgba(255,255,255,.58); font-size:11px; }
-        .analysis-hero { display:grid; grid-template-columns:180px 1fr; gap:18px; align-items:center; min-height:230px; }
-        .analysis-grade { display:grid; place-items:center; width:154px; aspect-ratio:1; border-radius:50%;
-          background:radial-gradient(circle at 35% 25%,rgba(255,255,255,.28),rgba(255,111,166,.20) 34%,rgba(114,215,255,.12) 68%,rgba(0,0,0,.18));
-          border:2px solid rgba(255,179,208,.66); box-shadow:0 0 34px rgba(255,111,166,.20),inset 0 0 28px rgba(255,255,255,.06); }
-        .analysis-grade small { display:block; font-size:11px; color:rgba(255,255,255,.65); text-align:center; }
-        .analysis-grade strong { display:block; font-size:52px; line-height:1; color:#ffd4e5; text-shadow:0 0 20px rgba(255,111,166,.55); text-align:center; }
-        .analysis-score-copy h3 { margin:0 0 7px; font-size:clamp(20px,2.5vw,28px); }
-        .analysis-score-copy p { margin:0; color:rgba(255,255,255,.68); font-size:12px; line-height:1.7; }
-        .analysis-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:14px; }
-        .analysis-metric { min-width:0; border:1px solid; border-radius:16px; padding:12px; }
-        .analysis-metric-label { display:flex; gap:5px; align-items:center; color:rgba(255,255,255,.66); font-size:11px; }
-        .analysis-metric strong { display:block; margin:5px 0 2px; font-size:clamp(19px,2.2vw,27px); line-height:1.1; white-space:nowrap; }
-        .analysis-metric small { display:block; color:rgba(255,255,255,.5); font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .analysis-radar { width:100%; max-width:310px; display:block; margin:auto; overflow:visible; }
+        .analysis-grid-2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; align-items:start; }
+        .analysis-grid-3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+        .analysis-panel { overflow:hidden; min-width:0; }
+        .analysis-disclosure > summary { display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; list-style:none; }
+        .analysis-disclosure > summary::-webkit-details-marker { display:none; }
+        .analysis-disclosure > summary .analysis-heading { margin-bottom:0; }
+        .analysis-disclosure-arrow { font-size:24px; color:#b6d5ff; }
+        .analysis-disclosure[open] > summary .analysis-disclosure-arrow { transform:rotate(180deg); }
+        .analysis-disclosure-content { padding-top:20px; }
+        .analysis-heading { display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+        .analysis-heading-icon { display:grid; place-items:center; width:40px; height:40px; border-radius:14px;
+          background:linear-gradient(145deg,rgba(255,111,166,.28),rgba(114,215,255,.22)); font-size:21px; flex:0 0 auto; }
+        .analysis-heading h2 { margin:0; font-size:18px; letter-spacing:.02em; }
+        .analysis-heading p { margin:5px 0 0; color:rgba(255,255,255,.65); font-size:12px; line-height:1.6; }
+        .analysis-lifetime { position:relative; border-color:rgba(160,194,255,.3) !important; }
+        .analysis-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+        .analysis-metric { min-width:0; border:1px solid; border-radius:20px; padding:22px 20px; }
+        .analysis-metric-label { display:flex; gap:8px; align-items:center; color:rgba(255,255,255,.8); font-size:14px; font-weight:700; }
+        .analysis-metric-label > span { font-size:20px; }
+        .analysis-metric strong { display:flex; align-items:baseline; flex-wrap:wrap; gap:6px; margin:18px 0 10px;
+          font-size:clamp(30px,3.8vw,46px); font-variant-numeric:tabular-nums; line-height:1.1; overflow-wrap:anywhere; }
+        .analysis-metric strong > span { font-size:14px; font-weight:600; white-space:nowrap; opacity:.85; }
+        .analysis-metric small { display:block; color:rgba(255,255,255,.65); font-size:12px; line-height:1.6; }
+        .analysis-log-notes { display:grid; gap:4px; margin-top:16px; }
+        .analysis-log-notes p { margin:0; color:rgba(255,255,255,.6); font-size:11px; line-height:1.7; }
         .analysis-trend { width:100%; display:block; min-height:210px; }
         .analysis-section-label { margin:0 0 8px; color:rgba(255,255,255,.62); font-size:11px; font-weight:800; }
         .analysis-bar-list {
@@ -1750,6 +1626,7 @@ export default function RecordAnalysis({ back }: Props) {
           grid-template-columns:80px minmax(70px,1fr) 82px;
         }
         .analysis-condition-grid .analysis-bar-value { text-align:right; }
+        .analysis-bar-list > strong, .analysis-bar-list > p { grid-column:1/-1; margin:0; }
         .analysis-bar-label { font-size:12px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .analysis-bar-track { height:10px; border-radius:999px; overflow:hidden; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.08); }
         .analysis-bar-fill { height:100%; min-width:2px; border-radius:inherit; transition:width .35s ease; }
@@ -1791,7 +1668,7 @@ export default function RecordAnalysis({ back }: Props) {
         .analysis-tackle small { display:block; margin-top:4px; color:rgba(255,255,255,.55); font-size:9px; }
         .analysis-tackle-rate { text-align:right; color:#79f2c0; font-weight:900; }
         .analysis-voices { position:relative; background:linear-gradient(135deg,rgba(255,114,172,.16),rgba(108,201,255,.12)); }
-        .analysis-voice-list { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+        .analysis-voice-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
         .analysis-voice {
           --voice-accent:#fff;
           position:relative; display:grid; grid-template-columns:42px minmax(0,1fr); gap:10px;
@@ -1827,7 +1704,7 @@ export default function RecordAnalysis({ back }: Props) {
         @media (max-width:900px) {
           .analysis-stage { grid-template-columns:1fr; }
           .analysis-ai-sidebar { position:relative; top:auto; }
-          .analysis-dashboard,.analysis-grid-2 { grid-template-columns:1fr; }
+          .analysis-grid-2 { grid-template-columns:1fr; }
           .analysis-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
           .analysis-voice-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
         }
@@ -1838,9 +1715,12 @@ export default function RecordAnalysis({ back }: Props) {
           .analysis-ai-tab { flex:0 0 66px; width:66px; height:66px; }
           .analysis-ai-bubble { min-height:132px; padding:14px; }
           .analysis-ai-bubble p { font-size:13px; }
-          .analysis-hero { grid-template-columns:1fr; text-align:center; }
-          .analysis-grade { width:132px; margin:auto; }
-          .analysis-score-copy p { text-align:left; }
+          .analysis-metrics { gap:10px; }
+          .analysis-metric { padding:16px 12px; border-radius:16px; }
+          .analysis-metric-label { font-size:12px; gap:5px; }
+          .analysis-metric strong { font-size:30px; margin:14px 0 8px; gap:4px; }
+          .analysis-metric strong > span { font-size:12px; }
+          .analysis-metric small { font-size:11px; }
           .analysis-species-list { grid-template-columns:1fr; }
           .analysis-bar-row { grid-template-columns:76px 1fr; }
           .analysis-bar-value { grid-column:2; margin-top:-5px; }
@@ -1879,7 +1759,7 @@ export default function RecordAnalysis({ back }: Props) {
             disabled={aiLoading || loading}
           >
             {aiLoading
-              ? "✨ みんなが通信簿を読んでる…"
+              ? "✨ みんなが記録を読んでる…"
               : aiComments.length > 0
                 ? "✨ みんなにもう一度聞く"
                 : "✨ みんなにコメントをもらう"}
@@ -1891,97 +1771,41 @@ export default function RecordAnalysis({ back }: Props) {
 
         <div className="analysis-stage">
         <div className="analysis-main">
-        <div className="analysis-dashboard">
-          <Panel
-            title="ひろっちの釣行通信簿"
-            icon="🏆"
-            note="自分の記録量と実績から算出。他の釣り人との比較ではありません"
-          >
-            <div className="analysis-hero">
-              <div className="analysis-grade">
-                <div>
-                  <small>総合ランク</small>
-                  <strong>{grade}</strong>
-                  <small>
-                    {totalTrips < 3
-                      ? "あと少しで解析開始"
-                      : `${overallScore} / 100`}
-                  </small>
-                </div>
-              </div>
-              <div className="analysis-score-copy">
-                <h3>
-                  {totalTrips < 3
-                    ? "冒険の記録は、ここから始まる"
-                    : catchRate >= 0.5
-                      ? "勝ち筋が輪郭を見せてきた"
-                      : "いまは攻略データを鍛える時期"}
-                </h3>
-                <p>
-                  釣果の安定度・数に加え、実績のある時間帯・釣り場・
-                  再現できそうな条件を合わせて評価。次の釣行では、
-                  下の候補と天気・風・波を合わせて判断しよう。
-                </p>
-              </div>
-            </div>
-            <div className="analysis-metrics">
-              <Metric
-                icon="🧾"
-                label="釣行"
-                value={`${totalTrips}回`}
-                sub={`${caughtTrips}回キャッチ`}
-                color="#a8b8ff"
-              />
-              <Metric
-                icon="🎯"
-                label="キャッチ率"
-                value={fmtPct(catchRate)}
-                sub={`Wilson下限 ${fmtPct(wilsonLower(caughtTrips, totalTrips))}`}
-                color="#ff91b9"
-              />
-              <Metric
-                icon="🐟"
-                label="総釣果"
-                value={`${totalFish}匹`}
-                sub={`${uniqueSpecies}魚種`}
-                color="#72d7ff"
-              />
-              <Metric
-                icon="📏"
-                label="最大サイズ"
-                value={fmtSize(maxSize)}
-                sub={`平均 ${fmtSize(avgSize)} ・ サイズ記録 ${measuredFish.length}/${joinedFish.length}件`}
-                color="#ffd166"
-              />
-            </div>
-          </Panel>
-
-          <Panel
-            title="次の釣行に活かす実績"
-            icon="🧭"
-            note="時間帯・釣り場は3釣行以上の条件を、キャッチ率と件数から比較。記録不足は0表示"
-          >
-            <RadarChart axes={styleAxes} />
-            <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-              {decisionConditions.map(({ label, best }) => (
-                <div key={label} style={{ padding: 10, borderRadius: 12, background: "rgba(255,255,255,.06)" }}>
-                  <strong>{label}　{best && best.caught > 0 ? best.key : "記録を蓄積中"}</strong>
-                  <div style={{ fontSize: 12, marginTop: 4, opacity: 0.8 }}>
-                    {best
-                      ? `${best.total}釣行・${best.caught}回キャッチ（${fmtPct(best.rate)}）。${best.caught > 0 ? "次の候補として、今回の風・波も確認しよう。" : "まだ釣果のある候補を絞れません。"}`
-                      : "同じ条件で3釣行以上の記録が集まると候補を表示します。"}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Panel>
-        </div>
+        <Panel
+          title="ひろっちのフィッシングログ"
+          icon="🏆"
+          className="analysis-lifetime"
+          note={lifetime.firstDate ? `${lifetime.firstDate.replaceAll("-", "/")} 〜 今日 ・ ${numberText(lifetime.elapsedDays)}日間の記録` : "最初の釣行を記録して、ここから実績を育てよう"}
+        >
+          <div className="analysis-metrics">
+            <Metric icon="🐟" label="総キャッチ数" value={numberText(totalFish)} unit="匹"
+              sub={`${uniqueSpecies}魚種との出会い`} color="#72d7ff" />
+            <Metric icon="🎣" label="総釣行数" value={numberText(totalTrips)} unit="回"
+              sub="ボウズの日も、すべての釣行を累積" color="#a8b8ff" />
+            <Metric icon="🏅" label="キャッチ釣行数" value={numberText(caughtTrips)} unit="回"
+              sub="1匹以上釣れた釣行の累積" color="#ffd166" />
+            <Metric icon="🎯" label="キャッチ率" value={totalTrips > 0 ? (catchRate * 100).toFixed(1) : "—"} unit="%"
+              sub={totalTrips > 0 ? `${numberText(totalTrips)}釣行中${numberText(caughtTrips)}回キャッチ` : "釣行記録が増えると表示"}
+              color="#ff91b9" />
+            <Metric icon="🗓" label="釣行頻度" value={lifetime.frequencyDays == null ? "—" : lifetime.frequencyDays.toLocaleString("ja-JP", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} unit="日に1回"
+              sub={lifetime.datedTrips > 0 ? `${numberText(lifetime.elapsedDays)}日 ÷ ${numberText(lifetime.datedTrips)}釣行` : "釣行日の記録が増えると表示"}
+              color="#79e4c3" />
+            <Metric icon="⏱" label="総釣行時間" value={lifetime.timedTrips > 0 ? numberText(totalHours) : "—"} unit="時間"
+              sub={lifetime.timedTrips > 0 ? `＋${remainingMinutes}分 ・ 時刻あり${lifetime.timedTrips}/${totalTrips}釣行` : "開始・終了時刻のそろった釣行から集計"}
+              color="#e4b0ff" />
+          </div>
+          <div className="analysis-log-notes">
+            <p>釣行頻度は最初の釣行日から今日までの経過日数（初日を含む）÷釣行数。同日の複数釣行もそれぞれ1回です。</p>
+            <p>総釣行時間は開始・終了時刻の差を合計。時刻の不足・逆転・未来の終了時刻がある記録は集計に含めません。</p>
+          </div>
+        </Panel>
 
         <Panel
           title="みんなから、ひとこと"
           icon="💬"
           note="同じ分析結果を、それぞれの視点で見ています"
           className="analysis-voices"
+          collapsible
         >
           <div className="analysis-voice-list">
             {characterComments.map((comment) => (
@@ -2064,7 +1888,7 @@ export default function RecordAnalysis({ back }: Props) {
 
         <div className="analysis-grid-2">
           <Panel
-            title="成長グラフ"
+            title="月ごとの釣果"
             icon="📈"
             note="直近12か月・棒は匹数、線はキャッチ率"
           >
@@ -2242,6 +2066,7 @@ export default function RecordAnalysis({ back }: Props) {
           title="魚種別 攻略カルテ"
           icon="🐟"
           note="カードを押すと内訳を展開"
+          collapsible
         >
           {speciesInsights.length === 0 ? (
             <div className="analysis-empty">
@@ -2332,6 +2157,7 @@ export default function RecordAnalysis({ back }: Props) {
               key={group.title}
               title={group.title}
               icon={group.icon}
+              collapsible
               note="使用回数にはボウズも含みます"
             >
               {group.rows.length === 0 ? (
@@ -2439,8 +2265,8 @@ export default function RecordAnalysis({ back }: Props) {
 
         <div className="analysis-footnote">
           ※
-          ランクとレーダーは、釣果の良し悪しだけでなく記録の充実度も含む「自分用の成長指標」です。
-          サンプルが少ない条件はWilson下限で補正し、「未解析」や「暫定」として扱います。
+          累積実績は削除されていない記録全体を集計。表示数の設定はランキングの件数に適用します。
+          条件別の順位はキャッチ率と件数から算出し、記録が少ない条件は暫定として表示します。
         </div>
         </div>
         </div>
