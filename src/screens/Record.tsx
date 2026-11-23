@@ -27,6 +27,7 @@ import { getTideAtTime } from "../lib/tide736";
 import { getTide736DayCached, type TideCacheSource } from "../lib/tide736Cache";
 import { getTidePhaseFromSeries } from "../lib/tidePhase736";
 import { getTimeBand } from "../lib/timeband";
+import { parseDateTimeLocalValue, tripTimeRangeError } from "../lib/tripTimeRange";
 import { useAppSettings } from "../lib/appSettings";
 import { uploadPhoto } from "../lib/photoUpload";
 import { WEATHER_OPTIONS, WIND_DIRECTIONS, weatherLabel, windDirectionLabel, optionalEnvironmentNumber } from "../lib/tripEnvironment";
@@ -149,20 +150,6 @@ function clamp(n: number, min: number, max: number) {
 
 function toDateTimeLocalValue(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-}
-
-function parseDateTimeLocalValue(v: string): Date | null {
-  if (!v || !v.includes("T")) return null;
-  const [ds, ts] = v.split("T");
-  if (!ds || !ts) return null;
-  const [y, m, d] = ds.split("-").map(Number);
-  const [hh, mm] = ts.split(":").map(Number);
-  if (![y, m, d, hh, mm].every(Number.isFinite)) return null;
-  if (m < 1 || m > 12) return null;
-  if (d < 1 || d > 31) return null;
-  if (hh < 0 || hh > 23) return null;
-  if (mm < 0 || mm > 59) return null;
-  return new Date(y, m - 1, d, hh, mm, 0, 0);
 }
 
 function displayPhaseForHeader(phase: string) {
@@ -390,6 +377,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
   const [baseCapturedAt, setBaseCapturedAt] = useState<Date | null>(null);
   const [manualMode, setManualMode] = useState(false);
   const [manualValue, setManualValue] = useState("");
+  const [endValue, setEndValue] = useState("");
   const [allowUnknown, setAllowUnknown] = useState(false);
 
   const [outcome, setOutcome] = useState<TripOutcome>("skunk");
@@ -537,6 +525,8 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
           });
 
         const started = new Date(trip.startedAt);
+        const ended = trip.endedAt ? new Date(trip.endedAt) : null;
+        setEndValue(ended && Number.isFinite(ended.getTime()) ? toDateTimeLocalValue(ended) : "");
         setEditingTrip(trip);
         setPhotos(loadedPhotos);
         setTripTackleDrafts(setupDrafts);
@@ -754,6 +744,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
     setBaseCapturedAt(null);
     setManualMode(false);
     setManualValue("");
+    setEndValue("");
     setAllowUnknown(false);
 
     setOutcome("skunk");
@@ -845,8 +836,15 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
     };
   }
 
+  const timeRangeError = tripTimeRangeError(baseCapturedAt, endValue);
+  const endedAtDate = parseDateTimeLocalValue(endValue);
+  const durationMinutes = baseCapturedAt && endedAtDate && !timeRangeError
+    ? Math.floor((endedAtDate.getTime() - baseCapturedAt.getTime()) / 60_000)
+    : null;
+
   const canSave =
     !saving &&
+    !timeRangeError &&
     !envLoading &&
     !editLoading &&
     fishRowsOk &&
@@ -1029,6 +1027,8 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
   }
 
   async function onSave() {
+    const rangeError = tripTimeRangeError(baseCapturedAt, endValue);
+    if (rangeError) { alert(rangeError); return; }
     for (const [label, raw, min, max] of [
       ["風速", windSpeed, 0, 200],
       ["波高", waveHeight, 0, 100],
@@ -1072,6 +1072,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
         syncStatus: "pending",
 
         startedAt,
+        endedAt: endValue ? parseDateTimeLocalValue(endValue)!.toISOString() : undefined,
         pointId: selectedWeatherPoint?.id ?? editingTrip?.pointId ?? (environmentLat != null ? "gps" : FIXED_PORT.id),
         memo,
         outcome,
@@ -1639,142 +1640,71 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
           {/* 右：入力 */}
           <div className="record-details">
             <div className="record-middle">
-              {/* 手動日時入力 */}
               <div className="glass glass-strong" style={glassBoxStyle}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      cursor: "pointer",
-                    }}
-                  >
+                <strong style={{ fontSize: 15 }}>🕒 釣行日時</strong>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: 12, marginTop: 12 }}>
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span>開始日時</span>
                     <input
-                      type="checkbox"
-                      checked={manualMode}
-                      onChange={(e) => {
-                        const on = e.target.checked;
-                        setManualMode(on);
-                        if (on) {
-                          const d = baseCapturedAt ?? autoBaseCapturedAt;
-                          if (d) setManualValue(toDateTimeLocalValue(d));
-                        } else {
-                          setAllowUnknown(false);
-                        }
+                      type="datetime-local"
+                      value={manualValue}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setManualMode(true);
+                        setManualValue(value);
+                        const date = parseDateTimeLocalValue(value);
+                        setBaseCapturedAt(date);
+                        if (date) setAllowUnknown(false);
                       }}
+                      style={{ ...fieldStyle, width: "100%", minWidth: 0, boxSizing: "border-box" }}
                     />
-                    <span
-                      style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
-                    >
-                      基準時刻を手動で補正する（帰宅投稿向け）
-                    </span>
                   </label>
-
-                  {!manualMode && !autoBaseCapturedAt && (
-                    <div style={{ fontSize: 12, color: "#f6c" }}>
-                      ※EXIFが無いので、ONにして入力すると潮/天気に紐づくよ
-                    </div>
-                  )}
+                  <label style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <span>終了日時（任意）</span>
+                    <input
+                      type="datetime-local"
+                      value={endValue}
+                      onChange={(event) => setEndValue(event.target.value)}
+                      aria-invalid={!!timeRangeError}
+                      aria-describedby={timeRangeError ? "trip-time-error" : undefined}
+                      style={{ ...fieldStyle, width: "100%", minWidth: 0, boxSizing: "border-box" }}
+                    />
+                  </label>
                 </div>
-
-                {manualMode && (
-                  <>
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 10,
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <label
-                        style={{
-                          fontSize: 12,
-                          color: "rgba(255,255,255,0.72)",
-                        }}
-                      >
-                        基準時刻（ローカル）：
-                        <input
-                          type="datetime-local"
-                          value={manualValue}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setManualValue(v);
-                            const d = parseDateTimeLocalValue(v);
-                            setBaseCapturedAt(d);
-                            if (d) setAllowUnknown(false);
-                          }}
-                          style={{ marginLeft: 8 }}
-                        />
-                      </label>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const now = new Date();
-                          const v = toDateTimeLocalValue(now);
-                          setManualValue(v);
-                          setBaseCapturedAt(now);
-                          setAllowUnknown(false);
-                        }}
-                        className="glass"
-                        style={primaryBtn}
-                      >
-                        今にする
-                      </button>
-                    </div>
-
-                    {!manualValue && (
-                      <label
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          cursor: "pointer",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={allowUnknown}
-                          onChange={(e) => setAllowUnknown(e.target.checked)}
-                        />
-                        <span
-                          style={{
-                            fontSize: 12,
-                            color: "rgba(255,255,255,0.72)",
-                          }}
-                        >
-                          不明のまま保存する（潮/天気の保存なし）
-                        </span>
-                      </label>
-                    )}
-
-                    {!manualValue && !allowUnknown && (
-                      <div style={{ fontSize: 12, color: "#f6c" }}>
-                        ※時刻を入れるか、「不明のまま保存」をONにしてね
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {!manualMode && (
-                  <div
-                    style={{ fontSize: 12, color: "rgba(255,255,255,0.70)" }}
-                  >
-                    基準時刻：{" "}
-                    {baseCapturedAt
-                      ? baseCapturedAt.toLocaleString()
-                      : "（未確定）"}
-                  </div>
-                )}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                  <button type="button" className="glass" style={primaryBtn} onClick={() => {
+                    const now = new Date();
+                    setManualMode(true);
+                    setManualValue(toDateTimeLocalValue(now));
+                    setBaseCapturedAt(parseDateTimeLocalValue(toDateTimeLocalValue(now)));
+                    setAllowUnknown(false);
+                  }}>開始を今にする</button>
+                  <button type="button" className="glass" style={primaryBtn}
+                    onClick={() => setEndValue(toDateTimeLocalValue(new Date()))}>終了を今にする</button>
+                  {endValue && <button type="button" className="glass" style={primaryBtn}
+                    onClick={() => setEndValue("")}>終了日時を空欄にする</button>}
+                  {autoBaseCapturedAt && <button type="button" className="glass" style={primaryBtn}
+                    onClick={() => {
+                      setManualMode(false);
+                      setBaseCapturedAt(autoBaseCapturedAt);
+                      setManualValue(toDateTimeLocalValue(autoBaseCapturedAt));
+                      setAllowUnknown(false);
+                    }}>写真の日時を使う</button>}
+                </div>
+                <p style={{ fontSize: 12, lineHeight: 1.7, opacity: 0.75, margin: "10px 0 0" }}>
+                  写真の日時がある場合は開始日時の候補として入ります。実際の開始時刻に直してね。
+                  開始日時をもとに潮・天気と時間帯を保存します。終了日時は空欄でも保存できます。
+                </p>
+                {durationMinutes != null && <div style={{ marginTop: 10, fontWeight: 800 }}>
+                  釣行時間：{Math.floor(durationMinutes / 60)}時間{durationMinutes % 60}分
+                </div>}
+                {timeRangeError && <div id="trip-time-error" role="alert" style={{ marginTop: 10, color: "#ffb4c6", fontSize: 12 }}>
+                  {timeRangeError}
+                </div>}
+                {!manualValue && <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                  <input type="checkbox" checked={allowUnknown} onChange={(event) => setAllowUnknown(event.target.checked)} />
+                  日時不明のまま保存する（釣行時間の集計なし）
+                </label>}
               </div>
 
               {/* タイド */}
