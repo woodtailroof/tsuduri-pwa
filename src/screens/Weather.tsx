@@ -8,6 +8,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import PageShell from "../components/PageShell";
+import AnglersLinks from "../components/AnglersLinks";
 import TideGraph from "../components/TideGraph";
 import type { TidePoint } from "../db";
 import { useEmotion } from "../lib/emotion";
@@ -1496,6 +1497,7 @@ export default function Weather({ back, isActive = true }: Props) {
             >
               🌊 清水港NOWPHAS ↗
             </a>
+            <AnglersLinks pointId={selectedPoint.id} />
           </div>
         </div>
 
