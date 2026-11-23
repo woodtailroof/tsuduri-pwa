@@ -513,6 +513,10 @@ function formatFishLine(row: TripFish): string {
     parts.push(`${count}匹`);
   }
 
+  const caught = row.caughtAt ? new Date(row.caughtAt) : null;
+  parts.push(caught && Number.isFinite(caught.getTime())
+    ? `釣れた日時 ${caught.toLocaleString("ja-JP")}`
+    : "釣れた時刻不明");
   return parts.join(" / ");
 }
 

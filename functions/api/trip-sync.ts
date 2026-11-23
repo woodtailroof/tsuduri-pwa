@@ -62,6 +62,9 @@ type TripSyncRecord = {
 };
 
 type TripSyncFish = {
+  caughtAt?: string | null;
+  catchPhotoUid?: string | null;
+  caughtTideTrend?: string | null;
   uid: string;
   tripUid: string;
 
@@ -108,6 +111,7 @@ type TripSyncTripTackle = {
 };
 
 type TripSyncPhoto = {
+  role?: "start" | "catch" | "end" | "other";
   uid: string;
   tripUid: string;
 
@@ -472,6 +476,28 @@ async function upsertTrip(db: D1Database, row: TripSyncRecord) {
     .run();
 }
 
+// 新旧クライアントを併用できるよう、タイムライン用の列を追加する。
+async function ensureTimelineSchema(db: D1Database) {
+  const tables = {
+    sync_trip_fish: ["caught_at", "catch_photo_uid", "caught_tide_trend"],
+    sync_trip_photos: ["photo_role"],
+  };
+  for (const [table, columns] of Object.entries(tables)) {
+    const info = await db.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+    const existing = new Set((info.results ?? []).map((row) => row.name));
+    for (const column of columns) {
+      if (existing.has(column)) continue;
+      try {
+        await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`).run();
+      } catch (error) {
+        // 並行リクエストが先に同じ列を追加していた場合だけ継続する。
+        const current = await db.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+        if (!(current.results ?? []).some((row) => row.name === column)) throw error;
+      }
+    }
+  }
+}
+
 async function upsertFish(db: D1Database, row: TripSyncFish) {
   await db
     .prepare(
@@ -480,8 +506,8 @@ async function upsertFish(db: D1Database, row: TripSyncFish) {
         uid, trip_uid,
         created_at, updated_at, deleted_at, sync_status,
         species, size_cm, count,
-        lure_type, time_band, trip_tackle_uid
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        lure_type, time_band, trip_tackle_uid, caught_at, catch_photo_uid, caught_tide_trend
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(uid) DO UPDATE SET
         trip_uid = excluded.trip_uid,
         created_at = excluded.created_at,
@@ -493,7 +519,10 @@ async function upsertFish(db: D1Database, row: TripSyncFish) {
         count = excluded.count,
         lure_type = excluded.lure_type,
         time_band = excluded.time_band,
-        trip_tackle_uid = excluded.trip_tackle_uid
+        trip_tackle_uid = excluded.trip_tackle_uid,
+        caught_at = CASE WHEN ? THEN excluded.caught_at ELSE sync_trip_fish.caught_at END,
+        catch_photo_uid = CASE WHEN ? THEN excluded.catch_photo_uid ELSE sync_trip_fish.catch_photo_uid END,
+        caught_tide_trend = CASE WHEN ? THEN excluded.caught_tide_trend ELSE sync_trip_fish.caught_tide_trend END
       WHERE excluded.updated_at > sync_trip_fish.updated_at
       `,
     )
@@ -510,6 +539,12 @@ async function upsertFish(db: D1Database, row: TripSyncFish) {
       asStringOrNull(row.lureType),
       row.timeBand == null ? null : normalizeTimeBand(row.timeBand),
       asStringOrNull(row.tripTackleUid),
+      asIsoOrNull(row.caughtAt),
+      asStringOrNull(row.catchPhotoUid),
+      asStringOrNull(row.caughtTideTrend),
+      Object.prototype.hasOwnProperty.call(row, "caughtAt") ? 1 : 0,
+      Object.prototype.hasOwnProperty.call(row, "catchPhotoUid") ? 1 : 0,
+      Object.prototype.hasOwnProperty.call(row, "caughtTideTrend") ? 1 : 0,
     )
     .run();
 }
@@ -557,8 +592,8 @@ async function upsertPhoto(db: D1Database, row: TripSyncPhoto) {
         uid, trip_uid,
         created_at, updated_at, deleted_at, sync_status,
         captured_at, photo_name, photo_type, remote_key,
-        photo_order, is_cover
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        photo_order, is_cover, photo_role
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(uid) DO UPDATE SET
         trip_uid = excluded.trip_uid,
         created_at = excluded.created_at,
@@ -570,7 +605,8 @@ async function upsertPhoto(db: D1Database, row: TripSyncPhoto) {
         photo_type = excluded.photo_type,
         remote_key = excluded.remote_key,
         photo_order = excluded.photo_order,
-        is_cover = excluded.is_cover
+        is_cover = excluded.is_cover,
+        photo_role = CASE WHEN ? THEN excluded.photo_role ELSE sync_trip_photos.photo_role END
       WHERE excluded.updated_at > sync_trip_photos.updated_at
       `,
     )
@@ -587,6 +623,8 @@ async function upsertPhoto(db: D1Database, row: TripSyncPhoto) {
       asStringOrNull(row.remoteKey),
       row.order,
       row.isCover,
+      row.role ?? "other",
+      Object.prototype.hasOwnProperty.call(row, "role") ? 1 : 0,
     )
     .run();
 }
@@ -724,6 +762,7 @@ async function handlePost(request: Request, env: Env) {
   }
 
   try {
+    await ensureTimelineSchema(env.DB);
     await env.DB.batch([
       env.DB.prepare(
         `
@@ -891,7 +930,8 @@ async function fetchFishSince(db: D1Database, since: string | null) {
           count,
           lure_type as lureType,
           time_band as timeBand,
-          trip_tackle_uid as tripTackleUid
+          trip_tackle_uid as tripTackleUid,
+          caught_at as caughtAt, catch_photo_uid as catchPhotoUid, caught_tide_trend as caughtTideTrend
         FROM sync_trip_fish
         WHERE updated_at > ?
         ORDER BY updated_at ASC
@@ -912,7 +952,8 @@ async function fetchFishSince(db: D1Database, since: string | null) {
           count,
           lure_type as lureType,
           time_band as timeBand,
-          trip_tackle_uid as tripTackleUid
+          trip_tackle_uid as tripTackleUid,
+          caught_at as caughtAt, catch_photo_uid as catchPhotoUid, caught_tide_trend as caughtTideTrend
         FROM sync_trip_fish
         ORDER BY updated_at ASC
         `,
@@ -950,6 +991,7 @@ async function fetchPhotosSince(db: D1Database, since: string | null) {
           deleted_at as deletedAt,
           sync_status as syncStatus,
           captured_at as capturedAt,
+          photo_role as role,
           photo_name as photoName,
           photo_type as photoType,
           remote_key as remoteKey,
@@ -971,6 +1013,7 @@ async function fetchPhotosSince(db: D1Database, since: string | null) {
           deleted_at as deletedAt,
           sync_status as syncStatus,
           captured_at as capturedAt,
+          photo_role as role,
           photo_name as photoName,
           photo_type as photoType,
           remote_key as remoteKey,
@@ -1107,6 +1150,7 @@ async function fetchCharacterSettings(
 
 async function handleGet(request: Request, env: Env) {
   try {
+    await ensureTimelineSchema(env.DB);
     const url = new URL(request.url);
     const since = url.searchParams.get("since");
     const deviceId = url.searchParams.get("deviceId");

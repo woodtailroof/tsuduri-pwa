@@ -17,6 +17,7 @@ import {
   type TripTackle,
 } from "../db";
 import { getTimeBand } from "../lib/timeband";
+import { catchTimeBand, catchTimeResults } from "../lib/tripTimeline";
 import { tripLifetimeStats } from "../lib/tripLifetimeStats";
 import { weatherLabel } from "../lib/tripEnvironment";
 import {
@@ -52,6 +53,7 @@ type JoinedTrip = {
 type JoinedFish = {
   tripId: number;
   tripStartedAt: string;
+  caughtAt: string | null;
   timeBand: TripRecord["timeBand"];
   tideTrend: string;
   lureType: LureType;
@@ -721,11 +723,9 @@ export default function RecordAnalysis({ back }: Props) {
         {
           tripId: row.tripId,
           tripStartedAt: trip.startedAt,
-          timeBand: normalizeTimeBand(
-            row.timeBand ?? trip.timeBand,
-            trip.startedAt,
-          ),
-          tideTrend: labelTrend(trip.tideTrend),
+          caughtAt: row.caughtAt ?? null,
+          timeBand: catchTimeBand(row.caughtAt),
+          tideTrend: row.caughtAt ? labelTrend(row.caughtTideTrend) : "不明",
           lureType:
             (row.tripTackleUid
               ? normalizeLureType(setupMap.get(row.tripTackleUid)?.lureType)
@@ -798,22 +798,18 @@ export default function RecordAnalysis({ back }: Props) {
       ? Math.max(...measuredFish.map((row) => row.sizeCm ?? 0))
       : null;
 
-  const timeStats = useMemo<RateRow[]>(() => {
-    return [...TIMEBANDS, "unknown" as const]
-      .map((band) => {
-        const rows = joinedTrips.filter((trip) => trip.timeBand === band);
-        const caught = rows.filter((trip) => trip.outcome === "caught").length;
-        return {
-          key: TIMEBAND_LABEL[band],
-          total: rows.length,
-          caught,
-          rate: safeRate(caught, rows.length),
-          score: wilsonLower(caught, rows.length),
-        };
-      })
-      .filter((row) => row.total > 0)
-      .sort((a, b) => b.score - a.score || b.total - a.total);
-  }, [joinedTrips]);
+  const catchTimeDistribution = useMemo(() => TIMEBANDS.map((band) => ({
+    key: TIMEBAND_LABEL[band],
+    count: joinedFish.filter((fish) => fish.timeBand === band).reduce((total, fish) => total + fish.count, 0),
+  })), [joinedFish]);
+  const timedFishCount = joinedFish.filter((fish) => fish.timeBand !== "unknown").reduce((sum, fish) => sum + fish.count, 0);
+  const timeStats = useMemo<RateRow[]>(() => catchTimeResults(trips, fish)
+    .filter((row) => row.total > 0)
+    .map((row) => ({
+      key: TIMEBAND_LABEL[row.band], total: row.total, caught: row.caught,
+      rate: safeRate(row.caught, row.total), score: wilsonLower(row.caught, row.total),
+    }))
+    .sort((a, b) => b.score - a.score || b.total - a.total), [trips, fish]);
 
   const tideStats = useMemo<RateRow[]>(() => {
     const total = new Map<string, number>();
@@ -855,55 +851,24 @@ export default function RecordAnalysis({ back }: Props) {
   }, [joinedTrips]);
 
   const heatmap = useMemo(() => {
-    const map = new Map<string, { total: number; caught: number }>();
-    joinedTrips.forEach((trip) => {
-      const time = TIMEBAND_LABEL[trip.timeBand];
-      if (time === "不明" || trip.tideTrend === "不明") return;
-      const key = `${time}|${trip.tideTrend}`;
-      const current = map.get(key) ?? { total: 0, caught: 0 };
-      current.total += 1;
-      if (trip.outcome === "caught") current.caught += 1;
-      map.set(key, current);
+    const map = new Map<string, { fish: number; trips: Set<number>; lure: Map<string, number> }>();
+    joinedFish.forEach((fish) => {
+      const time = TIMEBAND_LABEL[fish.timeBand];
+      if (time === "不明" || fish.tideTrend === "不明") return;
+      const key = `${time}|${fish.tideTrend}`;
+      const row = map.get(key) ?? { fish: 0, trips: new Set<number>(), lure: new Map<string, number>() };
+      row.fish += fish.count;
+      row.trips.add(fish.tripId);
+      addCount(row.lure, LURE_LABEL[fish.lureType], fish.count);
+      map.set(key, row);
     });
     return map;
-  }, [joinedTrips]);
-
-  const patterns = useMemo(() => {
-    const map = new Map<string, { total: number; caught: number }>();
-    joinedTrips.forEach((trip) => {
-      const time = TIMEBAND_LABEL[trip.timeBand];
-      if (time === "不明" || trip.tideTrend === "不明") return;
-      const key = `${time} × ${trip.tideTrend}`;
-      const current = map.get(key) ?? { total: 0, caught: 0 };
-      current.total += 1;
-      if (trip.outcome === "caught") current.caught += 1;
-      map.set(key, current);
-    });
-
-    return Array.from(map.entries())
-      .map(([key, value]) => {
-        const [time, trend] = key.split(" × ");
-        const lureMap = new Map<string, number>();
-        joinedFish
-          .filter(
-            (row) =>
-              TIMEBAND_LABEL[row.timeBand] === time && row.tideTrend === trend,
-          )
-          .forEach((row) =>
-            addCount(lureMap, LURE_LABEL[row.lureType], row.count),
-          );
-        const bestLure = sortedRows(lureMap)[0]?.key ?? "ルアー未解析";
-        return {
-          key,
-          ...value,
-          rate: safeRate(value.caught, value.total),
-          score: wilsonLower(value.caught, value.total),
-          bestLure,
-        };
-      })
-      .sort((a, b) => b.score - a.score || b.total - a.total)
-      .slice(0, 3);
-  }, [joinedTrips, joinedFish]);
+  }, [joinedFish]);
+  const maxHeatFish = Math.max(1, ...Array.from(heatmap.values()).map((row) => row.fish));
+  const patterns = useMemo(() => Array.from(heatmap.entries()).map(([key, row]) => ({
+    key: key.replace("|", " × "), total: row.trips.size, fish: row.fish,
+    bestLure: sortedRows(row.lure)[0]?.key ?? "釣法不明",
+  })).sort((a, b) => b.total - a.total || b.fish - a.fish).slice(0, 3), [heatmap]);
 
   const monthly = useMemo(() => {
     const map = new Map<
@@ -1117,23 +1082,14 @@ export default function RecordAnalysis({ back }: Props) {
 
   const strongestPattern = patterns[0];
   const mission = useMemo(() => {
-    const candidates = patterns
-      .filter((row) => row.total < 5 && row.caught > 0)
-      .sort((a, b) => b.rate - a.rate || b.total - a.total);
-    const target = candidates[0] ?? patterns[0];
-    if (!target) {
-      return {
-        title: "まずは3釣行分の記録を集めよう",
-        text: "結果だけでなく時間帯・潮・ルアーまで残すと、攻略カルテが一気に育つよ。",
-      };
-    }
-    const remaining = Math.max(0, 5 - target.total);
+    const target = patterns[0];
+    if (!target) return {
+      title: "釣れた日時を記録しよう",
+      text: "釣果写真のEXIFや手入力で、開始・釣れた瞬間・終了を分けて残すと、次の検証候補が見えてきます。",
+    };
     return {
       title: `${target.key} × ${target.bestLure}`,
-      text:
-        remaining > 0
-          ? `現在${target.total}釣行でキャッチ率${fmtPct(target.rate)}。あと${remaining}回試すと、暫定パターンの再現性が読みやすくなるよ。`
-          : `現在${target.total}釣行でキャッチ率${fmtPct(target.rate)}。次は別の潮名でも再現するか確かめる段階だよ。`,
+      text: `${target.total}釣行で${target.fish}匹の実績。次はこの時間帯と潮の動きがそろう日に、同じ釣法で再現するか試そう。`,
     };
   }, [patterns]);
 
@@ -1327,6 +1283,8 @@ export default function RecordAnalysis({ back }: Props) {
       catchRatePercent: Math.round(catchRate * 1000) / 10,
       totalFish,
       uniqueSpecies,
+      timedFishCount,
+      catchTimeDistribution,
       averageSizeCm: avgSize == null ? null : Math.round(avgSize * 10) / 10,
       maxSizeCm: maxSize == null ? null : Math.round(maxSize * 10) / 10,
       firstTripDate: lifetime.firstDate,
@@ -1356,8 +1314,8 @@ export default function RecordAnalysis({ back }: Props) {
         condition: row.key,
         lure: row.bestLure,
         trips: row.total,
-        caughtTrips: row.caught,
-        catchRatePercent: Math.round(row.rate * 1000) / 10,
+        caughtTrips: row.total,
+        fishCount: row.fish,
         confidence: confidence(row.total).label,
       })),
       species: speciesInsights.slice(0, 8).map((row) => ({
@@ -1392,6 +1350,8 @@ export default function RecordAnalysis({ back }: Props) {
       catchRate,
       totalFish,
       uniqueSpecies,
+      timedFishCount,
+      catchTimeDistribution,
       avgSize,
       maxSize,
       lifetime.firstDate,
@@ -1886,6 +1846,14 @@ export default function RecordAnalysis({ back }: Props) {
           </aside>
         )}
 
+        <Panel title="釣れた時間帯" icon="🕒" note={`時刻が分かる釣果 ${timedFishCount}匹 ／ 全${totalFish}匹。開始時刻からの推定は含みません`}>
+          <div className="analysis-bar-list">
+            {catchTimeDistribution.map((row) => <BarRow key={row.key} label={row.key} value={row.count}
+              max={Math.max(1, ...catchTimeDistribution.map((item) => item.count))} text={`${row.count}匹`} color="#72d7ff" />)}
+          </div>
+          {totalFish > timedFishCount && <p style={{ fontSize: 12, opacity: 0.75 }}>時刻不明：{totalFish - timedFishCount}匹。履歴の編集から釣果写真や日時を追記できます。</p>}
+        </Panel>
+
         <div className="analysis-grid-2">
           <Panel
             title="月ごとの釣果"
@@ -1896,9 +1864,9 @@ export default function RecordAnalysis({ back }: Props) {
           </Panel>
 
           <Panel
-            title="ベストパターン"
+            title="釣れた時間と潮の実績"
             icon="⚡"
-            note="少数データを過大評価しない信頼度補正つき"
+            note="釣果日時と、その時刻の潮が分かる記録。同じ条件で釣れた釣行数を優先"
           >
             {patterns.length === 0 ? (
               <div className="analysis-empty">
@@ -1914,12 +1882,11 @@ export default function RecordAnalysis({ back }: Props) {
                       <div>
                         <strong>{pattern.key}</strong>
                         <small>
-                          相性候補：{pattern.bestLure} ・ {pattern.caught}/
-                          {pattern.total}釣行
+                          釣法：{pattern.bestLure} ・ {pattern.total}釣行でキャッチ
                         </small>
                       </div>
                       <div className="analysis-pattern-rate">
-                        <strong>{fmtPct(pattern.rate)}</strong>
+                        <strong>{pattern.fish}匹</strong>
                         <div
                           className="analysis-confidence"
                           style={{ color: level.tone }}
@@ -1937,9 +1904,9 @@ export default function RecordAnalysis({ back }: Props) {
 
         <div className="analysis-grid-2">
           <Panel
-            title="条件ヒートマップ"
+            title="釣れた時間帯 × 潮の動き"
             icon="🌊"
-            note="時間帯 × 潮の動き／色が明るいほど好成績"
+            note="釣果の日時・潮が分かる記録の匹数。時刻不明の記録は除外"
           >
             <div className="analysis-heatmap">
               <div />
@@ -1956,8 +1923,7 @@ export default function RecordAnalysis({ back }: Props) {
                   </div>,
                   ...TREND_ORDER.map((trend) => {
                     const row = heatmap.get(`${time}|${trend}`);
-                    const rate = row ? safeRate(row.caught, row.total) : 0;
-                    const alpha = row ? 0.12 + rate * 0.52 : 0.035;
+                    const alpha = row ? 0.12 + (row.fish / maxHeatFish) * 0.52 : 0.035;
                     return (
                       <div
                         className="analysis-heat-cell"
@@ -1969,9 +1935,9 @@ export default function RecordAnalysis({ back }: Props) {
                         }}
                       >
                         <div>
-                          <strong>{row ? fmtPct(rate) : "—"}</strong>
+                          <strong>{row ? `${row.fish}匹` : "—"}</strong>
                           <small>
-                            {row ? `${row.caught}/${row.total}釣行` : "未解析"}
+                            {row ? `${row.trips.size}釣行でキャッチ` : "未記録"}
                           </small>
                         </div>
                       </div>
@@ -1985,11 +1951,13 @@ export default function RecordAnalysis({ back }: Props) {
           <Panel
             title="条件別キャッチ率"
             icon="🕒"
-            note="回数も見ながら、得意な時間・潮・釣り場を確認"
+            note="時間帯は実釣期間と釣果時刻が分かる記録から集計。潮名・釣り場は釣行単位"
           >
             <div className="analysis-grid-2 analysis-condition-grid">
               <div>
-                <div className="analysis-section-label">時間帯</div>
+                <div className="analysis-section-label">実釣時間帯別キャッチ率</div>
+                <p style={{ fontSize: 11, opacity: 0.7 }}>開始・終了と全釣果の日時が分かる釣行、または開始・終了が分かるボウズ釣行が対象。</p>
+                {timeStats.length === 0 && <div className="analysis-empty">時間帯を比較できる記録がまだありません</div>}
                 <div className="analysis-bar-list">
                   {timeStats.map((row) => (
                     <BarRow

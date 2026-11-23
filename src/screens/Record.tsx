@@ -27,6 +27,7 @@ import { getTideAtTime } from "../lib/tide736";
 import { getTide736DayCached, type TideCacheSource } from "../lib/tide736Cache";
 import { getTidePhaseFromSeries } from "../lib/tidePhase736";
 import { getTimeBand } from "../lib/timeband";
+import { catchTimeBand, photoEventDate, type PhotoRole } from "../lib/tripTimeline";
 import { parseDateTimeLocalValue, tripTimeRangeError } from "../lib/tripTimeRange";
 import { useAppSettings } from "../lib/appSettings";
 import { uploadPhoto } from "../lib/photoUpload";
@@ -47,7 +48,13 @@ type Props = {
 type TidePoint = { unix?: number; cm: number; time?: string };
 type TideInfo = { cm: number; trend: string };
 
+const PHOTO_ROLES: { value: PhotoRole; label: string }[] = [
+  { value: "start", label: "開始" }, { value: "catch", label: "釣果" },
+  { value: "end", label: "終了" }, { value: "other", label: "その他" },
+];
+
 type PhotoItem = {
+  role: PhotoRole;
   id: string;
   sourceId?: number;
   sourceUid?: string;
@@ -63,6 +70,8 @@ type PhotoItem = {
 };
 
 type FishDraft = {
+  caughtValue: string;
+  photoUid: string;
   id: string;
   sourceId?: number;
   sourceUid?: string;
@@ -170,6 +179,8 @@ function makeUid() {
 function emptyFishDraft(): FishDraft {
   return {
     id: makeUid(),
+    caughtValue: "",
+    photoUid: "",
     species: "",
     sizeCm: "",
     count: "1",
@@ -373,11 +384,13 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
   // 状態
   // -------------------------
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [photoReads, setPhotoReads] = useState(0);
 
   const [baseCapturedAt, setBaseCapturedAt] = useState<Date | null>(null);
   const [manualMode, setManualMode] = useState(false);
   const [manualValue, setManualValue] = useState("");
   const [endValue, setEndValue] = useState("");
+  const [endManualMode, setEndManualMode] = useState(false);
   const [allowUnknown, setAllowUnknown] = useState(false);
 
   const [outcome, setOutcome] = useState<TripOutcome>("skunk");
@@ -491,6 +504,8 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
                 id: row.uid,
                 sourceId: row.id,
                 sourceUid: row.uid,
+                caughtValue: row.caughtAt && Number.isFinite(Date.parse(row.caughtAt)) ? toDateTimeLocalValue(new Date(row.caughtAt)) : "",
+                photoUid: row.catchPhotoUid ?? "",
                 species: row.species,
                 sizeCm: row.sizeCm == null ? "" : String(row.sizeCm),
                 count: row.count == null ? "1" : String(row.count),
@@ -513,6 +528,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
               id: row.uid,
               sourceId: row.id,
               sourceUid: row.uid,
+              role: row.role ?? "other",
               remoteKey: row.remoteKey ?? null,
               isNew: false,
               file,
@@ -525,6 +541,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
           });
 
         const started = new Date(trip.startedAt);
+        setEndManualMode(true);
         const ended = trip.endedAt ? new Date(trip.endedAt) : null;
         setEndValue(ended && Number.isFinite(ended.getTime()) ? toDateTimeLocalValue(ended) : "");
         setEditingTrip(trip);
@@ -543,7 +560,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
         setSpotType(trip.spotType ?? "port");
         setWaterClarity(trip.waterClarity ?? "normal");
         setBaitPresent(trip.baitPresent ?? false);
-        if (Number.isFinite(started.getTime())) {
+        if (Number.isFinite(started.getTime()) && trip.timeBand !== "unknown") {
           setBaseCapturedAt(started);
           setManualMode(true);
           setManualValue(toDateTimeLocalValue(started));
@@ -634,14 +651,11 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
     );
   }, [outcome, fishDrafts.length, fishDraftValidation]);
 
-  const autoBaseCapturedAt = useMemo(() => {
-    const ds = photos
-      .map((p) => p.capturedAt)
-      .filter((d): d is Date => d instanceof Date);
-    if (ds.length === 0) return null;
-    ds.sort((a, b) => a.getTime() - b.getTime());
-    return ds[0] ?? null;
-  }, [photos]);
+  const autoBaseCapturedAt = useMemo(() => photoEventDate(photos, "start"), [photos]);
+  const autoEndCapturedAt = useMemo(() => photoEventDate(photos, "end"), [photos]);
+  useEffect(() => {
+    if (!endManualMode) setEndValue(autoEndCapturedAt ? toDateTimeLocalValue(autoEndCapturedAt) : "");
+  }, [autoEndCapturedAt, endManualMode]);
 
   const autoBaseLatLon = useMemo(() => {
     const withGps = photos
@@ -728,7 +742,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
 
   useEffect(() => {
     if (manualMode) return;
-    setBaseCapturedAt(autoBaseCapturedAt);
+    setBaseCapturedAt(autoBaseCapturedAt ? parseDateTimeLocalValue(toDateTimeLocalValue(autoBaseCapturedAt)) : null);
     if (autoBaseCapturedAt) {
       setManualValue(toDateTimeLocalValue(autoBaseCapturedAt));
       setAllowUnknown(false);
@@ -745,6 +759,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
     setManualMode(false);
     setManualValue("");
     setEndValue("");
+    setEndManualMode(false);
     setAllowUnknown(false);
 
     setOutcome("skunk");
@@ -836,6 +851,16 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
     };
   }
 
+  const catchTimeErrors = fishDrafts.map((fish) => {
+    if (!fish.caughtValue) return "";
+    const date = parseDateTimeLocalValue(fish.caughtValue);
+    if (!date) return "釣れた日時を正しく入力してね。";
+    if (date.getTime() > Date.now()) return "釣れた日時は現在までの日時を入力してね。";
+    if (baseCapturedAt && date.getTime() < Math.floor(baseCapturedAt.getTime() / 60_000) * 60_000) return "釣れた日時が開始より前です。開始日時か釣れた日時を確認してね。";
+    const end = parseDateTimeLocalValue(endValue);
+    if (end && date.getTime() > end.getTime()) return "釣れた日時が終了より後です。終了日時か釣れた日時を確認してね。";
+    return "";
+  });
   const timeRangeError = tripTimeRangeError(baseCapturedAt, endValue);
   const endedAtDate = parseDateTimeLocalValue(endValue);
   const durationMinutes = baseCapturedAt && endedAtDate && !timeRangeError
@@ -844,7 +869,9 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
 
   const canSave =
     !saving &&
+    photoReads === 0 &&
     !timeRangeError &&
+    (outcome !== "caught" || catchTimeErrors.every((error) => !error)) &&
     !envLoading &&
     !editLoading &&
     fishRowsOk &&
@@ -852,77 +879,95 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
     tripTackleDrafts.every((row) => row.lureType !== "") &&
     (baseCapturedAt != null || allowUnknown || photos.length === 0);
 
-  async function addFiles(files: FileList | File[]) {
+  async function addFiles(files: FileList | File[], role: PhotoRole = "other") {
     const list = Array.from(files).filter((file) =>
       file.type.startsWith("image/"),
     );
     if (list.length === 0) return;
 
-    const next: PhotoItem[] = [];
-    for (const file of list) {
-      const previewUrl = URL.createObjectURL(file);
-      let captured: Date | null = null;
-      let lat: number | null = null;
-      let lon: number | null = null;
-      let note = "";
-
-      try {
-        const dt = await exifr.parse(file, {
-          pick: ["DateTimeOriginal", "CreateDate", "latitude", "longitude"],
+    setPhotoReads((count) => count + 1);
+    try {
+      const next: PhotoItem[] = [];
+      for (const file of list) {
+        const previewUrl = URL.createObjectURL(file);
+        let captured: Date | null = null;
+        let lat: number | null = null;
+        let lon: number | null = null;
+        let note = "";
+  
+        try {
+          const dt = await exifr.parse(file, {
+            pick: ["DateTimeOriginal", "CreateDate", "latitude", "longitude"],
+          });
+  
+          const meta = dt as {
+            DateTimeOriginal?: Date;
+            CreateDate?: Date;
+            latitude?: number;
+            longitude?: number;
+          } | null;
+  
+          const date = meta?.DateTimeOriginal ?? meta?.CreateDate ?? null;
+          if (date instanceof Date && Number.isFinite(date.getTime())) captured = date;
+  
+          if (
+            typeof meta?.latitude === "number" &&
+            Number.isFinite(meta.latitude)
+          ) {
+            lat = meta.latitude;
+          }
+          if (
+            typeof meta?.longitude === "number" &&
+            Number.isFinite(meta.longitude)
+          ) {
+            lon = meta.longitude;
+          }
+  
+          if (!captured && lat == null && lon == null) {
+            note = "撮影日時が見つからなかったよ";
+          } else if (!captured) {
+            note = "撮影日時が見つからなかったよ";
+          }
+        } catch {
+          note = "EXIFの読み取りに失敗したよ";
+        }
+  
+        next.push({
+          role,
+          id: makeUid(),
+          isNew: true,
+          file,
+          previewUrl,
+          capturedAt: captured,
+          lat,
+          lon,
+          exifNote: note || undefined,
+          isCover: false,
         });
-
-        const meta = dt as {
-          DateTimeOriginal?: Date;
-          CreateDate?: Date;
-          latitude?: number;
-          longitude?: number;
-        } | null;
-
-        const date = meta?.DateTimeOriginal ?? meta?.CreateDate ?? null;
-        if (date instanceof Date) captured = date;
-
-        if (
-          typeof meta?.latitude === "number" &&
-          Number.isFinite(meta.latitude)
-        ) {
-          lat = meta.latitude;
-        }
-        if (
-          typeof meta?.longitude === "number" &&
-          Number.isFinite(meta.longitude)
-        ) {
-          lon = meta.longitude;
-        }
-
-        if (!captured && lat == null && lon == null) {
-          note = "撮影日時が見つからなかったよ";
-        } else if (!captured) {
-          note = "撮影日時が見つからなかったよ";
-        }
-      } catch {
-        note = "EXIFの読み取りに失敗したよ";
       }
-
-      next.push({
-        id: makeUid(),
-        isNew: true,
-        file,
-        previewUrl,
-        capturedAt: captured,
-        lat,
-        lon,
-        exifNote: note || undefined,
-        isCover: false,
+  
+      if (role === "catch") {
+        setOutcome("caught");
+        setFishDrafts((previous) => {
+          const rows = [...previous];
+          for (const photo of next) {
+            const index = rows.findIndex((row) => !row.species && !row.photoUid && !row.caughtValue);
+            const draft = index >= 0 ? rows[index] : { ...emptyFishDraft(), tackleDraftId: tripTackleDrafts[0]?.id ?? "" };
+            const linked = { ...draft, photoUid: photo.id, caughtValue: photo.capturedAt ? toDateTimeLocalValue(photo.capturedAt) : "" };
+            if (index >= 0) rows[index] = linked;
+            else rows.push(linked);
+          }
+          return rows;
+        });
+      }
+      setPhotos((prev) => {
+        const merged = [...prev, ...next];
+        if (!merged.some((p) => p.isCover) && merged.length > 0) {
+          merged[0]!.isCover = true;
+        }
+        return merged;
       });
-    }
-
-    setPhotos((prev) => {
-      const merged = [...prev, ...next];
-      if (!merged.some((p) => p.isCover) && merged.length > 0) {
-        merged[0]!.isCover = true;
-      }
-      return merged;
-    });
+    } finally { setPhotoReads((count) => count - 1); }
   }
 
   function handlePhotoDragOver(e: DragEvent<HTMLDivElement>) {
@@ -944,7 +989,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
     setIsPhotoDragActive(false);
   }
 
-  async function handlePhotoDrop(e: DragEvent<HTMLDivElement>) {
+  async function handlePhotoDrop(e: DragEvent<HTMLDivElement>, role: PhotoRole = "other") {
     e.preventDefault();
     e.stopPropagation();
     setIsPhotoDragActive(false);
@@ -954,14 +999,20 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
     );
     if (imageFiles.length === 0) return;
 
-    await addFiles(imageFiles);
+    await addFiles(imageFiles, role);
   }
 
   function setCover(id: string) {
     setPhotos((prev) => prev.map((p) => ({ ...p, isCover: p.id === id })));
   }
 
+  function changePhotoRole(id: string, role: PhotoRole) {
+    setPhotos((previous) => previous.map((photo) => photo.id === id ? { ...photo, role } : photo));
+    if (role !== "catch") setFishDrafts((previous) => previous.map((fish) => fish.photoUid === id ? { ...fish, photoUid: "" } : fish));
+  }
+
   function removePhoto(id: string) {
+    setFishDrafts((previous) => previous.map((fish) => fish.photoUid === id ? { ...fish, photoUid: "" } : fish));
     setPhotos((prev) => {
       const tgt = prev.find((p) => p.id === id);
       if (tgt) URL.revokeObjectURL(tgt.previewUrl);
@@ -1027,7 +1078,8 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
   }
 
   async function onSave() {
-    const rangeError = tripTimeRangeError(baseCapturedAt, endValue);
+    if (saving || photoReads > 0) return;
+    const rangeError = tripTimeRangeError(baseCapturedAt, endValue) || (outcome === "caught" ? catchTimeErrors.find(Boolean) : "");
     if (rangeError) { alert(rangeError); return; }
     for (const [label, raw, min, max] of [
       ["風速", windSpeed, 0, 200],
@@ -1115,6 +1167,25 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
         envFetchedAt,
       };
 
+      const catchTrends = new Map<string, TripFish["caughtTideTrend"]>();
+      if (outcome === "caught") {
+        await Promise.all(fishDrafts.map(async (fish) => {
+          const date = parseDateTimeLocalValue(fish.caughtValue);
+          if (!date) return;
+          const unchanged = fish.sourceId != null ? await db.tripFish.get(fish.sourceId) : null;
+          if (unchanged?.caughtAt === date.toISOString() && unchanged.caughtTideTrend) {
+            catchTrends.set(fish.id, unchanged.caughtTideTrend);
+            return;
+          }
+          try {
+            const { series } = await getTide736DayCached(FIXED_PORT.pc, FIXED_PORT.hc, date, { ttlDays: 30 });
+            const info = getTideAtTime(series as TidePoint[], date.getTime());
+            catchTrends.set(fish.id, info?.trend === "上げ" ? "up" : info?.trend === "下げ" ? "down" : info?.trend ? "flat" : "unknown");
+          } catch {
+            catchTrends.set(fish.id, "unknown");
+          }
+        }));
+      }
       const savedPhotoTargets: SavedPhotoUploadTarget[] = [];
 
       await db.transaction(
@@ -1187,7 +1258,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
           const ordered = [...photos].map((p, idx) => ({ p, idx }));
           for (const { p, idx } of ordered) {
             const row: TripPhoto = {
-              uid: p.sourceUid ?? makeUid(),
+              uid: p.sourceUid ?? p.id,
               tripUid,
               tripId,
               createdAt: nowIso,
@@ -1196,6 +1267,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
               syncStatus: "pending",
               remoteKey: p.remoteKey ?? null,
 
+              role: p.role,
               capturedAt: p.capturedAt ? p.capturedAt.toISOString() : null,
               photoName: p.file.name,
               photoType: p.file.type || "image/*",
@@ -1230,6 +1302,9 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
                 deletedAt: null,
                 syncStatus: "pending",
 
+                caughtAt: parseDateTimeLocalValue(f.caughtValue)?.toISOString() ?? null,
+                catchPhotoUid: f.photoUid || null,
+                caughtTideTrend: catchTrends.get(f.id) ?? "unknown",
                 species: f.species.trim(),
                 sizeCm:
                   f.sizeCm.trim() === "" ? null : parsePositiveNumber(f.sizeCm),
@@ -1240,7 +1315,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
                   )?.lureType || null,
                 tripTackleUid:
                   setupUidByDraftId.get(f.tackleDraftId) ?? null,
-                timeBand: band,
+                timeBand: catchTimeBand(parseDateTimeLocalValue(f.caughtValue)?.toISOString()),
               };
               if (f.sourceId != null) {
                 await db.tripFish.update(f.sourceId, fish);
@@ -1358,8 +1433,16 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
         }
 
         .record-photo-dropzone {
-          display: none;
+          display: block;
+          padding: 12px;
+          border: 1px dashed rgba(255,255,255,.3);
+          border-radius: 14px;
+          background: rgba(0,0,0,.16);
+          box-sizing: border-box;
+          font-size: 12px;
         }
+        .record-photo-dropzone input { max-width: 100%; min-width: 0; }
+
 
         .record-fish-grid {
           display: grid;
@@ -1493,55 +1576,26 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
               </div>
 
               <div style={{ display: "grid", gap: 10 }}>
-                <label
-                  style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
-                >
-                  写真を選ぶ（複数）
-                  <div style={{ marginTop: 6 }}>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={async (e) => {
-                        if (!e.target.files || e.target.files.length === 0)
-                          return;
-                        await addFiles(e.target.files);
-                        e.currentTarget.value = "";
-                      }}
-                    />
+                {PHOTO_ROLES.filter((item) => item.value !== "other").map(({ value: role, label }) => (
+                  <div key={role} className={`record-photo-dropzone${isPhotoDragActive ? " is-drag-active" : ""}`}
+                    onDragEnter={handlePhotoDragOver} onDragOver={handlePhotoDragOver} onDragLeave={handlePhotoDragLeave}
+                    onDrop={(event) => { void handlePhotoDrop(event, role); }}
+                    style={{ minHeight: 96, display: "block", textAlign: "left" }}>
+                    <label style={{ display: "grid", gap: 8 }}>
+                      <strong>{label}の写真（{photos.filter((photo) => photo.role === role).length}枚）</strong>
+                      <span style={{ fontSize: 11, opacity: 0.75 }}>
+                        {role === "start" ? "最初の撮影日時を開始に使用" : role === "end" ? "最後の撮影日時を終了に使用" : "写真ごとに魚の入力欄を作成。日時はあとから補正できます"}
+                      </span>
+                      <input type="file" accept="image/*" multiple disabled={saving} onChange={async (event) => {
+                        const input = event.currentTarget;
+                        const files = Array.from(input.files ?? []);
+                        input.value = "";
+                        await addFiles(files, role);
+                      }} />
+                    </label>
                   </div>
-                </label>
-
-                <div
-                  className={`record-photo-dropzone${isPhotoDragActive ? " is-drag-active" : ""}`}
-                  onDragEnter={handlePhotoDragOver}
-                  onDragOver={handlePhotoDragOver}
-                  onDragLeave={handlePhotoDragLeave}
-                  onDrop={(e) => {
-                    void handlePhotoDrop(e);
-                  }}
-                  aria-label="写真のドロップゾーン"
-                >
-                  <div>
-                    <div style={{ fontSize: 24, marginBottom: 4 }}>📥</div>
-                    <strong>
-                      {isPhotoDragActive
-                        ? "ここにドロップ！"
-                        : "写真をここにドラッグ＆ドロップ"}
-                    </strong>
-                    <div
-                      style={{
-                        marginTop: 3,
-                        fontSize: 11,
-                        color: isPhotoDragActive
-                          ? "rgba(255,255,255,0.86)"
-                          : "rgba(255,255,255,0.50)",
-                      }}
-                    >
-                      複数枚まとめて追加できるよ
-                    </div>
-                  </div>
-                </div>
+                ))}
+                <p style={{ margin: 0, fontSize: 11, opacity: 0.75 }}>EXIFがない写真は日時を手入力してね。同じ魚の別カットは「その他」に変更し、重複した魚の入力欄を削除できます。</p>
 
                 {photos.length === 0 ? (
                   <div
@@ -1553,7 +1607,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
                   <>
                     <div style={gridStyle}>
                       {photos.map((p) => (
-                        <div key={p.id} style={thumbStyle}>
+                        <div key={p.id}><div style={thumbStyle}>
                           <img
                             src={p.previewUrl}
                             alt="thumb"
@@ -1620,13 +1674,18 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
                             {p.exifNote ? ` / ${p.exifNote}` : ""}
                           </div>
                         </div>
+                          <select aria-label="写真の用途" value={p.role} onChange={(event) => changePhotoRole(p.id, event.target.value as PhotoRole)}
+                            style={{ ...selectStyle, width: "100%", marginTop: 6 }}>
+                            {PHOTO_ROLES.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
+                          </select>
+                        </div>
                       ))}
                     </div>
 
                     <div
                       style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}
                     >
-                      基準時刻（最古EXIF）:{" "}
+                      開始写真のEXIF:{" "}
                       {autoBaseCapturedAt
                         ? autoBaseCapturedAt.toLocaleString()
                         : "（なし）"}
@@ -1664,7 +1723,7 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
                     <input
                       type="datetime-local"
                       value={endValue}
-                      onChange={(event) => setEndValue(event.target.value)}
+                      onChange={(event) => { setEndManualMode(true); setEndValue(event.target.value); }}
                       aria-invalid={!!timeRangeError}
                       aria-describedby={timeRangeError ? "trip-time-error" : undefined}
                       style={{ ...fieldStyle, width: "100%", minWidth: 0, boxSizing: "border-box" }}
@@ -1680,19 +1739,23 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
                     setAllowUnknown(false);
                   }}>開始を今にする</button>
                   <button type="button" className="glass" style={primaryBtn}
-                    onClick={() => setEndValue(toDateTimeLocalValue(new Date()))}>終了を今にする</button>
+                    onClick={() => { setEndManualMode(true); setEndValue(toDateTimeLocalValue(new Date())); }}>終了を今にする</button>
                   {endValue && <button type="button" className="glass" style={primaryBtn}
-                    onClick={() => setEndValue("")}>終了日時を空欄にする</button>}
+                    onClick={() => { setEndManualMode(true); setEndValue(""); }}>終了日時を空欄にする</button>}
                   {autoBaseCapturedAt && <button type="button" className="glass" style={primaryBtn}
                     onClick={() => {
                       setManualMode(false);
-                      setBaseCapturedAt(autoBaseCapturedAt);
+                      setBaseCapturedAt(autoBaseCapturedAt ? parseDateTimeLocalValue(toDateTimeLocalValue(autoBaseCapturedAt)) : null);
                       setManualValue(toDateTimeLocalValue(autoBaseCapturedAt));
                       setAllowUnknown(false);
-                    }}>写真の日時を使う</button>}
+                    }}>開始写真の日時を使う</button>}
                 </div>
+                {autoEndCapturedAt && <button type="button" style={primaryBtn} onClick={() => {
+                  setEndManualMode(false);
+                  setEndValue(toDateTimeLocalValue(autoEndCapturedAt));
+                }}>終了写真の日時を使う</button>}
                 <p style={{ fontSize: 12, lineHeight: 1.7, opacity: 0.75, margin: "10px 0 0" }}>
-                  写真の日時がある場合は開始日時の候補として入ります。実際の開始時刻に直してね。
+                  開始・終了の写真からそれぞれの日時を読み取ります。必要なら実際の時刻に直してね。
                   開始日時をもとに潮・天気と時間帯を保存します。終了日時は空欄でも保存できます。
                 </p>
                 {durationMinutes != null && <div style={{ marginTop: 10, fontWeight: 800 }}>
@@ -2143,6 +2206,27 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
                               )}
                             </div>
 
+                            <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+                              <label style={{ display: "grid", gap: 6 }}>
+                                釣果写真
+                                <select value={f.photoUid} style={selectStyle} onChange={(event) => {
+                                  const photo = photos.find((photo) => photo.id === event.target.value);
+                                  updateFishDraft(f.id, { photoUid: photo?.id ?? "", caughtValue: photo ? (photo.capturedAt ? toDateTimeLocalValue(photo.capturedAt) : "") : f.caughtValue });
+                                }}>
+                                  <option value="">写真なし・手入力</option>
+                                  {photos.filter((photo) => photo.role === "catch").map((photo, i) => (
+                                    <option key={photo.id} value={photo.id}>釣果写真 {i + 1}・{photo.file.name}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label style={{ display: "grid", gap: 6 }}>
+                                釣れた日時（任意）
+                                <input type="datetime-local" value={f.caughtValue} style={fieldStyle}
+                                  onChange={(event) => updateFishDraft(f.id, { caughtValue: event.target.value })} />
+                              </label>
+                              <small style={{ opacity: 0.7 }}>分からない場合は空欄で保存できます。開始日時からの推定はせず、釣れた時刻不明として扱います。</small>
+                              {catchTimeErrors[index] && <div role="alert" style={{ color: "#ffb4c6" }}>{catchTimeErrors[index]}</div>}
+                            </div>
                             <div className="record-fish-grid">
                               <label
                                 style={{

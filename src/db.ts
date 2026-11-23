@@ -149,6 +149,9 @@ export type TripRecord = {
 };
 
 export type TripFish = {
+  caughtAt?: string | null;
+  catchPhotoUid?: string | null;
+  caughtTideTrend?: TideTrend | null;
   id?: number;
 
   uid: string;
@@ -191,6 +194,7 @@ export type TripTackle = {
 };
 
 export type TripPhoto = {
+  role?: "start" | "catch" | "end" | "other";
   id?: number;
 
   uid: string;

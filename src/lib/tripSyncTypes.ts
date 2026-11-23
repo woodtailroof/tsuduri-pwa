@@ -53,6 +53,9 @@ export type TripSyncRecord = {
 };
 
 export type TripSyncFish = {
+  caughtAt?: string | null;
+  catchPhotoUid?: string | null;
+  caughtTideTrend?: string | null;
   uid: string;
   tripUid: string;
 
@@ -89,6 +92,7 @@ export type TripSyncTripTackle = {
 };
 
 export type TripSyncPhoto = {
+  role?: "start" | "catch" | "end" | "other";
   uid: string;
   tripUid: string;
 

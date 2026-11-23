@@ -183,6 +183,9 @@ function serializeFish(row: TripFish): TripSyncFish {
     syncStatus: row.syncStatus,
 
     species: row.species,
+    caughtAt: row.caughtAt ?? null,
+    catchPhotoUid: row.catchPhotoUid ?? null,
+    caughtTideTrend: row.caughtTideTrend ?? null,
     sizeCm: row.sizeCm ?? null,
     count: row.count ?? null,
     lureType: row.lureType ?? null,
@@ -202,6 +205,7 @@ function serializePhoto(row: TripPhoto): TripSyncPhoto {
     syncStatus: row.syncStatus,
 
     capturedAt: row.capturedAt ?? null,
+    role: row.role ?? "other",
     photoName: row.photoName ?? null,
     photoType: row.photoType,
     remoteKey: row.remoteKey ?? null,
@@ -536,6 +540,7 @@ async function upsertPulledPhotos(rows: TripSyncPhoto[]): Promise<number> {
           remoteKey: remote.remoteKey ?? null,
 
           capturedAt: remote.capturedAt ?? null,
+          role: remote.role ?? "other",
           photoName: remote.photoName ?? null,
           photoType: remote.photoType || "application/octet-stream",
           photoBlob: new Blob([], {
@@ -570,6 +575,7 @@ async function upsertPulledPhotos(rows: TripSyncPhoto[]): Promise<number> {
           remoteKey: remote.remoteKey ?? null,
 
           capturedAt: remote.capturedAt ?? null,
+          role: remote.role ?? "other",
           photoName: remote.photoName ?? null,
           photoType: remote.photoType || local.photoType,
           photoBlob: local.photoBlob,
