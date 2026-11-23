@@ -541,8 +541,8 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
           });
 
         const started = new Date(trip.startedAt);
-        setEndManualMode(true);
         const ended = trip.endedAt ? new Date(trip.endedAt) : null;
+        setEndManualMode(!!ended && Number.isFinite(ended.getTime()));
         setEndValue(ended && Number.isFinite(ended.getTime()) ? toDateTimeLocalValue(ended) : "");
         setEditingTrip(trip);
         setPhotos(loadedPhotos);
@@ -946,6 +946,10 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
         });
       }
   
+      // Explicitly adding an end photo opts back into its EXIF timestamp,
+      // including when editing a trip with an existing/manual end time.
+      if (role === "end" && photoEventDate(next, "end")) setEndManualMode(false);
+
       if (role === "catch") {
         setOutcome("caught");
         setFishDrafts((previous) => {
@@ -1007,6 +1011,10 @@ export default function Record({ back, onSaved, editTripId = null }: Props) {
   }
 
   function changePhotoRole(id: string, role: PhotoRole) {
+    const photo = photos.find((item) => item.id === id);
+    if (role === "end" && photo && photoEventDate([{ ...photo, role }], "end")) {
+      setEndManualMode(false);
+    }
     setPhotos((previous) => previous.map((photo) => photo.id === id ? { ...photo, role } : photo));
     if (role !== "catch") setFishDrafts((previous) => previous.map((fish) => fish.photoUid === id ? { ...fish, photoUid: "" } : fish));
   }
