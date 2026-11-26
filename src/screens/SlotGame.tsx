@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import PageShell from '../components/PageShell';
 import { drawSlot, initialWallet, readSlotWallet, REEL_STRIP, SLOT_SYMBOLS, type SlotRound } from '../lib/slotGame';
 import './SlotGame.css';
 const KEY = 'tsuduri_slot_prototype_v1';
 function loadWallet() { try { return readSlotWallet(localStorage.getItem(KEY)); } catch { return initialWallet(); } }
-function Reel({ index, spinning, symbol, stopped, stop }: {index:number;spinning:boolean;symbol:number;stopped:boolean;stop:()=>void}) {
+export function Reel({ index, spinning, symbol, stopped, stop, onSettled }: {index:number;spinning:boolean;symbol:number;stopped:boolean;stop:()=>void;onSettled:(index:number)=>void}) {
   const strip = useRef<HTMLDivElement>(null);
-  const position = useRef(0);
+  const position = useRef(REEL_STRIP.indexOf(1));
+  const cycle = REEL_STRIP.length;
+  const offset = (value:number) => cycle + ((value % cycle) + cycle) % cycle;
   useEffect(()=>{
     if(!spinning) return;
     let frame = 0, previous = performance.now(), stopping = false, from = 0, target = 0, since = 0;
@@ -15,20 +17,22 @@ function Reel({ index, spinning, symbol, stopped, stop }: {index:number;spinning
       if(stopped && !stopping){
         stopping=true; since=now; from=position.current;
         const match=REEL_STRIP.indexOf(symbol);
-        const cycle=REEL_STRIP.length;
-        target=Math.ceil((from+2-match)/cycle)*cycle+match;
+        target=Math.floor((from-2-match)/cycle)*cycle+match;
       }
-      if(stopping){const progress=Math.min(1,(now-since)/260);position.current=from+(target-from)*(1-Math.pow(1-progress,3));}
-      else position.current+=step*.018;
-      if(strip.current) strip.current.style.transform=`translateY(${-(position.current%REEL_STRIP.length)*100/((REEL_STRIP.length*2)+3)}%)`;
+      const progress=stopping?Math.min(1,(now-since)/260):0;
+      if(stopping)position.current=from+(target-from)*(1-Math.pow(1-progress,3));
+      else position.current-=step*.018;
+      const visibleOffset=cycle+((position.current%cycle)+cycle)%cycle;
+      if(strip.current) strip.current.style.transform=`translateY(${-visibleOffset*100/(cycle*2+3)}%)`;
+      if(stopping && progress===1){onSettled(index);return;}
       frame=requestAnimationFrame(loop);
     };
     frame=requestAnimationFrame(loop);return()=>cancelAnimationFrame(frame);
-  },[spinning,stopped,symbol]);
-  // Ref position is retained between effect restarts; target symbol is the center row.
-  const cells=[REEL_STRIP[REEL_STRIP.length-1],...REEL_STRIP,...REEL_STRIP,...REEL_STRIP.slice(0,2)];
+  },[spinning,stopped,symbol,cycle,index,onSettled]);
+  // Keep the same strip and exact position after stopping: all three visible rows stay put.
+  const cells=[REEL_STRIP[cycle-1],...REEL_STRIP,...REEL_STRIP,...REEL_STRIP.slice(0,2)];
   return <div className="ty-reel-column"><div className={`ty-reel ${spinning&&!stopped?'is-spinning':''}`} aria-label={`${index+1}リール ${spinning&&!stopped?'回転中':SLOT_SYMBOLS[symbol].label}`}>
-    {spinning?<div className="ty-strip" ref={strip}>{cells.map((s,i)=><div className={`ty-symbol symbol-${s}`} key={i}>{SLOT_SYMBOLS[s].glyph}</div>)}</div>:<div className="ty-static">{[(symbol+5)%6,symbol,(symbol+1)%6].map((s,i)=><div className={`ty-symbol symbol-${s}`} key={i}>{SLOT_SYMBOLS[s].glyph}</div>)}</div>}
+    <div className="ty-strip" ref={strip} style={{transform:`translateY(${-offset(position.current)*100/cells.length}%)`}}>{cells.map((s,i)=><div className={`ty-symbol symbol-${s}`} key={i}>{SLOT_SYMBOLS[s].glyph}</div>)}</div>
     <div className="ty-reel-shade"/></div><button className="ty-stop" onClick={stop} disabled={!spinning||stopped} aria-label={`${index+1}リール停止`}><span/>STOP {index+1}</button></div>;
 }
 export default function SlotGame({back}:{back:()=>void}) {
@@ -38,12 +42,19 @@ export default function SlotGame({back}:{back:()=>void}) {
   const [stopped,setStopped]=useState([false,false,false]);
   const [tab,setTab]=useState(false);
   const busy=useRef(false), stops=useRef([false,false,false]), pending=useRef<SlotRound|null>(null);
-  const finishTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
-  useEffect(()=>()=>{if(finishTimer.current)clearTimeout(finishTimer.current)},[]);
+  const settled=useRef([false,false,false]);
+  const onSettled=useCallback((index:number)=>{
+    if(!busy.current||settled.current[index])return;
+    settled.current[index]=true;
+    if(settled.current.every(Boolean)){
+      const result=pending.current;if(!result)return;
+      setWallet(result.next);setRound(result);setSpinning(false);busy.current=false;
+    }
+  },[]);
   function spin(demo=false){
     if(busy.current||(!wallet.bonus&&wallet.credit<3))return;
     const result=drawSlot(wallet,Math.random,demo);
-    busy.current=true;pending.current=result;stops.current=[false,false,false];
+    busy.current=true;pending.current=result;stops.current=[false,false,false];settled.current=[false,false,false];
     // Save the settled result before animation, so closing cannot reroll a spin.
     try{localStorage.setItem(KEY,JSON.stringify(result.next))}catch{/* Private storage may be unavailable. */}
     setRound(null);setStopped([...stops.current]);setSpinning(true);
@@ -51,10 +62,7 @@ export default function SlotGame({back}:{back:()=>void}) {
   function stop(index:number){
     if(!busy.current||stops.current[index])return;
     stops.current[index]=true;setStopped([...stops.current]);
-    if(stops.current.every(Boolean))finishTimer.current=setTimeout(()=>{
-      const result=pending.current;if(!result)return;
-      setWallet(result.next);setRound(result);setSpinning(false);busy.current=false;
-    },340);
+
   }
   function reset(){if(busy.current)return;const next=initialWallet();setWallet(next);setRound(null);try{localStorage.setItem(KEY,JSON.stringify(next))}catch{/* optional storage */}}
   const big=!!round?.big;
@@ -66,7 +74,7 @@ export default function SlotGame({back}:{back:()=>void}) {
         <div className="ty-lcd-message" aria-live="polite"><small>{spinning?'狙え、最高の一投。':big?'SPECIAL FISHING BONUS':wallet.bonus?'FISHING BONUS':'釣嫁たちと、大物を狙おう。'}</small><strong>{spinning?'REEL CHANCE':round?.title||'さあ、釣りに行こう！'}</strong>{!spinning&&round&&<em>{round.payout?`＋${round.payout} MEDALS`: 'NEXT CAST'}</em>}</div>
         <div className="ty-talk"><b>つづり</b><span>{spinning?'停止ボタンでリールを止めてね！':round?.line||'ひろっち、準備できた？ レバーONだよっ♪'}</span></div>
       </div>
-      <div className="ty-reel-frame"><div className="ty-payline" aria-hidden="true"/><div className="ty-reels">{[0,1,2].map(i=><Reel key={i} index={i} spinning={spinning} symbol={pending.current?.symbols[i]??1} stopped={stopped[i]} stop={()=>stop(i)}/>)}</div></div>
+      <div className="ty-reel-frame"><div className="ty-payline" aria-hidden="true"/><div className="ty-reels">{[0,1,2].map(i=><Reel key={i} index={i} spinning={spinning} symbol={pending.current?.symbols[i]??1} stopped={stopped[i]} stop={()=>stop(i)} onSettled={onSettled}/>)}</div></div>
       <div className="ty-console"><div className="ty-meter"><small>CREDIT</small><strong>{wallet.credit.toLocaleString()}</strong></div><button className="ty-lever" onClick={()=>spin()} disabled={spinning||(!wallet.bonus&&wallet.credit<3)}><span>●</span>{spinning?'回転中':wallet.bonus?'BONUS START':'LEVER ON'}<small>{wallet.bonus?'FREE SPIN':'3 MEDALS'}</small></button><div className="ty-meter"><small>WIN</small><strong>{round?.payout??0}</strong></div></div>
       <div className="ty-footer"><span>✦ TSURIYOME AMUSEMENT ✦</span><span>中央1ライン有効</span></div>
     </section>
