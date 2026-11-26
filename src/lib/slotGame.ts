@@ -1,3 +1,4 @@
+import { initialVisual, validVisual, type SlotVisual } from './slotPresentation';
 // Original A-type game. Public manufacturer layouts inform the concept, not proprietary tables.
 export const SLOT_SYMBOLS = [
   { id:'seven', glyph:'7', label:'釣嫁セブン', color:'#ff70b9' },
@@ -9,7 +10,7 @@ export const SLOT_SYMBOLS = [
 ] as const;
 // Three physical 21-stop strips, top to bottom. Replays are spaced every 3 stops.
 export const REEL_STRIPS: readonly (readonly number[])[] = [
-  [4,2,1,4,2,0,4,2,3,4,2,4,4,2,5,4,2,1,4,2,0],
+  [0,4,2,4,1,2,3,5,4,2,4,1,2,3,0,4,2,4,1,2,3],
   [4,2,0,4,2,1,4,2,5,4,2,1,4,2,0,4,2,1,4,2,1],
   [4,1,2,4,5,2,4,0,2,4,1,2,4,0,2,4,1,2,4,1,2],
 ];
@@ -29,7 +30,7 @@ export type SlotState = {
 export type Award = { role:Exclude<Role,'miss'>; line:number; payout:number };
 export type Board = { positions:Positions; awards:Award[]; payout:number; bonus:Bonus|null; bonusLines:number[] };
 export type Spin = { role:Role; stops:Stops; before:SlotState; cost:number; announced:boolean };
-export type Session = { state:SlotState; spin:Spin|null; savedAt:number };
+export type Session = { state:SlotState; spin:Spin|null; savedAt:number; layoutVersion:3; visual:SlotVisual };
 export type Result = { title:string; message:string; payout:number; replay:boolean; bonusStarted:Bonus|null; bonusEnded:Bonus|null; board:Board };
 export function initialState():SlotState { return {credit:300,spins:0,normalSpins:0,bigCount:0,regCount:0,best:300,spent:0,paid:0,sinceBonus:0,pending:null,active:null,bonusPaid:0,replay:false,positions:[0,0,0],history:[0],bonusLog:[]}; }
 export const modulo=(n:number,length=21)=>((n%length)+length)%length;
@@ -91,7 +92,7 @@ export function beginSpin(state:SlotState,random:()=>number=Math.random,demo:Bon
   if(demo&&!state.active){pending=demo;role='miss';}
   before.pending=pending;
   const next={...before,credit:state.credit-cost,spent:state.spent+cost,replay:false};
-  return {state:next,spin:{before,role,cost,stops:[null,null,null],announced:!!pending},savedAt:Date.now()};
+  return {layoutVersion:3,visual:initialVisual(),state:next,spin:{before,role,cost,stops:[null,null,null],announced:!!pending},savedAt:Date.now()};
 }
 // Each stop may advance at most four whole symbols from the next available boundary.
 // Keep only globally legal completions, then prefer the drawn role over a miss.
@@ -146,9 +147,9 @@ export function settleSpin(session:Session):{session:Session;result:Result} {
   if(state.pending)message=`${state.pending==='BIG'?'7・7・7':'7・7・BAR'}を狙ってね！ 揃えるまで当選は持ち越すよ。`;
   state.best=Math.max(state.best,state.credit);
   state.history=[...state.history,state.paid-state.spent].slice(-160);
-  return {session:{state,spin:null,savedAt:Date.now()},result:{title,message,payout:board.payout,replay,bonusStarted,bonusEnded,board}};
+  return {session:{layoutVersion:3,visual:session.visual,state,spin:null,savedAt:Date.now()},result:{title,message,payout:board.payout,replay,bonusStarted,bonusEnded,board}};
 }
-export function initialSession():Session {return {state:initialState(),spin:null,savedAt:Date.now()};}
+export function initialSession():Session {return {layoutVersion:3,visual:initialVisual(),state:initialState(),spin:null,savedAt:Date.now()};}
 export function readSession(value:string|null):Session {
   try {
     const v=JSON.parse(value||'null') as Session;const s=v?.state;
@@ -161,6 +162,13 @@ export function readSession(value:string|null):Session {
     if(v.spin){const p=v.spin;if(!['miss','replay','bell','fish','cherry'].includes(p.role)||!Array.isArray(p.stops)||p.stops.length!==3||!p.stops.every(n=>n===null||(integer(n)&&n<21))||!p.before||!bonus(p.before.pending)||!bonus(p.before.active)||![0,1,3].includes(p.cost))throw 0;
       // Reconstruct the minimum trusted pre-spin fields used by stop validation.
       p.before={...s,pending:s.pending,active:s.active};
+    }
+    if(!validVisual(v.visual))v.visual=initialVisual();
+    if(v.layoutVersion!==3){
+      // Changing the physical strip invalidates old partial stops. Refund only its charged bet,
+      // preserving the pending bonus, wallet totals and all completed game history.
+      if(v.spin){s.credit+=v.spin.cost;s.spent=Math.max(0,s.spent-v.spin.cost);s.replay=v.spin.cost===0&&!s.active;v.spin=null;}
+      s.positions=[0,0,0];v.layoutVersion=3;
     }
     return v;
   }catch{return initialSession();}

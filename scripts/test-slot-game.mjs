@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import ts from 'typescript';
-const code=ts.transpileModule(fs.readFileSync('src/lib/slotGame.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2022}}).outputText;
+import { build } from 'esbuild';
+const code=(await build({entryPoints:['src/lib/slotGame.ts'],bundle:true,write:false,platform:'node',format:'esm'})).outputFiles[0].text;
 const e=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
 let seed=29;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296};
 const orders=[[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]];
@@ -51,6 +50,15 @@ for(const bonus of ['BIG','REG']){
  }
  assert.equal(active.state.active,null);assert.ok(active.state.bonusPaid>=(bonus==='BIG'?e.BIG_LIMIT:e.REG_LIMIT));
 }
+// Aim either left bonus mark around the middle: pull in cherry/watermelon equivalents.
+for(const anchor of [0,7,14])for(const role of ['cherry','fish']){
+ let aim=e.beginSpin(e.initialState(),()=>.99);aim.spin.role=role;
+ aim=e.stopReel(aim,0,anchor+.5);assert.ok(e.visibleSymbols(0,aim.spin.stops[0]).includes(role==='cherry'?3:1),`left bonus aim follows ${role} at ${anchor}`);
+}
+// Layout upgrade cancels only the partial old-layout game and returns its charged bet.
+const old=e.beginSpin({...e.initialState(),pending:'BIG'},()=>.99);delete old.layoutVersion;delete old.visual;
+const resumed=e.readSession(JSON.stringify(old));assert.equal(resumed.spin,null);assert.equal(resumed.state.credit,300);assert.equal(resumed.state.spent,0);assert.equal(resumed.state.pending,'BIG');assert.equal(resumed.layoutVersion,3);
+assert.deepEqual(e.readSession(JSON.stringify(resumed)).state,resumed.state,'refund is idempotent');
 assert.throws(()=>e.beginSpin({...e.initialState(),credit:2}));
 assert.deepEqual(e.readSession('broken').state,e.initialState());assert.deepEqual(e.readSession('{"state":{}}').state,e.initialState());
 console.log(`PASS: 9,261 boards, 5 lines, 6 stop orders, ${settled} simulated games, BIG ${bb}, REG ${rb}, replays ${replays}, misses ${misses}, save/resume, four-symbol slips (${((performance.now()-begin)/1000).toFixed(1)}s)`);
