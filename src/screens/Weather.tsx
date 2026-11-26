@@ -1448,7 +1448,7 @@ export default function Weather({ back, isActive = true }: Props) {
             >
               波評価：±3時間の波高×周期・釣り場別の目安 ／ 広域予報：沖合・後刻の参考 ／ 波浪：Open-Meteo
             </div>
-            <RunoffCard risk={runoffRisk} loading={isActive && (!rainState || rainState.pointId!==selectedPoint.id || rainState.day!==riskDay || rainState.loading)} />
+            <RunoffCard risk={runoffRisk} isMobile={isMobile} loading={isActive && (!rainState || rainState.pointId!==selectedPoint.id || rainState.day!==riskDay || rainState.loading)} />
           </div>
 
           <div
