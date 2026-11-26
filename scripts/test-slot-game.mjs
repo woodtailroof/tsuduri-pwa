@@ -1,18 +1,56 @@
 import assert from 'node:assert/strict';
-import ts from 'typescript';
 import fs from 'node:fs';
-const code = ts.transpileModule(fs.readFileSync('src/lib/slotGame.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2022}}).outputText;
-const {drawSlot,initialWallet,readSlotWallet,REEL_STRIP}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
-for (const [r,payout,symbols] of [[0,30,[0,0,0]],[.1,12,[2,2,2]],[.3,8,[1,1,1]],[.4,2,[3,4,3]],[.99,0,null]]) {
- const round=drawSlot(initialWallet(),()=>r);assert.equal(round.payout,payout);assert.equal(round.next.credit,297+payout);
- if(symbols)assert.deepEqual(round.symbols,symbols);else assert.notEqual(round.symbols[0],round.symbols[1]);
- for(const symbol of round.symbols)assert.ok(REEL_STRIP.includes(symbol));
+import ts from 'typescript';
+const code=ts.transpileModule(fs.readFileSync('src/lib/slotGame.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2022}}).outputText;
+const e=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+let seed=29;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296};
+const orders=[[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]];
+assert.equal(e.REEL_STRIPS.length,3);for(const strip of e.REEL_STRIPS)assert.equal(strip.length,21);
+assert.notDeepEqual(e.REEL_STRIPS[0],e.REEL_STRIPS[1]);
+let lines=new Set(),bonusTypes=new Set();
+for(let a=0;a<21;a++)for(let b=0;b<21;b++)for(let c=0;c<21;c++){
+ const board=e.evaluateBoard([a,b,c]);assert.ok(board.payout<=15);board.awards.forEach(v=>lines.add(v.line));if(board.bonus)bonusTypes.add(board.bonus);
+ assert.ok(board.awards.filter(v=>v.role==='cherry').length<=1);
 }
-let w=initialWallet();let bonus=drawSlot(w,()=>.99,true);assert.equal(bonus.next.bonus,8);
-let free=drawSlot(bonus.next,()=>.99);assert.equal(free.next.credit,bonus.next.credit);assert.equal(free.next.bonus,7);
-let extra=drawSlot(free.next,()=>0);assert.equal(extra.next.bonus,14);
-assert.throws(()=>drawSlot({...w,credit:2},()=>0));
-assert.deepEqual(readSlotWallet('{"credit":-5}'),initialWallet());assert.deepEqual(readSlotWallet('broken'),initialWallet());
-let seed=23;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296};
-for(let i=0;i<100000;i++){if(w.credit<3&&!w.bonus)w=initialWallet();const round=drawSlot(w,random);assert.equal(round.next.spins,w.spins+1);assert.ok(round.next.credit>=0);assert.ok(round.next.bonus>=0);assert.ok(round.next.best>=round.next.credit);w=round.next}
-console.log('PASS: payouts, free spins, bonus extensions, insufficient credits, saved-data validation, 100,000 simulated games');
+assert.equal(lines.size,5);assert.deepEqual([...bonusTypes].sort(),['BIG','REG']);
+let s=e.initialSession(),settled=0,bb=0,rb=0,replays=0,misses=0;const begin=performance.now();
+for(let game=0;game<20000;game++){
+ const cost=s.state.active?1:s.state.replay?0:3;
+ if(s.state.credit<cost)s=e.initialSession();
+ const before=s.state;s=e.beginSpin(s.state,random);assert.equal(s.state.credit,before.credit-s.spin.cost);
+ // A saved spin retains its role and stops; duplicate button input does nothing.
+ const persisted=e.readSession(JSON.stringify(s));assert.deepEqual(persisted.spin.stops,s.spin.stops);assert.equal(persisted.spin.role,s.spin.role);
+ for(const reel of orders[game%6]){
+   const current=random()*420-210;const next=e.stopReel(s,reel,current);const p=next.spin.stops[reel];
+   assert.ok(e.modulo(Math.floor(current)-p)<=4,'maximum four-symbol slip');
+   assert.equal(e.stopReel(next,reel,current),next);s=next;
+ }
+ assert.ok(e.legalBoard(e.evaluateBoard(s.spin.stops),s.spin));
+ const done=e.settleSpin(s);assert.equal(done.session.state.credit,s.state.credit+done.result.payout);
+ if(done.result.replay){replays++;assert.equal(e.beginSpin(done.session.state,()=>.99).spin.cost,0)}
+ if(s.state.pending&&!done.result.bonusStarted)assert.equal(done.session.state.pending,s.state.pending);
+ if(done.result.bonusStarted==='BIG')bb++;if(done.result.bonusStarted==='REG')rb++;
+ if(done.result.bonusEnded)assert.ok(done.session.state.bonusPaid>=(done.result.bonusEnded==='BIG'?e.BIG_LIMIT:e.REG_LIMIT));
+ if(s.spin.role!=='miss'&&!done.result.board.awards.length)misses++;
+ assert.equal(done.session.state.spins,before.spins+1);assert.equal(done.session.state.normalSpins,before.normalSpins+(before.active?0:1));
+ s=done.session;settled++;
+}
+assert.ok(bb>5&&rb>5&&replays>100&&misses>10);
+for(const bonus of ['BIG','REG']){
+ let test=e.beginSpin(e.initialState(),()=>.99,bonus),target;
+ for(let a=0;a<21&&!target;a++)for(let b=0;b<21&&!target;b++)for(let c=0;c<21;c++){
+   const board=e.evaluateBoard([a,b,c]);if(board.bonus===bonus&&e.legalBoard(board,test.spin)){target=[a,b,c];break;}
+ }
+ assert.ok(target);
+ for(const reel of [0,1,2])test=e.stopReel(test,reel,target[reel]+.5);
+ const done=e.settleSpin(test);assert.equal(done.result.bonusStarted,bonus);assert.equal(done.session.state.pending,null);assert.equal(done.session.state.active,bonus);
+ let active=done.session;
+ for(let i=0;i<1000&&active.state.active;i++){
+   active=e.beginSpin(active.state,random);for(const r of orders[i%6])active=e.stopReel(active,r,random()*21);
+   active=e.settleSpin(active).session;
+ }
+ assert.equal(active.state.active,null);assert.ok(active.state.bonusPaid>=(bonus==='BIG'?e.BIG_LIMIT:e.REG_LIMIT));
+}
+assert.throws(()=>e.beginSpin({...e.initialState(),credit:2}));
+assert.deepEqual(e.readSession('broken').state,e.initialState());assert.deepEqual(e.readSession('{"state":{}}').state,e.initialState());
+console.log(`PASS: 9,261 boards, 5 lines, 6 stop orders, ${settled} simulated games, BIG ${bb}, REG ${rb}, replays ${replays}, misses ${misses}, save/resume, four-symbol slips (${((performance.now()-begin)/1000).toFixed(1)}s)`);
