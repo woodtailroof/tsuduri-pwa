@@ -4,8 +4,8 @@ import { beginSpin, stopReel, settleSpin, readSession, initialSession, visibleSy
 import './SlotGame.css';
 import './SlotMachine.css';
 import './SlotStages.css';
+import './SlotMoe.css';
 import { advanceReel, reelStopDuration } from '../lib/slotReelMotion';
-import type { CSSProperties } from 'react';
 import { SLOT_CAST, iconSrc, hideBrokenImage, SlotSymbol, SlotLcdScene, FishingChibi, bonusVariant } from '../components/SlotArtwork';
 import { nextVisual, resolveVisual, STAGE_NAMES } from '../lib/slotPresentation';
 export { SlotSymbol } from '../components/SlotArtwork';
@@ -68,8 +68,8 @@ export default function SlotGame({back}:{back:()=>void}) {
   const support=SLOT_CAST[session.visual.actor];
   const scenePhase=spin?spin.stops.filter(p=>p!==null).length:3;
   return <PageShell title="🎰 釣嫁スロット" subtitle="潮騒パラダイス · A-TYPE / 5 LINES · SOUND OFF" onBack={back} maxWidth={1160} showTestCharacter={false}>
-    <div className="ty-slot-layout ty-a-type ty-cast-edition ty-machine-edition"><section className={`ty-cabinet ${result?.bonusStarted?'ty-jackpot':''} ${active?'ty-bonus-mode':''}`} aria-label="釣嫁スロット筐体">
-      <div className="ty-machine-crown" aria-hidden="true"><span/>TSURIYOME AMUSEMENT<span/></div>
+    <div className="ty-slot-layout ty-a-type ty-cast-edition ty-machine-edition ty-moe-edition"><section className={`ty-cabinet ${result?.bonusStarted?'ty-jackpot':''} ${active?'ty-bonus-mode':''}`} aria-label="釣嫁スロット筐体">
+      <div className="ty-moe-crown"><div className="ty-moe-character-seal" aria-hidden="true"><img src={iconSrc('tsuduri')} alt="" draggable={false}/><span>✦</span></div><div className="ty-moe-title"><small>キミと、最高の一投を。</small><strong>釣嫁ぷろじぇくと</strong><span>TSURIYOME PROJECT</span></div><div className="ty-moe-heart-lamp" aria-hidden="true"><i>♥</i></div></div>
       <div className="ty-marquee"><span>TSURIYOME PROJECT</span><strong>潮騒パラダイス<span>SHIOSAI PARADISE · A-TYPE</span></strong><i>✦</i></div>
       <div className="ty-lcd"><div className="ty-lcd-top"><span>⚓ {active?`${active} BONUS`:STAGE_NAMES[session.visual.stage]}</span><b>{active?`${state.bonusPaid} / ${bonusLimit} PAYOUT`:state.replay?'REPLAY':'NORMAL'}</b></div>
         <SlotLcdScene visual={session.visual} phase={scenePhase} running={running}/>
@@ -80,12 +80,13 @@ export default function SlotGame({back}:{back:()=>void}) {
         {active&&<div className="ty-bonus-progress"><div style={{width:`${Math.min(100,state.bonusPaid/bonusLimit*100)}%`}}/></div>}
         <div className="ty-talk"><b><img src={iconSrc(support.id)} alt="" draggable={false} onError={hideBrokenImage}/>{support.name}</b><span>{message}</span></div>
       </div>
+      <div className="ty-moe-ribbon" aria-hidden="true"><span>✦</span>きょうも、いっしょに大漁日和！<span>♡</span></div>
       <div className="ty-lamp-row"><div className={`ty-chance-lamp ${bonusFlag?'is-lit':''}`} role="status" aria-label={bonusFlag?'ボーナス当選中':'ボーナス告知ランプ'}><span>FISH ON!</span><small>{bonusFlag?'BONUS 確定':'TSURIYOME CHANCE'}</small></div><div className="ty-bonus-target">{bonusFlag?<><b>{state.pending==='BIG'?'7・7・7':'7・7・BAR'}</b><small>揃えるまで持ち越し</small></>:<><b>BIG <i>{state.bigCount}</i>　REG <i>{state.regCount}</i></b><small>5ライン有効 / MAX 4コマ滑り</small></>}</div></div>
       <div className="ty-reel-bezel-title"><span>◀ 5 PAY LINES</span><b>SHIOSAI PARADISE</b><span>80 RPM ▶</span></div>
       <div className="ty-reel-frame"><svg className="ty-lines" viewBox="0 0 300 300" preserveAspectRatio="none" aria-hidden="true">{[[0,50,300,50],[0,150,300,150],[0,250,300,250],[0,0,300,300],[0,300,300,0]].map((p,i)=><line key={i} x1={p[0]} y1={p[1]} x2={p[2]} y2={p[3]} className={litLines.includes(i)?'is-winning':''}/>)}</svg>
         <div className="ty-reels">{[0,1,2].map(i=><Reel key={i} index={i} roundId={state.spins} running={running} target={spin?.stops[i]??null} initial={state.positions[i]} requestStop={requestStop} onSettled={finish}/>)}</div></div>
       <div className="ty-machine-controls"><div className="ty-bet-decor" aria-hidden="true"><b>AUTO<br/>BET</b><span>{cost===0?'REPLAY':`${cost} BET`}</span></div><div className="ty-console"><div className="ty-meter"><small>CREDIT</small><strong>{state.credit.toLocaleString()}</strong></div><button className="ty-lever" onClick={()=>start()} disabled={running||state.credit<cost}><span>●</span>{running?'回転中':'LEVER ON'}<small>{cost===0?'REPLAY / FREE':`${cost} MEDAL${cost>1?'S':''}`}</small></button><div className="ty-meter"><small>WIN</small><strong>{result?.payout??0}</strong></div></div><div className="ty-coin-slot" aria-hidden="true"><span/>MEDAL</div></div>
-      <div className="ty-cast-plaque" aria-label="釣嫁ぷろじぇくとの5人">{SLOT_CAST.map(c=><div key={c.id} style={{'--cast-color':c.color} as CSSProperties}><img src={iconSrc(c.id)} alt={c.name} draggable={false} onError={hideBrokenImage}/><span>{c.name}</span></div>)}</div>
+      <div className="ty-moe-art-panel"><img src="/assets/slot/moe-cast-panel.webp" alt="釣嫁ぷろじぇくと・5人の描き下ろし集合パネル" width="1500" height="500" draggable={false}/><span aria-hidden="true">✧</span></div>
       <div className="ty-speaker-tray" aria-hidden="true"><div/><span>TSURIYOME PROJECT</span><div/></div>
       <div className="ty-footer"><span>✦ TSURIYOME ALL STARS ✦</span><span>{litLines.length?litLines.map(i=>LINE_NAMES[i]).join(' / '):'上・中・下・斜め2本'}</span></div>
     </section>
