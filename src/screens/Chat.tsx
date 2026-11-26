@@ -1,3 +1,6 @@
+import { FISHING_POINTS, getFishingPoint } from "../points";
+import { fishingConditionsHint } from "../lib/fishingConditionsHint";
+import { jstDay, selectedJstTime } from "../lib/rainHistory";
 // src/screens/Chat.tsx
 import {
   useCallback,
@@ -566,7 +569,7 @@ async function readErrorBody(res: Response): Promise<string | null> {
 }
 
 function isFishingJudgeText(text: string) {
-  return /釣行判断/.test(text ?? "");
+  return /釣行判断|ゴミ濁り|漂流ゴミ|濁り.*(?:予測|リスク|どう|釣)|波.*(?:釣りやす|釣りづら)/.test(text ?? "");
 }
 
 function detectTargetDay(text: string): "today" | "tomorrow" {
@@ -809,6 +812,7 @@ function summarizeOneDay(json: unknown, day: string): WeatherSummary {
 async function fetchOpenMeteoHourly(
   lat: number,
   lon: number,
+  requestedDay: string,
 ): Promise<unknown> {
   const tz = "Asia/Tokyo";
 
@@ -817,15 +821,14 @@ async function fetchOpenMeteoHourly(
     `?latitude=${encodeURIComponent(String(lat))}` +
     `&longitude=${encodeURIComponent(String(lon))}` +
     "&hourly=temperature_2m,precipitation,precipitation_probability,wind_speed_10m,wind_gusts_10m,weather_code,cloud_cover" +
-    "&forecast_days=2" +
+    `&start_date=${encodeURIComponent(requestedDay)}&end_date=${encodeURIComponent(requestedDay)}` +
     `&timezone=${encodeURIComponent(tz)}` +
     "&wind_speed_unit=ms";
 
-  const res = await fetch(url, {
-    method: "GET",
-  });
-
-  const text = await res.text().catch(() => "");
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+  let res: Response, text: string;
+  try {res=await fetch(url,{method:"GET",signal:controller.signal});text=await res.text();}
+  finally {clearTimeout(timer);}
 
   if (!res.ok) {
     const head = (text || "").replace(/\s+/g, " ").trim().slice(0, 160);
@@ -896,13 +899,15 @@ async function buildWeatherHint(
   targetDay: "today" | "tomorrow",
   lat: number,
   lon: number,
+  pointName: string,
+  requestedDay?: string,
 ): Promise<string> {
   const now = new Date();
   const tmr = new Date(now);
 
   tmr.setDate(now.getDate() + 1);
 
-  const day = targetDay === "tomorrow" ? dayKey(tmr) : dayKey(now);
+  const day = requestedDay ?? (targetDay === "tomorrow" ? dayKey(tmr) : dayKey(now));
 
   const cacheKey = `${OPENMETEO_CACHE_KEY_PREFIX}` + `${lat},${lon}:${day}`;
 
@@ -912,14 +917,19 @@ async function buildWeatherHint(
     return cached.text;
   }
 
-  const json = await fetchOpenMeteoHourly(lat, lon);
+  const json = await fetchOpenMeteoHourly(lat, lon, day);
+  const payload=json as {hourly?:Record<string,unknown[]>};
+  const times=payload.hourly?.time;
+  const indexes=Array.isArray(times)?times.flatMap((t,i)=>typeof t==="string" && t.startsWith(day+"T")?[i]:[]):[];
+  const required=["temperature_2m","precipitation","precipitation_probability","wind_speed_10m","wind_gusts_10m","weather_code","cloud_cover"];
+  if(indexes.length!==24 || required.some(key=>indexes.some(i=>typeof payload.hourly?.[key]?.[i]!=="number" || !Number.isFinite(payload.hourly[key][i]))))throw Error("指定日の気象データに欠損があります");
 
   const s = summarizeOneDay(json, day);
 
-  const label = targetDay === "tomorrow" ? "明日" : "今日";
+  const label = requestedDay ?? (targetDay === "tomorrow" ? "明日" : "今日");
 
   const memo = `
-【Weather：${label}（焼津周辺の目安 / 単位：風m/s・雨mm/h）】
+【Weather：${label}（${pointName}の目安 / 単位：風m/s・雨mm/h）】
 - 概況：${s.conditionText}（雲量平均${s.cloudAvg}% / code:${s.weatherCodeMode ?? "?"}）
 - 気温${s.tempMin}〜${s.tempMax}℃
 - 風 平均${s.windAvg} 最大${s.windMax}（突風${s.gustMax}）m/s
@@ -1550,24 +1560,36 @@ export default function Chat({ back, goCharacterSettings }: Props) {
 
     const targetDay = detectTargetDay(text);
 
-    const YAIZU = {
-      lat: 34.868,
-      lon: 138.3236,
-    };
-
-    try {
-      const weatherHint = await buildWeatherHint(
-        targetDay,
-        YAIZU.lat,
-        YAIZU.lon,
-      );
-
-      hints.push(weatherHint);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-
-      hints.push(`【Weather】取得失敗（${msg}）`);
+    const aliases: Record<string, RegExp> = {oohama:/大浜|浜川|安倍川/,tomoe:/巴川/,"mochimune-port":/用宗/,fishuna:/ふぃしゅーな|焼津|親水広場/};
+    let points=FISHING_POINTS.filter(point=>aliases[point.id]?.test(text));
+    if(!points.length){
+      let saved="fishuna";
+      try{saved=localStorage.getItem("tsuduri_weather_point_v1") ?? saved;}catch{/* 選択地点がなくても既定値 */}
+      points=[getFishingPoint(saved)];
     }
+    const now=Date.now();
+    let day=jstDay(now+(/明後日|あさって/.test(text)?2*86400_000:targetDay==="tomorrow"?86400_000:0));
+    const dateMatch=text.match(/(?:(20\d{2})[年/\-])?(\d{1,2})[月/\-](\d{1,2})(?:日|(?=\s)|$)/);
+    if(dateMatch){
+      const year=Number(dateMatch[1] ?? new Date(now+9*3600_000).getUTCFullYear());
+      const requested=`${year}-${dateMatch[2].padStart(2,"0")}-${dateMatch[3].padStart(2,"0")}`;
+      const at=selectedJstTime(requested,0);
+      if(Number.isFinite(at) && jstDay(at)===requested)day=requested;
+      else return {hints:["指定された日付を解釈できませんでした。別の日付の条件で代用せず確認してください。"],isJudge};
+    }
+    const hourMatch=text.match(/(?:^|[^\d])(\d{1,2})(?:時|:(?:[0-5]\d))/);
+    const defaultHour=day===jstDay(now)?new Date(now+9*3600_000).getUTCHours():6;
+    let hour=hourMatch && Number(hourMatch[1])<=23?Number(hourMatch[1]):/夕方|夕まずめ|夕マズメ/.test(text)?17:/昼/.test(text)?12:/夜/.test(text)?21:/朝/.test(text)?6:defaultHour;
+    if(hourMatch && /午後|夕方|夜/.test(text) && hour<12)hour+=12;
+    if(hourMatch && /午前/.test(text) && hour===12)hour=0;
+    const at=selectedJstTime(day,hour);
+    await Promise.all(points.map(async point=>{
+      const results=await Promise.allSettled([
+        buildWeatherHint(targetDay,point.weatherLat,point.weatherLon,point.name,day),
+        fishingConditionsHint(point.id,at,typeof navigator==="undefined" || navigator.onLine),
+      ]);
+      for(const r of results)hints.push(r.status==="fulfilled"?r.value:`【${point.name}】情報取得失敗。未取得の条件は推測で補わないでください。`);
+    }));
 
     return {
       hints,

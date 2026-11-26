@@ -39,16 +39,16 @@ const cases = [
   [0.7, 8, "good", "快適"],
   [0.7, 10, "good", "快適"],
   [0.7, 12, "good", "快適"],
-  [0.99, 20, "good", "快適"],
-  [1, 5.99, "caution", "波あり・注意"],
-  [1, 6, "caution", "波あり・注意"],
-  [1, 7.99, "caution", "波あり・注意"],
+  [0.99, 20, "caution", "波あり・操作に注意"],
+  [1, 5.99, "caution", "波あり・操作に注意"],
+  [1, 6, "caution", "波あり・操作に注意"],
+  [1, 7.99, "caution", "波あり・操作に注意"],
   [1, 8, "caution", "うねりに注意"],
   [1, 9.99, "caution", "うねりに注意"],
   [1, 10, "hard", "押し引き強めの可能性"],
   [1, 11.99, "hard", "押し引き強めの可能性"],
   [1, 12, "hard", "うねりの負担大"],
-  [1.49, 6, "caution", "波あり・注意"],
+  [1.49, 6, "hard", "波高め・操作しづらい"],
   [1.5, 6, "hard", "波高め・釣りづらい"],
   [1.5, 8, "hard", "波高＋うねり"],
   [1.5, 10, "hard", "波高＋長周期"],
@@ -71,7 +71,7 @@ assert.equal(forecast([row(1.2, 20)], port).conditions.wave.tone, "good");
 assert.equal(forecast([row(4, 6)], port).conditions.wave.tone, "stop");
 assert.equal(forecast([row(3, 20)], river).conditions.wave.label, "対象外");
 // Separate maxima must not fabricate a 1.2m/12s combination.
-assert.equal(forecast([row(1.2, 6), row(0.2, 12, 12)]).conditions.wave.tone, "caution");
+assert.equal(forecast([row(1.2, 6), row(0.2, 12, 12)]).conditions.wave.tone, "hard");
 const nearby = forecast([row(1, 12, 6), row(0.5, 6)]);
 assert.equal(nearby.conditions.wave.tone, "hard");
 assert.ok(nearby.conditions.wave.basis.some((s) => s.includes("06時 1.0m・12.0秒")));
@@ -84,7 +84,7 @@ const calm = forecast([row(1, 5.99)]);
 const long = forecast([row(1, 6)]);
 assert.ok(long.comfort.score < calm.comfort.score);
 assert.equal(long.safety.tone, "caution");
-assert.equal(decideWeatherEmotion({ conditions: forecast([row(0.99, 20)]).conditions }), "happy");
+assert.equal(decideWeatherEmotion({ conditions: forecast([row(0.99, 20)]).conditions }), "think");
 assert.equal(decideWeatherEmotion({ conditions: long.conditions }), "think");
 assert.equal(decideWeatherEmotion({ conditions: forecast([row(3, 6)]).conditions }), "sad");
 // Low waves never get an additional period penalty; higher waves do.
@@ -135,3 +135,14 @@ assert.ok(windForecast(4).bite.score < windForecast(3.9).bite.score);
 const windScores = [3, 4, 4.9, 5, 6, 8, 10, 12].map((speed) => windForecast(speed).comfort.score);
 assert.ok(windScores.every((score, i) => i === 0 || score <= windScores[i - 1]));
 console.log("PASS: wind thresholds, 5m/s penalty, exposure guidance and monotonic comfort");
+
+// 浜川河口の体感に合わせ、1.1〜1.3mの操作性を厳しくする。安全度は別基準。
+for(const height of [1.1,1.2,1.3]) {
+ const result=forecast([row(height,6)]);
+ assert.equal(result.comfort.label,"釣りづらい");
+ assert.equal(result.conditions.wave.tone,"hard");
+ assert.equal(result.safety.tone,"caution");
+}
+const heightScores=[.35,.5,.8,1,1.1,1.2,1.5,2,3].map(h=>forecast([row(h,6)]).comfort.score);
+assert.ok(heightScores.every((score,i)=>i===0 || score<=heightScores[i-1]));
+console.log("PASS: surf operation calibration separated from safety, monotonic wave penalties");

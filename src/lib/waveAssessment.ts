@@ -8,6 +8,7 @@ export type WaveAssessment = {
   periodBand: number | null;
   periodLabel: string;
   level: number;
+  operationLevel: number;
   periodLevel: number;
   periodPenalty: number;
   label: string;
@@ -38,6 +39,8 @@ export function assessWave(point: FishingPoint, row: MarineWaveHour): WaveAssess
     : periodBand >= 3 ? 2
     : periodBand >= 2 ? 1 : 0;
   const level = Math.max(heightLevel, periodLevel);
+  // 操作性の閾値は安全度から独立。浜川河口の1.1〜1.3m／約6秒の体感を初期校正に使用。
+  const operationLevel = point.waveExposure === "open" ? Math.max(level, height>=1.1 ? 2 : height>=.8 ? 1 : 0) : level;
   // 同じ色の範囲でも、周期の5段階と波高の大きさに応じて負担スコアを変える。
   const periodPenalty = applyPeriod
     ? Math.round([0, 3, 8, 15, 22][periodBand] * (height >= 2 ? 1.6 : height >= 1.5 ? 1.3 : 1))
@@ -50,7 +53,7 @@ export function assessWave(point: FishingPoint, row: MarineWaveHour): WaveAssess
     label = level >= 4 ? "危険な高波" : level === 3 ? "高波"
       : level === 2 ? "波高め" : level === 1 ? "波あり・注意" : "快適";
   } else if (height < 1) {
-    label = period == null ? "波低め・周期不明" : "快適";
+    label = period == null ? "波低め・周期不明" : height>=.8 ? "波あり・操作に注意" : "快適";
   } else if (height >= 2) {
     label = periodBand == null || periodBand < 2 ? "高波・厳しい"
       : periodBand === 2 ? "高波＋うねり"
@@ -60,7 +63,7 @@ export function assessWave(point: FishingPoint, row: MarineWaveHour): WaveAssess
       : periodBand === 2 ? "波高＋うねり"
       : periodBand === 3 ? "波高＋長周期" : "強いうねりに警戒";
   } else {
-    label = periodBand == null || periodBand < 2 ? "波あり・注意"
+    label = periodBand == null || periodBand < 2 ? height>=1.1 ? "波高め・操作しづらい" : "波あり・操作に注意"
       : periodBand === 2 ? "うねりに注意"
       : periodBand === 3 ? "押し引き強めの可能性" : "うねりの負担大";
   }
@@ -74,5 +77,16 @@ export function assessWave(point: FishingPoint, row: MarineWaveHour): WaveAssess
     : periodBand === 2 ? "波高もあり、うねりの押し引きに注意"
     : periodBand === 1 ? "周期6〜8秒・波高に応じて押し引きの負担を加味"
     : "短周期・波高による負担を評価";
-  return { hour: row.hour, height, period, periodBand, periodLabel, level, periodLevel, periodPenalty, label, reason };
+  return { operationLevel, hour: row.hour, height, period, periodBand, periodLabel, level, periodLevel, periodPenalty, label, reason };
+}
+
+/** サーフ操作性の暫定校正。沖の有義波高から岸の波高を計算する式ではない。 */
+export function surfWavePenalty(height: number): number {
+  const anchors = [[.35,0],[.8,22],[1,40],[1.1,52],[1.2,58],[1.5,70],[2,85],[3,100]];
+  if(height<=anchors[0][0])return 0;
+  for(let i=1;i<anchors.length;i++){
+    const [x,y]=anchors[i], [prevX,prevY]=anchors[i-1];
+    if(height<=x)return prevY+(y-prevY)*(height-prevX)/(x-prevX);
+  }
+  return 100;
 }

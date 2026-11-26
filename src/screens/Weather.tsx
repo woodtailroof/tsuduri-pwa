@@ -1,3 +1,6 @@
+import RunoffCard from "../components/RunoffCard";
+import { getRainHistory, selectedJstTime, type RainHistory } from "../lib/rainHistory";
+import { assessRunoff, unknownRunoff } from "../lib/runoffRisk";
 // src/screens/Weather.tsx
 import {
   useCallback,
@@ -631,6 +634,7 @@ export default function Weather({ back, isActive = true }: Props) {
     useState<CoastalWaveLoadState>({ status: "idle" });
   const [marineWaveState, setMarineWaveState] =
     useState<MarineWaveLoadState>({ status: "idle" });
+  const [rainState, setRainState] = useState<{ pointId: string; day: string; rows: RainHistory[]; loading: boolean; error?: string } | null>(null);
   const [nowphasOpen, setNowphasOpen] = useState(false);
   const [nowphasZoomed, setNowphasZoomed] = useState(false);
   const [nowphasLoadFailed, setNowphasLoadFailed] = useState(false);
@@ -859,6 +863,25 @@ export default function Weather({ back, isActive = true }: Props) {
     };
   }, [targetDate]);
 
+  const riskDay = dayKeyLocal(targetDate);
+  useEffect(() => {
+    if(!isActive)return;
+    let cancelled=false;
+    setRainState({pointId:selectedPoint.id,day:riskDay,rows:[],loading:true});
+    void getRainHistory(selectedPoint.id,riskDay,online).then(rows=>{
+      if(!cancelled)setRainState({pointId:selectedPoint.id,day:riskDay,rows,loading:false});
+    }).catch(()=>{
+      if(!cancelled)setRainState({pointId:selectedPoint.id,day:riskDay,rows:[],loading:false,error:"降雨履歴を取得できません。ゴミ濁りの判定を省略し、通常の天気・潮判定を続けます。"});
+    });
+    return ()=>{cancelled=true;};
+  },[selectedPoint.id,riskDay,online,isActive]);
+  const runoffRisk = useMemo(()=>{
+    const at=selectedJstTime(riskDay,selectedHour);
+    if(!rainState || rainState.pointId!==selectedPoint.id || rainState.day!==riskDay || rainState.loading)return unknownRunoff(selectedPoint.id,at);
+    if(rainState.error)return unknownRunoff(selectedPoint.id,at,rainState.error);
+    return assessRunoff(selectedPoint.id,at,rainState.rows,marineWaveState.status==="ok" && marineWaveState.forecast.dayKey===riskDay ? marineWaveState.forecast.history ?? [] : []);
+  },[rainState,riskDay,selectedHour,selectedPoint.id,marineWaveState]);
+
   const extremes = useMemo(
     () =>
       tideState.status === "ok"
@@ -875,6 +898,7 @@ export default function Weather({ back, isActive = true }: Props) {
           )
         : [];
     return buildFishingForecast({
+      runoffRisk,
       point: selectedPoint,
       selectedHour,
       weather: weatherHours,
@@ -891,6 +915,7 @@ export default function Weather({ back, isActive = true }: Props) {
     });
   }, [
     selectedHour,
+    runoffRisk,
     weatherState,
     selectedPoint,
     tideState,
@@ -1423,6 +1448,7 @@ export default function Weather({ back, isActive = true }: Props) {
             >
               波評価：±3時間の波高×周期・釣り場別の目安 ／ 広域予報：沖合・後刻の参考 ／ 波浪：Open-Meteo
             </div>
+            <RunoffCard risk={runoffRisk} loading={isActive && (!rainState || rainState.pointId!==selectedPoint.id || rainState.day!==riskDay || rainState.loading)} />
           </div>
 
           <div

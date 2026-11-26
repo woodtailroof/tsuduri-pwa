@@ -1,3 +1,4 @@
+import type { HistoryWave } from "./runoffRisk";
 export type MarineWaveHour = {
   hour: number;
   waveHeight: number;
@@ -8,6 +9,7 @@ export type MarineWaveHour = {
 export type MarineWaveForecast = {
   dayKey: string;
   hours: MarineWaveHour[];
+  history?: HistoryWave[];
   gridLatitude: number | null;
   gridLongitude: number | null;
 };
@@ -31,10 +33,11 @@ type MarineApiResponse = {
 };
 
 const MARINE_API_URL = "https://marine-api.open-meteo.com/v1/marine";
-const CACHE_PREFIX = "tsuduri_marine_wave_v1:";
+const CACHE_PREFIX = "tsuduri_marine_wave_v2:";
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
 function finiteNumber(value: unknown): number | null {
+  if (value == null || value === "") return null;
   const number = typeof value === "number" ? value : Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -72,7 +75,7 @@ function writeCache(pointId: string, forecast: MarineWaveForecast) {
   }
 }
 
-function parseForecast(json: MarineApiResponse, dayKey: string): MarineWaveForecast {
+export function parseForecast(json: MarineApiResponse, dayKey: string): MarineWaveForecast {
   const hourly = json.hourly;
   const times = Array.isArray(hourly?.time) ? hourly.time : [];
   const heights = Array.isArray(hourly?.wave_height)
@@ -106,6 +109,12 @@ function parseForecast(json: MarineApiResponse, dayKey: string): MarineWaveForec
   return {
     dayKey,
     hours,
+    history: times.flatMap((rawTime, i): HistoryWave[] => {
+      if(typeof rawTime!=="string") return [];
+      const at=Date.parse(`${rawTime}+09:00`), height=finiteNumber(heights[i]);
+      if(!Number.isFinite(at) || height==null || height<0) return [];
+      return [{at,waveHeight:height,wavePeriod:finiteNumber(periods[i])}];
+    }),
     gridLatitude: finiteNumber(json.latitude),
     gridLongitude: finiteNumber(json.longitude),
   };
@@ -124,12 +133,16 @@ async function fetchForecast(
     "wave_height,wave_period,swell_wave_height",
   );
   url.searchParams.set("timezone", "Asia/Tokyo");
-  url.searchParams.set("start_date", dayKey);
+  const start = new Date(`${dayKey}T00:00:00+09:00`);
+  start.setUTCDate(start.getUTCDate()-7);
+  url.searchParams.set("start_date", new Date(start.getTime()+9*3600_000).toISOString().slice(0,10));
   url.searchParams.set("end_date", dayKey);
   url.searchParams.set("cell_selection", "sea");
 
-  const response = await fetch(url.toString(), { method: "GET" });
-  const text = await response.text().catch(() => "");
+  const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),15000);
+  let response: Response, text: string;
+  try {response=await fetch(url.toString(),{method:"GET",signal:controller.signal});text=await response.text();}
+  finally {clearTimeout(timer);}
   if (!response.ok) {
     throw new Error(`marine_wave_http_${response.status}`);
   }

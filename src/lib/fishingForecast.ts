@@ -1,8 +1,9 @@
+import type { RunoffRisk } from "./runoffRisk";
 import type { TidePoint } from "../db";
 import type { FishingPoint } from "../points";
 import type { JmaCoastalWave } from "./jmaCoastalWave";
 import type { MarineWaveHour } from "./marineWave";
-import { assessWave, type WaveAssessment } from "./waveAssessment";
+import { assessWave, surfWavePenalty, type WaveAssessment } from "./waveAssessment";
 
 export type ForecastTone = "good" | "caution" | "hard" | "danger" | "stop";
 
@@ -218,7 +219,7 @@ function directWaveBadge(input: {
     };
   }
 
-  const level = assessment?.level ?? 0;
+  const level = assessment?.operationLevel ?? 0;
   const basis = [
     selectedWaveHeight == null
       ? `前後3時間最大 ${waveHeight.toFixed(1)}m`
@@ -236,7 +237,7 @@ function directWaveBadge(input: {
     label: assessment?.label ?? "波データ不足",
     detail: `近海 前後3時間最大${waveHeight.toFixed(1)}m`,
     tone: toneForLevel(point.waveExposure === "open" && assessment?.period == null ? Math.max(1, level) : level),
-    method: "同時刻の波高×周期・地点別のアプリ目安（釣果予測ではありません）",
+    method: "同時刻の波高×周期・サーフ操作性の暫定目安。安全度とは別評価",
     basis,
   };
 }
@@ -253,6 +254,7 @@ export function buildFishingForecast(input: {
   tideName: string | null;
   coastalWave?: JmaCoastalWave | null;
   marineWaveHours?: MarineWaveHour[];
+  runoffRisk?: RunoffRisk | null;
 }): FishingForecast {
   const {
     point,
@@ -262,6 +264,7 @@ export function buildFishingForecast(input: {
     tideName,
     coastalWave = null,
     marineWaveHours = [],
+    runoffRisk = null,
   } = input;
 
   const validMarineWaves = marineWaveHours.filter(
@@ -441,7 +444,7 @@ export function buildFishingForecast(input: {
   }
   if (point.waveExposure !== "none" && waveHeight != null) {
     const exposureWeight = point.waveExposure === "open" ? 34 : 9;
-    const penalty = Math.max(0, waveHeight - 0.35) * exposureWeight;
+    const penalty = point.waveExposure === "open" ? surfWavePenalty(waveHeight) : Math.max(0, waveHeight - 0.35) * exposureWeight;
     comfortScore -= penalty;
     comfortBasis.push(
       `波 ${waveHeight.toFixed(1)}m ${penalty > 0 ? `−${Math.round(penalty)}点` : "±0点"}`,
@@ -449,7 +452,7 @@ export function buildFishingForecast(input: {
     if (penalty >= 6) {
       comfortReasons.push({
         penalty,
-        text: `地点別波浪${waveHeight.toFixed(1)}m・影響${point.waveImpactLabel}`,
+        text: point.waveExposure === "open" && waveHeight>=1 ? `波${waveHeight.toFixed(1)}m・ラインを取られルアー操作が難しい可能性` : `地点別波浪${waveHeight.toFixed(1)}m・影響${point.waveImpactLabel}`,
       });
     }
   }
@@ -458,6 +461,12 @@ export function buildFishingForecast(input: {
     comfortScore -= penalty;
     comfortBasis.push(`${waveAssessment.periodLabel} ${waveAssessment.height.toFixed(1)}m・${waveAssessment.period?.toFixed(1)}秒 −${penalty}点`);
     comfortReasons.push({ penalty, text: waveAssessment.reason });
+  }
+  if(runoffRisk?.status === "ok" && !runoffRisk.stale && runoffRisk.comfortPenalty>0) {
+    const penalty=runoffRisk.comfortPenalty;
+    comfortScore-=penalty;
+    comfortBasis.push(`降雨履歴によるゴミ付着の懸念 −${penalty}点（未観測・暫定）`);
+    comfortReasons.push({penalty,text:"降雨後の枝葉などがルアーに付着する可能性"});
   }
   comfortScore = clamp(Math.round(comfortScore), 0, 100);
   const comfortDetail =
@@ -484,7 +493,7 @@ export function buildFishingForecast(input: {
             tone: "hard",
             score: comfortScore,
           };
-  comfort.method = "100点から、前後3時間の風・雨・地点別波高と周期の負担を減点";
+  comfort.method = "100点から風・雨・波の操作負担と降雨由来のゴミ懸念を減点。波・ゴミは暫定校正";
   comfort.basis = comfortBasis.length > 0 ? comfortBasis : ["判定材料なし"];
 
   let biteScore = 50;
