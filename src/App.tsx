@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import Home from "./screens/Home";
+import SlotGame from "./screens/SlotGame";
 import Record from "./screens/Record";
 import RecordHistory from "./screens/RecordHistory";
 import RecordAnalysis from "./screens/RecordAnalysis";
@@ -41,6 +42,7 @@ type Screen =
   | "tackleManager"
   | "weather"
   | "chat"
+  | "slotGame"
   | "settings"
   | "characterSettings"
   | "albumPicker"
@@ -212,7 +214,8 @@ function AppInner() {
       | "tackleManager"
       | "weather"
       | "chat"
-      | "settings",
+      | "slotGame"
+  | "settings",
   ) => setScreen(s);
 
   const openAlbum = (albumId: string, title?: string) => {
@@ -260,6 +263,8 @@ function AppInner() {
     content = <TackleManager back={backHome} />;
   } else if (screen === "weather") {
     content = <Weather back={backHome} />;
+  } else if (screen === "slotGame") {
+    content = <SlotGame back={backHome} />;
   } else if (screen === "settings") {
     content = <Settings back={backHome} />;
   } else if (screen === "chat") {
@@ -409,7 +414,7 @@ function AppInner() {
         }}
       />
 
-      {!skipFade && (
+      {screen !== "albumViewer" && (
         <div
           id="layer-stage"
           style={{

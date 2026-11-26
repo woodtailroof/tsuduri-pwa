@@ -22,6 +22,7 @@ type Props = {
       | "tackleManager"
       | "weather"
       | "chat"
+      | "slotGame"
       | "settings",
   ) => void;
 
@@ -1098,6 +1099,8 @@ export default function Home({ go, goSecret }: Props) {
                     </div>
 
                     <div className="home-settings">
+                      <SmartButton src="" alt="釣嫁スロット" forceText onClick={() => go("slotGame")}
+                        style={{ width: "var(--btnw)" }} fallbackLabel="釣嫁スロット" fallbackSub="遊べる試作" fallbackIcon="🎰" accent="rgba(255,199,110,0.8)" />
                       <SmartButton
                         src={btnSettings}
                         alt="設定"
