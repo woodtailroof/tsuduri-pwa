@@ -8,6 +8,7 @@ type Props = {
   baseDate: Date;
   highlightAt?: Date | null;
   height?: number;
+  fillContainer?: boolean;
   markers?: { at: Date; label: string; color: string }[];
   fishingRange?: { start: Date; end: Date } | null;
   // ✅ 追加：Y軸レンジ固定（cm）
@@ -142,15 +143,17 @@ function trianglePath(x: number, y: number, dir: "up" | "down", size: number) {
 }
 
 export default function TideGraph({
-  series,
+  series: rawSeries,
   baseDate,
   highlightAt = null,
   height = 140,
+  fillContainer = false,
   yDomain = null,
   markers = [],
   fishingRange = null,
 }: Props) {
   const graphId = useId().replace(/:/g, "");
+  const series=(rawSeries ?? []).filter(point=>typeof point.cm==="number" && Number.isFinite(point.cm));
   // ✅ viewBox用の論理サイズ（ここは固定でOK）
   const vbW = 360;
   const vbH = height;
@@ -228,8 +231,9 @@ export default function TideGraph({
   let yMin: number;
   let yMax: number;
   if (yDomain) {
-    yMin = yDomain.min;
-    yMax = yDomain.max;
+    // 指定範囲を基本に、実データがはみ出る場合だけ余白を付けて拡張する。
+    yMin = Math.min(yDomain.min, minY0-5);
+    yMax = Math.max(yDomain.max, maxY0+5);
   } else {
     const yPad = Math.max(5, Math.round((maxY0 - minY0) * 0.08));
     yMin = minY0 - yPad;
@@ -308,6 +312,14 @@ export default function TideGraph({
   return (
     <div
       style={{
+        boxSizing: "border-box",
+        minWidth: 0,
+        minHeight: 0,
+        height: fillContainer ? "100%" : undefined,
+        display: fillContainer ? "grid" : undefined,
+        gridTemplateRows: fillContainer ? "auto minmax(0,1fr)" : undefined,
+        gap: fillContainer ? 10 : undefined,
+        overflow: "hidden",
         border: "1px solid rgba(255,174,221,0.18)",
         borderRadius: 16,
         padding: 12,
@@ -336,10 +348,12 @@ export default function TideGraph({
         viewBox={`0 0 ${vbW} ${vbH}`}
         preserveAspectRatio="xMidYMid meet"
         style={{
-          marginTop: 10,
+          marginTop: fillContainer ? 0 : 10,
           display: "block",
-          height: "auto",
-          aspectRatio: `${vbW} / ${vbH}`,
+          minHeight: 0,
+          maxHeight: fillContainer ? "100%" : undefined,
+          height: fillContainer ? "100%" : "auto",
+          aspectRatio: fillContainer ? undefined : `${vbW} / ${vbH}`,
         }}
       >
         <defs>
