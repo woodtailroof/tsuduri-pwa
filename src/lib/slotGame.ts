@@ -1,10 +1,10 @@
 // Original A-type game. Public manufacturer layouts inform the concept, not proprietary tables.
 export const SLOT_SYMBOLS = [
   { id:'seven', glyph:'7', label:'釣嫁セブン', color:'#ff70b9' },
-  { id:'fish', glyph:'🐟', label:'フィッシュ', color:'#65dfff' },
-  { id:'bell', glyph:'🔔', label:'ベル', color:'#ffcf67' },
-  { id:'cherry', glyph:'🍒', label:'チェリー', color:'#ff829e' },
-  { id:'replay', glyph:'↻', label:'リプレイ', color:'#74dce4' },
+  { id:'fish', glyph:'🐟', label:'ビッグベイト', color:'#65dfff' },
+  { id:'bell', glyph:'🔔', label:'金色ベイトリール', color:'#ffcf67' },
+  { id:'cherry', glyph:'🍒', label:'竿と赤ウキ', color:'#ff829e' },
+  { id:'replay', glyph:'↻', label:'魚リプレイ', color:'#74dce4' },
   { id:'bar', glyph:'BAR', label:'釣嫁BAR', color:'#c7aeff' },
 ] as const;
 // Three physical 21-stop strips, top to bottom. Replays are spaced every 3 stops.
@@ -134,7 +134,7 @@ export function settleSpin(session:Session):{session:Session;result:Result} {
     state.bonusPaid+=board.payout;
     if(state.bonusPaid>=(state.active==='BIG'?BIG_LIMIT:REG_LIMIT)){
       bonusEnded=state.active;title=`${state.active} FINISH`;message=`合計${state.bonusPaid}枚払い出し！ また一緒に狙おうね♪`;state.active=null;
-    } else {title=board.payout?`＋${board.payout} MEDALS`:'目押しでもう一度！';message='ベルを狙って、メダルを増やそう！';}
+    } else {title=board.payout?`＋${board.payout} MEDALS`:'目押しでもう一度！';message='金色のリールを狙って、メダルを増やそう！';}
   } else if(board.bonus) {
     bonusStarted=board.bonus;state.active=board.bonus;state.pending=null;state.bonusPaid=0;
     if(board.bonus==='BIG')state.bigCount++;else state.regCount++;
