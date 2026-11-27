@@ -2,13 +2,9 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { fishingFrame, FISHING_POSES, poseSrc, rodTip, lurePoint, type FishingPose } from '../lib/slotFishing';
 import { SLOT_SYMBOLS } from '../lib/slotGame';
 import { STAGE_NAMES, visualCaption, type SlotVisual } from '../lib/slotPresentation';
-export const SLOT_CAST = [
-  {id:'tsuduri',name:'つづり',color:'#ff85bd'},
-  {id:'matsuri',name:'まつり',color:'#c4a1ff'},
-  {id:'kokoro',name:'こころ',color:'#7ddfef'},
-  {id:'lulu',name:'るる',color:'#ffd28b'},
-  {id:'rin',name:'りん',color:'#ffafba'},
-] as const;
+import {SLOT_CAST} from '../lib/slotCast';
+export {SLOT_CAST} from '../lib/slotCast';
+import SlotChallenge from './SlotChallenge';
 export function iconSrc(id:string){return `/assets/slot/${id}-icon.webp`;}
 export function portraitSrc(id:string){return `/assets/characters-mobile/${id}/uniform/happy.webp`;}
 export function hideBrokenImage(event:React.SyntheticEvent<HTMLImageElement>){event.currentTarget.style.visibility='hidden';}
@@ -57,13 +53,14 @@ export function SlotLcdScene({visual,phase,running}:{visual:SlotVisual;phase:num
   const tip=rodTip(visual.actor,pose),start={x:geometry.left+geometry.size*tip.x,y:geometry.top+geometry.size*tip.y};
   const end={x:geometry.width*.72,y:geometry.height*.63};
   const lure=lurePoint(start,end,frame.progress);
-  return <div className={`ty-stage-scene stage-${visual.stage} cue-${visual.cue} effect-${visual.tier} outcome-${visual.outcome} scene-phase-${phase} ${running?'scene-running':'scene-idle'} fishing-${mode} motion-${frame.action} ${bite?'has-bite':''}`} ref={scene} aria-label={`液晶ステージ：${title}`}>
+  return <div className={`ty-stage-scene stage-${visual.stage} cue-${visual.cue} effect-${visual.tier} outcome-${visual.outcome} scene-phase-${phase} ${running?'scene-running':'scene-idle'} fishing-${mode} motion-${frame.action} ${bite?'has-bite':''} ${visual.challenge?'has-challenge':''}`} ref={scene} aria-label={`液晶ステージ：${title}`}>
     <div className="ty-scene-cloud cloud-one"/><div className="ty-scene-cloud cloud-two"/>
     <div className="ty-stage-sun"/><div className="ty-stage-mountains"/><div className="ty-stage-bridge"/>
     <svg className="ty-scene-water" viewBox="0 0 600 100" preserveAspectRatio="none" aria-hidden="true"><path d="M-80 40Q0 10 80 40T240 40T400 40T560 40T720 40V100H-80Z"/><path d="M-80 70Q0 40 80 70T240 70T400 70T560 70T720 70V100H-80Z"/></svg>
     <div className="ty-stage-bank"/><div className="ty-stage-railing"/>
     <div ref={angler} key={visual.actor} className="ty-stage-angler"><FishingChibi actor={visual.actor} pose={pose} className={`action-${frame.action}`}/><span>{SLOT_CAST[visual.actor].name}</span></div>
     <div className="ty-stage-action" aria-hidden="true"><svg className="ty-connected-line" viewBox={`0 0 ${geometry.width} ${geometry.height}`} preserveAspectRatio="none"><path d={`M${start.x} ${start.y} Q${(start.x+end.x)/2} ${Math.max(start.y,end.y)-8} ${end.x} ${end.y}`}/></svg><div className="ty-cast-lure" style={{left:lure.x,top:lure.y,opacity:frame.action==='cast'&&frame.progress<.92?1:0,transform:`rotate(${frame.progress*65-30}deg) scale(${1-frame.progress*.4})`}}/><div className="ty-cast-ring"/><div className="ty-stage-float"/><div className="ty-stage-fish ty-vfx-fish"/><div className="ty-stage-splash ty-vfx-splash"/><div className="ty-stage-crab ty-vfx-crab"/><div className="ty-stage-shine ty-vfx-gold"/><div className="ty-stage-miss">…</div></div>
+    {visual.challenge&&<SlotChallenge key={`${visual.challengeStart??0}-${visual.challenge.id}-${visual.challenge.actor}`} challenge={visual.challenge} total={visual.chanceTotal??6} left={visual.chanceLeft??0} outcome={visual.outcome}/>}
     <div className="ty-stage-banner"><span>{title}</span><b>{visual.chanceLeft?'BITE CHANCE':mode==='float'?'FLOAT FISHING':'LURE FISHING'}</b></div>
     {visual.chanceLeft&&!final&&<div className={`ty-bite-meter bite-step-${Math.min(3,Math.floor(((visual.chanceTotal??6)-visual.chanceLeft)/2))}`} aria-label="連続演出"><span>気配</span><i/><span>追尾</span><i/><span>合わせ！</span></div>}
     {pose==='sleep'&&<div className="ty-sleep-bubbles" aria-hidden="true">ふぁ…<i>すぅ…</i></div>}
