@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import PageShell from '../components/PageShell';
-import { beginSpin, stopReel, settleSpin, readSession, initialSession, visibleSymbols, modulo, SLOT_SYMBOLS, REEL_STRIPS, STORAGE_KEY, BIG_LIMIT, REG_LIMIT, LINE_NAMES, type Session, type Result, type Bonus } from '../lib/slotGame';
+import { beginSpin, stopReel, settleSpin, readSession, initialSession, visibleSymbols, modulo, SLOT_SYMBOLS, REEL_STRIPS, STORAGE_KEY, BIG_LIMIT, LINE_NAMES, type Session, type Result, type Bonus } from '../lib/slotGame';
 import './SlotGame.css';
 import './SlotMachine.css';
 import './SlotStages.css';
@@ -10,11 +10,13 @@ import './SlotFishing.css';
 import './SlotChallenge.css';
 import './SlotCabinet.css';
 import './SlotCinema.css';
+import './SlotBonus.css';
+import {SlotBonusScreen} from '../components/SlotBonusScreen';
 import {ROLE_RULES,isRare} from '../lib/slotRules';
 import {CHALLENGES,chooseChallenge,rateChallenge,type ChallengeId} from '../lib/slotChallenges';
 import { fitCabinet } from '../lib/slotViewport';
 import { advanceReel, reelStopDuration } from '../lib/slotReelMotion';
-import { SLOT_CAST, iconSrc, hideBrokenImage, SlotSymbol, SlotLcdScene, FishingChibi, bonusVariant } from '../components/SlotArtwork';
+import { SLOT_CAST, iconSrc, hideBrokenImage, SlotSymbol, SlotLcdScene, bonusVariant } from '../components/SlotArtwork';
 import { nextVisual, resolveVisual, STAGE_NAMES } from '../lib/slotPresentation';
 export { SlotSymbol } from '../components/SlotArtwork';
 function loadSession(){try{return readSession(localStorage.getItem(STORAGE_KEY));}catch{return initialSession();}}
@@ -86,7 +88,8 @@ export default function SlotGame({back}:{back:()=>void}) {
   }
   function reset(){if(current.current.spin)return;settled.current=[false,false,false];commit(initialSession());setResult(null);setError('');setResetOpen(false);}
   const {state,spin}=session;const running=!!spin;const active=state.active;
-  const bonusFlag=!!state.pending&&state.announced;const bonusLimit=active==='BIG'?BIG_LIMIT:REG_LIMIT;
+  const bonusFlag=!!state.pending&&state.announced;const bonusLimit=BIG_LIMIT;
+  const bonusScreen=bonusFlag||!!active||!!result?.bonusEnded;
   const cost=active?1:state.replay?0:3;const net=state.paid-state.spent;
   const litLines=result?[...new Set([...result.board.awards.map(a=>a.line),...result.board.bonusLines])]:[];
   const [min,max]=[Math.min(0,...state.history),Math.max(1,...state.history)];
@@ -102,13 +105,15 @@ export default function SlotGame({back}:{back:()=>void}) {
       <div className="ty-compact-heading"><span>✦ 潮騒パラダイス ✦</span><b>BIG {state.bigCount} · REG {state.regCount}</b></div>
       <div className="ty-lcd"><div className="ty-lcd-top"><span>⚓ {active?`${active} BONUS`:STAGE_NAMES[session.visual.stage]}</span><b>{active?`${state.bonusPaid} / ${bonusLimit} PAYOUT`:state.chance?'BITE CHANCE':state.highLeft?`高確 ${state.highLeft}G`:state.replay?'REPLAY':'NORMAL'}</b></div>
         {!state.chance&&!active&&result&&result.role!=='miss'&&<div className={`ty-role-toast ${isRare(result.role)?'ty-rare-role':''}`}>{result.chanceEye?'CHANCE目！':ROLE_RULES[result.role].label}</div>}
+        {bonusScreen?<SlotBonusScreen session={session} result={result}/>:<>
         <SlotLcdScene visual={session.visual} phase={scenePhase} running={running}/>
         <div className="ty-sun"/>
-        {active&&<div className="ty-bonus-cut-in ty-chibi-cut-in" key={support.id} aria-hidden="true"><FishingChibi actor={session.visual.actor} pose="retrieve"/><span>{support.name}</span></div>}
+
         <div className="ty-lcd-sparkles" aria-hidden="true">✦<i>✧</i><b>✦</b></div><div className="ty-sea"/><div className="ty-island"/><div className="ty-fishing-silhouette" aria-hidden="true">⚓</div>
         <div className="ty-lcd-message" aria-live="polite"><small>{active?'大漁の時間は、ここから。':bonusFlag?'ボーナス図柄を狙ってね！':''}</small><strong>{result?.bonusStarted?result.title:active?`${active} BONUS`:bonusFlag?'BONUS CHANCE':running?'':result?.chanceOutcome?result.title:result?.payout?result.title:''}</strong><em>{active?`払い出し ${state.bonusPaid}枚`:result?.payout?`＋${result.payout} MEDALS`:state.replay?'NEXT PLAY FREE':''}</em></div>
         {active&&<div className="ty-bonus-progress"><div style={{width:`${Math.min(100,state.bonusPaid/bonusLimit*100)}%`}}/></div>}
         <div className="ty-talk"><b><img src={iconSrc(support.id)} alt="" draggable={false} onError={hideBrokenImage}/>{support.name}</b><span>{message}</span></div>
+        </>}
       </div>
       <div className="ty-reel-bezel-title"><span>◀ 5 PAY LINES</span><b>SHIOSAI PARADISE</b><span>80 RPM ▶</span></div>
       <div className="ty-reel-frame"><svg className="ty-lines" viewBox="0 0 300 300" preserveAspectRatio="none" aria-hidden="true">{[[0,50,300,50],[0,150,300,150],[0,250,300,250],[0,0,300,300],[0,300,300,0]].map((p,i)=><line key={i} x1={p[0]} y1={p[1]} x2={p[2]} y2={p[3]} className={litLines.includes(i)?'is-winning':''}/>)}</svg>
@@ -118,7 +123,7 @@ export default function SlotGame({back}:{back:()=>void}) {
     </section>
     </div></div>
     <dialog ref={infoDialog} className="ty-slot-info-dialog ty-moe-edition" onCancel={()=>setInfoOpen(false)} onClose={()=>setInfoOpen(false)}><button className="ty-info-close" onClick={()=>setInfoOpen(false)}>閉じる ✕</button><aside className="ty-slot-info"><div className="ty-info-card"><small>SESSION DATA</small><h2>ひろっちの遊技ログ</h2><div className="ty-big-reg"><div><span>BIG</span><b>{state.bigCount}</b></div><div><span>REG</span><b>{state.regCount}</b></div><div><span>合算</span><b>{state.bigCount+state.regCount?`1/${(state.normalSpins/(state.bigCount+state.regCount)).toFixed(1)}`:'—'}</b></div></div><div className="ty-stats"><span>総ゲーム数 <b>{state.spins} G</b></span><span>通常ゲーム数 <b>{state.normalSpins} G</b></span><span>通常時・ボーナス間 <b>{state.sinceBonus} G</b></span><span>差枚 <b>{net>0?'+':''}{net}</b></span></div><svg className="ty-history-chart" viewBox="0 0 300 100" role="img" aria-label={`直近${state.history.length}ゲームの差枚推移。現在${net}枚`}><line x1="10" x2="290" y1={85-(0-min)/(max-min)*70} y2={85-(0-min)/(max-min)*70} stroke="#ffffff33" strokeDasharray="3 4"/><polyline points={chart} fill="none" stroke="#f1a7cf" strokeWidth="2.5"/><text x="10" y="98" fill="#b8c2da" fontSize="8">直近最大160ゲーム / 差枚</text></svg>{state.bonusLog.length>0&&<div className="ty-bonus-log">{state.bonusLog.slice(0,4).map((v,i)=><span key={i}>{v}</span>)}</div>}</div>
-    <div className="ty-info-card"><small>5 LINES · PAY TABLE</small><h2>大漁へのチャンス</h2><ul className="ty-pays"><li><b>7 · 7 · 7</b><span>BIG / 252枚以上払い出し</span></li><li><b>7 · 7 · BAR</b><span>REG / 96枚以上払い出し</span></li>{[{symbol:2,label:'金色リール ×3',pay:'6枚 / 1ゲーム'},{symbol:1,label:'ビッグベイト ×3',pay:'10枚 / 1ゲーム'},{symbol:3,label:'左リールの赤ウキ',pay:'2枚 / 1ゲーム'},{symbol:4,label:'魚 ×3',pay:'リプレイ'}].map(row=><li key={row.symbol} className="ty-motif-pay"><b><SlotSymbol symbol={row.symbol}/></b><span>{row.label}<small>{row.pay}</small></span></li>)}</ul><p>通常3枚・ボーナス中1枚。複数ラインでもベル6枚・スイカ10枚・チェリー2枚。ボーナス中は金色リール成立、規定払い出しで終了。表示枚数は純増ではありません。</p></div>
+    <div className="ty-info-card"><small>5 LINES · PAY TABLE</small><h2>大漁へのチャンス</h2><ul className="ty-pays"><li><b>7 · 7 · 7</b><span>BIG / 252枚以上払い出し</span></li><li><b>7 · 7 · BAR</b><span>NABU★RUSH / 8G＋レア役で8G追加</span></li>{[{symbol:2,label:'金色リール ×3',pay:'6枚 / 1ゲーム'},{symbol:1,label:'ビッグベイト ×3',pay:'10枚 / 1ゲーム'},{symbol:3,label:'左リールの赤ウキ',pay:'2枚 / 1ゲーム'},{symbol:4,label:'魚 ×3',pay:'リプレイ'}].map(row=><li key={row.symbol} className="ty-motif-pay"><b><SlotSymbol symbol={row.symbol}/></b><span>{row.label}<small>{row.pay}</small></span></li>)}</ul><p>通常3枚・ボーナス中1枚。複数ラインでもベル6枚・スイカ10枚・チェリー2枚。BIG中はベル15枚で252枚以上の払い出しまで（約17G）。NABU★RUSH中はベル15枚・スイカ15枚・チェリー8枚。レア役合算9%は全ゲーム共通、取りこぼしても残りに8G加算。8G以内の延長率約53%、平均約28.6G。チャンス目は払い出しなし。表示枚数は純増ではありません。</p></div>
     <div className="ty-info-card"><button className="ty-text-button" onClick={()=>setDetails(!details)} aria-expanded={details}>遊び方・リール配列・遊技データ {details?'−':'＋'}</button>{details&&<div><p>レバーで役とボーナスを抽選。押した位置から最大4コマ滑らせて停止します。左リールの単独7かBAR（配列4・11番）を中段〜上段に狙います。通常はボーナス図柄が下段、直下の赤ウキは枠外。赤ウキ成立時は枠内に止まり、ビッグベイト成立時はボーナス図柄が枠下へ滑ってビッグベイトを引き込みます。連続7の17・18番はダブル7向けの別停止形です。ビッグベイト停止時は中・右にも狙ってね。色違いの7同士もBIG入賞です。左右の連続7を使って2ライン同時に7が揃うと、ダブル7専用の入賞演出が出ます（BIGの枚数は通常と同じ）。チェリー・スイカやボーナスは目押しで取りこぼす場合があります。リプレイとベルは全押し順で取りこぼしなし。チェリー・スイカ・ボーナスは目押し対象です。ボーナス当選は揃えるまで保持します。</p><p>ボーナスは成立役ごとに複合抽選。チェリー22%・スイカ10%・チャンス目45%、高確中は40%・20%・70%。リプレイとベルも各1/2048（高確中1/1024）で複合します。BIG:REGは60:40。高確は20ゲーム、レア役で再移行すると20ゲームへ更新。ハマリ補正・天井はありません。</p><p>ステージは通常の港・サーフ・河口、高確の潮目チャンス、連続演出、ボーナス中のフェスに遷移します。ステージ変化だけでは当たり確定ではありません。キャラもときどき交代。回転は1周0.75秒（80rpm）。当たり・見せかけの前兆は6〜10ゲーム。前兆中はリプレイ72%（通常約13.7%）。最後のゲームの全停止後に成否を告知し、当選は図柄を揃えるまで保持します。課金・換金なし、音声なし。前の試作とは別の遊技データです。中断したゲームは再開できます。</p><div className="ty-role-rules"><h3>役の役割（初期バランス）</h3><table><thead><tr><th>役</th><th>出現</th><th>通常／高確 複合</th><th>非当選時の高確移行</th></tr></thead><tbody>{(['replay','bell','fish','cherry','chance'] as const).map(role=><tr key={role}><td>{ROLE_RULES[role].label}</td><td>1/{(1/ROLE_RULES[role].rate).toFixed(1)}</td><td>{(ROLE_RULES[role].bonus*100).toFixed(2)}%／{(ROLE_RULES[role].highBonus*100).toFixed(2)}%</td><td>{Math.round(ROLE_RULES[role].high*100)}%</td></tr>)}</tbody></table><p>前兆中はリプレイだけ72%に増加。スイカの取りこぼしはチャンス目として扱いません。複合・高確移行は内部成立で抽選するので、取りこぼしても当選結果は消えません。</p><p>期待度★は契機とお題・担当キャラの組み合わせによる導入時の目安。得意不得意はゲーム用の仮設定です。苦手でも成功・得意でも失敗あり。途中のレア役でもボーナスを上書き抽選します。</p></div><details className="ty-strip-guide"><summary>各リールの21コマ配列を見る</summary><div>{REEL_STRIPS.map((strip,r)=><ol key={r} aria-label={`${r+1}リール配列`}>{strip.map((symbol,i)=><li key={i}><small>{i+1}</small><SlotSymbol symbol={symbol} variant={bonusVariant(r,i)}/></li>)}</ol>)}</div></details><div className="ty-motion-previews"><p>演出の確認（当選・空振りの確認は遊技ログへ反映）</p><div className="ty-demo-buttons">{SLOT_CAST.map((actor,i)=><button key={actor.id} className="ty-demo" disabled={running||!!active||!!state.chance} onClick={()=>previewScene(i,session.visual.fishing??'lure')}>{actor.name}</button>)}</div><div className="ty-demo-buttons"><button className="ty-demo" disabled={running||!!active||!!state.chance} onClick={()=>previewScene(session.visual.actor,'lure')}>立ちルアー</button><button className="ty-demo" disabled={running||!!active||!!state.chance} onClick={()=>previewScene(session.visual.actor,'float')}>座りウキ釣り</button>{[true,false].map(win=><button key={String(win)} className="ty-demo" disabled={running||!!active||!!state.pending||!!state.chance} onClick={()=>previewChance(win)}>前兆{win?'成功':'空振り'}</button>)}</div></div><div className="ty-demo-buttons">{CHALLENGES.map(c=><button className="ty-demo" key={c.id} disabled={running||!!active||!!state.pending||!!state.chance} onClick={()=>previewChance(false,c.id,session.visual.actor)}>{c.title}</button>)}</div><p>お題ボタンは選択中のキャラで演出確認。途中のレア役で本当の当選に変わる場合もあります。前兆成功・空振りボタンは通常の担当抽選を使います。</p><div className="ty-demo-buttons">{(['BIG','REG'] as const).map(b=><button key={b} className="ty-demo" disabled={running||!!active||!!state.pending||!!state.chance||state.credit<cost} onClick={()=>start(b)}>{b}当選を試す</button>)}</div><p>演出確認は抽選外。自分で図柄を揃えると開始し、メダルとログにも反映されます。</p><button className="ty-text-button" disabled={running} onClick={()=>setResetOpen(!resetOpen)}>遊技データをリセット</button>{resetOpen&&<div><p>現在のメダル・履歴を消して300枚から遊び直します。</p><button className="ty-demo" disabled={running} onClick={reset}>消去して遊び直す</button></div>}</div>}{state.credit<cost&&!running&&<button className="ty-demo" onClick={()=>{setDetails(true);setResetOpen(true)}}>メダルを補充して遊び直す</button>}{saveWarning&&<p role="status">この端末では保存できません。画面を閉じると進行が失われます。</p>}{error&&<p role="alert">{error}</p>}</div></aside></dialog>
     </div>
   </PageShell>;

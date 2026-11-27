@@ -18,3 +18,13 @@ export function drawRole(random:number,replayRate=NORMAL_REPLAY_RATE):Role {
  for(const role of ['bell','fish','cherry','chance'] as const){threshold+=ROLE_RULES[role].rate;if(random<threshold)return role;}
  return 'miss';
 }
+
+// Constant throughout NABU RUSH: no opening-game or continuation-count advantage.
+export const RUSH_RARE_RATE=.09;
+export function drawRushRole(value:number):Role {
+ if(value<.03)return 'cherry';
+ if(value<.075)return 'fish';
+ if(value<RUSH_RARE_RATE)return 'chance';
+ return 'bell';
+}
+export function bonusPayout(role:Role){return role==='bell'||role==='fish'?15:role==='cherry'?8:0;}

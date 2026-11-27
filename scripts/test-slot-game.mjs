@@ -29,7 +29,7 @@ for(let game=0;game<20000;game++){
  if(done.result.replay){replays++;assert.equal(e.beginSpin(done.session.state,()=>.99).spin.cost,0)}
  if(s.state.pending&&!done.result.bonusStarted)assert.equal(done.session.state.pending,s.state.pending);
  if(done.result.bonusStarted==='BIG')bb++;if(done.result.bonusStarted==='REG')rb++;
- if(done.result.bonusEnded)assert.ok(done.session.state.bonusPaid>=(done.result.bonusEnded==='BIG'?e.BIG_LIMIT:e.REG_LIMIT));
+ if(done.result.bonusEnded)assert.ok(done.result.bonusEnded==='BIG'?done.session.state.bonusPaid>=e.BIG_LIMIT:done.session.state.regRemaining===0);
  if(['replay','bell'].includes(s.spin.role))assert.ok(done.result.board.awards.some(a=>a.role===s.spin.role),'common roles never miss');
  if(s.spin.role!=='miss'&&!done.result.board.awards.length)misses++;
  assert.equal(done.session.state.spins,before.spins+1);assert.equal(done.session.state.normalSpins,before.normalSpins+(before.active?0:1));
@@ -46,7 +46,7 @@ for(const bonus of ['BIG','REG']){
    active=e.beginSpin(active.state,random);for(const r of orders[i%6])active=e.stopReel(active,r,random()*21);
    active=e.settleSpin(active).session;
  }
- assert.equal(active.state.active,null);assert.ok(active.state.bonusPaid>=(bonus==='BIG'?e.BIG_LIMIT:e.REG_LIMIT));
+ assert.equal(active.state.active,null);assert.ok(bonus==='BIG'?active.state.bonusPaid>=e.BIG_LIMIT:active.state.regRemaining===0);
 }
 // Adjacent outer sevens allow a real center + diagonal double, not a painted fake.
 const doubleBoard=e.evaluateBoard([16,2,14]);assert.equal(doubleBoard.bonus,'BIG');assert.ok(doubleBoard.bonusLines.length>=2);
@@ -59,7 +59,7 @@ for(const anchor of [3,10])for(const role of ['cherry','fish','chance']){
 }
 // Layout upgrade cancels only the partial old-layout game and returns its charged bet.
 const old=e.beginSpin({...e.initialState(),pending:'BIG',announced:true},()=>.99);delete old.layoutVersion;delete old.visual;
-const resumed=e.readSession(JSON.stringify(old));assert.equal(resumed.spin,null);assert.equal(resumed.state.credit,300);assert.equal(resumed.state.spent,0);assert.equal(resumed.state.pending,'BIG');assert.equal(resumed.layoutVersion,7);
+const resumed=e.readSession(JSON.stringify(old));assert.equal(resumed.spin,null);assert.equal(resumed.state.credit,300);assert.equal(resumed.state.spent,0);assert.equal(resumed.state.pending,'BIG');assert.equal(resumed.layoutVersion,8);
 assert.deepEqual(e.readSession(JSON.stringify(resumed)).state,resumed.state,'refund is idempotent');
 assert.throws(()=>e.beginSpin({...e.initialState(),credit:2}));
 assert.deepEqual(e.readSession('broken').state,e.initialState());assert.deepEqual(e.readSession('{"state":{}}').state,e.initialState());
