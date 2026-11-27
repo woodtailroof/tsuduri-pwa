@@ -19,9 +19,9 @@ export function SlotSymbol({symbol,variant=0}:{symbol:number;variant?:number}) {
   const tile=symbolTile(symbol,variant),column=tile%4,row=Math.floor(tile/4);
   const bonus=symbol===0||symbol===5,actor=((Math.trunc(variant)%5)+5)%5;
   const label=symbol===5?'釣嫁プロジェクト・集合BAR':bonus?`${SLOT_CAST[actor].name}の7`:SLOT_SYMBOLS[symbol].label;
-  return <svg viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" className={`ty-motif-symbol ty-painted-symbol motif-${symbol} ${bonus?'is-bonus-symbol':'is-small-symbol'} bonus-variant-${actor}`} role="img" aria-label={label} data-symbol-tile={tile}>
-    <defs><clipPath id={clipId}><rect width="300" height="200"/></clipPath></defs>
-    <g clipPath={`url(#${clipId})`}><image href="/assets/slot/reel-symbols-v2.webp" x={-column*300} y={-row*200} width="1200" height="800"/></g>
+  return <svg viewBox={`0 0 300 ${bonus?140:200}`} preserveAspectRatio="xMidYMid meet" className={`ty-motif-symbol ty-painted-symbol motif-${symbol} ${bonus?'is-bonus-symbol':'is-small-symbol'} bonus-variant-${actor}`} role="img" aria-label={label} data-symbol-tile={tile}>
+    <defs><clipPath id={clipId}><rect width="300" height={bonus?140:200}/></clipPath></defs>
+    <g clipPath={`url(#${clipId})`}><image href="/assets/slot/reel-symbols-v3.webp" x={-column*300} y={-row*200-(bonus?30:0)} width="1200" height="800"/></g>
   </svg>;
 }
 export function FishingChibi({actor,className='',pose='stand'}:{actor:number;className?:string;pose?:FishingPose}) {
