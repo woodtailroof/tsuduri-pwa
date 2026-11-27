@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),React=require('react'),{renderToStaticMarkup:render}=require('react-dom/server');
+(async()=>{await require('esbuild').build({entryPoints:['src/lib/slotGame.ts','src/components/SlotArtwork.tsx'],outdir:'.seven-test',bundle:true,platform:'node',format:'cjs',outExtension:{'.js':'.cjs'},packages:'external',jsx:'automatic'});try{
+const e=require('../.seven-test/lib/slotGame.cjs'),a=require('../.seven-test/components/SlotArtwork.cjs');
+assert.deepEqual(e.REEL_STRIPS[0].map((s,i)=>s===0?i:null).filter(i=>i!==null),[16,17]);assert.equal(e.REEL_STRIPS[0][3],5);
+for(const [reel,position,actor] of [[0,16,0],[0,17,1],[1,2,2],[1,14,2],[2,7,3],[2,13,3],[2,14,4]]){assert.equal(a.bonusVariant(reel,position),actor);const html=render(React.createElement(a.SlotSymbol,{symbol:0,variant:actor}));assert.ok(html.includes(`data-symbol-tile="${actor}"`));}
+for(let variant=0;variant<5;variant++){assert.equal(a.symbolTile(5,variant),5);assert.ok(render(React.createElement(a.SlotSymbol,{symbol:5,variant})).includes('集合BAR'));}
+const d=e.evaluateBoard([16,2,14]);assert.equal(d.bonus,'BIG');assert.ok(d.bonusLines.length>=2);
+for(const active of [null,'BIG','REG']){let s=e.initialSession();Object.assign(s.state,{active,bonusGames:5,bonusPaid:75,regRemaining:19,rushExtensions:2,highLeft:12});s=e.beginSpin(s.state,()=>.99);s.layoutVersion=8;const v=e.readSession(JSON.stringify(s));assert.equal(v.layoutVersion,9);assert.equal(v.spin,null);assert.equal(v.state.credit,300);assert.equal(v.state.bonusGames,5);assert.equal(v.state.bonusPaid,75);assert.equal(v.state.regRemaining,19);assert.equal(v.state.rushExtensions,2);assert.equal(v.state.highLeft,12);assert.deepEqual(e.readSession(JSON.stringify(v)),v);}
+console.log('PASS: exact seven positions/character mapping, shared BAR, real double seven, v8 migration preserves RUSH remaining/extensions and refunds partial BET once');
+}finally{fs.rmSync('.seven-test',{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1});

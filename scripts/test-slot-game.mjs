@@ -37,7 +37,7 @@ for(let game=0;game<20000;game++){
 }
 assert.ok(bb>5&&rb>5&&replays>100&&misses>10);
 for(const bonus of ['BIG','REG']){
- let test=e.beginSpin(e.initialState(),()=>.99,bonus),target=bonus==='BIG'?[2,2,8]:[2,2,5];
+ let test=e.beginSpin(e.initialState(),()=>.99,bonus),target=bonus==='BIG'?[16,2,14]:[16,2,5];
  assert.ok(target);
  for(const reel of [0,1,2])test=e.stopReel(test,reel,target[reel]+.5);
  const done=e.settleSpin(test);assert.equal(done.result.bonusStarted,bonus);assert.equal(done.session.state.pending,null);assert.equal(done.session.state.active,bonus);
@@ -59,7 +59,7 @@ for(const anchor of [3,10])for(const role of ['cherry','fish','chance']){
 }
 // Layout upgrade cancels only the partial old-layout game and returns its charged bet.
 const old=e.beginSpin({...e.initialState(),pending:'BIG',announced:true},()=>.99);delete old.layoutVersion;delete old.visual;
-const resumed=e.readSession(JSON.stringify(old));assert.equal(resumed.spin,null);assert.equal(resumed.state.credit,300);assert.equal(resumed.state.spent,0);assert.equal(resumed.state.pending,'BIG');assert.equal(resumed.layoutVersion,8);
+const resumed=e.readSession(JSON.stringify(old));assert.equal(resumed.spin,null);assert.equal(resumed.state.credit,300);assert.equal(resumed.state.spent,0);assert.equal(resumed.state.pending,'BIG');assert.equal(resumed.layoutVersion,9);
 assert.deepEqual(e.readSession(JSON.stringify(resumed)).state,resumed.state,'refund is idempotent');
 assert.throws(()=>e.beginSpin({...e.initialState(),credit:2}));
 assert.deepEqual(e.readSession('broken').state,e.initialState());assert.deepEqual(e.readSession('{"state":{}}').state,e.initialState());
