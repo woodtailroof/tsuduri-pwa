@@ -2,9 +2,9 @@ const root=process.cwd(),React=require(root+'/node_modules/react'),assert=requir
 (async()=>{
 const file=root+'/.slot-control-test.cjs';await require(root+'/node_modules/esbuild').build({entryPoints:['src/screens/SlotGame.tsx'],outfile:file,bundle:true,platform:'node',format:'cjs',packages:'external',jsx:'automatic',loader:{'.css':'empty'}});
 try{
-const Game=require(file).default,old={useState:React.useState,useRef:React.useRef,useEffect:React.useEffect,useCallback:React.useCallback},random=Math.random;
+const Game=require(file).default,old={useState:React.useState,useRef:React.useRef,useEffect:React.useEffect,useLayoutEffect:React.useLayoutEffect,useCallback:React.useCallback},random=Math.random;
 let states=[],refs=[],si=0,ri=0,saved=null;
-React.useState=init=>{let i=si++;if(!(i in states))states[i]=typeof init==='function'?init():init;return[states[i],v=>states[i]=typeof v==='function'?v(states[i]):v]};React.useRef=init=>{let i=ri++;return refs[i]??(refs[i]={current:init})};React.useEffect=()=>{};React.useCallback=f=>f;Math.random=()=>.99;
+React.useState=init=>{let i=si++;if(!(i in states))states[i]=typeof init==='function'?init():init;return[states[i],v=>states[i]=typeof v==='function'?v(states[i]):v]};React.useRef=init=>{let i=ri++;return refs[i]??(refs[i]={current:init})};React.useEffect=()=>{};React.useLayoutEffect=()=>{};React.useCallback=f=>f;Math.random=()=>.99;
 global.localStorage={getItem:()=>saved,setItem:(k,v)=>saved=v};
 const all=(n,p)=>!n||typeof n!=='object'?[]:[...(p(n)?[n]:[]),...[n.props?.children].flat(Infinity).flatMap(c=>all(c,p))];
 const view=()=>{si=ri=0;return Game({back(){}})};const reels=t=>all(t,n=>n.props?.requestStop&&n.props?.index!==undefined);

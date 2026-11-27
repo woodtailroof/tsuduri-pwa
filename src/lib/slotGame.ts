@@ -10,9 +10,9 @@ export const SLOT_SYMBOLS = [
 ] as const;
 // Three physical 21-stop strips, top to bottom. Replays are spaced every 3 stops.
 export const REEL_STRIPS: readonly (readonly number[])[] = [
-  [0,4,2,4,1,2,3,5,4,2,4,1,2,3,0,4,2,4,1,2,3],
-  [4,2,0,4,2,1,4,2,5,4,2,1,4,2,0,4,2,1,4,2,1],
-  [4,1,2,4,5,2,4,0,2,4,1,2,4,0,2,4,1,2,4,1,2],
+  [0,4,2,4,1,2,3,5,4,2,4,1,3,0,0,4,2,4,1,2,3],
+  [4,4,0,4,2,1,4,2,5,4,2,1,4,4,0,4,2,1,4,2,1],
+  [4,1,2,4,5,2,4,0,2,4,1,2,4,0,0,4,1,2,4,1,2],
 ];
 export const PAY_LINES = [[0,0,0],[1,1,1],[2,2,2],[0,1,2],[2,1,0]] as const;
 export const LINE_NAMES = ['上段','中段','下段','右下がり','右上がり'];
@@ -28,19 +28,19 @@ export type SlotState = {
   bonusPaid:number; replay:boolean; positions:Positions; history:number[]; bonusLog:string[];
 };
 export type Award = { role:Exclude<Role,'miss'>; line:number; payout:number };
-export type Board = { positions:Positions; awards:Award[]; payout:number; bonus:Bonus|null; bonusLines:number[] };
+export type Board = { positions:Positions; awards:Award[]; payout:number; bonus:Bonus|null; bonusLines:number[]; bonusKinds:Bonus[] };
 export type Spin = { role:Role; stops:Stops; before:SlotState; cost:number; announced:boolean };
-export type Session = { state:SlotState; spin:Spin|null; savedAt:number; layoutVersion:3; visual:SlotVisual };
+export type Session = { state:SlotState; spin:Spin|null; savedAt:number; layoutVersion:4; visual:SlotVisual };
 export type Result = { title:string; message:string; payout:number; replay:boolean; bonusStarted:Bonus|null; bonusEnded:Bonus|null; board:Board };
 export function initialState():SlotState { return {credit:300,spins:0,normalSpins:0,bigCount:0,regCount:0,best:300,spent:0,paid:0,sinceBonus:0,pending:null,active:null,bonusPaid:0,replay:false,positions:[0,0,0],history:[0],bonusLog:[]}; }
 export const modulo=(n:number,length=21)=>((n%length)+length)%length;
 export function visibleSymbols(reel:number,center:number) { const strip=REEL_STRIPS[reel];return [-1,0,1].map(delta=>strip[modulo(center+delta)]); }
 export function evaluateBoard(positions:Positions):Board {
   const cells=positions.map((p,r)=>visibleSymbols(r,p));
-  const awards:Award[]=[];let bonus:Bonus|null=null;const bonusLines:number[]=[];
+  const awards:Award[]=[];let bonus:Bonus|null=null;const bonusLines:number[]=[];const bonusKinds=new Set<Bonus>();
   for(let line=0;line<PAY_LINES.length;line++) {
     const s=PAY_LINES[line].map((row,r)=>cells[r][row]);
-    if(s[0]===0&&s[1]===0&&(s[2]===0||s[2]===5)) {bonus=s[2]===0?'BIG':'REG';bonusLines.push(line);}
+    if(s[0]===0&&s[1]===0&&(s[2]===0||s[2]===5)) {bonus=s[2]===0?'BIG':'REG';bonusLines.push(line);bonusKinds.add(bonus);}
     if(s.every(v=>v===2))awards.push({role:'bell',line,payout:8});
     if(s.every(v=>v===1))awards.push({role:'fish',line,payout:6});
     if(s.every(v=>v===4))awards.push({role:'replay',line,payout:0});
@@ -48,11 +48,12 @@ export function evaluateBoard(positions:Positions):Board {
   // One cherry award per game, independent of how many lines cross the left symbol.
   const cherryRow=cells[0].indexOf(3);
   if(cherryRow>=0)awards.push({role:'cherry',line:cherryRow,payout:2});
-  return {positions:[...positions],awards,payout:Math.min(15,awards.reduce((n,a)=>n+a.payout,0)),bonus,bonusLines};
+  return {positions:[...positions],awards,payout:Math.min(15,awards.reduce((n,a)=>n+a.payout,0)),bonus,bonusLines,bonusKinds:[...bonusKinds]};
 }
 const boardCache:Board[]=[];
 function allBoards(){if(!boardCache.length)for(let a=0;a<21;a++)for(let b=0;b<21;b++)for(let c=0;c<21;c++)boardCache.push(evaluateBoard([a,b,c]));return boardCache;}
 export function legalBoard(board:Board,spin:Spin):boolean {
+  if(board.bonusKinds.length>1)return false;
   if(board.awards.some(a=>a.role!==spin.role))return false;
   if(board.bonus && (spin.before.active||spin.role!=='miss'||board.bonus!==spin.before.pending))return false;
   // A replay must be pulled in; other small roles may be missed within the slip limit.
@@ -92,7 +93,7 @@ export function beginSpin(state:SlotState,random:()=>number=Math.random,demo:Bon
   if(demo&&!state.active){pending=demo;role='miss';}
   before.pending=pending;
   const next={...before,credit:state.credit-cost,spent:state.spent+cost,replay:false};
-  return {layoutVersion:3,visual:initialVisual(),state:next,spin:{before,role,cost,stops:[null,null,null],announced:!!pending},savedAt:Date.now()};
+  return {layoutVersion:4,visual:initialVisual(),state:next,spin:{before,role,cost,stops:[null,null,null],announced:!!pending},savedAt:Date.now()};
 }
 // Each stop may advance at most four whole symbols from the next available boundary.
 // Keep only globally legal completions, then prefer the drawn role over a miss.
@@ -140,16 +141,16 @@ export function settleSpin(session:Session):{session:Session;result:Result} {
     bonusStarted=board.bonus;state.active=board.bonus;state.pending=null;state.bonusPaid=0;
     if(board.bonus==='BIG')state.bigCount++;else state.regCount++;
     state.bonusLog=[`${board.bonus} · ${state.sinceBonus}G`,...state.bonusLog].slice(0,8);state.sinceBonus=0;
-    title=`${board.bonus} BONUS！`;message='やったね、ひろっち！ 大漁タイム、スタート！';
+    title=board.bonus==='BIG'&&board.bonusLines.length>=2?'DOUBLE 7 BONUS！':`${board.bonus} BONUS！`;message='やったね、ひろっち！ 大漁タイム、スタート！';
   } else if(replay){title='REPLAY';message='次のゲームはメダル消費なし！';}
   else if(board.payout){title='NICE CATCH';message=`${board.payout}枚ゲット！ この調子っ♪`;}
   else if(spin.role!=='miss'){title='次こそキャッチ！';message='小役は停止タイミングで取りこぼすこともあるよ。';}
   if(state.pending)message=`${state.pending==='BIG'?'7・7・7':'7・7・BAR'}を狙ってね！ 揃えるまで当選は持ち越すよ。`;
   state.best=Math.max(state.best,state.credit);
   state.history=[...state.history,state.paid-state.spent].slice(-160);
-  return {session:{layoutVersion:3,visual:session.visual,state,spin:null,savedAt:Date.now()},result:{title,message,payout:board.payout,replay,bonusStarted,bonusEnded,board}};
+  return {session:{layoutVersion:4,visual:session.visual,state,spin:null,savedAt:Date.now()},result:{title,message,payout:board.payout,replay,bonusStarted,bonusEnded,board}};
 }
-export function initialSession():Session {return {layoutVersion:3,visual:initialVisual(),state:initialState(),spin:null,savedAt:Date.now()};}
+export function initialSession():Session {return {layoutVersion:4,visual:initialVisual(),state:initialState(),spin:null,savedAt:Date.now()};}
 export function readSession(value:string|null):Session {
   try {
     const v=JSON.parse(value||'null') as Session;const s=v?.state;
@@ -164,11 +165,11 @@ export function readSession(value:string|null):Session {
       p.before={...s,pending:s.pending,active:s.active};
     }
     if(!validVisual(v.visual))v.visual=initialVisual();
-    if(v.layoutVersion!==3){
+    if(v.layoutVersion!==4){
       // Changing the physical strip invalidates old partial stops. Refund only its charged bet,
       // preserving the pending bonus, wallet totals and all completed game history.
       if(v.spin){s.credit+=v.spin.cost;s.spent=Math.max(0,s.spent-v.spin.cost);s.replay=v.spin.cost===0&&!s.active;v.spin=null;}
-      s.positions=[0,0,0];v.layoutVersion=3;
+      s.positions=[0,0,0];v.layoutVersion=4;
     }
     return v;
   }catch{return initialSession();}

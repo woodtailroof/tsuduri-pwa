@@ -20,7 +20,7 @@ for(let game=0;game<20000;game++){
  // A saved spin retains its role and stops; duplicate button input does nothing.
  const persisted=e.readSession(JSON.stringify(s));assert.deepEqual(persisted.spin.stops,s.spin.stops);assert.equal(persisted.spin.role,s.spin.role);
  for(const reel of orders[game%6]){
-   const current=random()*420-210;const next=e.stopReel(s,reel,current);const p=next.spin.stops[reel];
+   const current=random()*420-210;let next;try{next=e.stopReel(s,reel,current)}catch{throw new Error(JSON.stringify({game,reel,current,role:s.spin.role,stops:s.spin.stops,pending:s.state.pending}))}const p=next.spin.stops[reel];
    assert.ok(e.modulo(Math.floor(current)-p)<=4,'maximum four-symbol slip');
    assert.equal(e.stopReel(next,reel,current),next);s=next;
  }
@@ -50,6 +50,10 @@ for(const bonus of ['BIG','REG']){
  }
  assert.equal(active.state.active,null);assert.ok(active.state.bonusPaid>=(bonus==='BIG'?e.BIG_LIMIT:e.REG_LIMIT));
 }
+// Adjacent outer sevens allow a real center + diagonal double, not a painted fake.
+const doubleBoard=e.evaluateBoard([14,2,13]);assert.equal(doubleBoard.bonus,'BIG');assert.ok(doubleBoard.bonusLines.length>=2);
+for(const order of orders){let d=e.beginSpin({...e.initialState(),pending:'BIG'},()=>.99);for(const r of order)d=e.stopReel(d,r,[14.5,2.5,13.5][r]);const done=e.settleSpin(d);assert.equal(done.result.bonusStarted,'BIG');assert.ok(done.result.board.bonusLines.length>=2);assert.ok(done.result.title.includes('DOUBLE'));assert.equal(done.session.state.bigCount,1);}
+const noBonus=e.beginSpin(e.initialState(),()=>.99);assert.equal(e.legalBoard(doubleBoard,noBonus.spin),false);
 // Aim either left bonus mark around the middle: pull in cherry/watermelon equivalents.
 for(const anchor of [0,7,14])for(const role of ['cherry','fish']){
  let aim=e.beginSpin(e.initialState(),()=>.99);aim.spin.role=role;
@@ -57,8 +61,10 @@ for(const anchor of [0,7,14])for(const role of ['cherry','fish']){
 }
 // Layout upgrade cancels only the partial old-layout game and returns its charged bet.
 const old=e.beginSpin({...e.initialState(),pending:'BIG'},()=>.99);delete old.layoutVersion;delete old.visual;
-const resumed=e.readSession(JSON.stringify(old));assert.equal(resumed.spin,null);assert.equal(resumed.state.credit,300);assert.equal(resumed.state.spent,0);assert.equal(resumed.state.pending,'BIG');assert.equal(resumed.layoutVersion,3);
+const resumed=e.readSession(JSON.stringify(old));assert.equal(resumed.spin,null);assert.equal(resumed.state.credit,300);assert.equal(resumed.state.spent,0);assert.equal(resumed.state.pending,'BIG');assert.equal(resumed.layoutVersion,4);
 assert.deepEqual(e.readSession(JSON.stringify(resumed)).state,resumed.state,'refund is idempotent');
 assert.throws(()=>e.beginSpin({...e.initialState(),credit:2}));
 assert.deepEqual(e.readSession('broken').state,e.initialState());assert.deepEqual(e.readSession('{"state":{}}').state,e.initialState());
 console.log(`PASS: 9,261 boards, 5 lines, 6 stop orders, ${settled} simulated games, BIG ${bb}, REG ${rb}, replays ${replays}, misses ${misses}, save/resume, four-symbol slips (${((performance.now()-begin)/1000).toFixed(1)}s)`);
+
+for(let a=0;a<21;a++)for(let b=0;b<21;b++)for(let c=0;c<21;c++){const board=e.evaluateBoard([a,b,c]);if(board.bonusKinds.length>1)for(const pending of ['BIG','REG']){const spin=e.beginSpin({...e.initialState(),pending},()=>.99).spin;assert.equal(e.legalBoard(board,spin),false);}}
