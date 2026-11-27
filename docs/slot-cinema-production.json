@@ -1,0 +1,30 @@
+{
+  "mode": "built-in imagegen",
+  "assets": [
+    {
+      "path": "public/assets/slot/missions/bigbait.webp",
+      "prompt": "Use case: stylized-concept. Production FULL-SCREEN animated fishing slot mission background, panoramic 21:9 composition. A dramatic UNDERWATER camera shot beneath a Japanese coastal sea surface. Clear turquoise water with diagonal sunbeams, rolling bubbles and shadowy silver predatory fish far in the distance on RIGHT side, deep blue distance and suspense. Foreground center/right is clear open water for animated hero lure and fish. View is fully submerged, NOT a beach landscape. Rich premium Japanese anime game background painting, cinematic high contrast, detailed hand-painted materials, luminous water, strong depth and dramatic composition. Full bleed landscape. NO UI, text, letters, borders, logos, characters, foreground lure, hook, float or hero fish. The LEFT quarter can be darker and simpler for a portrait cut-in. This must be visually distinct from a normal relaxed fishing stage. Opaque background.",
+      "source": "exec-1a39b3d4-f133-4c41-9ec3-f9425c21428e.png"
+    },
+    {
+      "path": "public/assets/slot/missions/distance.webp",
+      "prompt": "Use case: stylized-concept. Production FULL-SCREEN animated fishing slot mission background, panoramic 21:9 composition. An exhilarating extreme WIDE aerial action camera over a Japanese surf coast, looking from near water on lower-left toward a distant offshore school of baitfish marked only by tiny natural surface splashes at far upper RIGHT. Sweeping diagonal ocean perspective, sunlight streaks, huge open blue sea and distant coastal cliffs. Dynamic cinematic perspective conveys very long lure flight. Rich premium Japanese anime game background painting, cinematic high contrast, detailed hand-painted materials, luminous water, strong depth and dramatic composition. Full bleed landscape. NO UI, text, letters, borders, logos, characters, foreground lure, hook, float or hero fish. The LEFT quarter can be darker and simpler for a portrait cut-in. This must be visually distinct from a normal relaxed fishing stage. Opaque background.",
+      "source": "exec-47657801-3ba5-431e-99b2-041f3e2d40ea.png"
+    },
+    {
+      "path": "public/assets/slot/missions/skipping.webp",
+      "prompt": "Use case: stylized-concept. Production FULL-SCREEN animated fishing slot mission background, panoramic 21:9 composition. An intense LOW WATER-LEVEL camera looking along a shadowy Japanese wooden fishing pier. Huge detailed wooden pylons frame the RIGHT two thirds; a narrow bright gap deep under the dock sits at far right, with warm sunbeams through planks. Rippling teal surface fills lower half with sparkling reflections; foreground center is clear for a lure bouncing over water into the gap. This is beneath the pier, NOT a wide beach view. Rich premium Japanese anime game background painting, cinematic high contrast, detailed hand-painted materials, luminous water, strong depth and dramatic composition. Full bleed landscape. NO UI, text, letters, borders, logos, characters, foreground lure, hook, float or hero fish. The LEFT quarter can be darker and simpler for a portrait cut-in. This must be visually distinct from a normal relaxed fishing stage. Opaque background.",
+      "source": "exec-58a93c46-19e5-40e4-a94a-afe566a0efa5.png"
+    },
+    {
+      "path": "public/assets/slot/missions/float.webp",
+      "prompt": "Use case: stylized-concept. Production FULL-SCREEN animated fishing slot mission background, panoramic 21:9 composition. A dramatic MACRO CLOSE-UP of dark emerald still water beside a Japanese riverside reed bed. Gentle concentric natural ripples and luminous reflected leaves, vivid mysterious bokeh and shafts of golden sunlight. Right center is clear calm dark water reserved for an animated fishing float. NO fishing float or people drawn. Suspenseful and beautiful, no beach horizon. Rich premium Japanese anime game background painting, cinematic high contrast, detailed hand-painted materials, luminous water, strong depth and dramatic composition. Full bleed landscape. NO UI, text, letters, borders, logos, characters, foreground lure, hook, float or hero fish. The LEFT quarter can be darker and simpler for a portrait cut-in. This must be visually distinct from a normal relaxed fishing stage. Opaque background.",
+      "source": "exec-27fd47c0-9deb-4c18-9192-a1e1c686712a.png"
+    },
+    {
+      "path": "public/assets/slot/missions/light.webp",
+      "prompt": "Use case: stylized-concept. Production FULL-SCREEN animated fishing slot mission background, panoramic 21:9 composition. A cinematic shallow UNDERWATER CLOSE-UP beside a Japanese harbor seawall. Large detailed mossy boulders and a dark rocky crevice on RIGHT, suspended sparkling particles, sunbeams through the water surface above, tiny distant fish silhouettes and clear blue-green foreground space for an animated jig and fish. Dramatic diagonal camera angle, no people, no fishing gear. Rich premium Japanese anime game background painting, cinematic high contrast, detailed hand-painted materials, luminous water, strong depth and dramatic composition. Full bleed landscape. NO UI, text, letters, borders, logos, characters, foreground lure, hook, float or hero fish. The LEFT quarter can be darker and simpler for a portrait cut-in. This must be visually distinct from a normal relaxed fishing stage. Opaque background.",
+      "source": "exec-8681034a-966f-4a8c-b77f-419de197e35d.png"
+    }
+  ]
+}

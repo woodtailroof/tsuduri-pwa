@@ -15,8 +15,11 @@ export default function SlotChallenge({challenge,total,left,outcome}:{challenge:
  const selecting=time<1200&&!final;
  const pose:FishingPose=spec.mode==='float'?(stage==='intro'?'sit':'twitch'):spec.id==='distance'?(time%4500<1100?'stand':'cast'):stage==='intro'?'stand':'retrieve';
  const caption=won?spec.win:lost?spec.lose:spec[stage];
- return <section className={`ty-challenge challenge-${spec.id} challenge-${stage} ${selecting?'is-selecting':''} ${won?'challenge-win':lost?'challenge-lose':''}`} aria-label={`${spec.title} ${actor.name} 期待度${challenge.stars}つ星`}>
-  <div className="ty-challenge-vignette"/>
+ return <section className={`ty-challenge challenge-${spec.id} challenge-${stage} ${selecting?'is-selecting':''} ${won?'challenge-win':lost?'challenge-lose':''}`} aria-label={`専用シネマ演出 ${spec.title} ${actor.name} 期待度${challenge.stars}つ星`}>
+  <div className="ty-cinema-background" style={{backgroundImage:`url(/assets/slot/missions/${spec.id}.webp)`}} aria-hidden="true"/>
+  <div className="ty-cinema-depth" aria-hidden="true"/><div className="ty-challenge-vignette"/>
+  {!final&&<div className="ty-cinema-intro" aria-hidden="true"><small>TSURIYOME SPECIAL CHALLENGE</small><strong>{spec.title}</strong></div>}
+  <div className="ty-cinema-impact" aria-hidden="true"/>
   <header><small>TSURIYOME MISSION</small><h2>{spec.title}</h2><p>{spec.goal}</p></header>
   <div className="ty-challenger-select"><span>{selecting?'挑戦者、選出中…':`${actor.name}、挑戦！`}</span><div>{SLOT_CAST.map((c,i)=><img key={c.id} className={(selecting?Math.floor(time/120)%5:challenge.actor)===i?'selected':''} src={`/assets/slot/${c.id}-icon.webp`} alt={c.name}/>)}</div><b title="開始契機とお題・担当の組み合わせから算出した導入時の期待度。途中のレア役による上書き抽選あり。">期待度 <strong>{'★'.repeat(challenge.stars)}<i>{'☆'.repeat(5-challenge.stars)}</i></strong></b><em>{challenge.skill>=4?'得意のお題！':challenge.skill<=2?'苦手でも、挑む！':'ここが腕の見せどころ！'}</em></div>
   <div className={`ty-mission-actor mission-pose-${pose}`}><img src={poseSrc(actor.id,pose)} alt="" draggable={false}/><span style={{borderColor:actor.color}}>{actor.name}</span></div>
@@ -31,6 +34,7 @@ export default function SlotChallenge({challenge,total,left,outcome}:{challenge:
    {spec.id==='distance'&&<b className="ty-distance-meter">{final?(won?'100':'92'):Math.min(99,35+step*8+Math.floor(time%1500/90))}<small>m</small></b>}
    {spec.id==='skipping'&&<div className="ty-skip-calls"><i>1 BOUNCE</i><i>2 BOUNCE</i><i>IN THE GAP!</i></div>}
   </div>
+  <div className="ty-cinema-progress" aria-label="演出の進行"><span className={stage==='intro'?'current':''}>接近</span><i/><span className={stage==='attempt'?'current':''}>挑戦</span><i/><span className={stage==='climax'?'current':''}>決着</span></div>
   <div className={`ty-mission-caption ${final?'is-final':''}`} role="status"><small>{final?(won?'MISSION CLEAR':'NEXT CHALLENGE'):stage==='climax'?'FINAL APPROACH':stage==='attempt'?'CHALLENGE START':'READY?'}</small><strong>{caption}</strong></div>
   {won&&<div className="ty-mission-confetti" aria-hidden="true">✦ ✧ ✦ ✧ ✦</div>}
  </section>;

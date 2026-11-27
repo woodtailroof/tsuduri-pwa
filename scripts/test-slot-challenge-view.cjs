@@ -3,7 +3,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),React=require('
 const View=require(file).default;
 for(const id of ['bigbait','distance','skipping','float','light'])for(let actor=0;actor<5;actor++)for(const outcome of ['waiting','confirmed','escape']){
  const html=render(React.createElement(View,{challenge:{id,actor,stars:3,skill:3,expectation:.4},left:outcome==='waiting'?6:1,total:6,outcome}));
- assert.ok(html.includes('challenge-'+id));assert.ok(html.includes('期待度3つ星'));assert.ok(html.includes('/assets/slot/actors/'));
+ assert.ok(html.includes('challenge-'+id));assert.ok(html.includes('ty-cinema-background'));assert.ok(html.includes('/assets/slot/missions/'+id+'.webp'));assert.ok(html.includes('専用シネマ演出'));assert.ok(html.includes('期待度3つ星'));assert.ok(html.includes('/assets/slot/actors/'));
  assert.equal(html.includes('MISSION CLEAR'),outcome==='confirmed');assert.equal(html.includes('NEXT CHALLENGE'),outcome==='escape');assert.equal(html.includes('BONUS CHANCE'),outcome==='confirmed');
 }
 console.log('PASS: 5 challenges × 5 actors × intro/win/fail, distinct stage classes, standalone art and stars, no premature bonus confirmation');
