@@ -1,0 +1,41 @@
+/* Each character/pose is its own transparent file. No shared character atlas or clipping. */
+.ty-compact .ty-stage-scene{--angler-size:clamp(130px,28dvh,238px);--angler-left:5%}
+.ty-compact .ty-stage-scene .ty-stage-angler{left:var(--angler-left);width:var(--angler-size);height:var(--angler-size);bottom:34px;animation:none}
+.ty-compact .ty-stage-angler>span{left:12%;bottom:0}
+.ty-compact .ty-individual-pose{background:none!important;animation:none!important;transform:none!important;filter:drop-shadow(0 3px 2px #24314d44)}
+.ty-individual-pose>img{display:block;width:100%;height:100%;object-fit:contain;user-select:none;pointer-events:none}
+.ty-compact .ty-bonus-mode .ty-chibi-cut-in{width:var(--angler-size,220px);height:var(--angler-size,220px);right:5px;bottom:33px}
+.ty-compact .ty-stage-scene .ty-stage-line{display:none}
+.ty-connected-line{position:absolute;inset:0;width:100%;height:100%;overflow:visible;opacity:0}
+.ty-connected-line path{fill:none;stroke:#fff6d9b3;stroke-width:1;vector-effect:non-scaling-stroke}
+.ty-compact .fishing-float .ty-connected-line{opacity:.7}
+.ty-compact .fishing-lure .ty-stage-float{display:none}
+.ty-compact .fishing-float .ty-stage-float{left:72%;top:63%;width:6px;height:15px;animation:tyFloatBob 2.5s ease-in-out infinite}
+.ty-compact .fishing-float.has-bite .ty-stage-float,.ty-compact .motion-bite .ty-stage-float{animation:tyFloatBite .55s ease-in-out infinite}
+.ty-cast-lure{position:absolute;width:24px;height:13px;left:33%;top:40%;opacity:0;background-image:url('/assets/slot/moe-reel-symbols.webp');background-size:400% 400%;background-position:0 100%;filter:drop-shadow(0 1px 1px #18445e88)}
+.ty-compact .motion-cast .ty-cast-lure{animation:tyLureFlight 1.2s cubic-bezier(.15,.4,.4,1) both}
+.ty-cast-ring{position:absolute;left:73%;top:63%;width:24px;height:8px;border:2px solid #e9fbffcc;border-radius:50%;opacity:0}
+.ty-compact .motion-cast .ty-cast-ring{animation:tyLureLanding 1.2s ease-out both}
+.ty-compact .motion-wind .ty-connected-line{opacity:.45}
+.ty-compact .motion-wind .ty-individual-pose>img{animation:tyReelWinding .55s ease-in-out infinite;transform-origin:25% 70%}
+.ty-compact .motion-bite .ty-individual-pose>img{animation:tySeatedBite .65s ease-in-out infinite;transform-origin:26% 80%}
+.ty-compact .motion-sleep .ty-individual-pose>img{animation:tySeatedNap 3s ease-in-out infinite;transform-origin:25% 80%}
+.ty-compact .fishing-float .ty-stage-fish,.ty-compact .fishing-float .ty-stage-splash{left:63%}
+.ty-bite-meter{position:absolute;top:35px;right:8px;display:flex;gap:4px;align-items:center;padding:5px 8px;border-radius:12px;background:#381e5188;color:#ffe5f5;font:800 9px system-ui;border:1px solid #f8bfdf;z-index:5}
+.ty-bite-meter i{width:12px;height:2px;background:#ffffff66}.ty-bite-meter span{opacity:.5}.bite-step-0 span:first-child,.bite-step-1 span:first-child,.bite-step-2 span,.bite-step-3 span{opacity:1;color:#fff0a8;text-shadow:0 0 5px #ff8cbe}.bite-step-1 span:nth-of-type(2){opacity:1;color:#fff0a8}.bite-step-2,.bite-step-3{box-shadow:0 0 12px #ff9bd8bb}
+.ty-sleep-bubbles{position:absolute;left:25%;top:35%;z-index:5;color:#fff;font:800 11px system-ui;text-shadow:0 2px 3px #372b73}.ty-sleep-bubbles i{display:block;padding-left:10px;animation:tySleepBubble 3s ease-in-out infinite}
+.ty-compact .outcome-confirmed{box-shadow:inset 0 0 45px #ffe88ec9}.ty-compact .outcome-confirmed .ty-stage-fish{opacity:1;animation:tyRichCatch 1.1s ease-out both}.ty-compact .outcome-confirmed .ty-stage-shine{opacity:1;animation:tyJackpotGlow 1.5s ease-in-out infinite}.ty-compact .outcome-escape .ty-stage-fish{animation:tyFishEscape 1s ease-in both}.ty-compact .outcome-escape .ty-stage-shine{display:none}.ty-compact .has-bite .ty-stage-caption{bottom:44px;background:#fff4f3e8;font-size:10px}.ty-compact .outcome-confirmed .ty-stage-caption,.ty-compact .outcome-escape .ty-stage-caption{bottom:65px}
+@keyframes tyLureFlight{0%{opacity:0;left:31%;top:47%;transform:rotate(-35deg)}10%{opacity:1}40%{top:15%}85%{opacity:1;left:74%;top:63%;transform:rotate(30deg) scale(.6)}100%{opacity:0;left:74%;top:64%;transform:scale(.3)}}
+@keyframes tyLureLanding{0%,78%{opacity:0;transform:scale(.3)}83%{opacity:1}100%{opacity:0;transform:scale(2)}}
+@keyframes tyReelWinding{0%,100%{transform:rotate(-.4deg) translateY(0)}50%{transform:rotate(.6deg) translateY(-1px)}}
+@keyframes tySeatedBite{0%,100%{transform:rotate(0)}25%{transform:rotate(-1.3deg) translateY(-1px)}55%{transform:rotate(.7deg)}}
+@keyframes tySeatedNap{0%,100%{transform:rotate(0)}60%{transform:rotate(1.5deg) translateY(2px)}}
+@keyframes tySleepBubble{0%,100%{opacity:.3;transform:translateY(0)}60%{opacity:1;transform:translateY(-6px)}}
+@keyframes tyFishEscape{0%{opacity:1;transform:translateX(0)}100%{opacity:0;transform:translate(110px,65px) rotate(40deg) scale(.4)}}
+@media(prefers-reduced-motion:reduce){.ty-stage-scene *, .ty-compact .ty-individual-pose>img{animation:none!important;transition:none!important}}
+/* Lure coordinates and fishing line start are tied to the current drawing's actual rod tip. */
+.ty-compact .motion-cast .ty-cast-lure{animation:none;transition:left .1s linear,top .1s linear,transform .1s linear}
+.ty-compact .motion-cast .ty-individual-pose>img{animation:tyCastSwing 1.2s ease-out both;transform-origin:35% 65%}
+.ty-compact .has-bite:not(.outcome-confirmed):not(.outcome-bonus) .ty-stage-fish{opacity:.35;animation:tyRichChase 2.4s ease-in-out infinite}
+.ty-compact .has-bite:not(.outcome-confirmed):not(.outcome-bonus) .ty-stage-shine{opacity:0}
+@keyframes tyCastSwing{0%{transform:rotate(-8deg)}45%{transform:rotate(2deg)}100%{transform:rotate(0)}}

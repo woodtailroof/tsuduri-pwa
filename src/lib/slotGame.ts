@@ -8,9 +8,9 @@ export const SLOT_SYMBOLS = [
   { id:'replay', glyph:'↻', label:'魚リプレイ', color:'#74dce4' },
   { id:'bar', glyph:'BAR', label:'釣嫁BAR', color:'#c7aeff' },
 ] as const;
-// Three physical 21-stop strips, top to bottom. Replays are spaced every 3 stops.
+// Original 21-stop strips. Left bonus aim: fish / replay / bell / bonus / cherry.
 export const REEL_STRIPS: readonly (readonly number[])[] = [
-  [0,4,2,4,1,2,3,5,4,2,4,1,3,0,0,4,2,4,1,2,3],
+  [1,4,2,0,3,4,2,1,4,2,5,3,4,2,1,4,0,0,3,4,2],
   [4,4,0,4,2,1,4,2,5,4,2,1,4,4,0,4,2,1,4,2,1],
   [4,1,2,4,5,2,4,0,2,4,1,2,4,0,0,4,1,2,4,1,2],
 ];
@@ -19,20 +19,23 @@ export const LINE_NAMES = ['上段','中段','下段','右下がり','右上が�
 export const BIG_LIMIT = 252, REG_LIMIT = 96;
 export const STORAGE_KEY = 'tsuduri_slot_a_type_v2';
 export type Bonus = 'BIG'|'REG';
+export type FishingMode = 'lure'|'float';
+export type Chance = {left:number;total:number;mode:FishingMode};
+export const NORMAL_REPLAY_RATE=1/7.3, CHANCE_REPLAY_RATE=.72;
 export type Role = 'miss'|'replay'|'bell'|'fish'|'cherry';
 export type Positions = [number,number,number];
 export type Stops = [number|null,number|null,number|null];
 export type SlotState = {
   credit:number; spins:number; normalSpins:number; bigCount:number; regCount:number; best:number;
   spent:number; paid:number; sinceBonus:number; pending:Bonus|null; active:Bonus|null;
-  bonusPaid:number; replay:boolean; positions:Positions; history:number[]; bonusLog:string[];
+  bonusPaid:number; replay:boolean; announced:boolean; chance:Chance|null; positions:Positions; history:number[]; bonusLog:string[];
 };
 export type Award = { role:Exclude<Role,'miss'>; line:number; payout:number };
 export type Board = { positions:Positions; awards:Award[]; payout:number; bonus:Bonus|null; bonusLines:number[]; bonusKinds:Bonus[] };
 export type Spin = { role:Role; stops:Stops; before:SlotState; cost:number; announced:boolean };
-export type Session = { state:SlotState; spin:Spin|null; savedAt:number; layoutVersion:4; visual:SlotVisual };
-export type Result = { title:string; message:string; payout:number; replay:boolean; bonusStarted:Bonus|null; bonusEnded:Bonus|null; board:Board };
-export function initialState():SlotState { return {credit:300,spins:0,normalSpins:0,bigCount:0,regCount:0,best:300,spent:0,paid:0,sinceBonus:0,pending:null,active:null,bonusPaid:0,replay:false,positions:[0,0,0],history:[0],bonusLog:[]}; }
+export type Session = { state:SlotState; spin:Spin|null; savedAt:number; layoutVersion:5; visual:SlotVisual };
+export type Result = { title:string; message:string; payout:number; replay:boolean; bonusStarted:Bonus|null; bonusEnded:Bonus|null; board:Board; chanceOutcome:'win'|'miss'|null };
+export function initialState():SlotState { return {credit:300,spins:0,normalSpins:0,bigCount:0,regCount:0,best:300,spent:0,paid:0,sinceBonus:0,pending:null,active:null,bonusPaid:0,replay:false,announced:false,chance:null,positions:[0,0,0],history:[0],bonusLog:[]}; }
 export const modulo=(n:number,length=21)=>((n%length)+length)%length;
 export function visibleSymbols(reel:number,center:number) { const strip=REEL_STRIPS[reel];return [-1,0,1].map(delta=>strip[modulo(center+delta)]); }
 export function evaluateBoard(positions:Positions):Board {
@@ -55,14 +58,14 @@ function allBoards(){if(!boardCache.length)for(let a=0;a<21;a++)for(let b=0;b<21
 export function legalBoard(board:Board,spin:Spin):boolean {
   if(board.bonusKinds.length>1)return false;
   if(board.awards.some(a=>a.role!==spin.role))return false;
-  if(board.bonus && (spin.before.active||spin.role!=='miss'||board.bonus!==spin.before.pending))return false;
+  if(board.bonus && (spin.before.active||spin.role!=='miss'||!spin.before.announced||board.bonus!==spin.before.pending))return false;
   // A replay must be pulled in; other small roles may be missed within the slip limit.
   return spin.role!=='replay'||board.awards.some(a=>a.role==='replay');
 }
 type ControlContext={boards:Board[];safe:(stops:Stops,pool:Board[])=>boolean};
 const contexts=new Map<string,ControlContext>();
 function controlContext(spin:Spin):ControlContext {
-  const key=`${spin.role}:${spin.before.active}:${spin.before.pending}`;
+  const key=`${spin.role}:${spin.before.active}:${spin.before.pending}:${spin.before.announced}`;
   const cached=contexts.get(key);if(cached)return cached;
   const boards=allBoards().filter(b=>legalBoard(b,spin));const memo=new Map<string,boolean>();
   const safe=(stops:Stops,pool:Board[]):boolean=>{
@@ -87,13 +90,19 @@ export function beginSpin(state:SlotState,random:()=>number=Math.random,demo:Bon
   const cost=state.active?1:state.replay?0:3;
   if(state.credit<cost)throw new Error('メダルが足りません');
   const before:SlotState={...state,positions:[...state.positions],history:[...state.history],bonusLog:[...state.bonusLog]};
-  const r=random();let role:Role=state.active?'bell':r<1/7.3?'replay':r<1/7.3+1/6?'bell':r<1/7.3+1/6+1/20?'fish':r<1/7.3+1/6+1/20+1/40?'cherry':'miss';
-  let pending=state.pending;
-  if(!state.active&&!pending){const b=random();pending=demo||(b<1/180?'BIG':b<1/180+1/240?'REG':null);}
-  if(demo&&!state.active){pending=demo;role='miss';}
-  before.pending=pending;
+  let pending=state.pending,announced=state.announced;
+  let chance=state.chance?{...state.chance}:null;
+  if(!state.active&&!pending){const b=random();pending=demo||(b<1/180?'BIG':b<1/180+1/240?'REG':null);if(pending)announced=false;}
+  if(!state.active&&!announced&&!chance&&(pending||random()<1/45)){
+    const total=6+Math.floor(random()*5);chance={left:total,total,mode:random()<.5?'lure':'float'};
+  }
+  const replayRate=chance?CHANCE_REPLAY_RATE:NORMAL_REPLAY_RATE;
+  const r=random();let role:Role=state.active?'bell':r<replayRate?'replay':r<replayRate+1/6?'bell':r<replayRate+1/6+1/20?'fish':r<replayRate+1/6+1/20+1/40?'cherry':'miss';
+  if(demo&&!state.active){pending=demo;announced=true;chance=null;role='miss';}
+  before.pending=pending;before.announced=announced;before.chance=chance;
+
   const next={...before,credit:state.credit-cost,spent:state.spent+cost,replay:false};
-  return {layoutVersion:4,visual:initialVisual(),state:next,spin:{before,role,cost,stops:[null,null,null],announced:!!pending},savedAt:Date.now()};
+  return {layoutVersion:5,visual:initialVisual(),state:next,spin:{before,role,cost,stops:[null,null,null],announced:!!pending&&announced},savedAt:Date.now()};
 }
 // Each stop may advance at most four whole symbols from the next available boundary.
 // Keep only globally legal completions, then prefer the drawn role over a miss.
@@ -116,7 +125,17 @@ export function chooseStop(spin:Spin,reel:number,current:number):number {
   }
   const valid=candidates.filter(c=>score.has(c.position));
   if(!valid.length)throw new Error('No legal stop within four symbols');
-  valid.sort((a,b)=>(score.get(b.position)!-score.get(a.position)!)||a.slip-b.slip);
+  const aimed=[3,10,17].find(anchor=>modulo(boundary-anchor)<=1);
+  if(reel===0&&spin.stops.every(p=>p===null)&&aimed!==undefined&&!spin.before.active&&!spin.before.announced){
+    const lower=modulo(aimed-1);
+    const shape=(position:number)=>{
+      const cells=visibleSymbols(0,position);
+      if(spin.role==='cherry')return cells.includes(3)?100:0;
+      if(spin.role==='fish')return cells.includes(1)&&!cells.includes(0)&&!cells.includes(5)?100:0;
+      return position===lower?100:0;
+    };
+    valid.sort((a,b)=>shape(b.position)-shape(a.position)||(score.get(b.position)!-score.get(a.position)!)||a.slip-b.slip);
+  }else valid.sort((a,b)=>(score.get(b.position)!-score.get(a.position)!)||a.slip-b.slip);
   return valid[0].position;
 }
 export function stopReel(session:Session,reel:number,current:number):Session {
@@ -130,6 +149,7 @@ export function settleSpin(session:Session):{session:Session;result:Result} {
   if(!legalBoard(board,spin))throw new Error('Illegal award');
   let state={...session.state,positions:[...positions] as Positions,spins:session.state.spins+1,normalSpins:session.state.normalSpins+(session.state.active?0:1),sinceBonus:session.state.active?session.state.sinceBonus:session.state.sinceBonus+1};
   let title='次の一投へ',message='焦らず、いいポイントを探そう♪',bonusStarted:Bonus|null=null,bonusEnded:Bonus|null=null;
+  let chanceOutcome:Result['chanceOutcome']=null;
   const replay=board.awards.some(a=>a.role==='replay');
   state.credit+=board.payout;state.paid+=board.payout;state.replay=replay;
   if(state.active) {
@@ -138,19 +158,25 @@ export function settleSpin(session:Session):{session:Session;result:Result} {
       bonusEnded=state.active;title=`${state.active} FINISH`;message=`合計${state.bonusPaid}枚払い出し！ また一緒に狙おうね♪`;state.active=null;
     } else {title=board.payout?`＋${board.payout} MEDALS`:'目押しでもう一度！';message='金色のリールを狙って、メダルを増やそう！';}
   } else if(board.bonus) {
-    bonusStarted=board.bonus;state.active=board.bonus;state.pending=null;state.bonusPaid=0;
+    bonusStarted=board.bonus;state.active=board.bonus;state.pending=null;state.bonusPaid=0;state.announced=false;state.chance=null;
     if(board.bonus==='BIG')state.bigCount++;else state.regCount++;
     state.bonusLog=[`${board.bonus} · ${state.sinceBonus}G`,...state.bonusLog].slice(0,8);state.sinceBonus=0;
     title=board.bonus==='BIG'&&board.bonusLines.length>=2?'DOUBLE 7 BONUS！':`${board.bonus} BONUS！`;message='やったね、ひろっち！ 大漁タイム、スタート！';
   } else if(replay){title='REPLAY';message='次のゲームはメダル消費なし！';}
   else if(board.payout){title='NICE CATCH';message=`${board.payout}枚ゲット！ この調子っ♪`;}
   else if(spin.role!=='miss'){title='次こそキャッチ！';message='小役は停止タイミングで取りこぼすこともあるよ。';}
-  if(state.pending)message=`${state.pending==='BIG'?'7・7・7':'7・7・BAR'}を狙ってね！ 揃えるまで当選は持ち越すよ。`;
+  if(state.chance&&!state.active){
+    const left=state.chance.left-1;
+    if(left>0){state.chance={...state.chance,left};message=left<=2?'手応えが変わった……次こそ、合わせるよ！':'何か追ってきてる……もう少し探ってみよう！';}
+    else {state.chance=null;chanceOutcome=state.pending?'win':'miss';state.announced=!!state.pending;
+      title=state.pending?'BONUS CHANCE！':'あっ……抜けちゃった！';message=state.pending?'大物ヒット！ ボーナス図柄を狙ってね！':'惜しいっ、逃げられちゃった。また次の一投へ♪';}
+  }
+  if(state.pending&&state.announced)message=`${state.pending==='BIG'?'7・7・7':'7・7・BAR'}を狙ってね！ 揃えるまで当選は持ち越すよ。`;
   state.best=Math.max(state.best,state.credit);
   state.history=[...state.history,state.paid-state.spent].slice(-160);
-  return {session:{layoutVersion:4,visual:session.visual,state,spin:null,savedAt:Date.now()},result:{title,message,payout:board.payout,replay,bonusStarted,bonusEnded,board}};
+  return {session:{layoutVersion:5,visual:session.visual,state,spin:null,savedAt:Date.now()},result:{title,message,payout:board.payout,replay,bonusStarted,bonusEnded,board,chanceOutcome}};
 }
-export function initialSession():Session {return {layoutVersion:4,visual:initialVisual(),state:initialState(),spin:null,savedAt:Date.now()};}
+export function initialSession():Session {return {layoutVersion:5,visual:initialVisual(),state:initialState(),spin:null,savedAt:Date.now()};}
 export function readSession(value:string|null):Session {
   try {
     const v=JSON.parse(value||'null') as Session;const s=v?.state;
@@ -158,6 +184,10 @@ export function readSession(value:string|null):Session {
     const bonus=(x:unknown)=>x===null||x==='BIG'||x==='REG';
     if(!s||!['credit','spins','normalSpins','bigCount','regCount','best','spent','paid','sinceBonus','bonusPaid'].every(k=>integer(s[k as keyof SlotState]))||!bonus(s.pending)||!bonus(s.active)||typeof s.replay!=='boolean')throw 0;
     if(s.active&&s.pending)throw 0;
+    // v4 saves had immediate notification. Never hide an already announced win on migration.
+    if(v.layoutVersion!==5){s.announced=!!s.pending;s.chance=null;}
+    if(typeof s.announced!=='boolean'||(s.announced&&!s.pending))throw 0;
+    if(s.chance&&(!Number.isInteger(s.chance.left)||!Number.isInteger(s.chance.total)||s.chance.left<1||s.chance.left>s.chance.total||s.chance.total<6||s.chance.total>10||!['lure','float'].includes(s.chance.mode)||s.active||s.announced))throw 0;
     if(!Array.isArray(s.positions)||s.positions.length!==3||!s.positions.every(p=>integer(p)&&p<21))throw 0;
     if(!Array.isArray(s.history)||s.history.length>160||!s.history.every(p=>Number.isSafeInteger(p)&&Math.abs(p)<=1e9)||!Array.isArray(s.bonusLog)||s.bonusLog.length>8||!s.bonusLog.every(t=>typeof t==='string'&&t.length<80))throw 0;
     if(v.spin){const p=v.spin;if(!['miss','replay','bell','fish','cherry'].includes(p.role)||!Array.isArray(p.stops)||p.stops.length!==3||!p.stops.every(n=>n===null||(integer(n)&&n<21))||!p.before||!bonus(p.before.pending)||!bonus(p.before.active)||![0,1,3].includes(p.cost))throw 0;
@@ -165,11 +195,11 @@ export function readSession(value:string|null):Session {
       p.before={...s,pending:s.pending,active:s.active};
     }
     if(!validVisual(v.visual))v.visual=initialVisual();
-    if(v.layoutVersion!==4){
+    if(v.layoutVersion!==5){
       // Changing the physical strip invalidates old partial stops. Refund only its charged bet,
       // preserving the pending bonus, wallet totals and all completed game history.
       if(v.spin){s.credit+=v.spin.cost;s.spent=Math.max(0,s.spent-v.spin.cost);s.replay=v.spin.cost===0&&!s.active;v.spin=null;}
-      s.positions=[0,0,0];v.layoutVersion=4;
+      s.positions=[0,0,0];v.layoutVersion=5;
     }
     return v;
   }catch{return initialSession();}
