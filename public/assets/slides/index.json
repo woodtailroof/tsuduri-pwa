@@ -1,6 +1,13 @@
 {
   "albums": [
     {
+      "id": "kokoro/uniform",
+      "title": "こころ：セーラー",
+      "thumb": "/assets/slides/kokoro/uniform/.thumbs/000.webp",
+      "characterId": "kokoro",
+      "tags": []
+    },
+    {
       "id": "kokoro/nude",
       "title": "こころ：ヌード",
       "thumb": "/assets/slides/kokoro/nude/.thumbs/000.webp",
