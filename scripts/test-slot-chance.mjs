@@ -7,7 +7,7 @@ for(const win of [false,true]){
  let state={...e.initialState(),pending:win?'BIG':null,chance:{...chances}};
  for(let game=0;game<6;game++){
   let s=e.beginSpin(state,()=>.99);assert.equal(s.spin.announced,false);assert.equal(s.state.announced,false);
-  const board=e.evaluateBoard([2,2,8]);assert.equal(e.legalBoard(board,s.spin),false,'hidden bonus cannot land early');
+  const board=e.evaluateBoard([16,2,14]);assert.equal(e.legalBoard(board,s.spin),false,'hidden bonus cannot land early');
   s=e.readSession(JSON.stringify(s));assert.equal(s.state.chance.left,6-game);
   for(let r=0;r<3;r++)s=e.stopReel(s,r,[3.5,2.5,8.5][r]);
   const done=e.settleSpin(s);assert.equal(done.result.bonusStarted,null);
@@ -15,7 +15,7 @@ for(const win of [false,true]){
   else{assert.equal(done.result.chanceOutcome,win?'win':'miss');assert.equal(done.session.state.chance,null);assert.equal(done.session.state.announced,win);}
   state=done.session.state;
  }
- if(win){let s=e.beginSpin(state,()=>.99);for(let r=0;r<3;r++)s=e.stopReel(s,r,[2.5,2.5,8.5][r]);const d=e.settleSpin(s);assert.equal(d.result.bonusStarted,'BIG');assert.equal(d.session.state.pending,null);assert.equal(d.session.state.chance,null);}
+ if(win){let s=e.beginSpin(state,()=>.99);for(let r=0;r<3;r++)s=e.stopReel(s,r,[16.5,2.5,14.5][r]);const d=e.settleSpin(s);assert.equal(d.result.bonusStarted,'BIG');assert.equal(d.session.state.pending,null);assert.equal(d.session.state.chance,null);}
 }
 let normal=0,high=0;const n=40000;
 for(let i=0;i<n;i++){

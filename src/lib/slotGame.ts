@@ -14,7 +14,7 @@ export const SLOT_SYMBOLS = [
 ] as const;
 // Original 21-stop strips. Left bonus aim: fish / replay / bell / bonus / cherry.
 export const REEL_STRIPS: readonly (readonly number[])[] = [
-  [1,4,2,0,3,4,2,1,4,2,5,3,4,2,1,4,0,0,2,4,2],
+  [1,4,2,5,3,4,2,1,4,2,5,3,4,2,1,4,0,0,2,4,2],
   [4,2,0,4,2,1,4,2,5,4,2,1,4,2,0,4,2,1,4,2,1],
   [4,1,2,4,5,2,4,0,2,4,1,2,4,0,0,2,4,2,4,1,2],
 ];
@@ -36,7 +36,7 @@ export type SlotState = {
 export type Award = { role:Exclude<Role,'miss'|'chance'>; line:number; payout:number };
 export type Board = { positions:Positions; awards:Award[]; payout:number; bonus:Bonus|null; bonusLines:number[]; bonusKinds:Bonus[]; chancePattern:boolean };
 export type Spin = { role:Role; stops:Stops; before:SlotState; cost:number; announced:boolean;highTriggered:boolean };
-export type Session = { state:SlotState; spin:Spin|null; savedAt:number; layoutVersion:8; visual:SlotVisual };
+export type Session = { state:SlotState; spin:Spin|null; savedAt:number; layoutVersion:9; visual:SlotVisual };
 export type Result = { title:string; message:string; payout:number; replay:boolean; bonusStarted:Bonus|null; bonusEnded:Bonus|null; board:Board; chanceOutcome:'win'|'miss'|null;role:Role;chanceEye:boolean;highLeft:number;highEntered:boolean;rushAdded:number };
 export function initialState():SlotState { return {credit:300,spins:0,normalSpins:0,bigCount:0,regCount:0,best:300,spent:0,paid:0,sinceBonus:0,pending:null,active:null,bonusPaid:0,bonusGames:0,regRemaining:0,rushExtensions:0,replay:false,announced:false,chance:null,highLeft:0,positions:[0,0,0],history:[0],bonusLog:[]}; }
 export const modulo=(n:number,length=21)=>((n%length)+length)%length;
@@ -113,7 +113,7 @@ export function beginSpin(state:SlotState,random:()=>number=Math.random,demo:Bon
   before.pending=pending;before.announced=announced;before.chance=chance;
 
   const next={...before,credit:state.credit-cost,spent:state.spent+cost,replay:false};
-  return {layoutVersion:8,visual:initialVisual(),state:next,spin:{before,role,cost,stops:[null,null,null],announced:!!pending&&announced,highTriggered},savedAt:Date.now()};
+  return {layoutVersion:9,visual:initialVisual(),state:next,spin:{before,role,cost,stops:[null,null,null],announced:!!pending&&announced,highTriggered},savedAt:Date.now()};
 }
 // Each stop may advance at most four whole symbols from the next available boundary.
 // Keep only globally legal completions, then prefer the drawn role over a miss.
@@ -198,9 +198,9 @@ export function settleSpin(session:Session):{session:Session;result:Result} {
   if(state.pending&&state.announced)message=`${state.pending==='BIG'?'7・7・7':'7・7・BAR'}を狙ってね！ 揃えるまで当選は持ち越すよ。`;
   state.best=Math.max(state.best,state.credit);
   state.history=[...state.history,state.paid-state.spent].slice(-160);
-  return {session:{layoutVersion:8,visual:session.visual,state,spin:null,savedAt:Date.now()},result:{title,message,payout,replay,bonusStarted,bonusEnded,board,chanceOutcome,role:spin.role,chanceEye,highLeft:state.highLeft,highEntered,rushAdded}};
+  return {session:{layoutVersion:9,visual:session.visual,state,spin:null,savedAt:Date.now()},result:{title,message,payout,replay,bonusStarted,bonusEnded,board,chanceOutcome,role:spin.role,chanceEye,highLeft:state.highLeft,highEntered,rushAdded}};
 }
-export function initialSession():Session {return {layoutVersion:8,visual:initialVisual(),state:initialState(),spin:null,savedAt:Date.now()};}
+export function initialSession():Session {return {layoutVersion:9,visual:initialVisual(),state:initialState(),spin:null,savedAt:Date.now()};}
 export function readSession(value:string|null):Session {
   try {
     const v=JSON.parse(value||'null') as Session;const s=v?.state;
@@ -209,8 +209,8 @@ export function readSession(value:string|null):Session {
     if(!s||!['credit','spins','normalSpins','bigCount','regCount','best','spent','paid','sinceBonus','bonusPaid'].every(k=>integer(s[k as keyof SlotState]))||!bonus(s.pending)||!bonus(s.active)||typeof s.replay!=='boolean')throw 0;
     if(s.active&&s.pending)throw 0;
     // v5 already had hidden lead-ups. Preserve their result and remaining games.
-    if(v.layoutVersion!==8){if(v.layoutVersion!==5&&v.layoutVersion!==6&&v.layoutVersion!==7){s.announced=!!s.pending;s.chance=null;}if(v.layoutVersion!==6&&v.layoutVersion!==7)s.highLeft=0;}
-    if(v.layoutVersion!==8){s.bonusGames=s.active==='BIG'?Math.floor(s.bonusPaid/6):0;s.regRemaining=s.active==='REG'?8:0;s.rushExtensions=0;}
+    if(v.layoutVersion!==9){if(v.layoutVersion!==5&&v.layoutVersion!==6&&v.layoutVersion!==7&&v.layoutVersion!==8){s.announced=!!s.pending;s.chance=null;}if(v.layoutVersion!==6&&v.layoutVersion!==7&&v.layoutVersion!==8)s.highLeft=0;}
+    if(v.layoutVersion!==9&&v.layoutVersion!==8){s.bonusGames=s.active==='BIG'?Math.floor(s.bonusPaid/6):0;s.regRemaining=s.active==='REG'?8:0;s.rushExtensions=0;}
     if(!['bonusGames','regRemaining','rushExtensions'].every(k=>integer(s[k as keyof SlotState])))throw 0;
     if(!integer(s.highLeft)||s.highLeft>HIGH_GAMES)throw 0;
     if(typeof s.announced!=='boolean'||(s.announced&&!s.pending))throw 0;
@@ -221,14 +221,14 @@ export function readSession(value:string|null):Session {
     if(v.spin){const p=v.spin;if(!['miss','replay','bell','fish','cherry','chance'].includes(p.role)||!Array.isArray(p.stops)||p.stops.length!==3||!p.stops.every(n=>n===null||(integer(n)&&n<21))||!p.before||!bonus(p.before.pending)||!bonus(p.before.active)||![0,1,3].includes(p.cost))throw 0;
       // Reconstruct the minimum trusted pre-spin fields used by stop validation.
       p.before={...s,pending:s.pending,active:s.active};
-      if(v.layoutVersion!==8){if((v.layoutVersion===6||v.layoutVersion===7)&&p.highTriggered)s.highLeft=HIGH_GAMES;p.highTriggered=false;}else if(typeof p.highTriggered!=='boolean')throw 0;
+      if(v.layoutVersion!==9){if((v.layoutVersion===6||v.layoutVersion===7||v.layoutVersion===8)&&p.highTriggered)s.highLeft=HIGH_GAMES;p.highTriggered=false;}else if(typeof p.highTriggered!=='boolean')throw 0;
     }
     if(!validVisual(v.visual))v.visual=initialVisual();
-    if(v.layoutVersion!==8){
+    if(v.layoutVersion!==9){
       // Changing the physical strip invalidates old partial stops. Refund only its charged bet,
       // preserving the pending bonus, wallet totals and all completed game history.
       if(v.spin){s.credit+=v.spin.cost;s.spent=Math.max(0,s.spent-v.spin.cost);s.replay=v.spin.cost===0&&!s.active;v.spin=null;}
-      s.positions=[0,0,0];v.layoutVersion=8;
+      s.positions=[0,0,0];v.layoutVersion=9;
     }
     return v;
   }catch{return initialSession();}

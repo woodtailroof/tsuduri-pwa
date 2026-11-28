@@ -9,7 +9,7 @@ export function SlotBonusScreen({session,result}:{session:Session;result:Result|
  const phase=confirmed?'confirmed':spin?(stops===0?'cast':'fight'):result?.bonusEnded?'finish':result&&state.bonusGames>0?'get':'ready';
  const actor=SLOT_CAST[session.visual.actor];
  const title=kind==='BIG'?'爆釣ボーナス':'NABU★RUSHボーナス';
- return <div className={`ty-bonus-scene ty-bonus-${kind.toLowerCase()} ty-bonus-${phase}`} data-phase={phase}>
+ return <div className={`ty-bonus-scene ty-bonus-${kind.toLowerCase()} ty-bonus-phase-${phase}`} data-phase={phase}>
   {confirmed?<><img className="ty-bonus-group" src="/assets/slot/bonus-confirmed.webp" alt="釣嫁5人が揃って大漁をお祝い"/><div className="ty-confirm-title"><small>TSURIYOME ALL STARS</small><strong>{title}確定</strong><span>{state.pending?(kind==='BIG'?'7・7・7 を狙ってね！':'7・7・BAR を狙ってね！'):'レバーONで大漁タイム！'}</span></div></>:<>
    <div className="ty-bonus-background"/>
    <div className="ty-bonus-counter"><b>{title}</b><span>{kind==='REG'?`残り ${state.regRemaining} G`:`${state.bonusPaid} / 252 枚`}</span><small>{state.bonusGames} G · 払い出し {state.bonusPaid} 枚{kind==='REG'?` · 延長 ${state.rushExtensions} 回`:''}</small></div>

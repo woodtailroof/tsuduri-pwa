@@ -8,20 +8,20 @@ import SlotChallenge from './SlotChallenge';
 export function iconSrc(id:string){return `/assets/slot/${id}-icon.webp`;}
 export function portraitSrc(id:string){return `/assets/characters-mobile/${id}/uniform/happy.webp`;}
 export function hideBrokenImage(event:React.SyntheticEvent<HTMLImageElement>){event.currentTarget.style.visibility='hidden';}
-export function bonusVariant(reel:number,position:number){return (reel*2+Math.floor(position/7))%5;}
-// Atlas: 5 character sevens, 5 character BARs, gold reel, replay fish, lure, float.
+export function bonusVariant(reel:number,position:number){return reel===0?(position===17?1:0):reel===1?2:position===14?4:3;}
+// Atlas: fixed character sevens; all BAR cells use the approved grayscale group emblem.
 export function symbolTile(symbol:number,variant=0):number {
   const actor=((Math.trunc(variant)%5)+5)%5;
-  return symbol===0?actor:symbol===5?5+actor:[0,12,10,13,11,5][symbol];
+  return symbol===0?actor:symbol===5?5:[0,12,10,13,11,5][symbol];
 }
 export function SlotSymbol({symbol,variant=0}:{symbol:number;variant?:number}) {
   const clipId=`slot-symbol-${useId().replace(/[^a-zA-Z0-9_-]/g,'')}`;
   const tile=symbolTile(symbol,variant),column=tile%4,row=Math.floor(tile/4);
   const bonus=symbol===0||symbol===5,actor=((Math.trunc(variant)%5)+5)%5;
-  const label=bonus?`${SLOT_CAST[actor].name}の${symbol===0?'7':'BAR'}`:SLOT_SYMBOLS[symbol].label;
-  return <svg viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" className={`ty-motif-symbol ty-painted-symbol motif-${symbol} ${bonus?'is-bonus-symbol':'is-small-symbol'} bonus-variant-${actor}`} role="img" aria-label={label} data-symbol-tile={tile}>
-    <defs><clipPath id={clipId}><rect width="300" height="200"/></clipPath></defs>
-    <g clipPath={`url(#${clipId})`}><image href="/assets/slot/moe-reel-symbols.webp" x={-column*300} y={-row*200} width="1200" height="800"/></g>
+  const label=symbol===5?'釣嫁プロジェクト・集合BAR':bonus?`${SLOT_CAST[actor].name}の7`:SLOT_SYMBOLS[symbol].label;
+  return <svg viewBox={`0 0 300 ${bonus?140:200}`} preserveAspectRatio="xMidYMid meet" className={`ty-motif-symbol ty-painted-symbol motif-${symbol} ${bonus?'is-bonus-symbol':'is-small-symbol'} bonus-variant-${actor}`} role="img" aria-label={label} data-symbol-tile={tile}>
+    <defs><clipPath id={clipId}><rect width="300" height={bonus?140:200}/></clipPath></defs>
+    <g clipPath={`url(#${clipId})`}><image href="/assets/slot/reel-symbols-v3.webp" x={-column*300} y={-row*200-(bonus?30:0)} width="1200" height="800"/></g>
   </svg>;
 }
 export function FishingChibi({actor,className='',pose='stand'}:{actor:number;className?:string;pose?:FishingPose}) {
