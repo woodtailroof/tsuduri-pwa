@@ -27,6 +27,7 @@ export default function SlotBaitCinema({state,actor=0}:{state:BaitPreview;actor?
  {showActor&&<><img className="ty-bait-plate" src={`${base}gear-${pose}.webp`} alt="共通の竿とリール"/><img className="ty-bait-actor-plate" style={{left:`${(40+offsets[pose])/9.6}%`}} src={`${base}actor-${pose}.webp`} alt="つづりのキャスト動作"/></>}
 
  {!chasing&&actor!==0&&<img className="ty-bait-entry-actor" src={poseSrc(SLOT_CAST[actor]?.id??'tsuduri',pose===3?'retrieve':'cast')} alt={`${SLOT_CAST[actor]?.name??'つづり'}がキャストする`}/>}
- <aside key={`${state.game}-${frame}-${state.done}`} className={`ty-bait-reaction reaction-${frame}`} aria-label={`${SLOT_CAST[actor]?.name??'つづり'}の反応`}><img src={portrait} alt={escaped?'魚を見送る':frame===0?'魚影に気づく':frame===1?'追尾に期待する':'食いつきを待って集中する'}/><span>{SLOT_CAST[actor]?.name??'つづり'}</span></aside>
+ {chasing&&!state.done&&<aside key={`${state.game}-${frame}-${state.done}`} className={`ty-bait-reaction reaction-${frame}`} aria-label={`${SLOT_CAST[actor]?.name??'つづり'}の反応`}><img src={portrait} alt={escaped?'魚を見送る':frame===0?'魚影に気づく':frame===1?'追尾に期待する':'食いつきを待って集中する'}/><span>{SLOT_CAST[actor]?.name??'つづり'}</span></aside>}
+ {state.done&&<div className={`ty-bait-result-overlay result-${win?'win':'miss'}`} aria-label={win?'喜ぶキャラクター':'ガッカリするキャラクター'}><img src={`${base}result-${SLOT_CAST[actor]?.id??'tsuduri'}-${win?'win':'miss'}.webp`} alt={`${SLOT_CAST[actor]?.name??'つづり'}が${win?'喜ぶ':'ガッカリする'}`}/></div>}
  </div>;
 }
