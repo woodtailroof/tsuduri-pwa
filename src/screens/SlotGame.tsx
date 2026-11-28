@@ -103,7 +103,7 @@ export default function SlotGame({back}:{back:()=>void}) {
     <div className="ty-slot-fit" ref={fitArea}>
     <div className="ty-slot-layout ty-a-type ty-cast-edition ty-machine-edition ty-moe-edition ty-compact"><section ref={cabinet} style={{transform:`scale(${scale})`}} className={`ty-cabinet ${result?.bonusStarted?'ty-jackpot':''} ${active?'ty-bonus-mode':''} ${doubleSeven?'ty-double-seven':''} ${state.highLeft?'ty-high-stage':''} ${result?.chanceEye?'ty-role-chance':''}`} aria-label="釣嫁スロット筐体">
       <div className="ty-compact-heading"><span>✦ 潮騒パラダイス ✦</span><b>BIG {state.bigCount} · REG {state.regCount}</b></div>
-      <div className="ty-lcd"><div className="ty-lcd-top"><span>⚓ {active?`${active} BONUS`:STAGE_NAMES[session.visual.stage]}</span><b>{active?`${state.bonusPaid} / ${bonusLimit} PAYOUT`:state.chance?'BITE CHANCE':state.highLeft?`高確 ${state.highLeft}G`:state.replay?'REPLAY':'NORMAL'}</b></div>
+      <div className="ty-lcd">{!bonusScreen&&<div className="ty-lcd-top"><span>⚓ {active?`${active} BONUS`:STAGE_NAMES[session.visual.stage]}</span><b>{active?`${state.bonusPaid} / ${bonusLimit} PAYOUT`:state.chance?'BITE CHANCE':state.highLeft?`高確 ${state.highLeft}G`:state.replay?'REPLAY':'NORMAL'}</b></div>}
         {!state.chance&&!active&&result&&result.role!=='miss'&&<div className={`ty-role-toast ${isRare(result.role)?'ty-rare-role':''}`}>{result.chanceEye?'CHANCE目！':ROLE_RULES[result.role].label}</div>}
         {bonusScreen?<SlotBonusScreen session={session} result={result}/>:<>
         <SlotLcdScene visual={session.visual} phase={scenePhase} running={running}/>

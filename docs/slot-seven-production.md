@@ -19,3 +19,9 @@ Runtime atlas public/assets/slot/reel-symbols-v3.webp; v2 retained. Wide origina
 Prompt set: preserve exact character/color, recompose visible design to2.2:1 with wide numeral left2/3 and normal-proportion portrait right1/3, keep full silhouette, five digits on visible hands, transparent background. Small roles: retain each motif, clean matte flat cel-shading, one shadow region, bold tidy outline, no gradients/glitter/ornate frames/text, transparent background. Final assembly only resizes/composites the generated assets. Visual comparison is an asset-layout illustration, not a live browser screenshot.
 
 Validation for this visual-only update:135 SVG cells/unique clipping, fixed mapping and shared BAR, v8 migration, six layout viewport bounds,105 reel stop animations, TypeScript and Vite. Production publication is pending; changes remain in PR3.
+
+## RUSH full-screen sizing correction
+
+The root phase class `ty-bonus-get` collided with the child GET badge's layout class. On settled catch frames, the badge's right4%/bottom15% positioning also shrank the full-screen scene, producing the empty strip at the bottom. Root phases now use `ty-bonus-phase-*` and only the child retains `ty-bonus-get`. Actor animation selectors follow the renamed phases. The legacy LCD header is suppressed when a dedicated bonus screen owns the display, avoiding the misleading REG /252 payout header.
+
+Regression rendering checks both BIG/REG across confirmed/cast/fight/get/finish and asserts that badge classes never appear on the scene root. Controls/layout tests, TypeScript and Vite pass. Live browser confirmation is still unavailable (local Chromium executable missing; existing signed-in app was locked).
