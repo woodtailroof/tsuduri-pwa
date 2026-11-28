@@ -1,9 +1,10 @@
+import SlotBaitCinema from './SlotBaitCinema';
 import {useEffect,useState} from 'react';
 import {challengeSpec,type Challenge} from '../lib/slotChallenges';
 import {SLOT_CAST} from '../lib/slotCast';
 import {poseSrc,type FishingPose} from '../lib/slotFishing';
 import type {SlotVisual} from '../lib/slotPresentation';
-export default function SlotChallenge({challenge,total,left,outcome}:{challenge:Challenge;total:number;left:number;outcome:SlotVisual['outcome']}){
+export default function SlotChallenge({challenge,total,left,outcome,phase=0}:{challenge:Challenge;total:number;left:number;phase?:number;outcome:SlotVisual['outcome']}){
  const [time,setTime]=useState(0);
  useEffect(()=>{
   if(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches){setTime(1600);return;}
@@ -15,6 +16,15 @@ export default function SlotChallenge({challenge,total,left,outcome}:{challenge:
  const selecting=time<1200&&!final;
  const pose:FishingPose=spec.mode==='float'?(stage==='intro'?'sit':'twitch'):spec.id==='distance'?(time%4500<1100?'stand':'cast'):stage==='intro'?'stand':'retrieve';
  const caption=won?spec.win:lost?spec.lose:spec[stage];
+ if(spec.id==='bigbait'){
+  const beat=Math.max(0,Math.min(3,phase));
+  const state={game:(step%2===0?1:2) as 1|2,stops:[0,1,2].map(i=>i<beat),cycle:Math.floor(step/2),route:(lost?'miss':'win') as 'miss'|'win',done:final};
+  return <section className={`ty-challenge challenge-bigbait ty-bait-live ${won?'challenge-win':lost?'challenge-lose':''}`} aria-label={`専用シネマ演出 ${spec.title} ${actor.name} 期待度${challenge.stars}つ星`}>
+   <SlotBaitCinema state={state} actor={challenge.actor}/>
+   <div className="ty-bait-live-heading"><b>{spec.title}</b><span>期待度 {'★'.repeat(challenge.stars)}</span></div>
+   <div className="ty-bait-live-caption" role="status">{won?'大物ヒット！ BONUS CHANCE！':lost?'見切られちゃった……次こそ！':beat===0?'集中して……':beat===1?'魚影……？':beat===2?'追ってきてる！':'今、食う……!?'}{won&&<small>MISSION CLEAR</small>}{lost&&<small>NEXT CHALLENGE</small>}</div>
+  </section>;
+ }
  return <section className={`ty-challenge challenge-${spec.id} challenge-${stage} ${selecting?'is-selecting':''} ${won?'challenge-win':lost?'challenge-lose':''}`} aria-label={`専用シネマ演出 ${spec.title} ${actor.name} 期待度${challenge.stars}つ星`}>
   <div className="ty-cinema-background" style={{backgroundImage:`url(/assets/slot/missions/${spec.id}.webp)`}} aria-hidden="true"/>
   <div className="ty-cinema-depth" aria-hidden="true"/><div className="ty-challenge-vignette"/>
